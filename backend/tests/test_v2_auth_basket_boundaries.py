@@ -213,5 +213,11 @@ async def test_superseded_product_cannot_receive_or_update_a_draft(
                 json={"product_id": old_id, "data": product_data},
             )
             assert new.status_code == 409
+            discarded = await client.delete(f"/api/v2/products/drafts/{draft_id}")
+            assert discarded.status_code == 200
+            assert discarded.json() == {"deleted": True}
+            assert (await client.get(
+                f"/api/v2/products/drafts/{draft_id}"
+            )).status_code == 404
     finally:
         await connection.close()

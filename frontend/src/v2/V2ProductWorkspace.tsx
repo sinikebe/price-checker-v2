@@ -222,13 +222,25 @@ function Editor({ mode, id, user, onLogout }: Props) {
       navigate("/v2/produits/" + product.id);
     } catch (reason) { setError(String(reason)); setBusy(false); }
   }
+  async function discardSuperseded() {
+    if (!draft || !successorId || draft.author_id !== user?.id || busy) return;
+    if (!window.confirm("Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.")) return;
+    setBusy(true); setError("");
+    try {
+      await productRequest<{ deleted: boolean }>("/drafts/" + draft.id, "DELETE");
+      localStorage.removeItem(localKey);
+      navigate("/v2/brouillons");
+    } catch (reason) { setError(String(reason)); setBusy(false); }
+  }
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
       <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
       <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
-    {successorId && <p role="alert">Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>}
+    {successorId && <div role="alert"><p>Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>
+      {draft && draft.author_id === user?.id && <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Abandonner cet ancien brouillon</button>}
+    </div>}
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
     <div className="v2-workspace-editor-layout">
       <form className="v2-workspace-card" onSubmit={save}>

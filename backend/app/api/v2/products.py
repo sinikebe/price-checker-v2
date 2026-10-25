@@ -406,6 +406,26 @@ async def update_draft(draft_id: int, payload: DraftUpdate, request: Request):
         await connection.close()
 
 
+@router.delete("/drafts/{draft_id}")
+async def discard_superseded_draft(draft_id: int, request: Request):
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        deleted = await connection.fetchval(
+            "DELETE FROM v2_product_drafts d WHERE d.id=$1 AND d.author_id=$2 "
+            "AND d.status='draft' AND EXISTS (SELECT 1 FROM v2_products next "
+            "WHERE next.predecessor_id=d.product_id) RETURNING d.id",
+            draft_id,
+            user["id"],
+        )
+        if deleted is None:
+            raise HTTPException(status_code=404, detail="Ancien brouillon introuvable.")
+        return {"deleted": True}
+    finally:
+        await connection.close()
+
+
 @router.post("/drafts/{draft_id}/approve")
 async def approve_draft(draft_id: int, request: Request):
     _secure_write(request)
