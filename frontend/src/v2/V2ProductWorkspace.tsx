@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
@@ -95,12 +95,13 @@ function ListPage({ mode, user, onLogout }: Props) {
   </Frame>;
 }
 
-function localRead(key: string): { data: ProductData; change_kind: ChangeKind } | null {
+function localRead(key: string): { data: ProductData; change_kind: ChangeKind; revision: number | null } | null {
   try {
     const value = localStorage.getItem(key);
     if (!value) return null;
     const parsed = JSON.parse(value);
-    return { data: completeProductData(parsed.data), change_kind: parsed.change_kind === "new_version" ? "new_version" : "correction" };
+    return { data: completeProductData(parsed.data), change_kind: parsed.change_kind === "new_version" ? "new_version" : "correction",
+      revision: Number.isInteger(parsed.revision) && parsed.revision > 0 ? parsed.revision : null };
   } catch { return null; }
 }
 
@@ -113,13 +114,14 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [data, setData] = useState<ProductData>(() => localRead(localKey)?.data ?? { ...emptyProduct(), ean: initialBarcode });
   const [changeKind, setChangeKind] = useState<ChangeKind>(() => localRead(localKey)?.change_kind ?? "correction");
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [baseRevision, setBaseRevision] = useState<number | null>(() => localRead(localKey)?.revision ?? null);
   const [baseProduct, setBaseProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(mode !== "new");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [localError, setLocalError] = useState("");
-  const [localVersion, setLocalVersion] = useState(0);
+  const localVersion = useRef(0);
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
   const [tagInput, setTagInput] = useState("");
   const [retailerInput, setRetailerInput] = useState("");
@@ -136,7 +138,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
           return;
         }
         setDraft(value);
-        if (!localRead(localKey)) { setData(completeProductData(value.data)); setChangeKind(value.change_kind); setDirty(false); }
+        if (!localRead(localKey)) { setData(completeProductData(value.data)); setChangeKind(value.change_kind); setBaseRevision(value.revision); setDirty(false); }
         setLoading(false);
       }).catch(reason => { if (active) { setError(String(reason)); setLoading(false); } });
     } else {
@@ -170,9 +172,9 @@ function Editor({ mode, id, user, onLogout }: Props) {
       if (changed.includes("nutriscore")) next.nutriscore_version = "";
     }
     if (next.quantity !== data.quantity) next = { ...next, quantity_amount: null, quantity_unit: null, quantity_count_noun: null };
-    setData(next); setChangeKind(kind); setDirty(true); setLocalVersion(version => version + 1);
+    setData(next); setChangeKind(kind); setDirty(true); localVersion.current += 1;
     try {
-      localStorage.setItem(localKey, JSON.stringify({ data: next, change_kind: kind }));
+      localStorage.setItem(localKey, JSON.stringify({ data: next, change_kind: kind, revision: draft ? baseRevision : null }));
       setLocalError("");
     } catch { setLocalError("Stockage local indisponible : copiez vos informations avant de quitter la page."); }
   }
@@ -180,22 +182,27 @@ function Editor({ mode, id, user, onLogout }: Props) {
     event.preventDefault();
     if (busy) return;
     if (!user) { setError("Connectez-vous pour enregistrer ce brouillon sur le serveur. Votre saisie reste dans ce navigateur."); return; }
+    if (draft && baseRevision !== draft.revision) {
+      setError("Ce brouillon a changé ailleurs. Choisissez comment résoudre le conflit avant de l’enregistrer.");
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
-    const snapshot = localVersion;
+    const snapshot = localVersion.current;
     try {
       if (draft) {
-        const saved = await productRequest<Draft>("/drafts/" + draft.id, "PUT", { revision: draft.revision, data, change_kind: changeKind });
-        setDraft(saved);
-        if (snapshot === localVersion) { localStorage.removeItem(localKey); setDirty(false); }
+        const saved = await productRequest<Draft>("/drafts/" + draft.id, "PUT", { revision: baseRevision, data, change_kind: changeKind });
+        setDraft(saved); setBaseRevision(saved.revision);
+        if (snapshot === localVersion.current) { localStorage.removeItem(localKey); setDirty(false); }
         setNotice("Brouillon enregistré sur le serveur. Vous le retrouverez sur vos autres navigateurs.");
       } else {
         const saved = await productRequest<Draft>("/drafts", "POST", { product_id: mode === "edit" ? id : null, data, change_kind: changeKind });
-        if (snapshot === localVersion) localStorage.removeItem(localKey);
+        if (snapshot === localVersion.current) localStorage.removeItem(localKey);
         navigate("/v2/brouillons/" + saved.id);
       }
     } catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   }
+  const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
   const isReview = mode === "draft" && draft && user?.role === "admin" && draft.author_id !== user.id;
   const readonly = Boolean(isReview);
   async function approve() {
@@ -246,8 +253,28 @@ function Editor({ mode, id, user, onLogout }: Props) {
         </fieldset>
         <V2OffLookup data={data} disabled={busy || readonly}
           onApply={next => persist(next, changeKind, true)} />
+        {conflict && draft && <div className="v2-workspace-conflict" role="alert">
+          <strong>Conflit de brouillon.</strong> Votre saisie locale repose sur une version différente de celle du serveur.
+          Aucune modification n’a été envoyée. Version locale : {baseRevision ?? "inconnue"} ; version serveur : {draft.revision}.
+          <p>Comparez les deux versions avant de choisir. La version serveur s’intitule « {draft.data.name || "Produit sans nom"} ».</p>
+          <details><summary>Voir les champs enregistrés sur le serveur</summary>
+            <dl>{fields.map(field => <div key={field.key}><dt>{field.label}</dt><dd>{draft.data[field.key] || "—"}</dd></div>)}</dl>
+          </details>
+          <button type="button" disabled={busy} onClick={() => {
+            setData(completeProductData(draft.data)); setChangeKind(draft.change_kind); setBaseRevision(draft.revision);
+            setDirty(false); setError(""); localStorage.removeItem(localKey);
+          }}>Charger la version serveur</button>
+          <button type="button" disabled={busy} onClick={() => {
+            setBaseRevision(draft.revision); setError("");
+            setNotice("Votre saisie locale est conservée. Cliquez sur Enregistrer pour remplacer la version serveur.");
+            try {
+              localStorage.setItem(localKey, JSON.stringify({ data, change_kind: changeKind, revision: draft.revision }));
+              setLocalError("");
+            } catch { setLocalError("Stockage local indisponible : copiez vos informations avant de quitter la page."); }
+          }}>Préparer le remplacement avec ma saisie</button>
+        </div>}
         <div className="v2-workspace-actions">
-          {!readonly && <button className="v2-button v2-button-primary" disabled={busy} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
+          {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
           {draft && user?.role === "admin" && <button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty} onClick={() => { void approve(); }}>Valider et publier</button>}
         </div>
         {dirty && draft && user?.role === "admin" && <p>Enregistrez vos changements locaux avant de valider.</p>}
@@ -312,7 +339,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
 
 export default function V2ProductWorkspace(props: Props) {
   const location = useLocation();
-  if (["catalogue", "mine", "review"].includes(props.mode)) return <ListPage {...props} />;
-  if (["new", "edit", "draft"].includes(props.mode)) return <Editor key={props.mode + ":" + props.id + (props.mode === "new" ? ":" + location.search : "")} {...props} />;
+  if (["catalogue", "mine", "review"].includes(props.mode)) return <ListPage key={props.mode + ":" + (props.user?.id ?? "anon")} {...props} />;
+  if (["new", "edit", "draft"].includes(props.mode)) return <Editor key={props.mode + ":" + props.id + ":" + (props.user?.id ?? "anon") + (props.mode === "new" ? ":" + location.search : "")} {...props} />;
   return <Detail {...props} />;
 }

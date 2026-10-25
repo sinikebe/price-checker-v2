@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ ${EUID} -ne 0 ]]; then echo "Run as root (sudo)." >&2; exit 1; fi
-for tool in docker git curl flock; do
+for tool in docker git curl flock python3; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,6 +35,27 @@ for file in backend/app/main_v2.py frontend/v2.html deployment/v2/compose.yaml d
     echo "New main lacks $file; refusing update." >&2; exit 1;
   }
 done
+# A dump of the bundled service is valid only for the database migrations will use.
+config_file="$PRICE_CHECKER_V2_DATA_DIR/state/database.json"
+if [[ -f "$config_file" ]]; then
+  configured_target="$(python3 - "$config_file" <<'PYCONFIG'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    config = json.load(source)
+print(config["host"], config["port"], config["database"], config["username"], sep="\t")
+PYCONFIG
+)"
+  IFS=$'\t' read -r db_host db_port db_name db_user <<< "$configured_target"
+  if [[ "$db_host" != db || "$db_port" != 5432 ||
+        "$db_name" != "$PRICE_CHECKER_V2_DB_NAME" ||
+        "$db_user" != "$PRICE_CHECKER_V2_DB_NAME" ]]; then
+    echo "Configured V2 database is not the bundled db; update refused before backup or migration." >&2
+    echo "Back up the configured database and use a separately verified external-DB update procedure." >&2
+    exit 1
+  fi
+fi
 backup="$PRICE_CHECKER_V2_DATA_DIR/backups/$(date -u +%Y%m%dT%H%M%SZ)-$old_sha.dump"
 umask 077
 "${compose[@]}" exec -T db pg_dump -U "$PRICE_CHECKER_V2_DB_NAME" -d "$PRICE_CHECKER_V2_DB_NAME" -Fc > "$backup"

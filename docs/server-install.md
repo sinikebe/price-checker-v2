@@ -4,7 +4,7 @@ Ce guide décrit l'installation de Price Checker V2 depuis la branche `main`. Il
 
 ## Pré-requis
 
-- Docker Engine, le plugin `docker compose`, Git, OpenSSL et curl.
+- Docker Engine, le plugin `docker compose`, Git, OpenSSL, curl et Python 3 (pour vérifier la cible de la sauvegarde avant une mise à jour).
 - Espace disque pour les images, PostgreSQL et les sauvegardes avant mise à jour.
 - Un répertoire persistant et sauvegardé pour `/var/lib/price-checker-v2`, **ainsi que** le volume Docker `price-checker-v2-prod_postgres_data`. Le répertoire seul ne contient pas les données de la base.
 - Un reverse proxy HTTPS vers `127.0.0.1:8080`. Il doit transmettre `Host`, définir lui-même `X-Forwarded-Proto: https` et remplacer `X-Forwarded-For` par l'adresse réelle du client. Ne pas faire confiance aux valeurs de ces en-têtes envoyées par le navigateur.
@@ -39,7 +39,7 @@ Lire le code et le mot de passe uniquement sur le serveur, par exemple avec `sud
 sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
-Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il sauvegarde PostgreSQL au format dump dans `/var/lib/price-checker-v2/backups/`, reconstruit les images, applique les migrations si la base a été initialisée, redémarre l'application et contrôle l'API locale. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
+Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il vérifie d’abord que la base configurée correspond bien au service PostgreSQL `db` fourni (hôte `db`, port `5432`, base et utilisateur attendus). Si la configuration pointe vers une autre base, **la mise à jour s’arrête avant la sauvegarde et les migrations** : ce script ne prend pas encore en charge les bases externes. Ne lancez pas une ancienne version du script sur une installation à base externe ; préparez une sauvegarde vérifiée de la vraie base et une procédure de mise à jour distincte. Pour la base fournie, il sauvegarde PostgreSQL au format dump dans `/var/lib/price-checker-v2/backups/`, reconstruit les images, applique les migrations si la base a été initialisée, redémarre l’application et contrôle l’API locale. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
 
 Un push sur GitHub ne met pas le serveur à jour automatiquement. Lancer la commande après vérification des changements, ou la planifier explicitement dans une tâche système une fois l'installation validée.
 

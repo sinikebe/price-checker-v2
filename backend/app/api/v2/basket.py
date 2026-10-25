@@ -29,6 +29,9 @@ async def _user(connection, request):
         raise HTTPException(
             status_code=401, detail="Connectez-vous pour synchroniser le panier."
         )
+    expected = request.headers.get("x-v2-basket-user-id")
+    if expected is not None and expected != str(user["id"]):
+        raise HTTPException(status_code=409, detail="Le compte a changé pendant la synchronisation.")
     return user
 
 

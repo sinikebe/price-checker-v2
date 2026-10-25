@@ -357,6 +357,12 @@ MIGRATIONS = {
             ON v2_price_observations(product_id, store_id, observed_at, price,
                 coalesce(quantity_text, '')) WHERE source = 'manual';
     """,
+    "0008_auth_limit_cleanup": """
+        DELETE FROM v2_auth_limits
+        WHERE window_started_at < now() - interval '1 hour';
+        CREATE INDEX v2_auth_limits_window_idx
+            ON v2_auth_limits(window_started_at);
+    """,
 
 }
 

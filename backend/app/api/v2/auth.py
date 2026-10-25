@@ -23,6 +23,7 @@ router = APIRouter(prefix="/api/v2/auth", tags=["v2-auth"])
 
 _COOKIE_NAME = "pc_v2_session"
 _SESSION_SECONDS = 7 * 24 * 60 * 60
+_LOGIN_ORIGIN_MAX = 30
 _USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,31}")
 _SESSION_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")
 _HASHER = PasswordHasher()
@@ -127,6 +128,13 @@ async def _bump_limit(connection: asyncpg.Connection, key: str, seconds: int) ->
         """,
         key,
         seconds,
+    )
+
+
+async def _purge_expired_limits(connection: asyncpg.Connection) -> None:
+    # Registration has the longest window (one hour).
+    await connection.execute(
+        "DELETE FROM v2_auth_limits WHERE window_started_at < now() - interval '1 hour'"
     )
 
 
@@ -263,6 +271,7 @@ async def register(credentials: Credentials, request: Request, response: Respons
         )
         if not initialized:
             raise HTTPException(status_code=403, detail="Installation incomplète.")
+        await _purge_expired_limits(connection)
         key = _limit_key("register", request)
         if await _bump_limit(connection, key, 3600) > 5:
             raise HTTPException(
@@ -298,6 +307,14 @@ async def login(credentials: Credentials, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Identifiants incorrects.")
     connection = await _connect()
     try:
+        await _purge_expired_limits(connection)
+        # Count all attempts by origin before running the expensive Argon2 check.
+        # This caps novel-username attempts as well as repeated attempts for one account.
+        origin_key = _limit_key("login-origin", request)
+        if await _bump_limit(connection, origin_key, 900) > _LOGIN_ORIGIN_MAX:
+            raise HTTPException(
+                status_code=429, detail="Trop de tentatives. Réessayez plus tard."
+            )
         key = _limit_key("login", request, username_key)
         if await _limit_reached(connection, key, 900, 10):
             raise HTTPException(

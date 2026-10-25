@@ -132,3 +132,15 @@
 .v2-workspace-structured input, .v2-workspace-card input[type="datetime-local"] { width: 100%; max-width: 100%; padding: 10px 12px; border: 1px solid #cbd9ce; border-radius: 9px; font: inherit; }
 .v2-workspace-structured button { margin-top: 5px; padding: 6px 10px; border: 1px solid #a9c9ad; border-radius: 8px; background: #f5faf3; color: #245b3c; cursor: pointer; }
 .v2-workspace-structured li button { margin: 0 0 0 8px; }
+
+.v2-workspace-conflict { margin: 18px 0; padding: 18px; border: 1px solid #d8a65a; border-radius: 12px; background: #fff7e8; color: #563a19; line-height: 1.5; }
+.v2-workspace-conflict strong { display: block; margin-bottom: 6px; }
+.v2-workspace-conflict p { margin: 10px 0; }
+.v2-workspace-conflict button { margin: 8px 8px 0 0; padding: 9px 12px; border: 1px solid #b57e39; border-radius: 8px; background: #fff; color: #563a19; font: inherit; cursor: pointer; }
+.v2-workspace-conflict button:hover { background: #ffecc8; }
+.v2-workspace-conflict details { margin: 12px 0; }
+.v2-workspace-conflict summary { cursor: pointer; font-weight: 700; }
+.v2-workspace-conflict dl { margin: 10px 0; }
+.v2-workspace-conflict dl div { display: grid; grid-template-columns: minmax(130px, 35%) 1fr; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ead7b9; }
+.v2-workspace-conflict dd { margin: 0; overflow-wrap: anywhere; }
+@media(max-width: 600px) { .v2-workspace-conflict dl div { grid-template-columns: 1fr; gap: 0; } }
