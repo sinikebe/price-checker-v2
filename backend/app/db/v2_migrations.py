@@ -1,0 +1,429 @@
+"""Versioned schema migrations for the V2 PostgreSQL database."""
+
+from __future__ import annotations
+
+import asyncio
+import ssl
+
+import asyncpg
+
+MIGRATIONS = {
+    "0001_accounts": """
+        CREATE TABLE v2_users (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            username varchar(32) NOT NULL,
+            username_key varchar(32) NOT NULL UNIQUE,
+            password_hash text NOT NULL,
+            role varchar(16) NOT NULL
+                CHECK (role IN ('admin', 'confirmed', 'visitor')),
+            created_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE TABLE v2_installation (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            admin_user_id bigint UNIQUE REFERENCES v2_users(id),
+            created_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_installation (singleton) VALUES (true);
+        CREATE TABLE v2_sessions (
+            token_hash char(64) PRIMARY KEY,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL
+        );
+        CREATE INDEX v2_sessions_expires_at_idx ON v2_sessions (expires_at);
+        CREATE TABLE v2_auth_limits (
+            key char(64) PRIMARY KEY,
+            attempts integer NOT NULL,
+            window_started_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
+    "0002_products": """
+        CREATE TABLE v2_products (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            data jsonb NOT NULL,
+            revision integer NOT NULL DEFAULT 1,
+            predecessor_id bigint REFERENCES v2_products(id),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE TABLE v2_product_drafts (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            product_id bigint REFERENCES v2_products(id),
+            author_id bigint NOT NULL REFERENCES v2_users(id),
+            data jsonb NOT NULL,
+            base_revision integer,
+            revision integer NOT NULL DEFAULT 1,
+            status varchar(16) NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'approved')),
+            change_kind varchar(16) NOT NULL DEFAULT 'correction'
+                CHECK (change_kind IN ('correction', 'new_version')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            approved_at timestamptz,
+            approved_by bigint REFERENCES v2_users(id),
+            result_product_id bigint REFERENCES v2_products(id),
+            CONSTRAINT v2_draft_base CHECK (
+                (product_id IS NULL AND base_revision IS NULL) OR
+                (product_id IS NOT NULL AND base_revision IS NOT NULL)
+            )
+        );
+        CREATE INDEX v2_product_drafts_author_idx
+            ON v2_product_drafts (author_id, status, updated_at DESC);
+        CREATE INDEX v2_product_drafts_status_idx
+            ON v2_product_drafts (status, updated_at DESC);
+        CREATE UNIQUE INDEX v2_one_open_draft_per_author_product
+            ON v2_product_drafts(author_id, product_id)
+            WHERE status='draft' AND product_id IS NOT NULL;
+        CREATE TABLE v2_product_events (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            product_id bigint NOT NULL REFERENCES v2_products(id),
+            draft_id bigint NOT NULL REFERENCES v2_product_drafts(id),
+            actor_id bigint NOT NULL REFERENCES v2_users(id),
+            event_type varchar(24) NOT NULL,
+            before_data jsonb,
+            after_data jsonb NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_product_events_product_idx
+            ON v2_product_events(product_id, created_at DESC);
+    """,
+    "0003_off_snapshots": """
+        CREATE TABLE v2_product_off_snapshots (
+            product_id bigint PRIMARY KEY REFERENCES v2_products(id) ON DELETE CASCADE,
+            barcode varchar(14) NOT NULL,
+            payload jsonb NOT NULL,
+            fetched_at timestamptz NOT NULL DEFAULT now(),
+            off_rev integer,
+            off_last_modified_t bigint
+        );
+    """,
+    "0004_recipes": """
+        CREATE TABLE v2_recipes (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            author_id bigint NOT NULL REFERENCES v2_users(id),
+            title varchar(200) NOT NULL CHECK (btrim(title) <> ''),
+            description text NOT NULL DEFAULT '',
+            base_servings numeric(12,3) NOT NULL CHECK (base_servings > 0),
+            prep_minutes integer CHECK (prep_minutes >= 0),
+            cook_minutes integer CHECK (cook_minutes >= 0),
+            steps jsonb NOT NULL,
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_recipes_title_idx ON v2_recipes (lower(title));
+        CREATE TABLE v2_recipe_ingredients (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            recipe_id bigint NOT NULL REFERENCES v2_recipes(id) ON DELETE CASCADE,
+            position integer NOT NULL CHECK (position >= 0),
+            label varchar(200) NOT NULL CHECK (btrim(label) <> ''),
+            amount numeric(12,3) CHECK (amount > 0),
+            unit varchar(10),
+            note varchar(1000) NOT NULL DEFAULT '',
+            optional boolean NOT NULL DEFAULT false,
+            product_id bigint REFERENCES v2_products(id),
+            group_name varchar(100),
+            CONSTRAINT v2_recipe_ingredient_target CHECK (
+                (product_id IS NOT NULL) <> (group_name IS NOT NULL)
+                AND (group_name IS NULL OR btrim(group_name) <> '')
+            ),
+            CONSTRAINT v2_recipe_ingredient_quantity CHECK (
+                (amount IS NULL AND unit IS NULL) OR
+                (amount IS NOT NULL AND unit IN ('g', 'kg', 'ml', 'cl', 'l', 'piece'))
+            )
+        );
+        CREATE UNIQUE INDEX v2_recipe_ingredient_position_idx
+            ON v2_recipe_ingredients (recipe_id, position);
+        CREATE INDEX v2_recipe_ingredient_product_idx
+            ON v2_recipe_ingredients (product_id) WHERE product_id IS NOT NULL;
+    """,
+    "0005_pwa_versions": """
+        CREATE TABLE v2_pwa_versions (
+            collection varchar(16) PRIMARY KEY,
+            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0)
+        );
+        INSERT INTO v2_pwa_versions(collection) VALUES ('products'), ('recipes');
+        CREATE FUNCTION v2_bump_pwa_version() RETURNS trigger AS $$
+        BEGIN
+            UPDATE v2_pwa_versions SET revision=revision+1
+            WHERE collection=CASE TG_TABLE_NAME
+                WHEN 'v2_products' THEN 'products' ELSE 'recipes' END;
+            RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER v2_products_pwa_version
+            AFTER INSERT OR UPDATE OR DELETE ON v2_products
+            FOR EACH STATEMENT EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_recipes_pwa_version
+            AFTER INSERT OR UPDATE OR DELETE ON v2_recipes
+            FOR EACH STATEMENT EXECUTE FUNCTION v2_bump_pwa_version();
+    """,
+
+    "0006_user_baskets": """
+        CREATE TABLE v2_user_baskets (
+            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
+            product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            CONSTRAINT v2_basket_is_array CHECK (jsonb_typeof(product_ids)='array')
+        );
+    """,
+
+    "0007_price_history": """
+        -- Retailer identity and physical/online store identity are distinct.
+        CREATE TABLE v2_retailers (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            code varchar(50) NOT NULL UNIQUE,
+            name varchar(200) NOT NULL,
+            active boolean NOT NULL DEFAULT true,
+            external_brand_aliases jsonb,
+            import_key varchar(128) UNIQUE,
+            CHECK (external_brand_aliases IS NULL OR
+                   jsonb_typeof(external_brand_aliases) = 'array')
+        );
+        CREATE TABLE v2_stores (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            external_store_id varchar(100),
+            name varchar(300) NOT NULL,
+            postal_code varchar(20),
+            city varchar(200),
+            latitude numeric,
+            longitude numeric,
+            supports_drive boolean NOT NULL DEFAULT false,
+            supports_delivery boolean NOT NULL DEFAULT false,
+            osm_type varchar(20),
+            osm_id bigint,
+            import_key varchar(128) UNIQUE,
+            UNIQUE (retailer_id, id)
+        );
+        CREATE INDEX v2_stores_retailer_idx ON v2_stores(retailer_id);
+        CREATE UNIQUE INDEX v2_stores_osm_idx
+            ON v2_stores(osm_type, osm_id) WHERE osm_id IS NOT NULL;
+
+        -- Personal price entries are private until an admin approves them.
+        -- A capture draft stores the proposed reading, not a public offer.
+        CREATE TABLE v2_price_drafts (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            author_id bigint NOT NULL REFERENCES v2_users(id),
+            product_id bigint NOT NULL REFERENCES v2_products(id),
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            store_id bigint NOT NULL,
+            entry_kind varchar(16) NOT NULL
+                CHECK (entry_kind IN ('manual', 'capture')),
+            captured_via varchar(16)
+                CHECK (captured_via IN ('bookmarklet', 'paste')),
+            source_url varchar(1000),
+            price numeric(10,2) NOT NULL CHECK (price >= 0),
+            quantity_text varchar(100),
+            observed_at timestamptz NOT NULL,
+            note varchar(1000),
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            status varchar(16) NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'approved', 'rejected')),
+            reviewed_by bigint REFERENCES v2_users(id),
+            reviewed_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            import_key varchar(128) UNIQUE,
+            FOREIGN KEY (retailer_id, store_id)
+                REFERENCES v2_stores(retailer_id, id),
+            CHECK ((entry_kind = 'capture') = (captured_via IS NOT NULL)),
+            CHECK ((status = 'draft' AND reviewed_by IS NULL
+                    AND reviewed_at IS NULL) OR
+                   (status IN ('approved', 'rejected')
+                    AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL))
+        );
+        CREATE INDEX v2_price_drafts_author_idx
+            ON v2_price_drafts(author_id, status, updated_at DESC);
+        CREATE INDEX v2_price_drafts_review_idx
+            ON v2_price_drafts(status, updated_at DESC);
+
+        -- Each capture/connector fetch is retained, even when the price did
+        -- not change. An offer is raw provenance, not the effective price.
+        CREATE TABLE v2_offers (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            store_id bigint NOT NULL,
+            source_kind varchar(16) NOT NULL
+                CHECK (source_kind IN ('connector', 'capture')),
+            captured_via varchar(16)
+                CHECK (captured_via IN ('bookmarklet', 'paste')),
+            source_provider varchar(50),
+            price_draft_id bigint REFERENCES v2_price_drafts(id),
+            channel varchar(50) NOT NULL,
+            external_product_id varchar(200),
+            title varchar(500) NOT NULL,
+            normalized_title varchar(500),
+            brand varchar(200),
+            quantity_text varchar(100),
+            ean varchar(50),
+            price_amount numeric(10,2) NOT NULL,
+            unit_price_amount numeric(10,2),
+            unit_price_unit varchar(20),
+            promo_text varchar(500),
+            available boolean NOT NULL DEFAULT true,
+            image_url varchar(1000),
+            product_url varchar(1000),
+            collected_at timestamptz NOT NULL,
+            raw_payload jsonb,
+            import_key varchar(128) UNIQUE,
+            UNIQUE (id, retailer_id, store_id),
+            FOREIGN KEY (retailer_id, store_id)
+                REFERENCES v2_stores(retailer_id, id),
+            CHECK ((source_kind = 'capture') = (captured_via IS NOT NULL))
+        );
+        CREATE INDEX v2_offers_store_collected_idx
+            ON v2_offers(store_id, collected_at DESC);
+        CREATE TABLE v2_offer_product_links (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            offer_id bigint NOT NULL REFERENCES v2_offers(id),
+            product_id bigint NOT NULL REFERENCES v2_products(id),
+            link_type varchar(20) NOT NULL,
+            confidence numeric(5,2),
+            verified boolean NOT NULL DEFAULT false,
+            note varchar(1000),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            import_key varchar(128) UNIQUE,
+            UNIQUE (offer_id, product_id)
+        );
+        CREATE INDEX v2_offer_product_links_product_idx
+            ON v2_offer_product_links(product_id);
+
+        -- One row per actual price change; corrections are manual observations
+        -- with disputed value and resolution, not edits to historical prices.
+        CREATE TABLE v2_price_observations (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            product_id bigint REFERENCES v2_products(id),
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            store_id bigint NOT NULL,
+            offer_id bigint REFERENCES v2_offers(id),
+            source varchar(20) NOT NULL
+                CHECK (source IN ('manual', 'connector', 'third_party')),
+            source_provider varchar(50),
+            source_record_id varchar(128),
+            contributor_id bigint REFERENCES v2_users(id),
+            price_draft_id bigint REFERENCES v2_price_drafts(id),
+            approved_by bigint REFERENCES v2_users(id),
+            approved_at timestamptz,
+            price numeric(10,2) NOT NULL CHECK (price >= 0),
+            quantity_text varchar(100),
+            unit_price_amount numeric(10,2),
+            unit_price_unit varchar(20),
+            available boolean NOT NULL DEFAULT true,
+            observed_at timestamptz NOT NULL,
+            note varchar(1000),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            corrected_price numeric(10,2),
+            correction_status varchar(20)
+                CHECK (correction_status IN ('active', 'resolved')),
+            resolved_by_observation_id bigint
+                REFERENCES v2_price_observations(id),
+            superseded boolean NOT NULL DEFAULT false,
+            superseded_by_correction_id bigint
+                REFERENCES v2_price_observations(id),
+            import_key varchar(128) UNIQUE,
+            FOREIGN KEY (retailer_id, store_id)
+                REFERENCES v2_stores(retailer_id, id),
+            FOREIGN KEY (offer_id, retailer_id, store_id)
+                REFERENCES v2_offers(id, retailer_id, store_id),
+            CHECK ((source = 'connector' AND offer_id IS NOT NULL) OR
+                   (source IN ('manual', 'third_party') AND offer_id IS NULL)),
+            CHECK (source <> 'third_party' OR
+                   (source_provider IS NOT NULL AND btrim(source_provider) <> '')),
+            CHECK (source = 'manual' OR
+                   (corrected_price IS NULL AND correction_status IS NULL
+                    AND resolved_by_observation_id IS NULL)),
+            CHECK ((corrected_price IS NULL) = (correction_status IS NULL)),
+            CHECK ((correction_status = 'resolved') =
+                   (resolved_by_observation_id IS NOT NULL)
+                   OR correction_status IS NULL),
+            CHECK (NOT superseded OR source <> 'manual'),
+            CHECK (superseded = (superseded_by_correction_id IS NOT NULL)),
+            CHECK ((approved_by IS NULL) = (approved_at IS NULL)),
+            CHECK (price_draft_id IS NULL OR
+                   (contributor_id IS NOT NULL AND approved_by IS NOT NULL))
+        );
+        CREATE INDEX v2_price_observations_product_store_idx
+            ON v2_price_observations(product_id, store_id, observed_at DESC, id DESC);
+        CREATE INDEX v2_price_observations_store_idx
+            ON v2_price_observations(store_id, observed_at DESC);
+        CREATE UNIQUE INDEX v2_price_observations_draft_idx
+            ON v2_price_observations(price_draft_id)
+            WHERE price_draft_id IS NOT NULL;
+        CREATE UNIQUE INDEX v2_price_observations_connector_offer_idx
+            ON v2_price_observations(offer_id) WHERE source = 'connector';
+        CREATE UNIQUE INDEX v2_price_observations_manual_idx
+            ON v2_price_observations(product_id, store_id, observed_at, price,
+                coalesce(quantity_text, '')) WHERE source = 'manual';
+    """,
+
+}
+
+
+def ssl_option(config: dict) -> bool | str | ssl.SSLContext:
+    mode = config["tls_mode"]
+    if mode == "disable":
+        return False
+    if mode == "require":
+        return "require"
+    if mode == "verify-full":
+        return ssl.create_default_context()
+    raise ValueError("Unsupported V2 TLS mode")
+
+
+async def connect_v2(config: dict) -> asyncpg.Connection:
+    return await asyncpg.connect(
+        host=config["host"],
+        port=config["port"],
+        user=config["username"],
+        password=config["password"],
+        database=config["database"],
+        ssl=ssl_option(config),
+        timeout=8,
+    )
+
+
+async def migrate_v2(config: dict) -> list[str]:
+    """Apply only missing migrations, serializing concurrent first-run attempts."""
+    connection = await connect_v2(config)
+    applied = []
+    try:
+        async with connection.transaction():
+            await connection.execute("SELECT pg_advisory_xact_lock(6782732671)")
+            await connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS v2_schema_migrations (
+                    version text PRIMARY KEY,
+                    applied_at timestamptz NOT NULL DEFAULT now()
+                )
+                """
+            )
+            for version, ddl in MIGRATIONS.items():
+                exists = await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_schema_migrations "
+                    "WHERE version=$1)",
+                    version,
+                )
+                if not exists:
+                    await connection.execute(ddl)
+                    await connection.execute(
+                        "INSERT INTO v2_schema_migrations(version) VALUES($1)", version
+                    )
+                    applied.append(version)
+    finally:
+        await connection.close()
+    return applied
+
+
+if __name__ == "__main__":
+    from app.api.v2.setup import _read_config
+
+    async def main() -> None:
+        config = _read_config()
+        if config is None:
+            raise SystemExit("V2 database is not configured")
+        applied = await migrate_v2(config)
+        print("V2 migrations applied: " + (", ".join(applied) or "none"))
+
+    asyncio.run(main())

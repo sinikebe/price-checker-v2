@@ -1,0 +1,49 @@
+.v2-recipes-main { min-height: 70vh; padding: 44px 0 100px; }
+.v2-recipes-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin: 14px 0 30px; }
+.v2-recipes-heading h1 { margin: 7px 0; font-size: clamp(2.3rem, 6vw, 4.6rem); line-height: 1.08; letter-spacing: -.05em; color: #203f30; }
+.v2-recipes-heading h1 span { color: #78ae69; }
+.v2-recipes-heading p { max-width: 660px; color: #66786c; }
+.v2-recipes-heading > .v2-button, .v2-recipes-actions { flex: none; }
+.v2-recipes-search, .v2-recipes-servings { display: flex; align-items: center; gap: 12px; margin: 20px 0; font-weight: 650; }
+.v2-recipes-search input, .v2-recipes-servings input, .v2-recipes-fields input, .v2-recipes-fields select, .v2-recipes-fields textarea, .v2-recipes-step-edit textarea { min-width: 0; padding: 10px 12px; border: 1px solid #cbd9ce; border-radius: 9px; background: #fff; color: #203f30; font: inherit; }
+.v2-recipes-search input { width: min(100%, 420px); }
+.v2-recipes-servings input { width: 100px; }
+.v2-recipes-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; }
+.v2-recipes-tile, .v2-recipes-card, .v2-recipes-empty { padding: 23px; border: 1px solid #dce8db; border-radius: 17px; background: white; }
+.v2-recipes-tile:hover { border-color: #8bb999; background: #f5faf3; }
+.v2-recipes-tile strong, .v2-recipes-tile span { display: block; }
+.v2-recipes-tile strong { color: #244b36; font-size: 1.1rem; }
+.v2-recipes-tile span, .v2-recipes-tile p, .v2-recipes-empty { color: #66786c; }
+.v2-recipes-tile p { margin-bottom: 0; }
+.v2-recipes-pager, .v2-recipes-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px; }
+.v2-recipes-pager button, .v2-recipes-ingredient-edit button, .v2-recipes-step-edit button { cursor: pointer; }
+.v2-recipes-back { display: inline-block; margin-bottom: 16px; color: #317c54 !important; font-weight: 700; }
+.v2-recipes-error { padding: 12px 15px; border-radius: 9px; background: #fff0f0; color: #9b2839; }
+.v2-recipes-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.v2-recipes-card h2 { margin-top: 0; color: #244b36; }
+.v2-recipes-ingredients { margin: 0; padding: 0; list-style: none; }
+.v2-recipes-ingredients li { padding: 15px 0; border-top: 1px solid #e8eee8; }
+.v2-recipes-ingredients li:first-child { border-top: 0; }
+.v2-recipes-ingredients li > div:first-child { display: flex; gap: 9px; flex-wrap: wrap; align-items: baseline; }
+.v2-recipes-ingredients li span { color: #718476; font-size: .8rem; }
+.v2-recipes-ingredients li p, .v2-recipes-ingredients li small, .v2-recipes-meta { color: #66786c; }
+.v2-recipes-ingredients li p { margin: 6px 0; }
+.v2-recipes-ingredients li a, .v2-recipes-choices a { color: #317c54; font-weight: 650; }
+.v2-recipes-choices { display: grid; gap: 5px; margin: 7px 0; }
+.v2-recipes-steps { padding-left: 24px; }
+.v2-recipes-steps li { padding: 0 0 18px 8px; line-height: 1.65; white-space: pre-wrap; }
+.v2-recipes-form > fieldset { display: grid; gap: 20px; padding: 0; border: 0; }
+.v2-recipes-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.v2-recipes-fields label, .v2-recipes-step-edit label { display: grid; gap: 6px; color: #304e3d; font-weight: 650; }
+.v2-recipes-fields label:has(textarea) { grid-column: 1 / -1; }
+.v2-recipes-fields input, .v2-recipes-fields select, .v2-recipes-fields textarea, .v2-recipes-step-edit textarea { width: 100%; }
+.v2-recipes-fields textarea, .v2-recipes-step-edit textarea { min-height: 86px; resize: vertical; }
+.v2-recipes-fields .v2-recipes-check { display: flex; align-items: center; gap: 9px; }
+.v2-recipes-check input { width: auto; }
+.v2-recipes-ingredient-edit, .v2-recipes-step-edit { padding: 16px 0; border-top: 1px solid #e8eee8; }
+.v2-recipes-row { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 15px; }
+.v2-recipes-step-edit { display: flex; align-items: start; gap: 15px; }
+.v2-recipes-step-edit label { flex: 1; }
+.v2-recipes-form button:disabled { opacity: .6; cursor: not-allowed; }
+@media(max-width: 850px) { .v2-recipes-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .v2-recipes-detail-grid { grid-template-columns: 1fr; } }
+@media(max-width: 600px) { .v2-recipes-main { padding-top: 28px; } .v2-recipes-heading { align-items: start; flex-direction: column; } .v2-recipes-list, .v2-recipes-fields { grid-template-columns: 1fr; } .v2-recipes-search { align-items: start; flex-direction: column; } .v2-recipes-search input { width: 100%; } .v2-recipes-card { padding: 19px; } }

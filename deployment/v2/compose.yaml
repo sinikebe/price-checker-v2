@@ -1,0 +1,56 @@
+name: price-checker-v2-${PRICE_CHECKER_V2_ENV:-prod}
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod}
+      POSTGRES_USER: ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/certs:/certs:ro
+    command: ["postgres", "-c", "ssl=on", "-c", "ssl_cert_file=/certs/server.crt", "-c", "ssl_key_file=/certs/server.key", "-c", "ssl_min_protocol_version=TLSv1.2"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod} -d ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  backend:
+    build:
+      context: ../../backend
+    restart: unless-stopped
+    command: ["uvicorn", "app.main_v2:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment:
+      APP_ENV: ${PRICE_CHECKER_V2_ENV:-prod}
+      PRICE_CHECKER_V2_STATE_DIR: /state
+      SSL_CERT_FILE: /certs/server.crt
+    volumes:
+      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/state:/state
+      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/certs/server.crt:/certs/server.crt:ro
+    depends_on:
+      db: {condition: service_healthy}
+    networks: [internal]
+
+  web:
+    build:
+      context: ../../frontend
+      dockerfile: ../deployment/v2/Dockerfile.web
+    restart: unless-stopped
+    ports: ["127.0.0.1:${PRICE_CHECKER_V2_PORT:-8080}:8080"]
+    depends_on: [backend]
+    networks: [internal]
+
+secrets:
+  postgres_password:
+    file: ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/postgres/password
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
