@@ -276,9 +276,11 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
             <div className="v2-setup-field v2-setup-field-wide">
               <label htmlFor="v2-host">{form.provider === "supabase" ? "Hôte du pooler Session" : "Hôte PostgreSQL"}</label>
               <input id="v2-host" type="text" autoCapitalize="off" spellCheck={false}
-                placeholder={form.provider === "supabase" ? "exemple.pooler.supabase.com" : "localhost"}
+                placeholder={form.provider === "supabase" ? "exemple.pooler.supabase.com" : "db"}
                 value={form.host} onChange={(event) => update("host", event.target.value)} required />
-              {form.provider === "supabase" && <small>Supabase → Connect → Session pooler. N’utilisez pas le mode Transaction.</small>}
+              {form.provider === "supabase"
+                ? <small>Supabase → Connect → Session pooler. N’utilisez pas le mode Transaction.</small>
+                : <small>Avec l’installation Docker fournie, utilisez « db » : localhost désigne le conteneur de l’API.</small>}
             </div>
             <div className="v2-setup-field">
               <label htmlFor="v2-port">Port</label>
