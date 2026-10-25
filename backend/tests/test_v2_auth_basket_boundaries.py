@@ -138,3 +138,80 @@ async def test_basket_rejects_client_bound_to_another_account(monkeypatch, isola
                 "DELETE FROM v2_users WHERE id=ANY($1::bigint[])", user_ids
             )
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_sessions_are_purged_before_a_new_session(isolated_config):
+    from fastapi import Response
+
+    connection = await connect_v2(isolated_config)
+    try:
+        user_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('audit','audit','test','visitor') RETURNING id"
+        )
+        await connection.execute(
+            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+            "VALUES($1,$2,now()-interval '1 day')", "f" * 64, user_id
+        )
+        await auth._issue_session(connection, Response(), user_id)
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_sessions WHERE expires_at <= now()"
+        ) == 0
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_superseded_product_cannot_receive_or_update_a_draft(
+    monkeypatch, isolated_config,
+):
+    from app.api.v2 import products
+
+    monkeypatch.setattr(auth, "_read_config", lambda: isolated_config)
+    connection = await connect_v2(isolated_config)
+    try:
+        author_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('audit','audit','test','admin') RETURNING id"
+        )
+        async def acting_user(_connection, _request):
+            return {"id": author_id, "username": "audit", "role": "admin"}
+        monkeypatch.setattr(products, "_current_user", acting_user)
+        product_data = {
+            "name": "Audit", "brand": "Test", "package": "Boîte",
+            "quantity": "100 g",
+        }
+        old_id = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+            json.dumps(product_data),
+        )
+        transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 1234))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            first = await client.post(
+                "/api/v2/products/drafts",
+                json={"product_id": old_id, "data": product_data},
+            )
+            assert first.status_code == 201
+            draft_id = first.json()["id"]
+            current_id = await connection.fetchval(
+                "INSERT INTO v2_products(data,predecessor_id) "
+                "VALUES($1::jsonb,$2) RETURNING id",
+                json.dumps(product_data), old_id,
+            )
+            old = await client.get(f"/api/v2/products/{old_id}")
+            assert old.json()["successor_id"] == current_id
+            draft = await client.get(f"/api/v2/products/drafts/{draft_id}")
+            assert draft.json()["successor_id"] == current_id
+            updated = await client.put(
+                f"/api/v2/products/drafts/{draft_id}",
+                json={"revision": 1, "data": product_data, "change_kind": "correction"},
+            )
+            assert updated.status_code == 409
+            new = await client.post(
+                "/api/v2/products/drafts",
+                json={"product_id": old_id, "data": product_data},
+            )
+            assert new.status_code == 409
+    finally:
+        await connection.close()

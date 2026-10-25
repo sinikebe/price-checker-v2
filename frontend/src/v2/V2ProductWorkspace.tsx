@@ -110,7 +110,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const location = useLocation();
   const queryBarcode = new URLSearchParams(location.search).get("ean") ?? "";
   const initialBarcode = mode === "new" && /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(queryBarcode) ? queryBarcode : "";
-  const localKey = mode === "new" ? "v2:product:new" + (initialBarcode ? ":ean:" + initialBarcode : "") : mode === "edit" ? "v2:product:edit:" + (user?.id ?? "anon") + ":" + id : "v2:product:draft:" + (user?.id ?? "anon") + ":" + id;
+  const localKey = mode === "new" ? "v2:product:new" + (user ? ":" + user.id : "") + (initialBarcode ? ":ean:" + initialBarcode : "") : mode === "edit" ? "v2:product:edit:" + (user?.id ?? "anon") + ":" + id : "v2:product:draft:" + (user?.id ?? "anon") + ":" + id;
   const [data, setData] = useState<ProductData>(() => localRead(localKey)?.data ?? { ...emptyProduct(), ean: initialBarcode });
   const [changeKind, setChangeKind] = useState<ChangeKind>(() => localRead(localKey)?.change_kind ?? "correction");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -154,6 +154,10 @@ function Editor({ mode, id, user, onLogout }: Props) {
           navigate("/v2/brouillons/" + existing.id, { replace: true });
           return;
         }
+        if (value.successor_id && !localRead(localKey)) {
+          navigate("/v2/produits/" + value.successor_id + "/modifier", { replace: true });
+          return;
+        }
         setBaseProduct(value);
         if (!localRead(localKey)) { setData(completeProductData(value.data)); setDirty(false); }
         setLoading(false);
@@ -182,6 +186,10 @@ function Editor({ mode, id, user, onLogout }: Props) {
     event.preventDefault();
     if (busy) return;
     if (!user) { setError("Connectez-vous pour enregistrer ce brouillon sur le serveur. Votre saisie reste dans ce navigateur."); return; }
+    if (draft?.successor_id || baseProduct?.successor_id) {
+      setError("Cette référence a été remplacée. Proposez une modification de la version actuelle.");
+      return;
+    }
     if (draft && baseRevision !== draft.revision) {
       setError("Ce brouillon a changé ailleurs. Choisissez comment résoudre le conflit avant de l’enregistrer.");
       return;
@@ -203,10 +211,11 @@ function Editor({ mode, id, user, onLogout }: Props) {
     finally { setBusy(false); }
   }
   const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
+  const successorId = draft?.successor_id ?? baseProduct?.successor_id;
   const isReview = mode === "draft" && draft && user?.role === "admin" && draft.author_id !== user.id;
   const readonly = Boolean(isReview);
   async function approve() {
-    if (!draft || busy || dirty) return;
+    if (!draft || busy || dirty || successorId) return;
     setBusy(true); setError("");
     try {
       const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST");
@@ -219,6 +228,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
       <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
+    {successorId && <p role="alert">Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>}
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
     <div className="v2-workspace-editor-layout">
       <form className="v2-workspace-card" onSubmit={save}>
@@ -274,8 +284,8 @@ function Editor({ mode, id, user, onLogout }: Props) {
           }}>Préparer le remplacement avec ma saisie</button>
         </div>}
         <div className="v2-workspace-actions">
-          {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
-          {draft && user?.role === "admin" && <button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty} onClick={() => { void approve(); }}>Valider et publier</button>}
+          {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict || Boolean(successorId)} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
+          {draft && user?.role === "admin" && <button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button>}
         </div>
         {dirty && draft && user?.role === "admin" && <p>Enregistrez vos changements locaux avant de valider.</p>}
         {localError && <p role="alert">{localError}</p>}
@@ -305,7 +315,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><h1>{d.brand} {d.name}<span>.</span></h1>
       <p>{d.commercial_name || d.quantity}</p></div>
-      <div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => product && (basket.has(product.id) ? basket.remove(product.id) : basket.add(product))}>{basket.has(product.id) ? "Retirer du panier" : "Ajouter au panier"}</button><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + id + "/modifier"}>Proposer une modification</Link></div>
+      <div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => product && (basket.has(product.id) ? basket.remove(product.id) : basket.add(product))}>{basket.has(product.id) ? "Retirer du panier" : "Ajouter au panier"}</button><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
     <nav className="v2-workspace-subnav"><Link to={"/v2/produits/" + id}>Fiche</Link><Link to={"/v2/produits/" + id + "/historique"}>Historique</Link></nav>
     {mode === "history" ? <div className="v2-workspace-card"><h2>Historique des modifications</h2>
@@ -332,6 +342,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {d.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + d.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {d.off_source.code} ↗</a></p>}
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
+        {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
   </Frame>;

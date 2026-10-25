@@ -170,6 +170,7 @@ def _draft(row):
         "change_kind": row["change_kind"],
         "updated_at": row["updated_at"],
         "result_product_id": row["result_product_id"],
+        "successor_id": row.get("successor_id"),
     }
 
 
@@ -314,7 +315,9 @@ async def get_draft(draft_id: int, request: Request):
     try:
         user = await _user(connection, request)
         row = await connection.fetchrow(
-            "SELECT * FROM v2_product_drafts WHERE id=$1",
+            "SELECT d.*, (SELECT next.id FROM v2_products next "
+            "WHERE next.predecessor_id=d.product_id ORDER BY next.id DESC LIMIT 1) "
+            "AS successor_id FROM v2_product_drafts d WHERE d.id=$1",
             draft_id,
         )
         if row is None or (row["author_id"] != user["id"] and user["role"] != "admin"):
@@ -330,25 +333,37 @@ async def create_draft(payload: DraftCreate, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
-        base_revision = None
-        if payload.product_id is not None:
-            base_revision = await connection.fetchval(
-                "SELECT revision FROM v2_products WHERE id=$1",
+        async with connection.transaction():
+            base_revision = None
+            if payload.product_id is not None:
+                # Approval locks this row too; check the successor after acquiring it.
+                base_revision = await connection.fetchval(
+                    "SELECT revision FROM v2_products WHERE id=$1 FOR UPDATE",
+                    payload.product_id,
+                )
+                if base_revision is None:
+                    raise HTTPException(status_code=404, detail="Produit introuvable.")
+                successor_id = await connection.fetchval(
+                    "SELECT id FROM v2_products WHERE predecessor_id=$1 "
+                    "ORDER BY id DESC LIMIT 1",
+                    payload.product_id,
+                )
+                if successor_id is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Cette référence a été remplacée. Modifiez sa version actuelle.",
+                    )
+            row = await connection.fetchrow(
+                "INSERT INTO v2_product_drafts"
+                "(product_id, author_id, data, base_revision, change_kind) "
+                "VALUES($1,$2,$3::jsonb,$4,$5) RETURNING *",
                 payload.product_id,
+                user["id"],
+                payload.data.model_dump_json(),
+                base_revision,
+                payload.change_kind,
             )
-            if base_revision is None:
-                raise HTTPException(status_code=404, detail="Produit introuvable.")
-        row = await connection.fetchrow(
-            "INSERT INTO v2_product_drafts"
-            "(product_id, author_id, data, base_revision, change_kind) "
-            "VALUES($1,$2,$3::jsonb,$4,$5) RETURNING *",
-            payload.product_id,
-            user["id"],
-            payload.data.model_dump_json(),
-            base_revision,
-            payload.change_kind,
-        )
-        return _draft(row)
+            return _draft(row)
     except Exception as exc:
         # The partial unique index prevents parallel duplicate proposals for one
         # author and published product.
@@ -372,7 +387,9 @@ async def update_draft(draft_id: int, payload: DraftUpdate, request: Request):
         row = await connection.fetchrow(
             "UPDATE v2_product_drafts SET data=$1::jsonb, change_kind=$2, "
             "revision=revision+1, updated_at=now() WHERE id=$3 AND author_id=$4 "
-            "AND status='draft' AND revision=$5 RETURNING *",
+            "AND status='draft' AND revision=$5 "
+            "AND NOT EXISTS (SELECT 1 FROM v2_products next "
+            "WHERE next.predecessor_id=v2_product_drafts.product_id) RETURNING *",
             payload.data.model_dump_json(),
             payload.change_kind,
             draft_id,
@@ -666,6 +683,11 @@ async def get_product(product_id: int):
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Produit introuvable.")
-        return _product(row)
+        product = _product(row)
+        product["successor_id"] = await connection.fetchval(
+            "SELECT id FROM v2_products WHERE predecessor_id=$1 "
+            "ORDER BY id DESC LIMIT 1", product_id
+        )
+        return product
     finally:
         await connection.close()

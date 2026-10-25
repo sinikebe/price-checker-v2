@@ -27,3 +27,36 @@ def test_invalid_hostname_is_rejected_in_development(value):
     with pytest.raises(HTTPException) as exc:
         _validated_hostname(value, allow_local=True)
     assert exc.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_dev_hostname_can_be_cleared_but_production_cannot(monkeypatch):
+    from types import SimpleNamespace
+
+    import httpx
+
+    from app.api.v2 import setup
+    from app.main_v2 import app
+
+    config = {"public_hostname": "dev.local"}
+    async def admin_ok(_request):
+        return None
+    monkeypatch.setattr(setup, "_require_admin", admin_ok)
+    monkeypatch.setattr(setup, "_read_config", lambda: config)
+    monkeypatch.setattr(setup, "_save_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(setup, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
+    transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 1234))
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+        cleared = await client.put(
+            "/api/v2/setup/hostname",
+            json={"public_hostname": "", "expected_hostname": "dev.local"},
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["public_hostname"] == ""
+        config["public_hostname"] = "example.org"
+        monkeypatch.setattr(setup, "get_settings", lambda: SimpleNamespace(APP_ENV="prod"))
+        refused = await client.put(
+            "/api/v2/setup/hostname",
+            json={"public_hostname": "", "expected_hostname": "example.org"},
+        )
+        assert refused.status_code == 422

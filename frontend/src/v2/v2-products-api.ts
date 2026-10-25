@@ -22,13 +22,13 @@ export type ProductData = {
 export type ChangeKind = "correction" | "new_version";
 export type Product = {
   id: number; data: ProductData; revision: number; predecessor_id: number | null;
-  updated_at: string;
+  updated_at: string; successor_id?: number | null;
 };
 export type Draft = {
   id: number; product_id: number | null; author_id: number; author?: string | null;
   data: ProductData; base_revision: number | null; revision: number;
   status: "draft" | "approved"; change_kind: ChangeKind;
-  updated_at: string; result_product_id: number | null;
+  updated_at: string; result_product_id: number | null; successor_id?: number | null;
 };
 export type V2OffSnapshot = {
   product_id: number; barcode: string; fetched_at: string;

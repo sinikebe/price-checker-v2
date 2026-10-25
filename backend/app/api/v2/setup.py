@@ -445,8 +445,12 @@ async def update_hostname(payload: HostnameRequest, request: Request):
                 "Rechargez les paramètres."
             ),
         )
-    config["public_hostname"] = _validated_hostname(
-        payload.public_hostname, allow_local=get_settings().APP_ENV == "dev"
+    if not payload.public_hostname.strip() and get_settings().APP_ENV != "dev":
+        raise HTTPException(status_code=422, detail="Un nom d’hôte est requis en production.")
+    config["public_hostname"] = (
+        _validated_hostname(payload.public_hostname, allow_local=get_settings().APP_ENV == "dev")
+        if payload.public_hostname.strip()
+        else ""
     )
     _save_config(config, first_setup=False)
     return {"public_hostname": config["public_hostname"]}

@@ -168,6 +168,7 @@ async def _current_user(
 async def _issue_session(
     connection: asyncpg.Connection, response: Response, user_id: int
 ) -> None:
+    await connection.execute("DELETE FROM v2_sessions WHERE expires_at <= now()")
     token = secrets.token_urlsafe(32)
     await connection.execute(
         """

@@ -110,7 +110,7 @@ function localRead(key: string): { form: RecipeInput; revision: number | null } 
 }
 
 function Editor({ mode, id, user, onLogout }: Props) {
-  const key = mode === "new" ? "v2:recipe:new" : `v2:recipe:edit:${user?.id ?? "anon"}:${id}`;
+  const key = mode === "new" ? `v2:recipe:new${user ? ":" + user.id : ""}` : `v2:recipe:edit:${user?.id ?? "anon"}:${id}`;
   const [local] = useState(() => localRead(key));
   const [form, setForm] = useState<RecipeInput>(() => local?.form ?? blankRecipe());
   const [revision, setRevision] = useState<number | null>(() => local?.revision ?? null);

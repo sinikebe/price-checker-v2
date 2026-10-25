@@ -26,7 +26,7 @@ type PublicDatabase = {
 };
 type FormValues = PublicDatabase & { password: string };
 
-function emptyForm(environment: string): FormValues {
+function emptyForm(): FormValues {
   return {
     provider: "postgres",
     project_url: "",
@@ -35,7 +35,7 @@ function emptyForm(environment: string): FormValues {
     database: "",
     username: "",
     password: "",
-    tls_mode: environment === "dev" ? "disable" : "require",
+    tls_mode: "verify-full",
     public_hostname: "",
   };
 }
@@ -104,7 +104,9 @@ function HostnameSettings({ environment }: { environment: string }) {
       setHostname(data.public_hostname);
       setSavedHostname(data.public_hostname);
       setError(false);
-      setMessage("Nom d’hôte enregistré. Vérifiez que la résolution du nom et HTTPS sont configurés séparément si nécessaire.");
+      setMessage(data.public_hostname
+        ? "Nom d’hôte enregistré. Vérifiez que la résolution du nom et HTTPS sont configurés séparément si nécessaire."
+        : "Nom d’hôte effacé. L’accès HTTPS reste configuré séparément.");
     } catch (reason) {
       setError(true);
       setMessage(errorMessage(reason));
@@ -127,8 +129,8 @@ function HostnameSettings({ environment }: { environment: string }) {
       <label htmlFor="v2-public-hostname-settings">Nom d’hôte</label>
       <input id="v2-public-hostname-settings" type="text" autoCapitalize="off" spellCheck={false}
         placeholder={environment === "dev" ? "machine.local" : "exemple.org"} value={hostname}
-        onChange={(event) => { setHostname(event.target.value); setMessage(""); }} disabled={busy} required />
-      <small>Nom d’hôte ou adresse IP, sans https://, port ni chemin. Ce réglage ne configure ni la résolution du nom ni HTTPS.</small>
+        onChange={(event) => { setHostname(event.target.value); setMessage(""); }} disabled={busy} required={environment !== "dev"} />
+      <small>Nom d’hôte ou adresse IP, sans https://, port ni chemin. {environment === "dev" && "Laissez vide pour ne pas définir de nom d’hôte. "}Ce réglage ne configure ni la résolution du nom ni HTTPS.</small>
     </div>
     <div className="v2-setup-actions"><button className="v2-setup-primary" disabled={busy}>
       {busy ? "Enregistrement…" : "Enregistrer le nom d’hôte"}
@@ -141,7 +143,7 @@ function HostnameSettings({ environment }: { environment: string }) {
 function SetupPage({ configured, environment, onConfigured }: { configured: boolean; environment: string; onConfigured: () => void }) {
   const [accessCode, setAccessCode] = useState("");
   const [unlocked, setUnlocked] = useState(!configured);
-  const [form, setForm] = useState<FormValues>(() => emptyForm(environment));
+  const [form, setForm] = useState<FormValues>(() => emptyForm());
   const [savedProvider, setSavedProvider] = useState<Provider | null>(null);
   const [busy, setBusy] = useState<"unlock" | "test" | "save" | null>(null);
   const [message, setMessage] = useState("");
@@ -154,8 +156,8 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   }
 
   function changeProvider(provider: Provider) {
-    setForm({ ...emptyForm(environment), provider, public_hostname: form.public_hostname,
-      tls_mode: provider === "supabase" ? "verify-full" : environment === "dev" ? "disable" : "require",
+    setForm({ ...emptyForm(), provider, public_hostname: form.public_hostname,
+      tls_mode: "verify-full",
     });
     setMessage("");
     setSuccess(false);
