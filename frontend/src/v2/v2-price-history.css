@@ -4,7 +4,7 @@
 .v2-price-heading p, .v2-price-history p { color: var(--v2-muted, #617467); line-height: 1.55; }
 .v2-price-latest { padding: 10px 14px; border-radius: 10px; background: #e9f4e8; color: #205e42; }
 .v2-price-chart-scroll, .v2-price-table-scroll { overflow-x: auto; }
-.v2-price-chart { display: block; min-width: 560px; width: 100%; margin: 16px 0 2px; }
+.v2-price-history .v2-price-chart { display: block; min-width: 560px; width: 100%; height: auto; aspect-ratio: 8 / 3; margin: 16px 0 2px; }
 .v2-price-line { stroke: #227856; stroke-linejoin: round; stroke-linecap: round; }
 .v2-price-dot { fill: #227856; }
 .v2-price-gridline { stroke: #dae5dc; stroke-width: 1; }
