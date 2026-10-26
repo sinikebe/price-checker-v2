@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from app.api.v2 import off
+from app.services import openfoodfacts_client
 from app.services.openfoodfacts_client import OFF_SEARCH_URL
 
 
@@ -23,7 +24,7 @@ async def test_search_uses_search_a_licious_contract(monkeypatch):
         async def fake_client():
             return client
 
-        monkeypatch.setattr(off, "get_off_client", fake_client)
+        monkeypatch.setattr(openfoodfacts_client, "get_off_client", fake_client)
         result = await off.search_openfoodfacts("nutella", 10)
         assert len(result.suggestions) == 1
         assert result.suggestions[0].code == "3017620422003"

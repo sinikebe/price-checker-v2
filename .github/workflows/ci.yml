@@ -2,7 +2,7 @@ name: Code checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -86,13 +86,25 @@ jobs:
           printf '%s' 'ci-only-password' > "$RUNNER_TEMP/price-checker-v2/postgres/password"
           PRICE_CHECKER_V2_DATA_DIR="$RUNNER_TEMP/price-checker-v2" docker compose -f deployment/v2/compose.yaml config --quiet
 
+
+  upgrade:
+    name: Installed V2 upgrade preserves data
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install prior revision, seed data and run guarded updater
+        run: sudo bash scripts/test_v2_update.sh
+
   version:
     name: Bump affected component versions
-    if: github.event_name == 'push'
-    needs: [backend, frontend, deployment]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore: bump affected component versions')
+    needs: [backend, frontend, deployment, upgrade]
     runs-on: ubuntu-latest
     concurrency:
-      group: component-versions-main
+      group: component-versions-dev
       cancel-in-progress: false
     permissions:
       contents: write
@@ -111,19 +123,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for attempt in 1 2 3; do
-            git fetch origin main
-            git switch -C version-bump origin/main
+            git fetch origin dev
+            if [[ "$(git rev-parse origin/dev)" != "$HEAD_SHA" ]]; then
+              echo "Dev moved during CI; a newer run will handle versioning."
+              exit 0
+            fi
+            git switch -C version-bump origin/dev
             python3 scripts/component_versions.py bump --base "$BASE_SHA" --head "$HEAD_SHA"
             if git diff --quiet; then
               echo "No application component changed."
               exit 0
             fi
             git add frontend/src/v2/component-versions.json frontend/package.json frontend/package-lock.json backend/pyproject.toml
-            git commit -m "chore: bump affected component versions [skip ci]"
-            if git push origin HEAD:main; then
+            git commit -m "chore: bump affected component versions"
+            if git push origin HEAD:dev; then
               exit 0
             fi
-            echo "Main moved during versioning; retrying against the new tip ($attempt/3)."
+            echo "Dev moved during versioning; retrying against the new tip ($attempt/3)."
           done
           echo "Could not push component versions after three attempts." >&2
           exit 1

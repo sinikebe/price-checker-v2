@@ -140,6 +140,10 @@ class DraftUpdate(BaseModel):
     change_kind: Literal["correction", "new_version"] = "correction"
 
 
+class DraftApproval(BaseModel):
+    revision: int = Field(ge=1)
+
+
 def _decoded(value):
     return json.loads(value) if isinstance(value, str) else value
 
@@ -428,7 +432,7 @@ async def discard_superseded_draft(draft_id: int, request: Request):
 
 
 @router.post("/drafts/{draft_id}/approve")
-async def approve_draft(draft_id: int, request: Request):
+async def approve_draft(draft_id: int, payload: DraftApproval, request: Request):
     _secure_write(request)
     connection = await _connect()
     try:
@@ -444,6 +448,11 @@ async def approve_draft(draft_id: int, request: Request):
             )
             if draft is None or draft["status"] != "draft":
                 raise HTTPException(status_code=404, detail="Brouillon non disponible.")
+            if draft["revision"] != payload.revision:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+                )
             data = ProductData.model_validate(_decoded(draft["data"])).model_dump(
                 mode="json"
             )

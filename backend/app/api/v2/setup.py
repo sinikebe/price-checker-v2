@@ -342,10 +342,34 @@ async def status():
     return {"configured": _read_config() is not None, "app_env": get_settings().APP_ENV}
 
 
+async def _require_setup_admin_if_initialized(request: Request) -> None:
+    """Keep the installation code for bootstrap; require admin after bootstrap."""
+    if _read_config() is None:
+        return
+    from app.api.v2.auth import _connect, _current_user
+
+    connection = await _connect()
+    try:
+        admin_id = await connection.fetchval(
+            "SELECT admin_user_id FROM v2_installation WHERE singleton=true"
+        )
+        if admin_id is not None:
+            user = await _current_user(connection, request)
+            if user is None or user["role"] != "admin":
+                raise HTTPException(
+                    status_code=403, detail="Accès administrateur requis."
+                )
+    finally:
+        await connection.close()
+
+
 @router.post("/database/details")
 async def database_details(request: AccessRequest, transport: Request):
-    _require_secure_transport(transport)
+    from app.api.v2.auth import _secure_write
+
+    _secure_write(transport)
     _require_access(request.access_code)
+    await _require_setup_admin_if_initialized(transport)
     config = _read_config()
     if config is None:
         raise HTTPException(
@@ -356,8 +380,11 @@ async def database_details(request: AccessRequest, transport: Request):
 
 @router.post("/database/test")
 async def test_database(request: DatabaseRequest, transport: Request):
-    _require_secure_transport(transport)
+    from app.api.v2.auth import _secure_write
+
+    _secure_write(transport)
     _require_access(request.access_code)
+    await _require_setup_admin_if_initialized(transport)
     config = _validated_config(request, _read_config())
     await _test_connection(config)
     return {"connected": True}
@@ -375,8 +402,11 @@ async def _migrate_schema(config: dict) -> None:
 
 @router.post("/database", status_code=201)
 async def create_database(request: DatabaseRequest, transport: Request):
-    _require_secure_transport(transport)
+    from app.api.v2.auth import _secure_write
+
+    _secure_write(transport)
     _require_access(request.access_code)
+    await _require_setup_admin_if_initialized(transport)
     if _read_config() is not None:
         raise HTTPException(status_code=409, detail="La V2 est déjà configurée.")
     config = _validated_config(request, None)
@@ -388,8 +418,11 @@ async def create_database(request: DatabaseRequest, transport: Request):
 
 @router.put("/database")
 async def update_database(request: DatabaseRequest, transport: Request):
-    _require_secure_transport(transport)
+    from app.api.v2.auth import _secure_write
+
+    _secure_write(transport)
     _require_access(request.access_code)
+    await _require_setup_admin_if_initialized(transport)
     previous = _read_config()
     if previous is None:
         raise HTTPException(

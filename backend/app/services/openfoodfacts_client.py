@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import ssl
 
 import certifi
@@ -34,7 +36,7 @@ async def get_off_client() -> httpx.AsyncClient:
                 settings = get_settings()
                 _client = httpx.AsyncClient(
                     timeout=settings.REQUEST_TIMEOUT_SECONDS,
-                    follow_redirects=True,
+                    follow_redirects=False,
                     headers={"User-Agent": USER_AGENT},
                     # OFF's published per-IP limits are enforced here, in the
                     # transport, so every caller shares the same budget. See
@@ -42,10 +44,64 @@ async def get_off_client() -> httpx.AsyncClient:
                     # The app's SSL_CERT_FILE points to the private PostgreSQL
                     # certificate. Use public roots explicitly for OFF only.
                     transport=RateLimitedTransport(httpx.AsyncHTTPTransport(
-                        verify=ssl.create_default_context(cafile=certifi.where())
+                        verify=ssl.create_default_context(cafile=certifi.where()),
+                        limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
                     ), shared_off=True),
                 )
     return _client
+
+
+_OFF_PRODUCT_PATH = re.compile(r"/api/v2/product/[0-9]{8,14}\.json")
+_off_concurrency = asyncio.Semaphore(8)
+
+
+class OffResponseError(ValueError):
+    """OFF sent an unexpected redirect, oversized body or invalid JSON."""
+
+
+async def off_json_get(url: str, *, params: dict | None = None, max_bytes: int) -> dict:
+    """Read only bounded JSON from the two exact OFF API destinations."""
+    target = httpx.URL(url)
+    if (
+        target.scheme != "https"
+        or target.port not in (None, 443)
+        or target.username
+        or target.password
+        or not (
+            str(target) == OFF_SEARCH_URL
+            or (
+                target.host == "world.openfoodfacts.org"
+                and _OFF_PRODUCT_PATH.fullmatch(target.path)
+            )
+        )
+    ):
+        raise OffResponseError("OFF destination is not allowed")
+    client = await get_off_client()
+    chunks = []
+    size = 0
+    try:
+        async with (
+            _off_concurrency,
+            asyncio.timeout(20),
+            client.stream("GET", target, params=params, follow_redirects=False) as response,
+        ):
+            if response.is_redirect:
+                raise OffResponseError("OFF redirected the API request")
+            response.raise_for_status()
+            length = response.headers.get("content-length")
+            if length is not None and int(length) > max_bytes:
+                raise OffResponseError("OFF response is too large")
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > max_bytes:
+                    raise OffResponseError("OFF response is too large")
+                chunks.append(chunk)
+    except TimeoutError as exc:
+        raise OffResponseError("OFF response timed out") from exc
+    data = json.loads(b"".join(chunks))
+    if not isinstance(data, dict):
+        raise OffResponseError("OFF response is not an object")
+    return data
 
 
 async def aclose_off_client() -> None:

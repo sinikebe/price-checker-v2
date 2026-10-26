@@ -219,7 +219,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
     if (!draft || busy || dirty || successorId) return;
     setBusy(true); setError("");
     try {
-      const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST");
+      const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST", { revision: draft.revision });
       navigate("/v2/produits/" + product.id);
     } catch (reason) { setError(String(reason)); setBusy(false); }
   }

@@ -14,7 +14,7 @@ from app.schemas.openfoodfacts import (
     OpenFoodFactsSuggestion,
 )
 from app.services.off_rate_limit import OffRateLimited, retry_after_headers
-from app.services.openfoodfacts_client import OFF_SEARCH_URL, get_off_client
+from app.services.openfoodfacts_client import OFF_SEARCH_URL, off_json_get
 
 logger = logging.getLogger(__name__)
 _OFF_FIELDS = (
@@ -98,11 +98,11 @@ async def get_openfoodfacts_product(barcode: str) -> OpenFoodFactsSuggestion:
             )
         return cached
     try:
-        response = await (await get_off_client()).get(
-            f"{_PRODUCT_URL}/{normalized}.json", params={"fields": _OFF_FIELDS}
+        payload = await off_json_get(
+            f"{_PRODUCT_URL}/{normalized}.json",
+            params={"fields": _OFF_FIELDS},
+            max_bytes=2 * 1024 * 1024,
         )
-        response.raise_for_status()
-        payload = response.json()
     except OffRateLimited as exc:
         raise HTTPException(
             status_code=429,
@@ -130,7 +130,7 @@ async def search_openfoodfacts(q: str, page_size: int) -> OpenFoodFactsSearchRes
     if hit:
         return OpenFoodFactsSearchResponse(suggestions=cached)
     try:
-        response = await (await get_off_client()).get(
+        payload = await off_json_get(
             OFF_SEARCH_URL,
             params={
                 "q": q,
@@ -138,9 +138,8 @@ async def search_openfoodfacts(q: str, page_size: int) -> OpenFoodFactsSearchRes
                 "fields": _OFF_FIELDS,
                 "langs": "fr,en",
             },
+            max_bytes=2 * 1024 * 1024,
         )
-        response.raise_for_status()
-        payload = response.json()
     except OffRateLimited as exc:
         raise HTTPException(
             status_code=429,
