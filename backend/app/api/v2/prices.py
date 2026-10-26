@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_PRICE_DRAFTS,
     check_open_limit,
@@ -61,6 +62,7 @@ async def _user(connection: asyncpg.Connection, request: Request) -> dict:
 
 
 async def _product(connection: asyncpg.Connection, product_id: int, *, current: bool = False) -> None:
+    await require_visible(connection, "product", product_id)
     exists = await connection.fetchval(
         "SELECT EXISTS(SELECT 1 FROM v2_products WHERE id=$1)", product_id
     )

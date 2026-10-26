@@ -27,7 +27,7 @@ export type Product = {
 export type Draft = {
   id: number; product_id: number | null; author_id: number; author?: string | null;
   data: ProductData; base_revision: number | null; revision: number;
-  status: "draft" | "approved"; change_kind: ChangeKind;
+  status: "draft" | "approved" | "rejected"; change_kind: ChangeKind;
   updated_at: string; result_product_id: number | null; successor_id?: number | null;
 };
 export type V2OffSnapshot = {

@@ -49,10 +49,25 @@ async function syncRecipes(cache: Cache) {
   localStorage.setItem(RECIPES_READY_KEY, "1");
 }
 
+async function withdrawnProducts(): Promise<Set<number>> {
+  const response = await fetch("/api/v2/moderation/withdrawn", { cache: "no-store" });
+  if (!response.ok) throw new Error("Withdrawal list unavailable");
+  const data = await response.json() as { product_ids: number[] };
+  return new Set(data.product_ids);
+}
+
 async function syncProducts(cache: Cache, userId: number | null) {
+  const withdrawn = await withdrawnProducts();
   const catalog = await fresh<Product[]>("/api/v2/products", cache);
-  const current = readV2Basket(userId);
-  if (!current.length) return;
+  for (const request of await cache.keys()) {
+    const match = new URL(request.url).pathname.match(/^\/api\/v2\/products\/(\d+)$/);
+    if (match && withdrawn.has(Number(match[1]))) await cache.delete(request);
+  }
+  const current = readV2Basket(userId).filter(item => !withdrawn.has(item.id));
+  if (!current.length) {
+    if (readV2Basket(userId).length) writeV2Basket([], userId);
+    return;
+  }
   const byId = new Map(catalog.map(product => [product.id, product]));
   const refreshed = new Map<number, Product>();
   for (const item of current) {
@@ -62,7 +77,7 @@ async function syncProducts(cache: Cache, userId: number | null) {
   }
   // Preserve membership edits made in another tab while product requests were pending.
   const latest = readV2Basket(userId);
-  writeV2Basket(latest.map(item => {
+  writeV2Basket(latest.filter(item => !withdrawn.has(item.id)).map(item => {
     const product = refreshed.get(item.id);
     return product ? { id: item.id, data: product.data, revision: product.revision } : item;
   }), userId);
@@ -84,15 +99,17 @@ async function syncBasket(userId: number, cache: Cache): Promise<number> {
   };
   const identityHeaders = { "X-V2-Basket-User-ID": String(userId) };
   stillCurrent();
+  const withdrawn = await withdrawnProducts();
   const initialOps = JSON.stringify(readBasketOps(userId));
-  const ops: BasketOp[] = JSON.parse(initialOps);
+  const ops: BasketOp[] = (JSON.parse(initialOps) as BasketOp[])
+    .filter(op => op.type !== "add" || typeof op.id !== "number" || !withdrawn.has(op.id));
   for (let attempt = 0; attempt < 3; attempt++) {
     stillCurrent();
     const remoteResponse = await fetch("/api/v2/basket", { cache: "no-store", headers: identityHeaders });
     if (!remoteResponse.ok) throw new Error("Basket sync unavailable");
     const remote = await remoteResponse.json() as ServerBasket;
     stillCurrent();
-    const ids = applyOps(remote.product_ids, ops);
+    const ids = applyOps(remote.product_ids.filter(id => !withdrawn.has(id)), ops);
     let revision = remote.revision;
     if (JSON.stringify(ids) !== JSON.stringify(remote.product_ids)) {
       const saved = await fetch("/api/v2/basket", {
@@ -119,7 +136,7 @@ async function syncBasket(userId: number, cache: Cache): Promise<number> {
     const latestOps = readBasketOps(userId);
     const remaining = JSON.stringify(latestOps.slice(0, ops.length)) === initialOps
       ? latestOps.slice(ops.length) : latestOps;
-    const displayIds = applyOps(ids, remaining);
+    const displayIds = applyOps(ids, remaining).filter(id => !withdrawn.has(id));
     const local = new Map(readV2Basket(userId).map(product => [product.id, product]));
     const products = displayIds.map(id => {
       const product = byId.get(id) ?? local.get(id) ?? remoteProducts.get(id);

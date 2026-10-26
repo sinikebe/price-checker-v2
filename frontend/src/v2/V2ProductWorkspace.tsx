@@ -5,6 +5,7 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2ReportControl from "./V2ReportControl";
 import { useV2Basket } from "./V2BasketContext";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -92,7 +93,7 @@ function ListPage({ mode, user, onLogout }: Props) {
         const href = draft ? "/v2/brouillons/" + item.id : "/v2/produits/" + item.id;
         return <Link key={item.id} to={href} className="v2-workspace-list-item">
           <div><strong>{item.data.brand} {item.data.name || "Produit sans nom"}</strong>
-            <small>{item.data.quantity || "Quantité à préciser"} · {draft ? item.product_id ? "Modification" : "Nouveau produit" : "Publié"}</small></div>
+            <small>{item.data.quantity || "Quantité à préciser"} · {draft ? item.status === "rejected" ? "Rejeté" : item.product_id ? "Modification" : "Nouveau produit" : "Publié"}</small></div>
           <span>{draft ? "Voir le brouillon" : "Voir la fiche"} →</span>
         </Link>;
       })}</div>}
@@ -224,7 +225,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
   const successorId = draft?.successor_id ?? baseProduct?.successor_id;
   const isReview = mode === "draft" && draft && user?.role === "admin" && draft.author_id !== user.id;
-  const readonly = Boolean(isReview);
+  const readonly = Boolean(isReview || draft?.status === "rejected");
   async function approve() {
     if (!draft || busy || dirty || successorId) return;
     setBusy(true); setError("");
@@ -233,8 +234,19 @@ function Editor({ mode, id, user, onLogout }: Props) {
       navigate("/v2/produits/" + product.id);
     } catch (reason) { setError(String(reason)); setBusy(false); }
   }
+  async function reject() {
+    if (!draft || busy || dirty || draft.status !== "draft") return;
+    if (!window.confirm("Rejeter cette proposition ?")) return;
+    setBusy(true); setError("");
+    try {
+      const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
+      setDraft(rejected);
+      setNotice("Proposition rejetée. Elle reste visible pour son auteur.");
+    } catch (reason) { setError(String(reason)); }
+    finally { setBusy(false); }
+  }
   async function discardSuperseded() {
-    if (!draft || !successorId || draft.author_id !== user?.id || busy) return;
+    if (!draft || (!successorId && draft.status !== "rejected") || draft.author_id !== user?.id || busy) return;
     if (!window.confirm("Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.")) return;
     setBusy(true); setError("");
     try {
@@ -249,7 +261,8 @@ function Editor({ mode, id, user, onLogout }: Props) {
       <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
-    {successorId && <div role="alert"><p>Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>
+    {draft?.status === "rejected" && <div role="status"><p>Cette proposition a été rejetée. Elle ne peut plus être publiée ni modifiée.</p><button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Supprimer ce brouillon rejeté</button></div>}
+    {successorId && draft?.status !== "rejected" && <div role="alert"><p>Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>
       {draft && draft.author_id === user?.id && <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Abandonner cet ancien brouillon</button>}
     </div>}
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
@@ -308,7 +321,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         </div>}
         <div className="v2-workspace-actions">
           {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict || Boolean(successorId)} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
-          {draft && user?.role === "admin" && <button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button>}
+          {draft?.status === "draft" && user?.role === "admin" && <><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty} onClick={() => { void reject(); }}>Rejeter</button></>}
         </div>
         {dirty && draft && user?.role === "admin" && <p>Enregistrez vos changements locaux avant de valider.</p>}
         {localError && <p role="alert">{localError}</p>}
@@ -369,6 +382,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
       </div>}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
+    {id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }
 

@@ -417,6 +417,41 @@ MIGRATIONS = {
         CREATE INDEX v2_off_refresh_queue_due_idx
             ON v2_off_refresh_queue(next_attempt_at, requested_at);
     """,
+    "0013_content_moderation": """
+        CREATE TABLE v2_content_reports (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            kind varchar(16) NOT NULL CHECK (kind IN ('product', 'recipe')),
+            content_id bigint NOT NULL CHECK (content_id > 0),
+            reporter_id bigint NOT NULL REFERENCES v2_users(id),
+            reason varchar(1000) NOT NULL CHECK (btrim(reason) <> ''),
+            status varchar(16) NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'dismissed', 'withdrawn')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            reviewed_at timestamptz,
+            reviewed_by bigint REFERENCES v2_users(id)
+        );
+        CREATE UNIQUE INDEX v2_one_open_report_per_user_content
+            ON v2_content_reports(kind, content_id, reporter_id)
+            WHERE status='open';
+        CREATE INDEX v2_content_reports_queue
+            ON v2_content_reports(status, created_at, id);
+        CREATE TABLE v2_content_withdrawals (
+            kind varchar(16) NOT NULL CHECK (kind IN ('product', 'recipe')),
+            content_id bigint NOT NULL CHECK (content_id > 0),
+            reason varchar(1000) NOT NULL,
+            withdrawn_at timestamptz NOT NULL DEFAULT now(),
+            withdrawn_by bigint NOT NULL REFERENCES v2_users(id),
+            PRIMARY KEY(kind, content_id)
+        );
+        ALTER TABLE v2_product_drafts
+            DROP CONSTRAINT v2_product_drafts_status_check;
+        ALTER TABLE v2_product_drafts
+            ADD CONSTRAINT v2_product_drafts_status_check
+            CHECK (status IN ('draft', 'approved', 'rejected'));
+        ALTER TABLE v2_product_drafts
+            ADD COLUMN rejected_at timestamptz,
+            ADD COLUMN rejected_by bigint REFERENCES v2_users(id);
+    """,
 
 }
 

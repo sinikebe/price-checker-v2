@@ -61,7 +61,9 @@ async def put_basket(payload: BasketInput, request: Request):
         async with connection.transaction():
             if payload.product_ids:
                 found = await connection.fetch(
-                    "SELECT id FROM v2_products WHERE id=ANY($1::bigint[])",
+                    "SELECT p.id FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
+                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+                    "WHERE w.kind='product' AND w.content_id=p.id)",
                     payload.product_ids,
                 )
                 if {row["id"] for row in found} != set(payload.product_ids):

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_RECIPES,
     check_open_limit,
@@ -83,6 +84,7 @@ def _decoded(value):
 
 
 async def _detail(connection, recipe_id: int):
+    await require_visible(connection, "recipe", recipe_id)
     recipe = await connection.fetchrow(
         "SELECT r.*, u.username AS author FROM v2_recipes r "
         "JOIN v2_users u ON u.id=r.author_id WHERE r.id=$1",
@@ -93,6 +95,8 @@ async def _detail(connection, recipe_id: int):
     ingredients = await connection.fetch(
         "SELECT i.*, p.data AS product_data FROM v2_recipe_ingredients i "
         "LEFT JOIN v2_products p ON p.id=i.product_id "
+        "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+        "WHERE w.kind='product' AND w.content_id=p.id) "
         "WHERE i.recipe_id=$1 ORDER BY i.position",
         recipe_id,
     )
@@ -117,7 +121,7 @@ async def _detail(connection, recipe_id: int):
                 "unit": item["unit"],
                 "note": item["note"],
                 "optional": item["optional"],
-                "product_id": item["product_id"],
+                "product_id": item["product_id"] if item["product_data"] else None,
                 "group_name": item["group_name"],
                 "product": _decoded(item["product_data"])
                 if item["product_data"]
@@ -134,7 +138,9 @@ async def _replace_ingredients(
     ids = {item.product_id for item in ingredients if item.product_id is not None}
     if ids:
         found = await connection.fetch(
-            "SELECT id FROM v2_products WHERE id=ANY($1::bigint[])", list(ids)
+            "SELECT p.id FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='product' AND w.content_id=p.id)", list(ids)
         )
         if {row["id"] for row in found} != ids:
             raise HTTPException(
@@ -175,7 +181,9 @@ async def list_recipes(
             + "%"
         )
         total = await connection.fetchval(
-            "SELECT count(*) FROM v2_recipes WHERE title ILIKE $1 ESCAPE '\\'", pattern
+            "SELECT count(*) FROM v2_recipes r WHERE r.title ILIKE $1 ESCAPE '\\'"
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='recipe' AND w.content_id=r.id)", pattern
         )
         rows = await connection.fetch(
             "SELECT r.id, r.title, r.description, r.base_servings, "
@@ -183,6 +191,8 @@ async def list_recipes(
             "count(i.id)::int AS ingredient_count FROM v2_recipes r "
             "LEFT JOIN v2_recipe_ingredients i ON i.recipe_id=r.id "
             "WHERE r.title ILIKE $1 ESCAPE '\\' "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='recipe' AND w.content_id=r.id) "
             "GROUP BY r.id ORDER BY lower(r.title), r.id LIMIT $2 OFFSET $3",
             pattern,
             page_size,

@@ -168,3 +168,140 @@ async def test_product_draft_quota_is_atomic_under_concurrent_creates(
         ) == 2
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_report_withdrawal_hides_product_history_and_prices(isolated_db):
+    config = isolated_db
+    admin_id, admin_token = await _admin_session(config)
+    connection = await connect_v2(config)
+    try:
+        user_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('reporter','reporter','unused-ci-hash','visitor') RETURNING id"
+        )
+        user_token = secrets.token_urlsafe(32)
+        await connection.execute(
+            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+            "VALUES($1,$2,now()+interval '1 hour')",
+            hashlib.sha256(user_token.encode()).hexdigest(), user_id,
+        )
+        product_id = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+            json.dumps({"name": "Reported product", "brand": "CI", "quantity": "100 g"}),
+        )
+        await connection.execute(
+            "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
+            user_id, json.dumps([product_id]),
+        )
+        await connection.execute(
+            "INSERT INTO v2_retailers(code,name) VALUES('ci','CI')"
+        )
+        await connection.execute(
+            "INSERT INTO v2_stores(retailer_id,name) "
+            "SELECT id,'CI store' FROM v2_retailers WHERE code='ci'"
+        )
+        await connection.execute(
+            "INSERT INTO v2_price_observations"
+            "(product_id,retailer_id,store_id,source,price,observed_at) "
+            "SELECT $1,r.id,s.id,'manual',3.99,now() "
+            "FROM v2_retailers r JOIN v2_stores s ON s.retailer_id=r.id "
+            "WHERE r.code='ci'",
+            product_id,
+        )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.6", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            client.cookies.set("pc_v2_session", user_token, path="/api/v2")
+            report = await client.post(
+                "/api/v2/moderation/reports",
+                json={"kind": "product", "content_id": product_id,
+                      "reason": "Contenu à retirer pour le test"},
+            )
+            assert report.status_code == 201, report.text
+            report_id = report.json()["id"]
+            assert (await client.get("/api/v2/moderation/reports")).status_code == 403
+            client.cookies.set("pc_v2_session", admin_token, path="/api/v2")
+            assert len((await client.get("/api/v2/moderation/reports")).json()) == 1
+            withdrawal = await client.post(
+                f"/api/v2/moderation/reports/{report_id}/resolve",
+                json={"action": "withdraw"},
+            )
+            assert withdrawal.status_code == 200, withdrawal.text
+            assert product_id in (await client.get("/api/v2/moderation/withdrawn")).json()["product_ids"]
+            assert all(item["id"] != product_id for item in (await client.get("/api/v2/products")).json())
+            for path in (
+                f"/api/v2/products/{product_id}",
+                f"/api/v2/products/{product_id}/history",
+                f"/api/v2/prices/products/{product_id}",
+            ):
+                assert (await client.get(path)).status_code == 404, path
+            client.cookies.set("pc_v2_session", user_token, path="/api/v2")
+            assert (await client.get("/api/v2/basket")).json()["product_ids"] == []
+            assert (await client.put(
+                "/api/v2/basket",
+                json={"revision": 2, "product_ids": [product_id]},
+            )).status_code == 422
+        assert await connection.fetchval(
+            "SELECT withdrawn_by FROM v2_content_withdrawals "
+            "WHERE kind='product' AND content_id=$1", product_id,
+        ) == admin_id
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_recipe_withdrawal_and_stale_draft_rejection(isolated_db):
+    config = isolated_db
+    admin_id, token = await _admin_session(config)
+    connection = await connect_v2(config)
+    try:
+        recipe_id = await connection.fetchval(
+            "INSERT INTO v2_recipes"
+            "(author_id,title,description,base_servings,steps) "
+            "VALUES($1,'Reported recipe','',2,'[\"Mix\"]'::jsonb) RETURNING id",
+            admin_id,
+        )
+        draft_id = await connection.fetchval(
+            "INSERT INTO v2_product_drafts(author_id,data) "
+            "VALUES($1,'{\"name\":\"Pending product\",\"brand\":\"CI\"}'::jsonb) RETURNING id",
+            admin_id,
+        )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.7", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            client.cookies.set("pc_v2_session", token, path="/api/v2")
+            listed = await client.get("/api/v2/recipes")
+            assert listed.status_code == 200, listed.text
+            assert listed.json()["total"] == 1
+            stale = await client.post(
+                f"/api/v2/products/drafts/{draft_id}/reject",
+                json={"revision": 2},
+            )
+            assert stale.status_code == 409
+            rejected = await client.post(
+                f"/api/v2/products/drafts/{draft_id}/reject",
+                json={"revision": 1},
+            )
+            assert rejected.status_code == 200, rejected.text
+            assert rejected.json()["status"] == "rejected"
+            assert (await client.post(
+                f"/api/v2/products/drafts/{draft_id}/approve",
+                json={"revision": 1},
+            )).status_code == 404
+            assert any(item["id"] == draft_id for item in (
+                await client.get("/api/v2/products/drafts/mine")
+            ).json())
+            report = await client.post(
+                "/api/v2/moderation/reports",
+                json={"kind": "recipe", "content_id": recipe_id,
+                      "reason": "Recette à retirer pour le test"},
+            )
+            assert report.status_code == 201, report.text
+            withdrawn = await client.post(
+                f"/api/v2/moderation/reports/{report.json()['id']}/resolve",
+                json={"action": "withdraw"},
+            )
+            assert withdrawn.status_code == 200, withdrawn.text
+            assert (await client.get(f"/api/v2/recipes/{recipe_id}")).status_code == 404
+            assert (await client.get("/api/v2/recipes")).json()["total"] == 0
+    finally:
+        await connection.close()

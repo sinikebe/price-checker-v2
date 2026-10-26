@@ -27,6 +27,7 @@ from app.services.v2_off_snapshot import (
     fetch_full_off_product,
     save_off_snapshot,
 )
+from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_PRODUCT_DRAFTS,
     check_open_limit,
@@ -239,7 +240,9 @@ async def list_products():
     try:
         rows = await connection.fetch(
             "SELECT p.* FROM v2_products p WHERE NOT EXISTS ("
-            "SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
+            "SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='product' AND w.content_id=p.id) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
             "ORDER BY p.updated_at DESC, p.id DESC"
         )
         return [_product(row) for row in rows]
@@ -259,6 +262,8 @@ async def product_by_barcode(barcode: str, request: Request):
     try:
         product = await connection.fetchrow(
             "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='product' AND w.content_id=p.id) "
             "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
             "AND NOT EXISTS (SELECT 1 FROM v2_products next "
             "WHERE next.predecessor_id=p.id) "
@@ -293,8 +298,9 @@ async def my_drafts(request: Request):
     try:
         user = await _user(connection, request)
         rows = await connection.fetch(
-            "SELECT * FROM v2_product_drafts WHERE author_id=$1 AND status='draft' "
-            "ORDER BY updated_at DESC, id DESC",
+            "SELECT * FROM v2_product_drafts WHERE author_id=$1 "
+            "AND status IN ('draft','rejected') "
+            "ORDER BY updated_at DESC, id DESC LIMIT 100",
             user["id"],
         )
         return [_draft(row) for row in rows]
@@ -357,6 +363,7 @@ async def create_draft(payload: DraftCreate, request: Request):
             )
             base_revision = None
             if payload.product_id is not None:
+                await require_visible(connection, "product", payload.product_id)
                 # Approval locks this row too; check the successor after acquiring it.
                 base_revision = await connection.fetchval(
                     "SELECT revision FROM v2_products WHERE id=$1 FOR UPDATE",
@@ -437,14 +444,39 @@ async def discard_superseded_draft(draft_id: int, request: Request):
         user = await _user(connection, request)
         deleted = await connection.fetchval(
             "DELETE FROM v2_product_drafts d WHERE d.id=$1 AND d.author_id=$2 "
-            "AND d.status='draft' AND EXISTS (SELECT 1 FROM v2_products next "
-            "WHERE next.predecessor_id=d.product_id) RETURNING d.id",
+            "AND (d.status='rejected' OR (d.status='draft' AND EXISTS "
+            "(SELECT 1 FROM v2_products next WHERE next.predecessor_id=d.product_id))) "
+            "RETURNING d.id",
             draft_id,
             user["id"],
         )
         if deleted is None:
             raise HTTPException(status_code=404, detail="Ancien brouillon introuvable.")
         return {"deleted": True}
+    finally:
+        await connection.close()
+
+
+@router.post("/drafts/{draft_id}/reject")
+async def reject_draft(draft_id: int, payload: DraftApproval, request: Request):
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        if user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Rejet réservé à l'administrateur.")
+        row = await connection.fetchrow(
+            "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
+            "rejected_by=$1 WHERE id=$2 AND status='draft' AND revision=$3 "
+            "RETURNING *",
+            user["id"], draft_id, payload.revision,
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+            )
+        return _draft(row)
     finally:
         await connection.close()
 
@@ -477,6 +509,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             _validate_publish(data)
             before = None
             if draft["product_id"] is not None:
+                await require_visible(connection, "product", draft["product_id"])
                 existing = await connection.fetchrow(
                     "SELECT * FROM v2_products WHERE id=$1 FOR UPDATE",
                     draft["product_id"],
@@ -611,6 +644,7 @@ def _off_snapshot_response(product_id: int, row) -> dict:
 async def get_product_off(product_id: int):
     connection = await _connect()
     try:
+        await require_visible(connection, "product", product_id)
         product = await connection.fetchrow(
             "SELECT data FROM v2_products WHERE id=$1", product_id
         )
@@ -639,6 +673,7 @@ async def off_refresh_status(product_id: int, request: Request):
     connection = await _connect()
     try:
         await _user(connection, request)
+        await require_visible(connection, "product", product_id)
         pending = await connection.fetchval(
             "SELECT EXISTS(SELECT 1 FROM v2_off_refresh_queue WHERE product_id=$1)",
             product_id,
@@ -654,6 +689,7 @@ async def refresh_product_off(product_id: int, request: Request):
     connection = await _connect()
     try:
         await _user(connection, request)
+        await require_visible(connection, "product", product_id)
         product = await connection.fetchrow(
             "SELECT data FROM v2_products WHERE id=$1", product_id
         )
@@ -693,11 +729,7 @@ async def refresh_product_off(product_id: int, request: Request):
 async def product_history(product_id: int):
     connection = await _connect()
     try:
-        exists = await connection.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM v2_products WHERE id=$1)", product_id
-        )
-        if not exists:
-            raise HTTPException(status_code=404, detail="Produit introuvable.")
+        await require_visible(connection, "product", product_id)
         rows = await connection.fetch(
             "SELECT e.*, u.username AS actor FROM v2_product_events e "
             "JOIN v2_users u ON u.id=e.actor_id WHERE e.product_id=$1 "
@@ -723,6 +755,7 @@ async def product_history(product_id: int):
 async def get_product(product_id: int):
     connection = await _connect()
     try:
+        await require_visible(connection, "product", product_id)
         row = await connection.fetchrow(
             "SELECT * FROM v2_products WHERE id=$1", product_id
         )

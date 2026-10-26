@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import V2ReportControl from "./V2ReportControl";
 import { positiveDecimal, scaledQuantity } from "../recipes/quantity";
 import type { V2User } from "./v2-auth-api";
 import { productRequest, type Product } from "./v2-products-api";
@@ -93,6 +94,7 @@ function Detail({ id, user, onLogout }: Props) {
           </li>;
         })}</ul></section>
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{recipe.prep_minutes != null && `Préparation : ${recipe.prep_minutes} min · `}{recipe.cook_minutes != null && `Cuisson : ${recipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{recipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
+      <V2ReportControl kind="recipe" contentId={recipe.id} user={user} />
     </>}
   </Frame>;
 }

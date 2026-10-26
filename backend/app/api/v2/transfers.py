@@ -108,6 +108,15 @@ async def export_products_prices(request: Request):
         source = await connection.fetchval(
             "SELECT instance_id FROM v2_transfer_instance WHERE singleton=true"
         )
+        hidden = await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM v2_content_withdrawals "
+            "WHERE kind='product')"
+        )
+        if hidden:
+            raise HTTPException(
+                status_code=409,
+                detail="Export bloqué : un contenu retiré nécessite une sélection manuelle.",
+            )
         products = await connection.fetch(
             "SELECT id, predecessor_id, data FROM v2_products ORDER BY id"
         )

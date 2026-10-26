@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v2.auth import router as auth_router
 from app.api.v2.basket import router as basket_router
+from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipes import router as recipes_router
@@ -45,6 +46,7 @@ app.add_middleware(
 )
 for router in (
     setup_router,
+    moderation_router,
     auth_router,
     products_router,
     prices_router,

@@ -45,6 +45,8 @@ async def run_due_refresh_once() -> str:
                 SELECT q.product_id,q.attempts,p.data
                 FROM v2_off_refresh_queue q
                 JOIN v2_products p ON p.id=q.product_id
+                AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w
+                WHERE w.kind='product' AND w.content_id=p.id)
                 WHERE q.next_attempt_at <= now()
                 ORDER BY q.next_attempt_at,q.requested_at
                 LIMIT 1 FOR UPDATE OF q SKIP LOCKED

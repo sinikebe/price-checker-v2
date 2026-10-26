@@ -89,5 +89,11 @@ after=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" >/dev/null
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/products/1" |
   python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["name"] == "CI upgrade sentinel"'
-find "$PRICE_CHECKER_V2_DATA_DIR/backups" -name '*.dump' -size +0c | grep -q .
-echo "Upgrade smoke passed: installed $head, account/product/draft/price retained, backup present, API healthy."
+backup=$(find "$PRICE_CHECKER_V2_DATA_DIR/backups" -name '*.dump' -size +0c -print -quit)
+[[ -n $backup ]] || { echo "Updater did not create a backup." >&2; exit 1; }
+"${compose[@]}" exec -T db createdb -U v2_ci_update v2_ci_restore
+"${compose[@]}" exec -T db pg_restore -U v2_ci_update --no-owner --no-acl -d v2_ci_restore < "$backup"
+restored=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_restore -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
+[[ $restored == "$before" ]] || { echo "Backup restore lost data: $before -> $restored" >&2; exit 1; }
+"${compose[@]}" exec -T db dropdb -U v2_ci_update v2_ci_restore
+echo "Upgrade smoke passed: installed $head, account/product/draft/price retained, backup restored, API healthy."
