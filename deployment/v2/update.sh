@@ -124,7 +124,11 @@ echo "Database backup: $backup"
 rollback() {
   trap - ERR
   echo "Update failed; restoring application commit $old_sha (database backup retained)." >&2
+  # Git must restore readable source files even if backup/secret work used umask 077.
+  umask 022
   git -C "$repo_dir" reset --hard "$old_sha"
+  umask 077
+  chmod 0644 "$repo_dir/frontend/nginx.v2.conf"
   if [[ -n "$cert_backup_dir" ]]; then
     cp -p "$cert_backup_dir/server.key" "$cert_dir/server.key"
     cp -p "$cert_backup_dir/server.crt" "$cert_dir/server.crt"
@@ -135,7 +139,12 @@ rollback() {
   "${compose[@]}" up -d --no-deps backend web
 }
 trap rollback ERR
+# Git checkout under umask 077 can create unreadable Nginx config in the
+# non-root web image. Keep backups/secrets private, but source files readable.
+umask 022
 git -C "$repo_dir" merge --ff-only "$new_sha"
+umask 077
+chmod 0644 "$repo_dir/frontend/nginx.v2.conf"
 "${compose[@]}" build backend
 "${compose[@]}" build web
 if [[ "$renew_cert" == 1 ]]; then
