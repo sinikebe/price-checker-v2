@@ -54,7 +54,15 @@ def _nutrition(product: dict) -> dict:
 
 def _suggestion(product: dict, barcode: str | None = None) -> OpenFoodFactsSuggestion:
     raw_brand = product.get("brands")
-    brand = raw_brand.split(",")[0].strip() if isinstance(raw_brand, str) else None
+    if isinstance(raw_brand, str):
+        brand = raw_brand.split(",")[0].strip()
+    elif isinstance(raw_brand, list):
+        brand = next(
+            (item.strip() for item in raw_brand if isinstance(item, str) and item.strip()),
+            None,
+        )
+    else:
+        brand = None
     return OpenFoodFactsSuggestion(
         code=product.get("code") or barcode,
         product_name=(product.get("product_name") or "").strip() or None,
@@ -125,12 +133,10 @@ async def search_openfoodfacts(q: str, page_size: int) -> OpenFoodFactsSearchRes
         response = await (await get_off_client()).get(
             OFF_SEARCH_URL,
             params={
-                "search_terms": q,
-                "search_simple": 1,
-                "action": "process",
-                "json": 1,
+                "q": q,
                 "page_size": page_size,
                 "fields": _OFF_FIELDS,
+                "langs": "fr,en",
             },
         )
         response.raise_for_status()
@@ -146,7 +152,7 @@ async def search_openfoodfacts(q: str, page_size: int) -> OpenFoodFactsSearchRes
         raise HTTPException(
             status_code=502, detail="Open Food Facts est indisponible."
         ) from exc
-    products = payload.get("products", [])
+    products = payload.get("hits", [])
     suggestions = [
         _suggestion(p)
         for p in products

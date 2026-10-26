@@ -9,7 +9,7 @@ import httpx
 from app.core.config import get_settings
 from app.services.off_rate_limit import RateLimitedTransport
 
-OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl"
+OFF_SEARCH_URL = "https://search.openfoodfacts.org/search"
 # OpenFoodFacts policy requires a descriptive User-Agent identifying the app.
 USER_AGENT = "PriceChecker/0.1 (+https://github.com/sinikebe/price-checker-v2)"
 
