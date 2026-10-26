@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "status": "active"
   },
   "recipes": {
