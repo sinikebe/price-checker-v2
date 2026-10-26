@@ -12,9 +12,14 @@ repo_dir="${PRICE_CHECKER_V2_SOURCE_DIR:-$script_repo_dir}"
 }
 compose_file="$repo_dir/deployment/v2/compose.yaml"
 [[ -f "$repo_dir/.env" ]] || { echo "Installation configuration missing." >&2; exit 1; }
+requested_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-}"
 set -a
 source "$repo_dir/.env"
 set +a
+# A one-off guarded branch switch must override the installed default.
+if [[ -n "$requested_branch" ]]; then
+  PRICE_CHECKER_V2_GIT_BRANCH="$requested_branch"
+fi
 compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 [[ "$PRICE_CHECKER_V2_DATA_DIR" = /* && -d "$PRICE_CHECKER_V2_DATA_DIR/state" ]] || {
   echo "V2 is not installed." >&2; exit 1;
@@ -236,9 +241,12 @@ done
 if [[ "$switch_to_dev" == 1 ]]; then
   git -C "$repo_dir" branch -m dev
   git -C "$repo_dir" branch --set-upstream-to=origin/dev dev
-  if ! grep -q '^PRICE_CHECKER_V2_GIT_BRANCH=' "$repo_dir/.env"; then
+  if grep -q '^PRICE_CHECKER_V2_GIT_BRANCH=' "$repo_dir/.env"; then
+    sed -i 's/^PRICE_CHECKER_V2_GIT_BRANCH=.*/PRICE_CHECKER_V2_GIT_BRANCH=dev/' "$repo_dir/.env"
+  else
     printf 'PRICE_CHECKER_V2_GIT_BRANCH=dev\n' >> "$repo_dir/.env"
   fi
+  chmod 0600 "$repo_dir/.env"
 fi
 trap - ERR
 if [[ "$renew_cert" == 1 ]]; then echo "Bundled database certificate renewed."; fi

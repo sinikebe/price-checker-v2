@@ -90,6 +90,9 @@ if [[ "$target_branch" == dev ]]; then
   [[ $(git -C "$repo" branch --show-current) == dev ]] || {
     echo "Private dev installation did not switch to dev." >&2; exit 1;
   }
+  grep -qx 'PRICE_CHECKER_V2_GIT_BRANCH=dev' "$repo/.env" || {
+    echo "Private dev installation did not persist the dev branch." >&2; exit 1;
+  }
 else
   [[ "$target_branch" == main ]] || exit 1
   git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
