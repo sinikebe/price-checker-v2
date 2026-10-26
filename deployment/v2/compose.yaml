@@ -39,7 +39,7 @@ services:
   web:
     build:
       context: ../../frontend
-      dockerfile: ../deployment/v2/Dockerfile.web
+      dockerfile: Dockerfile.v2
     restart: unless-stopped
     ports: ["127.0.0.1:${PRICE_CHECKER_V2_PORT:-8080}:8080"]
     depends_on: [backend]

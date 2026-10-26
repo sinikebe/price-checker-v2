@@ -9,6 +9,8 @@ source_dir=$(cd "$(dirname "$0")/.." && pwd)
 sandbox=$(mktemp -d /tmp/price-checker-v2-ci-XXXXXX)
 bare=$sandbox/origin.git
 repo=$sandbox/source
+# The installed base can predate the in-context Dockerfile fix.
+export COMPOSE_BAKE=false
 export PRICE_CHECKER_V2_ENV=dev
 export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
 export PRICE_CHECKER_V2_DB_NAME=v2_ci_update

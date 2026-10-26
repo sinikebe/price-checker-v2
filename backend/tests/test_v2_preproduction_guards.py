@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -12,7 +13,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.api.v2 import auth, setup
+from app.api.v2 import auth, products, setup
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 
@@ -128,5 +129,42 @@ async def test_approval_rejects_draft_changed_after_review(isolated_db):
             )
             assert current.status_code == 200
             assert current.json()["data"]["name"] == "Changed after review"
+    finally:
+        await connection.close()
+
+
+
+@pytest.mark.asyncio
+async def test_product_draft_quota_is_atomic_under_concurrent_creates(
+    isolated_db, monkeypatch,
+):
+    config = isolated_db
+    monkeypatch.setattr(products, "MAX_PRODUCT_DRAFTS", 2)
+    connection = await connect_v2(config)
+    try:
+        user_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('writer','writer','unused-ci-hash','visitor') RETURNING id"
+        )
+        token = secrets.token_urlsafe(32)
+        await connection.execute(
+            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+            "VALUES($1,$2,now()+interval '1 hour')",
+            hashlib.sha256(token.encode()).hexdigest(), user_id,
+        )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.5", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            client.cookies.set("pc_v2_session", token, path="/api/v2")
+            responses = await asyncio.gather(*(
+                client.post(
+                    "/api/v2/products/drafts",
+                    json={"data": {"name": f"Draft {index}"}},
+                )
+                for index in range(3)
+            ))
+        assert sorted(response.status_code for response in responses) == [201, 201, 429]
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_product_drafts WHERE author_id=$1", user_id,
+        ) == 2
     finally:
         await connection.close()

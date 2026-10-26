@@ -59,21 +59,24 @@ function Frame({ children, user, onLogout }: { children: React.ReactNode; user: 
 }
 
 function useCollection<T>(path: string, enabled = true) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ path: string; data: T | null; error: string }>({ path: "", data: null, error: "" });
   const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    productRequest<T>(path).then(value => { if (active) setData(value); })
-      .catch(reason => { if (active) setError(String(reason)); });
+    productRequest<T>(path).then(value => { if (active) setResult({ path, data: value, error: "" }); })
+      .catch(reason => { if (active) setResult({ path, data: null, error: String(reason) }); });
     return () => { active = false; };
   }, [path, enabled, reload]);
-  return { data, error, refresh: () => setReload(value => value + 1) };
+  return { data: enabled && result.path === path ? result.data : null,
+    error: enabled && result.path === path ? result.error : "",
+    refresh: () => setReload(value => value + 1) };
 }
 
 function ListPage({ mode, user, onLogout }: Props) {
-  const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? "/drafts/review" : "";
+  const [page, setPage] = useState(0);
+  const pageSize = 30;
+  const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? `/drafts/review?limit=${pageSize}&offset=${page * pageSize}` : "";
   const { data, error } = useCollection<(Draft | Product)[]>(path, mode !== "review" || user?.role === "admin");
   const title = mode === "mine" ? "Mes brouillons" : mode === "review" ? "Propositions à valider" : "Produits publiés";
   return <Frame user={user} onLogout={onLogout}>
@@ -93,6 +96,13 @@ function ListPage({ mode, user, onLogout }: Props) {
           <span>{draft ? "Voir le brouillon" : "Voir la fiche"} →</span>
         </Link>;
       })}</div>}
+    {mode === "review" && data && (page > 0 || data.length === pageSize) && <div className="v2-settings-actions">
+      <button type="button" className="v2-button v2-button-secondary" disabled={page === 0}
+        onClick={() => setPage(value => Math.max(0, value - 1))}>Précédent</button>
+      <span>Page {page + 1}</span>
+      <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
+        onClick={() => setPage(value => value + 1)}>Suivant</button>
+    </div>}
   </Frame>;
 }
 

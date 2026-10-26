@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.services.v2_write_limits import (
+    MAX_RECIPES,
+    check_open_limit,
+    check_write_limit,
+)
 
 router = APIRouter(prefix="/api/v2/recipes", tags=["v2-recipes"])
 
@@ -212,6 +217,10 @@ async def create_recipe(payload: RecipeInput, request: Request):
     try:
         user = await _user(connection, request)
         async with connection.transaction():
+            await check_write_limit(connection, user)
+            await check_open_limit(
+                connection, user, table="v2_recipes", maximum=MAX_RECIPES,
+            )
             row = await connection.fetchrow(
                 "INSERT INTO v2_recipes "
                 "(author_id,title,description,base_servings, "
@@ -238,6 +247,7 @@ async def update_recipe(recipe_id: int, payload: RecipeUpdate, request: Request)
     try:
         user = await _user(connection, request)
         async with connection.transaction():
+            await check_write_limit(connection, user)
             existing = await connection.fetchrow(
                 "SELECT author_id FROM v2_recipes WHERE id=$1 FOR UPDATE", recipe_id
             )

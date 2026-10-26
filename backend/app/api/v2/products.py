@@ -27,6 +27,11 @@ from app.services.v2_off_snapshot import (
     fetch_full_off_product,
     save_off_snapshot,
 )
+from app.services.v2_write_limits import (
+    MAX_PRODUCT_DRAFTS,
+    check_open_limit,
+    check_write_limit,
+)
 
 router = APIRouter(prefix="/api/v2/products", tags=["v2-products"])
 
@@ -298,7 +303,11 @@ async def my_drafts(request: Request):
 
 
 @router.get("/drafts/review")
-async def review_drafts(request: Request):
+async def review_drafts(
+    request: Request,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
     connection = await _connect()
     try:
         user = await _user(connection, request)
@@ -307,7 +316,9 @@ async def review_drafts(request: Request):
         rows = await connection.fetch(
             "SELECT d.*, u.username AS author FROM v2_product_drafts d "
             "JOIN v2_users u ON u.id=d.author_id WHERE d.status='draft' "
-            "ORDER BY d.updated_at ASC, d.id ASC"
+            "ORDER BY d.updated_at ASC, d.id ASC LIMIT $1 OFFSET $2",
+            limit,
+            offset,
         )
         return [_draft(row) for row in rows]
     finally:
@@ -339,6 +350,11 @@ async def create_draft(payload: DraftCreate, request: Request):
     try:
         user = await _user(connection, request)
         async with connection.transaction():
+            await check_write_limit(connection, user)
+            await check_open_limit(
+                connection, user, table="v2_product_drafts",
+                maximum=MAX_PRODUCT_DRAFTS,
+            )
             base_revision = None
             if payload.product_id is not None:
                 # Approval locks this row too; check the successor after acquiring it.
@@ -389,18 +405,20 @@ async def update_draft(draft_id: int, payload: DraftUpdate, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
-        row = await connection.fetchrow(
-            "UPDATE v2_product_drafts SET data=$1::jsonb, change_kind=$2, "
-            "revision=revision+1, updated_at=now() WHERE id=$3 AND author_id=$4 "
-            "AND status='draft' AND revision=$5 "
-            "AND NOT EXISTS (SELECT 1 FROM v2_products next "
-            "WHERE next.predecessor_id=v2_product_drafts.product_id) RETURNING *",
-            payload.data.model_dump_json(),
-            payload.change_kind,
-            draft_id,
-            user["id"],
-            payload.revision,
-        )
+        async with connection.transaction():
+            await check_write_limit(connection, user)
+            row = await connection.fetchrow(
+                "UPDATE v2_product_drafts SET data=$1::jsonb, change_kind=$2, "
+                "revision=revision+1, updated_at=now() WHERE id=$3 AND author_id=$4 "
+                "AND status='draft' AND revision=$5 "
+                "AND NOT EXISTS (SELECT 1 FROM v2_products next "
+                "WHERE next.predecessor_id=v2_product_drafts.product_id) RETURNING *",
+                payload.data.model_dump_json(),
+                payload.change_kind,
+                draft_id,
+                user["id"],
+                payload.revision,
+            )
         if row is None:
             raise HTTPException(
                 status_code=409,

@@ -66,6 +66,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/pwa/*", ("pwa",)),
     ("frontend/vite.config.ts", ("pwa",)),
     ("backend/Dockerfile", ("deployment",)),
+    ("frontend/Dockerfile.v2", ("deployment",)),
     ("frontend/nginx.v2.conf", ("deployment",)),
     ("deployment/v2/*", ("deployment",)),
     ("backend/app/*.py", ("application",)),
@@ -103,6 +104,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 RUNTIME_PREFIXES = ("backend/app/", "frontend/src/", "deployment/v2/", "frontend/public-v2/")
 RUNTIME_FILES = {
     "backend/Dockerfile", "backend/requirements.txt", "backend/pyproject.toml",
+    "frontend/Dockerfile.v2",
     "frontend/package.json", "frontend/package-lock.json", "frontend/nginx.v2.conf",
     "frontend/vite.config.ts", "frontend/v2.html", "frontend/eslint.config.js",
 }
