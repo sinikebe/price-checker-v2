@@ -144,3 +144,6 @@
 .v2-workspace-conflict dl div { display: grid; grid-template-columns: minmax(130px, 35%) 1fr; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ead7b9; }
 .v2-workspace-conflict dd { margin: 0; overflow-wrap: anywhere; }
 @media(max-width: 600px) { .v2-workspace-conflict dl div { grid-template-columns: 1fr; gap: 0; } }
+
+.v2-off-temporary { margin: 15px 0; padding: 15px; border: 1px dashed var(--v2-line, #8eb59b); border-radius: 12px; }
+.v2-off-temporary p { margin: 8px 0; }

@@ -102,3 +102,5 @@ sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
 Même en développement, le port 8080 reste lié à la boucle locale. Configurer séparément un accès HTTPS privé pour l'initialisation dans le navigateur. Le champ « Nom d'hôte » est facultatif en développement et accepte un nom local (`localhost`, `machine.local`) ou une adresse IP ; il ne configure ni la résolution du nom ni HTTPS.
+
+Pour les transferts JSON inter-instances (24 Mio maximum), régler aussi `client_max_body_size 25m;` sur le proxy HTTPS hôte, en plus du Nginx du conteneur web. La procédure, les données incluses et les conflits sont détaillés dans [v2-transfers.md](v2-transfers.md).

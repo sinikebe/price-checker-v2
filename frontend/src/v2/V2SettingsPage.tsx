@@ -5,6 +5,7 @@ import { useV2Theme } from "./V2ThemeContext";
 import { usePwaUpdate } from "../pwa/PwaUpdateState";
 import versions from "./component-versions.json";
 import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
+import V2TransferPanel from "./V2TransferPanel";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -67,6 +68,7 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
           <Link className="v2-settings-link" to="/v2/versions">Détail des versions →</Link>
         </section>
         {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
+        {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}
         {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">
           <h2 id="v2-server-heading">Serveur</h2>
           <p>Nom d’hôte et configuration PostgreSQL de cette instance.</p>

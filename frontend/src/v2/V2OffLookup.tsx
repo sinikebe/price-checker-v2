@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { readOffInBrowser, type OffBrowserPreview } from "./off-browser-preview";
 import {
   ProductApiError, productRequest, type OffField, type OffSuggestion,
   type ProductData,
@@ -44,6 +45,8 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   const [searching, setSearching] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const [error, setError] = useState("");
+  const [searchLimited, setSearchLimited] = useState(false);
+  const [temporary, setTemporary] = useState<OffBrowserPreview | null>(null);
 
   useEffect(() => { setQuery(data.name); }, [data.name]);
   useEffect(() => {
@@ -67,26 +70,38 @@ export default function V2OffLookup({ data, onApply, disabled }: {
     }
     let active = true;
     productRequest<{ suggestions: OffSuggestion[] }>("/off/search?q=" + encodeURIComponent(searchTerm))
-      .then(result => { if (active) { setSuggestions(result.suggestions); setError(""); setSearching(false); } })
-      .catch(reason => { if (active) { setSuggestions([]); setError(reason instanceof Error ? reason.message : "Recherche indisponible."); setSearching(false); } });
+      .then(result => { if (active) { setSuggestions(result.suggestions); setSearchLimited(false); setError(""); setSearching(false); } })
+      .catch(reason => { if (active) {
+        setSuggestions([]);
+        setSearchLimited(reason instanceof ProductApiError && reason.status === 429);
+        setError(reason instanceof Error ? reason.message : "Recherche indisponible."); setSearching(false);
+      } });
     return () => { active = false; };
   }, [searchTerm, selected, disabled]);
   // The spinner starts with the debounced request, not during local typing.
   function search(value: string) {
-    setQuery(value); setSelected(null); setError(""); setSuggestions([]); setSearchTerm("");
+    setQuery(value); setSelected(null); setTemporary(null); setSearchLimited(false); setError(""); setSuggestions([]); setSearchTerm("");
     if (value.trim().length >= 2) setSearching(true);
   }
   async function lookupBarcode() {
     const barcode = data.ean.trim();
     if (!barcode || lookingUp) return;
-    setLookingUp(true); setError(""); setSelected(null); setSuggestions([]);
+    setLookingUp(true); setError(""); setSelected(null); setTemporary(null); setSuggestions([]);
     try {
       const result = await productRequest<OffSuggestion>("/off/product/" + encodeURIComponent(barcode));
       if (currentEan.current !== barcode) return;
       setSelected(result); setSelectedFor(identity); setChecked([]);
       setQuery(result.product_name ?? query);
     } catch (reason) {
-      if (reason instanceof ProductApiError && reason.status === 404) {
+      if (reason instanceof ProductApiError && reason.status === 429) {
+        try {
+          const preview = await readOffInBrowser(barcode);
+          if (currentEan.current !== barcode) return;
+          setTemporary(preview);
+          setError(preview ? "Quota serveur atteint. Lecture directe provisoire : aucune donnée n’est enregistrée." :
+            "Aucune fiche OFF pour ce code. Le rafraîchissement serveur sera possible plus tard.");
+        } catch { setError("Quota serveur atteint et lecture directe indisponible."); }
+      } else if (reason instanceof ProductApiError && reason.status === 404) {
         setError("Aucune fiche Open Food Facts pour ce code. Vous pouvez continuer la saisie manuellement.");
       } else {
         setError(reason instanceof Error ? reason.message : "Open Food Facts est indisponible.");
@@ -121,6 +136,16 @@ export default function V2OffLookup({ data, onApply, disabled }: {
         onClick={() => { void lookupBarcode(); }}>{lookingUp ? "Recherche…" : "Chercher le code saisi"}</button>
     </div>
     {error && <p className="v2-off-error" role="alert">{error}</p>}
+    {temporary && <div className="v2-off-temporary" role="status">
+      <strong>{temporary.name || "Produit OFF"}</strong> · {temporary.brand || "Marque inconnue"} · {temporary.quantity || "Quantité inconnue"}
+      {temporary.ingredients && <p>Ingrédients : {temporary.ingredients}</p>}
+      {temporary.nutriscore && <p>Nutri-Score : {temporary.nutriscore.toUpperCase()}</p>}
+      <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir la fiche complète chez OFF ↗</a>
+    </div>}
+    {searchLimited && searchTerm.length >= 2 && <p>
+      <a href={`https://search.openfoodfacts.org/off-test?q=${encodeURIComponent(searchTerm)}`}
+        target="_blank" rel="noreferrer">Voir les résultats directement chez Open Food Facts ↗</a>
+    </p>}
     {!selected && searchTerm.length >= 2 && <div className="v2-off-results" aria-live="polite">
       {searching ? <p>Recherche…</p> : suggestions.length ? suggestions.map((suggestion, index) =>
         <button key={suggestion.code ?? index} type="button" disabled={!validCode(suggestion.code)}

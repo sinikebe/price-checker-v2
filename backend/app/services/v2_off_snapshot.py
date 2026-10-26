@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -33,6 +34,26 @@ async def fetch_full_off_product(barcode: str) -> dict[str, Any] | None:
         raise OffUnavailable(str(exc)) from exc
     product = data.get("product") if data.get("status") == 1 else None
     return product if isinstance(product, dict) else None
+
+
+async def save_off_snapshot(connection, product_id: int, barcode: str, payload: dict):
+    """Persist a fetched full sheet, shared by interactive and queued refreshes."""
+    return await connection.fetchrow(
+        """
+        INSERT INTO v2_product_off_snapshots
+            (product_id, barcode, payload, fetched_at, off_rev, off_last_modified_t)
+        VALUES($1, $2, $3::jsonb, now(), $4, $5)
+        ON CONFLICT(product_id) DO UPDATE SET
+            barcode=excluded.barcode,
+            payload=excluded.payload,
+            fetched_at=excluded.fetched_at,
+            off_rev=excluded.off_rev,
+            off_last_modified_t=excluded.off_last_modified_t
+        RETURNING *
+        """,
+        product_id, barcode, json.dumps(payload),
+        _as_int(payload.get("rev")), _as_int(payload.get("last_modified_t")),
+    )
 
 
 def _as_int(value: Any) -> int | None:

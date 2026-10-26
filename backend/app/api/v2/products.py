@@ -20,11 +20,12 @@ from app.core.url_validation import validate_clickable_url
 from app.services.off_presenter import build_sections
 from app.services.off_rate_limit import OffRateLimited, retry_after_headers
 from app.services.quantity_parser import parse_quantity
+from app.services.v2_off_refresh_queue import queue_off_refresh
 from app.services.v2_off_snapshot import (
     OFF_PRODUCT_PAGE,
     OffUnavailable,
-    _as_int,
     fetch_full_off_product,
+    save_off_snapshot,
 )
 
 router = APIRouter(prefix="/api/v2/products", tags=["v2-products"])
@@ -606,6 +607,20 @@ async def get_product_off(product_id: int):
         await connection.close()
 
 
+@router.get("/{product_id}/off/refresh-status")
+async def off_refresh_status(product_id: int, request: Request):
+    connection = await _connect()
+    try:
+        await _user(connection, request)
+        pending = await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM v2_off_refresh_queue WHERE product_id=$1)",
+            product_id,
+        )
+        return {"pending": pending}
+    finally:
+        await connection.close()
+
+
 @router.post("/{product_id}/off/refresh")
 async def refresh_product_off(product_id: int, request: Request):
     _secure_write(request)
@@ -626,9 +641,10 @@ async def refresh_product_off(product_id: int, request: Request):
         try:
             payload = await fetch_full_off_product(barcode)
         except OffRateLimited as exc:
+            await queue_off_refresh(connection, product_id, exc.retry_after)
             raise HTTPException(
                 status_code=429,
-                detail="Trop de requêtes vers Open Food Facts. Réessayez plus tard.",
+                detail="Quota OFF atteint. Actualisation serveur planifiée ; consultez provisoirement OFF sur cet appareil.",
                 headers=retry_after_headers(exc),
             ) from exc
         except OffUnavailable as exc:
@@ -640,25 +656,7 @@ async def refresh_product_off(product_id: int, request: Request):
             raise HTTPException(
                 status_code=404, detail="Produit introuvable sur Open Food Facts."
             )
-        row = await connection.fetchrow(
-            """
-            INSERT INTO v2_product_off_snapshots
-                (product_id, barcode, payload, fetched_at, off_rev, off_last_modified_t)
-            VALUES($1, $2, $3::jsonb, now(), $4, $5)
-            ON CONFLICT(product_id) DO UPDATE SET
-                barcode=excluded.barcode,
-                payload=excluded.payload,
-                fetched_at=excluded.fetched_at,
-                off_rev=excluded.off_rev,
-                off_last_modified_t=excluded.off_last_modified_t
-            RETURNING *
-            """,
-            product_id,
-            barcode,
-            json.dumps(payload),
-            _as_int(payload.get("rev")),
-            _as_int(payload.get("last_modified_t")),
-        )
+        row = await save_off_snapshot(connection, product_id, barcode, payload)
         return _off_snapshot_response(product_id, row)
     finally:
         await connection.close()

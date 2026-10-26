@@ -14,7 +14,9 @@ import time
 from collections import deque
 from collections.abc import Callable
 
+import asyncpg
 import httpx
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +191,62 @@ def limiter_for(url: httpx.URL) -> tuple[SlidingWindowLimiter, float]:
     return search_limiter, SEARCH_MAX_WAIT_SECONDS
 
 
+async def acquire_shared_off_slot(url: httpx.URL) -> None:
+    """Admit an OFF request using an exact DB-backed sliding window.
+
+    All processes using the same V2 PostgreSQL database share this budget.
+    A database failure fails closed: it must never turn into an unmetered call.
+    """
+    # Imported here so auth/setup initialization does not depend on the OFF client.
+    from app.api.v2.auth import _connect
+
+    bucket = "product" if limiter_for(url)[0] is product_limiter else "search"
+    limit = PRODUCT_LIMIT_PER_MIN if bucket == "product" else SEARCH_LIMIT_PER_MIN
+    max_wait = PRODUCT_MAX_WAIT_SECONDS if bucket == "product" else SEARCH_MAX_WAIT_SECONDS
+    deadline = time.monotonic() + max_wait
+    while True:
+        connection = await _connect()
+        try:
+            async with connection.transaction():
+                await connection.execute(
+                    "SELECT pg_advisory_xact_lock(795243, $1)",
+                    1 if bucket == "product" else 2,
+                )
+                await connection.execute(
+                    "DELETE FROM v2_off_rate_events WHERE bucket=$1 "
+                    "AND admitted_at <= clock_timestamp() - interval '60 seconds'",
+                    bucket,
+                )
+                state = await connection.fetchrow(
+                    "SELECT count(*) AS used, "
+                    "greatest(0, extract(epoch FROM "
+                    "(min(admitted_at) + interval '60 seconds' - clock_timestamp()))) "
+                    "AS retry_after FROM v2_off_rate_events WHERE bucket=$1",
+                    bucket,
+                )
+                if state["used"] < limit:
+                    await connection.execute(
+                        "INSERT INTO v2_off_rate_events(bucket, admitted_at) "
+                        "VALUES($1, clock_timestamp())", bucket,
+                    )
+                    return
+                retry_after = float(state["retry_after"])
+        except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+            logger.error("Shared OFF quota unavailable: %s", type(exc).__name__)
+            raise HTTPException(
+                status_code=503,
+                detail="Contrôle du quota Open Food Facts indisponible.",
+            ) from exc
+        finally:
+            await connection.close()
+        if time.monotonic() + retry_after > deadline:
+            raise OffRateLimited(
+                f"OpenFoodFacts {bucket} shared rate limit reached",
+                retry_after=retry_after,
+            )
+        await asyncio.sleep(max(retry_after, 0.01))
+
+
 def _parse_retry_after(value: str | None) -> float | None:
     """OFF's ``Retry-After``, when it is the delta-seconds form.
 
@@ -225,17 +283,22 @@ class RateLimitedTransport(httpx.AsyncBaseTransport):
         inner: httpx.AsyncBaseTransport,
         limiter: SlidingWindowLimiter | None = None,
         max_wait: float | None = None,
+        shared_off: bool = False,
     ) -> None:
         self._inner = inner
         self._limiter = limiter
         self._max_wait = max_wait
+        self._shared_off = shared_off
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         if self._limiter is not None:
             limiter, max_wait = self._limiter, self._max_wait or 0.0
         else:
             limiter, max_wait = limiter_for(request.url)
-        await limiter.acquire(max_wait)
+        if self._shared_off:
+            await acquire_shared_off_slot(request.url)
+        else:
+            await limiter.acquire(max_wait)
 
         response = await self._inner.handle_async_request(request)
 

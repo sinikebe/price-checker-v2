@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readOffInBrowser, type OffBrowserPreview } from "./off-browser-preview";
 import type { OffField, OffSection } from "./off-types";
 import type { V2User } from "./v2-auth-api";
 import { ProductApiError, productRequest, type V2OffSnapshot } from "./v2-products-api";
@@ -57,6 +58,8 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
   const [loading, setLoading] = useState(Boolean(ean));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  const [temporary, setTemporary] = useState<OffBrowserPreview | null>(null);
   useEffect(() => {
     if (!ean) return;
     let active = true;
@@ -70,14 +73,43 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
       });
     return () => { active = false; };
   }, [productId, ean]);
+  const userId = user?.id;
+  useEffect(() => {
+    if (userId == null || !ean) { setPending(false); setTemporary(null); return; }
+    let active = true;
+    async function check() {
+      try {
+        const state = await productRequest<{ pending: boolean }>(`/${productId}/off/refresh-status`);
+        if (!active) return;
+        if (pending && !state.pending) {
+          void productRequest<V2OffSnapshot>(`/${productId}/off`)
+            .then(value => { if (active) { setSnapshot(value); setTemporary(null); } }).catch(() => {});
+        }
+        setPending(state.pending);
+      } catch { /* A status check must not erase a displayed sheet. */ }
+    }
+    void check();
+    const timer = window.setInterval(() => { void check(); }, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [productId, ean, userId, pending]);
   async function refresh() {
     if (refreshing) return;
-    setRefreshing(true); setError("");
+    setRefreshing(true); setError(""); setTemporary(null);
     try {
       const value = await productRequest<V2OffSnapshot>("/" + productId + "/off/refresh", "POST");
       setSnapshot(value);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Actualisation impossible.");
+      if (reason instanceof ProductApiError && reason.status === 429) {
+        setPending(true);
+        try {
+          const preview = await readOffInBrowser(ean.trim());
+          setTemporary(preview);
+          setError(preview ? "Quota serveur atteint. Fiche provisoire lue par cet appareil ; mise à jour serveur en attente." :
+            "Quota serveur atteint. Mise à jour serveur en attente ; aucune fiche directe trouvée.");
+        } catch { setError("Quota serveur atteint. Mise à jour serveur en attente ; lecture directe indisponible."); }
+      } else {
+        setError(reason instanceof Error ? reason.message : "Actualisation impossible.");
+      }
     } finally { setRefreshing(false); }
   }
   return <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-off-full-heading">
@@ -92,6 +124,14 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
         {loading && <p>Chargement de la fiche enregistrée…</p>}
         {!loading && !snapshot && !error && <p>Aucune fiche OFF enregistrée pour ce code.</p>}
         {error && <p role="alert" className="v2-off-error">{error}</p>}
+        {pending && <p role="status">Actualisation OFF en file d’attente côté serveur. Cette fiche sera rechargée quand le quota le permettra.</p>}
+        {temporary && <div className="v2-off-temporary">
+          <strong>Lecture provisoire non enregistrée : {temporary.name || "Produit OFF"}</strong>
+          <p>{temporary.brand || "Marque inconnue"} · {temporary.quantity || "Quantité inconnue"}</p>
+          {temporary.ingredients && <p>Ingrédients : {temporary.ingredients}</p>}
+          {temporary.nutriscore && <p>Nutri-Score : {temporary.nutriscore.toUpperCase()}</p>}
+          <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir chez OFF ↗</a>
+        </div>}
         {snapshot && <>
           <p>Récupérée le {dateLabel(snapshot.fetched_at)}
             {snapshot.off_last_modified && <> · Mise à jour chez OFF le {dateLabel(snapshot.off_last_modified)}</>}

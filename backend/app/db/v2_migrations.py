@@ -381,6 +381,42 @@ MIGRATIONS = {
             ON v2_price_observations(product_id, observed_at DESC, id DESC)
             WHERE NOT superseded;
     """,
+    "0010_shared_off_quota": """
+        -- A single admission ledger is shared by every backend process using
+        -- this instance database. The advisory lock makes count + insert atomic.
+        CREATE TABLE v2_off_rate_events (
+            bucket varchar(16) NOT NULL CHECK (bucket IN ('product', 'search')),
+            admitted_at timestamptz NOT NULL
+        );
+        CREATE INDEX v2_off_rate_events_window_idx
+            ON v2_off_rate_events(bucket, admitted_at);
+    """,
+    "0011_instance_transfer": """
+        -- Identity is stable for repeated point-in-time exports from an instance.
+        CREATE TABLE v2_transfer_instance (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            instance_id uuid NOT NULL DEFAULT gen_random_uuid()
+        );
+        INSERT INTO v2_transfer_instance(singleton) VALUES(true);
+        CREATE TABLE v2_transfer_product_map (
+            source_instance uuid NOT NULL,
+            source_id bigint NOT NULL CHECK(source_id > 0),
+            target_id bigint NOT NULL REFERENCES v2_products(id),
+            fingerprint char(64) NOT NULL,
+            PRIMARY KEY(source_instance, source_id)
+        );
+    """,
+    "0012_off_refresh_queue": """
+        CREATE TABLE v2_off_refresh_queue (
+            product_id bigint PRIMARY KEY REFERENCES v2_products(id) ON DELETE CASCADE,
+            requested_at timestamptz NOT NULL DEFAULT now(),
+            next_attempt_at timestamptz NOT NULL DEFAULT now(),
+            attempts integer NOT NULL DEFAULT 0,
+            last_error varchar(50)
+        );
+        CREATE INDEX v2_off_refresh_queue_due_idx
+            ON v2_off_refresh_queue(next_attempt_at, requested_at);
+    """,
 
 }
 

@@ -43,7 +43,7 @@ async def get_off_client() -> httpx.AsyncClient:
                     # certificate. Use public roots explicitly for OFF only.
                     transport=RateLimitedTransport(httpx.AsyncHTTPTransport(
                         verify=ssl.create_default_context(cafile=certifi.where())
-                    )),
+                    ), shared_off=True),
                 )
     return _client
 
