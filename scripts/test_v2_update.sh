@@ -11,6 +11,8 @@ bare=$sandbox/origin.git
 repo=$sandbox/source
 export PRICE_CHECKER_V2_ENV=dev
 export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
+# Do not mask the host's real private dev while exercising disposable instances.
+export PRICE_CHECKER_V2_MAINTENANCE_MARKER=$sandbox/maintenance
 export PRICE_CHECKER_V2_DB_NAME=v2_ci_update
 export PRICE_CHECKER_V2_PORT=18083
 export COMPOSE_PROJECT_NAME=price-checker-v2-ci-update-$$
@@ -38,7 +40,7 @@ base=$(git -C "$source_dir" rev-parse "$base_ref")
 head=$(git -C "$source_dir" rev-parse HEAD)
 git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$base:refs/heads/main"
-git clone -q --branch main "$bare" "$repo"
+git clone -q --single-branch --branch main "$bare" "$repo"
 
 # The historical base keeps its Dockerfile outside the build context;
 # Buildx 0.37+ refuses that layout. This exception applies only to the old
@@ -92,6 +94,9 @@ if [[ "$target_branch" == dev ]]; then
     "$source_dir/deployment/v2/update.sh"
   [[ $(git -C "$repo" branch --show-current) == dev ]] || {
     echo "Private dev installation did not switch to dev." >&2; exit 1;
+  }
+  [[ $(git -C "$repo" rev-parse refs/remotes/origin/dev) == "$head" ]] || {
+    echo "Private dev installation does not track origin/dev." >&2; exit 1;
   }
   grep -qx 'PRICE_CHECKER_V2_GIT_BRANCH=dev' "$repo/.env" || {
     echo "Private dev installation did not persist the dev branch." >&2; exit 1;

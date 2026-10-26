@@ -44,8 +44,10 @@ fi
   echo "Checkout has local changes; refusing update." >&2; exit 1;
 }
 old_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-git -C "$repo_dir" fetch origin "$target_branch"
-new_sha="$(git -C "$repo_dir" rev-parse FETCH_HEAD)"
+# Installations are cloned with --single-branch; explicitly create/update the
+# remote-tracking ref before switching the private dev checkout to dev.
+git -C "$repo_dir" fetch origin "refs/heads/$target_branch:refs/remotes/origin/$target_branch"
+new_sha="$(git -C "$repo_dir" rev-parse "refs/remotes/origin/$target_branch")"
 if [[ -n "${PRICE_CHECKER_V2_EXPECTED_SHA:-}" && "$new_sha" != "$PRICE_CHECKER_V2_EXPECTED_SHA" ]]; then
   echo "Target branch moved after CI verification; refusing update." >&2
   exit 1
@@ -104,7 +106,8 @@ fi
 [[ "$PRICE_CHECKER_V2_ENV" == dev || "$PRICE_CHECKER_V2_ENV" == prod ]] || {
   echo "Invalid V2 environment." >&2; exit 1;
 }
-maintenance_marker="/run/price-checker-v2-$PRICE_CHECKER_V2_ENV-maintenance"
+maintenance_marker="${PRICE_CHECKER_V2_MAINTENANCE_MARKER:-/run/price-checker-v2-$PRICE_CHECKER_V2_ENV-maintenance}"
+[[ "$maintenance_marker" = /* ]] || { echo "Invalid maintenance marker path." >&2; exit 1; }
 [[ ! -e "$maintenance_marker" ]] || {
   echo "Maintenance marker already exists; inspect the previous update." >&2; exit 1;
 }
@@ -176,6 +179,11 @@ rollback() {
   echo "Update failed; restoring application commit $old_sha (database backup retained)." >&2
   # Git must restore readable source files even if backup/secret work used umask 077.
   umask 022
+  if [[ "$switch_to_dev" == 1 &&
+        "$(git -C "$repo_dir" branch --show-current)" == dev ]]; then
+    git -C "$repo_dir" branch -m main
+    git -C "$repo_dir" branch --set-upstream-to=origin/main main
+  fi
   git -C "$repo_dir" reset --hard "$old_sha"
   umask 077
   chmod 0644 "$repo_dir/frontend/nginx.v2.conf"
@@ -239,6 +247,9 @@ for attempt in {1..30}; do
 done
 [[ "$healthy" == 1 ]] || { echo "Health check failed." >&2; false; }
 if [[ "$switch_to_dev" == 1 ]]; then
+  # A --single-branch clone knows only the main fetch refspec. Register dev
+  # before asking Git to use origin/dev as the new upstream.
+  git -C "$repo_dir" remote set-branches --add origin dev
   git -C "$repo_dir" branch -m dev
   git -C "$repo_dir" branch --set-upstream-to=origin/dev dev
   if grep -q '^PRICE_CHECKER_V2_GIT_BRANCH=' "$repo_dir/.env"; then
