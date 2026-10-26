@@ -55,7 +55,8 @@ PYCONFIG
   IFS=$'\t' read -r db_host db_port db_name db_user db_tls <<< "$configured_target"
   if [[ "$db_host" != db || "$db_port" != 5432 ||
         "$db_name" != "$PRICE_CHECKER_V2_DB_NAME" ||
-        "$db_user" != "$PRICE_CHECKER_V2_DB_NAME" ]]; then
+        "$db_user" != "$PRICE_CHECKER_V2_DB_NAME" &&
+        "$db_user" != "${PRICE_CHECKER_V2_DB_NAME}_app" ]]; then
     bundled_db=0
   fi
   [[ "$db_tls" == disable || "$db_tls" == require || "$db_tls" == verify-full ]] || {
@@ -189,7 +190,14 @@ if [[ "$renew_cert" == 1 ]]; then
   "${compose[@]}" up -d --wait --no-deps --force-recreate db
 fi
 if [[ -f "$config_file" ]]; then
-  "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  if [[ "$bundled_db" == 1 && -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]]; then
+    "${compose[@]}" run --rm --no-deps       -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro"       -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
+  else
+    "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  fi
+  if [[ "$bundled_db" == 1 ]]; then
+    "$repo_dir/deployment/v2/configure-local-db.sh"
+  fi
 fi
 "${compose[@]}" up -d --no-deps backend web
 health_path=/api/v2/setup/status

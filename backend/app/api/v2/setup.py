@@ -430,7 +430,15 @@ async def update_database(request: DatabaseRequest, transport: Request):
         )
     config = _validated_config(request, previous)
     await _test_connection(config)
-    await _migrate_schema(config)
+    same_limited_local = (
+        previous["provider"] == config["provider"] == "postgres"
+        and previous["host"] == config["host"] == "db"
+        and previous["database"] == config["database"]
+        and previous["username"] == config["username"]
+        and config["username"] == config["database"] + "_app"
+    )
+    if not same_limited_local:
+        await _migrate_schema(config)
     _save_config(config, first_setup=False)
     return {"configured": True}
 

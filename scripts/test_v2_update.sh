@@ -84,6 +84,10 @@ before=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c 
 git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
 PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
 [[ $(git -C "$repo" rev-parse HEAD) == "$head" ]] || { echo "Updater did not install candidate commit." >&2; exit 1; }
+"${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
+"${compose[@]}" run --rm --no-deps \
+  -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
+  -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
 after=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
 [[ $after == "$before" ]] || { echo "Data changed across update: $before -> $after" >&2; exit 1; }
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" >/dev/null

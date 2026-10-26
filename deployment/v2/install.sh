@@ -78,12 +78,45 @@ chmod 0644 "$PRICE_CHECKER_V2_DATA_DIR/certs/server.crt"
 
 "${compose[@]}" build backend
 "${compose[@]}" build web
+"${compose[@]}" up -d --wait db
+if [[ ! -f "$PRICE_CHECKER_V2_DATA_DIR/state/database.json" ]]; then
+  python3 - "$PRICE_CHECKER_V2_DATA_DIR" "$PRICE_CHECKER_V2_DB_NAME" <<'PYCONFIG'
+import json
+import os
+import sys
+from pathlib import Path
+directory, name = Path(sys.argv[1]), sys.argv[2]
+config = {
+    "provider": "postgres", "project_url": "", "public_hostname": "",
+    "host": "db", "port": 5432, "database": name, "username": name,
+    "password": (directory / "postgres" / "password").read_text().strip(),
+    "tls_mode": "verify-full",
+}
+path = directory / "state" / "database.json"
+path.write_text(json.dumps(config))
+os.chown(path, 1000, 1000)
+os.chmod(path, 0o600)
+PYCONFIG
+fi
+local_owner=$(python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/database.json" "$PRICE_CHECKER_V2_DB_NAME" <<'PYCONFIG'
+import json
+import sys
+with open(sys.argv[1]) as source:
+    config = json.load(source)
+print(int(config.get("provider") == "postgres" and config.get("host") == "db"
+          and config.get("database") == sys.argv[2]
+          and config.get("username") == sys.argv[2]))
+PYCONFIG
+)
+if [[ $local_owner == 1 ]]; then
+  "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  "$repo_dir/deployment/v2/configure-local-db.sh"
+fi
 "${compose[@]}" up -d
 for attempt in {1..30}; do
   if curl -fs http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/setup/status >/dev/null 2>&1; then
-    echo "V2 installed at loopback :$PRICE_CHECKER_V2_PORT. Configure HTTPS proxy before first-run setup."
-    echo "PostgreSQL host=db, port=5432, database/user=$PRICE_CHECKER_V2_DB_NAME, TLS=verify-full."
-    echo "Read the PostgreSQL password locally: $PRICE_CHECKER_V2_DATA_DIR/postgres/password"
+    echo "V2 installed at loopback :$PRICE_CHECKER_V2_PORT. Configure HTTPS proxy before admin bootstrap."
+    echo "Bundled PostgreSQL uses a limited application role; migration credentials stay outside the runtime mount."
     echo "Read the setup code locally after first API request: $PRICE_CHECKER_V2_DATA_DIR/state/access-code"
     exit 0
   fi

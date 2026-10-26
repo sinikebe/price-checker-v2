@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import re
 import secrets
 from datetime import timedelta
@@ -15,7 +16,12 @@ from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, SecretStr
 
-from app.api.v2.setup import _read_config, _require_access, _require_secure_transport
+from app.api.v2.setup import (
+    _access_code,
+    _read_config,
+    _require_access,
+    _require_secure_transport,
+)
 from app.core.config import get_settings
 from app.db.v2_migrations import connect_v2
 
@@ -92,9 +98,11 @@ def _token_hash(token: str) -> str:
 
 
 def _limit_key(kind: str, request: Request, username_key: str = "") -> str:
-    # Avoid storing raw IP addresses in the account database.
+    # The installation code is a random secret stored outside PostgreSQL.
+    # A plain hash of an IP can be guessed offline from the small IP space.
     remote = request.client.host if request.client else "unknown"
-    return hashlib.sha256(f"{kind}:{remote}:{username_key}".encode()).hexdigest()
+    message = f"{kind}:{remote}:{username_key}".encode()
+    return hmac.new(_access_code().encode(), message, hashlib.sha256).hexdigest()
 
 
 async def _limit_reached(

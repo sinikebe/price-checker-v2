@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $EUID -eq 0 ]] || { echo "Run as root." >&2; exit 1; }
+source_dir=$(cd "$(dirname "$0")/.." && pwd)
+sandbox=$(mktemp -d /tmp/price-checker-v2-fresh-ci-XXXXXX)
+bare=$sandbox/origin.git
+repo=$sandbox/source
+export PRICE_CHECKER_V2_ENV=dev
+export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
+export PRICE_CHECKER_V2_DB_NAME=v2_ci_fresh
+export PRICE_CHECKER_V2_PORT=18084
+export COMPOSE_PROJECT_NAME=price-checker-v2-ci-fresh-$$
+compose=(docker compose --env-file "$repo/.env" -f "$repo/deployment/v2/compose.yaml")
+cleanup() {
+  result=$?
+  trap - EXIT
+  if [[ -f "$repo/.env" ]]; then
+    if [[ $result -ne 0 ]]; then "${compose[@]}" logs --tail=80 >&2 || true; fi
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  fi
+  [[ $sandbox == /tmp/price-checker-v2-fresh-ci-* ]] && rm -rf -- "$sandbox"
+  exit "$result"
+}
+trap cleanup EXIT
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=safe.directory
+export GIT_CONFIG_VALUE_0=$source_dir
+head=$(git -C "$source_dir" rev-parse HEAD)
+git init --bare -q "$bare"
+git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
+git clone -q --branch main "$bare" "$repo"
+"$repo/deployment/v2/install.sh"
+config=$PRICE_CHECKER_V2_DATA_DIR/state/database.json
+python3 - "$config" "$PRICE_CHECKER_V2_DB_NAME" <<'PY'
+import json
+import sys
+with open(sys.argv[1]) as source:
+    config = json.load(source)
+assert config["username"] == sys.argv[2] + "_app"
+PY
+"${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
+curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" |
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["admin_initialized"] is False'
+python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/access-code" <<'PY' |
+  curl -fsS -H "Content-Type: application/json" --data-binary @- \
+    "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/admin" |
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["role"] == "admin"'
+import json
+import sys
+with open(sys.argv[1]) as source:
+    code = source.read().strip()
+print(json.dumps({"access_code": code, "password": "ci-bootstrap-password"}))
+PY
+curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" |
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["admin_initialized"] is True'
+echo "Fresh install smoke passed: limited app role, API and admin bootstrap healthy."
