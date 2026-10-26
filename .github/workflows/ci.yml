@@ -100,7 +100,7 @@ jobs:
 
   version:
     name: Bump affected component versions
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore: bump affected component versions')
+    if: "github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore: bump affected component versions')"
     needs: [backend, frontend, deployment, upgrade]
     runs-on: ubuntu-latest
     concurrency:
