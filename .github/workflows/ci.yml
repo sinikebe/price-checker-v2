@@ -103,5 +103,7 @@ jobs:
           fetch-depth: 0
       - name: Install prior revision, seed data and run guarded updater
         run: sudo bash scripts/test_v2_update.sh
+      - name: Switch an installed private dev instance onto the dev branch
+        run: sudo env V2_TEST_TARGET_BRANCH=dev bash scripts/test_v2_update.sh
       - name: Install current revision and bootstrap an administrator
         run: sudo bash scripts/test_v2_install.sh

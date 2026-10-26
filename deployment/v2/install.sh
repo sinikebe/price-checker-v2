@@ -13,8 +13,10 @@ docker compose version >/dev/null || { echo "Docker Compose plugin is required" 
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose_file="$repo_dir/deployment/v2/compose.yaml"
-[[ "$(git -C "$repo_dir" branch --show-current)" == main ]] || {
-  echo "Installation requires the main branch." >&2; exit 1;
+source_branch="$(git -C "$repo_dir" branch --show-current)"
+[[ "$source_branch" == main ||
+   ( "${PRICE_CHECKER_V2_ENV:-prod}" == dev && "$source_branch" == dev ) ]] || {
+  echo "Installation requires main, or dev for a private development instance." >&2; exit 1;
 }
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout must be clean." >&2; exit 1;
@@ -31,6 +33,10 @@ if [[ "$PRICE_CHECKER_V2_ENV" == dev ]]; then default_data_dir+="-dev"; fi
 export PRICE_CHECKER_V2_DATA_DIR="${PRICE_CHECKER_V2_DATA_DIR:-$default_data_dir}"
 export PRICE_CHECKER_V2_DB_NAME="${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_$PRICE_CHECKER_V2_ENV}"
 export PRICE_CHECKER_V2_PORT="${PRICE_CHECKER_V2_PORT:-8080}"
+export PRICE_CHECKER_V2_GIT_BRANCH="${PRICE_CHECKER_V2_GIT_BRANCH:-$source_branch}"
+[[ "$PRICE_CHECKER_V2_GIT_BRANCH" == "$source_branch" ]] || {
+  echo "Update branch must match the installed checkout." >&2; exit 1;
+}
 [[ "$PRICE_CHECKER_V2_DATA_DIR" =~ ^/[A-Za-z0-9/_-]+$ ]] || {
   echo "Data directory must be an absolute path without spaces." >&2; exit 1;
 }
@@ -45,6 +51,7 @@ if [[ -f "$repo_dir/.env" ]]; then
 else
   printf 'PRICE_CHECKER_V2_ENV=%s\nPRICE_CHECKER_V2_DATA_DIR=%s\nPRICE_CHECKER_V2_DB_NAME=%s\nPRICE_CHECKER_V2_PORT=%s\n' \
     "$PRICE_CHECKER_V2_ENV" "$PRICE_CHECKER_V2_DATA_DIR" "$PRICE_CHECKER_V2_DB_NAME" "$PRICE_CHECKER_V2_PORT" > "$repo_dir/.env"
+  printf 'PRICE_CHECKER_V2_GIT_BRANCH=%s\n' "$PRICE_CHECKER_V2_GIT_BRANCH" >> "$repo_dir/.env"
   chmod 0600 "$repo_dir/.env"
 fi
 export PRICE_CHECKER_V2_ENV PRICE_CHECKER_V2_DATA_DIR PRICE_CHECKER_V2_DB_NAME PRICE_CHECKER_V2_PORT

@@ -75,14 +75,15 @@ class ScheduledUpdateTests(unittest.TestCase):
                 return datetime(2026, 10, 26, 2, 0, tzinfo=timezone.utc)
         with patch.object(scheduler, "datetime", Clock), \
                 patch.object(scheduler.os, "geteuid", return_value=0), \
-                patch.dict(scheduler.os.environ, {"PRICE_CHECKER_V2_ENV": "dev"}), \
-                patch.object(scheduler, "git", side_effect=["old", "", "new"]), \
+                patch.dict(scheduler.os.environ, {"PRICE_CHECKER_V2_ENV": "dev", "PRICE_CHECKER_V2_GIT_BRANCH": "dev"}), \
+                patch.object(scheduler, "git", side_effect=["old", "", "new"]) as git, \
                 patch.object(scheduler, "ci_sha", return_value="new"), \
                 patch.object(scheduler, "ci_succeeded", return_value=False), \
                 patch.object(scheduler.subprocess, "run") as command:
             command.return_value.returncode = 0
             self.assertEqual(scheduler.main(), 1)
             self.assertEqual(command.call_count, 1)  # merge-base only; updater not run
+            self.assertIn(("fetch", "origin", "dev"), [item.args for item in git.call_args_list])
         status = json.loads((scheduler.STATE / "update-last-run.json").read_text())
         self.assertEqual(status["result"], "failed")
 

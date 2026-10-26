@@ -98,6 +98,14 @@ sudo env PRICE_CHECKER_V2_ENV=dev /opt/price-checker-v2/source/deployment/v2/ins
 sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
+Pour faire suivre à une instance de développement déjà installée depuis `main` la branche `dev`, utiliser le nouvel updater depuis un checkout propre de `dev` après réussite de sa CI :
+```sh
+sudo env PRICE_CHECKER_V2_SOURCE_DIR=/opt/price-checker-v2/source \
+  PRICE_CHECKER_V2_GIT_BRANCH=dev PRICE_CHECKER_V2_EXPECTED_SHA=<SHA-dev-vérifié> \
+  /chemin/vers/checkout-dev/deployment/v2/update.sh
+```
+L'opération sauvegarde la base, exige une avance fast-forward, teste le redémarrage puis renomme la branche locale en `dev`. Les mises à jour suivantes utilisent `dev`, y compris le programmateur si activé. Une installation de production reste strictement sur `main`.
+
 Même en développement, le port 8080 reste lié à la boucle locale. Configurer séparément un accès HTTPS privé pour l'initialisation dans le navigateur. Le champ « Nom d'hôte » est facultatif en développement et accepte un nom local (`localhost`, `machine.local`) ou une adresse IP ; il ne configure ni la résolution du nom ni HTTPS.
 
 Pour les transferts JSON inter-instances (24 Mio maximum), régler aussi `client_max_body_size 25m;` sur le proxy HTTPS hôte, en plus du Nginx du conteneur web. La procédure, les données incluses et les conflits sont détaillés dans [v2-transfers.md](v2-transfers.md).

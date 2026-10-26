@@ -81,8 +81,20 @@ SQL
 before=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
 [[ $before == "1|1|1|1" ]] || { echo "Fixture was not seeded: $before" >&2; exit 1; }
 
-git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
-PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
+target_branch="${V2_TEST_TARGET_BRANCH:-main}"
+if [[ "$target_branch" == dev ]]; then
+  git -C "$source_dir" push -q "$bare" "$head:refs/heads/dev"
+  PRICE_CHECKER_V2_SOURCE_DIR=$repo PRICE_CHECKER_V2_GIT_BRANCH=dev \
+    PRICE_CHECKER_V2_EXPECTED_SHA=$head \
+    "$source_dir/deployment/v2/update.sh"
+  [[ $(git -C "$repo" branch --show-current) == dev ]] || {
+    echo "Private dev installation did not switch to dev." >&2; exit 1;
+  }
+else
+  [[ "$target_branch" == main ]] || exit 1
+  git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
+  PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
+fi
 [[ $(git -C "$repo" rev-parse HEAD) == "$head" ]] || { echo "Updater did not install candidate commit." >&2; exit 1; }
 # A legacy updater cannot execute newly added post-upgrade logic on its first
 # pass. The new updater must finish that transition at the same SHA.

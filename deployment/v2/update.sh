@@ -5,7 +5,11 @@ if [[ ${EUID} -ne 0 ]]; then echo "Run as root (sudo)." >&2; exit 1; fi
 for tool in docker git curl flock python3 openssl; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_dir="${PRICE_CHECKER_V2_SOURCE_DIR:-$script_repo_dir}"
+[[ "$repo_dir" = /* && -d "$repo_dir/.git" ]] || {
+  echo "Invalid installed source directory." >&2; exit 1;
+}
 compose_file="$repo_dir/deployment/v2/compose.yaml"
 [[ -f "$repo_dir/.env" ]] || { echo "Installation configuration missing." >&2; exit 1; }
 set -a
@@ -17,21 +21,32 @@ compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 }
 exec 9>"$PRICE_CHECKER_V2_DATA_DIR/update.lock"
 flock -n 9 || { echo "Another V2 update is running." >&2; exit 1; }
-[[ "$(git -C "$repo_dir" branch --show-current)" == main ]] || {
-  echo "Update requires main." >&2; exit 1;
+target_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-main}"
+[[ "$target_branch" == main || ( "$PRICE_CHECKER_V2_ENV" == dev && "$target_branch" == dev ) ]] || {
+  echo "Invalid update branch for this environment." >&2; exit 1;
 }
+current_branch="$(git -C "$repo_dir" branch --show-current)"
+switch_to_dev=0
+if [[ "$current_branch" != "$target_branch" ]]; then
+  [[ "$PRICE_CHECKER_V2_ENV" == dev && "$current_branch" == main &&
+     "$target_branch" == dev &&
+     -z "$(git -C "$repo_dir" branch --list dev)" ]] || {
+    echo "Update checkout is on the wrong branch." >&2; exit 1;
+  }
+  switch_to_dev=1
+fi
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout has local changes; refusing update." >&2; exit 1;
 }
 old_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-git -C "$repo_dir" fetch origin main
+git -C "$repo_dir" fetch origin "$target_branch"
 new_sha="$(git -C "$repo_dir" rev-parse FETCH_HEAD)"
 if [[ -n "${PRICE_CHECKER_V2_EXPECTED_SHA:-}" && "$new_sha" != "$PRICE_CHECKER_V2_EXPECTED_SHA" ]]; then
-  echo "origin/main moved after CI verification; refusing update." >&2
+  echo "Target branch moved after CI verification; refusing update." >&2
   exit 1
 fi
 git -C "$repo_dir" merge-base --is-ancestor "$old_sha" "$new_sha" || {
-  echo "origin/main is not a fast-forward; refusing update." >&2; exit 1;
+  echo "Target branch is not a fast-forward; refusing update." >&2; exit 1;
 }
 for file in backend/app/main_v2.py frontend/v2.html deployment/v2/compose.yaml deployment/v2/update.sh; do
   git -C "$repo_dir" cat-file -e "$new_sha:$file" || {
@@ -75,7 +90,8 @@ if [[ "$bundled_db" == 1 && -f "$config_file" &&
         ! -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ) ]]; then
   needs_role_split=1
 fi
-if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 && "$needs_role_split" == 0 ]]; then
+if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 &&
+      "$needs_role_split" == 0 && "$switch_to_dev" == 0 ]]; then
   echo "Already current: $old_sha"
   exit 0
 fi
@@ -217,6 +233,13 @@ for attempt in {1..30}; do
   sleep 2
 done
 [[ "$healthy" == 1 ]] || { echo "Health check failed." >&2; false; }
+if [[ "$switch_to_dev" == 1 ]]; then
+  git -C "$repo_dir" branch -m dev
+  git -C "$repo_dir" branch --set-upstream-to=origin/dev dev
+  if ! grep -q '^PRICE_CHECKER_V2_GIT_BRANCH=' "$repo_dir/.env"; then
+    printf 'PRICE_CHECKER_V2_GIT_BRANCH=dev\n' >> "$repo_dir/.env"
+  fi
+fi
 trap - ERR
 if [[ "$renew_cert" == 1 ]]; then echo "Bundled database certificate renewed."; fi
-echo "Updated V2: $old_sha -> $new_sha"
+echo "Updated V2 ($target_branch): $old_sha -> $new_sha"
