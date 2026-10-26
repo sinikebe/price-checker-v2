@@ -24,6 +24,14 @@ sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 
 Elle n'est pas déclenchée automatiquement par un push.
 
+## Versions des composants
+
+La page **Versions** est accessible depuis le pied de page de l'accueil V2 (`/v2/versions`). Son [manifeste dans le dépôt](frontend/src/v2/component-versions.json) est inclus dans le build web. Elle distingue l'application, les produits, recettes, panier, connexion PostgreSQL, connexion Open Food Facts, comptes, PWA et déploiement. Open Prices est affiché « prévu » : la provenance existe dans le schéma de prix, mais aucun connecteur utilisable n'est encore livré.
+
+Après réussite des contrôles sur un push vers `main`, la [CI](.github/workflows/ci.yml) ajoute un commit qui incrémente le correctif (dernier nombre) **une fois par composant concerné**, d'après les chemins modifiés. Un changement partagé peut incrémenter plusieurs composants ; la version globale de l'application avance dès qu'un composant actif change. Les versions du paquet frontend, de son lockfile et du paquet backend suivent cette version globale. Documentation, tests et manifeste seuls ne déclenchent aucun incrément. Les règles sont dans [le script de versionnement](scripts/component_versions.py) ; un nouveau fichier applicatif sans règle fait échouer la CI pour imposer un rattachement explicite. La CI ne crée ni tag ni déploiement. Les versions sont celles du code, pas des révisions de synchronisation PWA ni du schéma des données.
+
+Les incréments automatiques sont des correctifs ; les changements de version majeure/mineure restent des décisions de publication explicites. Une version affichée sur une installation ne change qu'après mise à jour de cette installation.
+
 ## Développement local
 
 - Backend : Python 3.12 ou plus récent. Créer un environnement virtuel, installer `backend/requirements.txt` et le paquet `backend`, puis lancer `uvicorn app.main_v2:app --app-dir backend --reload`. L'API répond sur `http://127.0.0.1:8000`.

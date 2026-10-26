@@ -1,0 +1,36 @@
+.v2-versions main {
+  max-width: 760px;
+  padding-block: 48px 80px;
+}
+.v2-versions-back {
+  display: inline-block;
+  margin-bottom: 48px;
+  font-weight: 700;
+}
+.v2-versions h1 {
+  margin: 12px 0;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  letter-spacing: -.05em;
+}
+.v2-versions p {
+  color: var(--v2-muted);
+}
+.v2-versions-list {
+  margin-top: 32px;
+  border: 1px solid var(--v2-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: white;
+}
+.v2-versions-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+}
+.v2-versions-item + .v2-versions-item {
+  border-top: 1px solid var(--v2-line);
+}
+.v2-versions-item strong {
+  white-space: nowrap;
+}

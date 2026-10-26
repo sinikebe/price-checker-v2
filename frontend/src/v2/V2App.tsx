@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from "react-router-dom";
 import V2Gateway from "./V2Gateway";
+import V2VersionsPage from "./V2VersionsPage";
 import { V2BasketProvider } from "./V2BasketContext";
 
 export default function V2App() {
@@ -18,6 +19,7 @@ export default function V2App() {
     : product ? product[2] === "modifier" ? "edit" : product[2] === "historique" ? "history" : "detail"
     : undefined;
 
+  if (path === "/v2/versions") return <V2VersionsPage />;
   if (path === "/" || path === "/v2") return <V2BasketProvider><V2Gateway /></V2BasketProvider>;
   if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
     || workspaceMode || recipeMode || path === "/v2/panier") {

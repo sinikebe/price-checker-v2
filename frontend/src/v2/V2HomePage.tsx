@@ -5,6 +5,7 @@ import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
+import versions from "./component-versions.json";
 
 function ArrowIcon() {
   return (
@@ -205,7 +206,7 @@ export default function V2HomePage({ user, onLogout }: {
       <footer className="v2-footer">
         <div className="v2-wrap v2-footer-inner">
           <span>Price Checker · Des courses plus simples, à votre façon.</span>
-          <Link to="/v2/produits">Voir le catalogue <ArrowIcon /></Link>
+          <Link to="/v2/versions">Version {versions.application.version} · Détails</Link>
         </div>
       </footer>
     </div>
