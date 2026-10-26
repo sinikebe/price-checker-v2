@@ -305,3 +305,40 @@ async def test_recipe_withdrawal_and_stale_draft_rejection(isolated_db):
             assert (await client.get("/api/v2/recipes")).json()["total"] == 0
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_account_export_is_private_and_excludes_credentials(isolated_db):
+    config = isolated_db
+    admin_id, token = await _admin_session(config)
+    connection = await connect_v2(config)
+    try:
+        other_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('other','other','secret-other-hash','visitor') RETURNING id"
+        )
+        for author_id, name in (
+            (admin_id, "My private draft"),
+            (other_id, "Other private draft"),
+        ):
+            await connection.execute(
+                "INSERT INTO v2_product_drafts(author_id,data) VALUES($1,$2::jsonb)",
+                author_id, json.dumps({"name": name, "brand": "CI"}),
+            )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.8", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            assert (await client.get("/api/v2/account/export")).status_code == 401
+            client.cookies.set("pc_v2_session", token, path="/api/v2")
+            response = await client.get("/api/v2/account/export")
+            assert response.status_code == 200, response.text
+            assert response.headers["cache-control"] == "no-store"
+            payload = response.json()
+            assert payload["account"]["id"] == admin_id
+            assert [item["data"]["name"] for item in payload["product_drafts"]] == [
+                "My private draft"
+            ]
+            assert "password_hash" not in response.text
+            assert "secret-other-hash" not in response.text
+            assert "Other private draft" not in response.text
+    finally:
+        await connection.close()

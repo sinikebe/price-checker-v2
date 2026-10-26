@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -56,10 +57,12 @@ async def test_login_cap_is_shared_across_unknown_usernames_and_expired_rows_are
     suffix = secrets.token_hex(4)
     names = ["audit" + suffix + str(index) for index in range(5)]
     remote = "192.0.2.77"
+    monkeypatch.setattr(auth, "_access_code", lambda: "ci-limit-key")
     keys = [
-        hashlib.sha256(("login-origin:" + remote + ":").encode()).hexdigest(),
-        *(hashlib.sha256(("login:" + remote + ":" + name).encode()).hexdigest()
-          for name in names),
+        hmac.new(b"ci-limit-key", ("login-origin:" + remote + ":").encode(),
+                 hashlib.sha256).hexdigest(),
+        *(hmac.new(b"ci-limit-key", ("login:" + remote + ":" + name).encode(),
+                   hashlib.sha256).hexdigest() for name in names),
     ]
     connection = await connect_v2(config)
     try:

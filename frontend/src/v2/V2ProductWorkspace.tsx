@@ -258,7 +258,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
       <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
-      <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</p></div>
+      <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier. Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
     {draft?.status === "rejected" && <div role="status"><p>Cette proposition a été rejetée. Elle ne peut plus être publiée ni modifiée.</p><button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Supprimer ce brouillon rejeté</button></div>}
@@ -284,7 +284,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             {!data.group.trim() && <small>Renseignez d’abord le groupe.</small>}
           </div>
           <div className="v2-workspace-structured"><h3>Fiches par enseigne</h3>
-            <ul>{data.retailer_links.map(link => <li key={link.retailer}><strong>{link.retailer}</strong> · {link.source === "capture" ? "capture" : "saisie manuelle"} · {safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">Voir la fiche ↗</a> : "Lien invalide"} <button type="button" onClick={() => persist({ ...data, retailer_links: data.retailer_links.filter(item => item.retailer !== link.retailer) }, changeKind)}>Retirer</button></li>)}</ul>
+            <ul>{data.retailer_links.map(link => <li key={link.retailer}><strong>{link.retailer}</strong> · {link.source === "capture" ? "capture" : "saisie manuelle"} · {safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">Voir la fiche ↗</a> : "Lien invalide"} {user?.role === "admin" && <small style={{ overflowWrap: "anywhere" }}>Destination : {link.url}</small>} <button type="button" onClick={() => persist({ ...data, retailer_links: data.retailer_links.filter(item => item.retailer !== link.retailer) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Enseigne <input value={retailerInput} onChange={event => setRetailerInput(event.target.value)} maxLength={100} /></label>
             <label>URL de la fiche <input type="url" value={urlInput} onChange={event => setUrlInput(event.target.value)} maxLength={1000} /></label>
             <button type="button" onClick={() => { const retailer = retailerInput.trim(); const url = urlInput.trim(); if (!retailer || !/^https?:\/\//i.test(url)) return; persist({ ...data, retailer_links: [...data.retailer_links.filter(link => link.retailer.toLocaleLowerCase() !== retailer.toLocaleLowerCase()), { retailer, url, source: "manual" }] }, changeKind); setRetailerInput(""); setUrlInput(""); }}>Ajouter ou remplacer le lien</button>

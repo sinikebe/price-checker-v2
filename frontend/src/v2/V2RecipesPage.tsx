@@ -163,7 +163,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const groups = [...new Set(products.map(product => product.data.group.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
   return <Frame user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to={cancelTo}>← Recettes</Link>
-    <div className="v2-recipes-heading"><div><span className="v2-section-kicker">ATELIER RECETTE</span><h1>{mode === "new" ? "Nouvelle recette" : "Modifier la recette"}<span>.</span></h1><p>Un ingrédient peut viser une référence précise ou laisser le choix dans un groupe.</p></div></div>
+    <div className="v2-recipes-heading"><div><span className="v2-section-kicker">ATELIER RECETTE</span><h1>{mode === "new" ? "Nouvelle recette" : "Modifier la recette"}<span>.</span></h1><p>Un ingrédient peut viser une référence précise ou laisser le choix dans un groupe. La recette, ses étapes et ses notes seront publiques : évitez les informations personnelles.</p></div></div>
     {loading && <p>Chargement…</p>}
     {error && <p role="alert" className="v2-recipes-error">{error}</p>}
     {storageError && <p role="alert" className="v2-recipes-error">{storageError}</p>}
