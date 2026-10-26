@@ -7,7 +7,13 @@ Ce guide décrit l'installation de Price Checker V2 depuis la branche `main`. Il
 - Docker Engine, le plugin `docker compose`, Git, OpenSSL, curl et Python 3 (pour vérifier la cible de la sauvegarde avant une mise à jour).
 - Espace disque pour les images, PostgreSQL et les sauvegardes avant mise à jour.
 - Un répertoire persistant et sauvegardé pour `/var/lib/price-checker-v2`, **ainsi que** le volume Docker `price-checker-v2-prod_postgres_data`. Le répertoire seul ne contient pas les données de la base.
-- Un reverse proxy HTTPS vers `127.0.0.1:8080`. Il doit transmettre `Host`, définir lui-même `X-Forwarded-Proto: https` et remplacer `X-Forwarded-For` par l'adresse réelle du client. Ne pas faire confiance aux valeurs de ces en-têtes envoyées par le navigateur.
+- Un reverse proxy HTTPS vers `127.0.0.1:8080`, à partir du modèle
+  [`deployment/v2/nginx-host.example.conf`](../deployment/v2/nginx-host.example.conf).
+  Il doit **remplacer** `Host`, `X-Real-IP`, `X-Forwarded-For` et
+  `X-Forwarded-Proto` ; ne pas relayer ceux du navigateur. Ne jamais exposer
+  directement `:8080`. Le web ne transmet au backend qu'une seule adresse
+  `X-Forwarded-For` issue de `X-Real-IP`, et le backend ne la lit que si le
+  pair réseau est le conteneur web actuellement résolu.
 - N'exposer publiquement que les ports nécessaires au service HTTPS. Les ports 8080 et 5432 doivent rester privés.
 
 ## Installation

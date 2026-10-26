@@ -24,7 +24,7 @@ services:
     build:
       context: ../../backend
     restart: unless-stopped
-    command: ["uvicorn", "app.main_v2:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    command: ["uvicorn", "app.main_v2:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
     environment:
       APP_ENV: ${PRICE_CHECKER_V2_ENV:-prod}
       PRICE_CHECKER_V2_STATE_DIR: /state

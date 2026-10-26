@@ -41,6 +41,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/v2_off_refresh_queue.py", ("open_food_facts",)),
     ("backend/app/services/v2_write_limits.py", ("accounts", "products", "recipes")),
     ("backend/app/services/v2_visibility.py", ("products", "recipes")),
+    ("backend/app/services/v2_trusted_proxy.py", ("accounts", "deployment")),
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
@@ -207,7 +208,7 @@ def bump(versions: dict, affected: set[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check", "bump", "preview"))
+    parser.add_argument("action", choices=("check", "bump", "preview", "verify"))
     parser.add_argument("--base", help="Git commit preceding the push")
     parser.add_argument("--head", help="Git commit at the end of the push")
     args = parser.parse_args()
@@ -220,6 +221,19 @@ def main() -> None:
     paths = _git("diff", "--name-only", "-z", args.base, args.head)
     affected = classify(paths)
     print("Composants concernés : " + (", ".join(sorted(affected)) if affected else "aucun"))
+    if args.action == "verify":
+        previous = json.loads(subprocess.run(
+            ["git", "show", f"{args.base}:frontend/src/v2/component-versions.json"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout)
+        stale = [
+            key for key in affected
+            if versions[key]["status"] == "active"
+            and tuple(map(int, versions[key]["version"].split(".")))
+            <= tuple(map(int, previous[key]["version"].split(".")))
+        ]
+        if stale:
+            raise ValueError("Versions non augmentées depuis main : " + ", ".join(sorted(stale)))
     if args.action == "bump" and affected:
         bump(versions, affected)
 

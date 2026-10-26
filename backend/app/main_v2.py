@@ -21,6 +21,7 @@ from app.api.v2.updates import router as updates_router
 from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
 from app.services.v2_off_refresh_queue import off_refresh_worker
+from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
 
 @asynccontextmanager
@@ -36,6 +37,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Price Checker V2 API", lifespan=lifespan)
+app.add_middleware(TrustedWebProxyMiddleware)
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,

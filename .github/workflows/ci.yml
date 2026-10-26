@@ -69,6 +69,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -80,6 +82,10 @@ jobs:
         run: |
           python3 scripts/component_versions.py check
           python3 -m unittest discover -s scripts/tests -v
+      - name: Verify version changes against main
+        run: |
+          git fetch --no-tags origin main
+          python3 scripts/component_versions.py verify --base "$(git merge-base HEAD origin/main)" --head HEAD
       - name: Validate Compose configuration
         run: |
           mkdir -p "$RUNNER_TEMP/price-checker-v2/postgres"
@@ -97,49 +103,3 @@ jobs:
           fetch-depth: 0
       - name: Install prior revision, seed data and run guarded updater
         run: sudo bash scripts/test_v2_update.sh
-
-  version:
-    name: Bump affected component versions
-    if: "github.event_name == 'push' && github.ref == 'refs/heads/dev' && !startsWith(github.event.head_commit.message, 'chore: bump affected component versions')"
-    needs: [backend, frontend, deployment, upgrade]
-    runs-on: ubuntu-latest
-    concurrency:
-      group: component-versions-dev
-      cancel-in-progress: false
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Commit patch versions after successful checks
-        env:
-          BASE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
-            git fetch origin dev
-            if [[ "$(git rev-parse origin/dev)" != "$HEAD_SHA" ]]; then
-              echo "Dev moved during CI; a newer run will handle versioning."
-              exit 0
-            fi
-            git switch -C version-bump origin/dev
-            python3 scripts/component_versions.py bump --base "$BASE_SHA" --head "$HEAD_SHA"
-            if git diff --quiet; then
-              echo "No application component changed."
-              exit 0
-            fi
-            git add frontend/src/v2/component-versions.json frontend/package.json frontend/package-lock.json backend/pyproject.toml
-            git commit -m "chore: bump affected component versions"
-            if git push origin HEAD:dev; then
-              exit 0
-            fi
-            echo "Dev moved during versioning; retrying against the new tip ($attempt/3)."
-          done
-          echo "Could not push component versions after three attempts." >&2
-          exit 1
