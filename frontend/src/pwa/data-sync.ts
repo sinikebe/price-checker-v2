@@ -14,6 +14,7 @@ type Versions = { products: number; recipes: number; user_id: number | null };
 type LegacyBasket = { product_ids: number[] };
 let pending: Promise<void> | null = null;
 let basketPending: Promise<void> | null = null;
+let basketPendingUserId: number | null = null;
 
 function readJson<T>(key: string): T | null {
   try { return JSON.parse(localStorage.getItem(key) ?? "null") as T | null; } catch { return null; }
@@ -95,9 +96,11 @@ function applyOps(ids: number[], ops: BasketOp[]): number[] {
 }
 
 export function importLegacyBasket(): Promise<void> {
-  if (basketPending) return basketPending;
   const userId = activeBasketUser();
+  if (basketPending) return basketPendingUserId === userId
+    ? basketPending : basketPending.then(importLegacyBasket);
   if (!navigator.onLine || !userId || localStorage.getItem(basketImportedKey(userId)) === "1") return Promise.resolve();
+  basketPendingUserId = userId;
   basketPending = (async () => {
     const headers = { "X-V2-Basket-User-ID": String(userId) };
     const response = await fetch("/api/v2/basket/legacy", { cache: "no-store", headers });
@@ -126,7 +129,7 @@ export function importLegacyBasket(): Promise<void> {
     localStorage.setItem(basketImportedKey(userId), "1");
     localStorage.removeItem(basketOpsKey(userId));
   })().catch(() => { /* Retain old server data for another import attempt. */ })
-    .finally(() => { basketPending = null; });
+    .finally(() => { basketPending = null; basketPendingUserId = null; });
   return basketPending;
 }
 
