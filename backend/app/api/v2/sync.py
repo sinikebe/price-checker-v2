@@ -17,17 +17,12 @@ async def versions(request: Request, response: Response):
         versions = {row["collection"]: row["revision"] for row in rows}
         user = await _current_user(connection, request)
         versions["user_id"] = user["id"] if user else None
-        versions["basket"] = (
-            await connection.fetchval(
-                "SELECT revision FROM v2_user_baskets WHERE user_id=$1", user["id"]
-            ) or 0
-        ) if user else 0
     finally:
         await connection.close()
     etag_user = versions["user_id"] if user else "anon"
     etag = (
         f'"u{etag_user}-p{versions["products"]}'
-        f'-r{versions["recipes"]}-b{versions["basket"]}"'
+        f'-r{versions["recipes"]}"'
     )
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["ETag"] = etag

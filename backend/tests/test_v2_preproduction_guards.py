@@ -236,11 +236,11 @@ async def test_report_withdrawal_hides_product_history_and_prices(isolated_db):
             ):
                 assert (await client.get(path)).status_code == 404, path
             client.cookies.set("pc_v2_session", user_token, path="/api/v2")
-            assert (await client.get("/api/v2/basket")).json()["product_ids"] == []
+            assert (await client.get("/api/v2/basket/legacy")).json()["product_ids"] == []
             assert (await client.put(
                 "/api/v2/basket",
                 json={"revision": 2, "product_ids": [product_id]},
-            )).status_code == 422
+            )).status_code == 410
         assert await connection.fetchval(
             "SELECT withdrawn_by FROM v2_content_withdrawals "
             "WHERE kind='product' AND content_id=$1", product_id,

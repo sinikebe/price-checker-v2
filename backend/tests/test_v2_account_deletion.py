@@ -157,6 +157,16 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
         transport = httpx.ASGITransport(app=app, client=("192.0.2.20", 443))
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
             client.cookies.set("pc_v2_session", first_token, path="/api/v2")
+            recipe_path = f"/api/v2/recipes/{recipe_id}"
+            public = (await client.get(recipe_path)).json()
+            assert "author" not in public and "author_id" not in public
+            assert len(public["created_at"]) == len(public["updated_at"]) == 10
+            own_access = await client.get(recipe_path + "/access")
+            assert own_access.json() == {"can_edit": True}
+            assert own_access.headers["cache-control"] == "private, no-store"
+            client.cookies.set("pc_v2_session", admin_token, path="/api/v2")
+            assert (await client.get(recipe_path + "/access")).json() == {"can_edit": True}
+            client.cookies.set("pc_v2_session", first_token, path="/api/v2")
             assert (await client.get("/api/v2/account/export")).status_code == 200
             wrong = await client.request(
                 "DELETE", "/api/v2/account", json={"password": "incorrect"}
@@ -173,15 +183,14 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             client.cookies.set("pc_v2_session", second_token, path="/api/v2")
             assert (await client.get("/api/v2/account/export")).status_code == 401
             recipe = (await client.get(f"/api/v2/recipes/{recipe_id}")).json()
-            assert recipe["author"] == "Compte supprimé"
-            assert recipe["author_id"] is None
+            assert "author" not in recipe and "author_id" not in recipe
             assert recipe["revision"] == 2
             assert len(recipe["ingredients"]) == 1
             history = (await client.get(
                 f"/api/v2/products/{product_id}/history"
             )).json()
             assert history[0]["id"] == event_id
-            assert history[0]["actor"] == "Compte supprimé"
+            assert "actor" not in history[0]
             prices = (await client.get(
                 f"/api/v2/prices/products/{product_id}"
             )).json()["observations"]

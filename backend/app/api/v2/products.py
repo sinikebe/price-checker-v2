@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -162,7 +163,7 @@ def _product(row):
         ),
         "revision": row["revision"],
         "predecessor_id": row["predecessor_id"],
-        "updated_at": row["updated_at"],
+        "updated_at": row["updated_at"].astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
     }
 
 
@@ -731,8 +732,7 @@ async def product_history(product_id: int):
     try:
         await require_visible(connection, "product", product_id)
         rows = await connection.fetch(
-            "SELECT e.*, COALESCE(u.username, 'Compte supprimé') AS actor FROM v2_product_events e "
-            "LEFT JOIN v2_users u ON u.id=e.actor_id WHERE e.product_id=$1 "
+            "SELECT e.* FROM v2_product_events e WHERE e.product_id=$1 "
             "ORDER BY e.created_at DESC, e.id DESC",
             product_id,
         )
@@ -740,8 +740,7 @@ async def product_history(product_id: int):
             {
                 "id": row["id"],
                 "event_type": row["event_type"],
-                "actor": row["actor"],
-                "created_at": row["created_at"],
+                "created_at": row["created_at"].astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
                 "before": _decoded(row["before_data"]),
                 "after": _decoded(row["after_data"]),
             }

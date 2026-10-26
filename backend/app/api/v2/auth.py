@@ -146,6 +146,12 @@ async def _purge_expired_limits(connection: asyncpg.Connection) -> None:
     )
 
 
+async def purge_ephemeral_auth_data(connection: asyncpg.Connection) -> None:
+    """Bound retention even when nobody signs in again."""
+    await _purge_expired_limits(connection)
+    await connection.execute("DELETE FROM v2_sessions WHERE expires_at <= now()")
+
+
 async def _connect():
     config = _read_config()
     if config is None:

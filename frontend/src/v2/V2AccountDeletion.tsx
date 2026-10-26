@@ -11,9 +11,10 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
       `v2:recipe:edit:${id}:`,
     ];
     const exact = [
-      `v2:basket:user:${id}`, `v2:basket:ops:${id}`,
+      `v2:basket:user:${id}`, `v2:basket:ops:${id}`, `v2:basket:imported:${id}`,
       `v2:pwa:sync-attempt:${id}`, `v2:pwa:versions:${id}`,
       "v2:pwa:recipe-summaries", "v2:pwa:recipe-summaries-ready",
+      "v2:pwa:cache-generation",
     ];
     for (const key of Object.keys(localStorage)) {
       if (exact.includes(key) || prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
@@ -28,7 +29,7 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
     window.dispatchEvent(new Event(V2_BASKET_EVENT));
   } catch { complete = false; }
   try {
-    if ("caches" in window) await caches.delete("price-checker-offline-data-v2");
+    if ("caches" in window) await Promise.all([caches.delete("price-checker-offline-data-v2"), caches.delete("price-checker-offline-data-v3")]);
   } catch { complete = false; }
   return complete;
 }
@@ -68,7 +69,7 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
 
   return <section className="v2-settings-card v2-settings-danger" aria-labelledby="v2-delete-account-heading">
     <h2 id="v2-delete-account-heading">Supprimer mon compte</h2>
-    <p>Les brouillons, le panier, les signalements personnels et toutes les sessions seront supprimés. Les produits, prix et recettes déjà publiés resteront visibles, sans votre pseudo. Exportez vos données avant si vous souhaitez les conserver.</p>
+    <p>Les brouillons, le panier local de ce navigateur, les signalements personnels et toutes les sessions seront supprimés. Les produits, prix et recettes déjà publiés resteront visibles, sans votre pseudo. Exportez vos données avant si vous souhaitez les conserver.</p>
     {!open ? <button type="button" className="v2-button v2-button-secondary" onClick={() => setOpen(true)}>Préparer la suppression</button>
       : <form onSubmit={submit}>
         <label className="v2-settings-delete-field" htmlFor="v2-delete-password">Confirmer avec votre mot de passe

@@ -25,13 +25,16 @@ export function writeV2Basket(products: BasketProduct[], userId: number | null =
   window.dispatchEvent(new Event(V2_BASKET_EVENT));
 }
 export function basketOpsKey(userId: number) { return `v2:basket:ops:${userId}`; }
+export function basketImportedKey(userId: number) { return `v2:basket:imported:${userId}`; }
 export function readBasketOps(userId: number): BasketOp[] {
   try { const value: unknown = JSON.parse(localStorage.getItem(basketOpsKey(userId)) ?? "[]"); return Array.isArray(value) ? value as BasketOp[] : []; } catch { return []; }
 }
-export function appendBasketOp(op: BasketOp) {
-  const userId = activeBasketUser();
+export function appendBasketOp(op: BasketOp, userId: number | null = activeBasketUser()) {
   if (!userId) return;
-  try { localStorage.setItem(basketOpsKey(userId), JSON.stringify([...readBasketOps(userId), op])); } catch { /* local basket remains */ }
+  try {
+    if (localStorage.getItem(basketImportedKey(userId)) === "1") return;
+    localStorage.setItem(basketOpsKey(userId), JSON.stringify([...readBasketOps(userId), op]));
+  } catch { /* Local basket remains available. */ }
 }
 export function activateBasketUser(userId: number | null, preserveOffline = false) {
   if (preserveOffline) return;
@@ -43,10 +46,7 @@ export function activateBasketUser(userId: number | null, preserveOffline = fals
       const existing = readV2Basket(userId);
       const newItems = anonymous.filter(item => !existing.some(saved => saved.id === item.id));
       writeV2Basket([...existing, ...newItems], userId);
-      for (const item of newItems) {
-        const ops = readBasketOps(userId);
-        localStorage.setItem(basketOpsKey(userId), JSON.stringify([...ops, { type: "add", id: item.id }]));
-      }
+      for (const item of newItems) appendBasketOp({ type: "add", id: item.id }, userId);
       localStorage.removeItem(ANON_KEY);
     }
     localStorage.setItem(ACTIVE_USER_KEY, String(userId));

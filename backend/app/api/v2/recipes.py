@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
@@ -18,6 +19,7 @@ from app.services.v2_write_limits import (
 )
 
 router = APIRouter(prefix="/api/v2/recipes", tags=["v2-recipes"])
+_PARIS = ZoneInfo("Europe/Paris")
 
 Unit = Literal["g", "kg", "ml", "cl", "l", "piece"]
 
@@ -86,8 +88,7 @@ def _decoded(value):
 async def _detail(connection, recipe_id: int):
     await require_visible(connection, "recipe", recipe_id)
     recipe = await connection.fetchrow(
-        "SELECT r.*, COALESCE(u.username, 'Compte supprimé') AS author FROM v2_recipes r "
-        "LEFT JOIN v2_users u ON u.id=r.author_id WHERE r.id=$1",
+        "SELECT * FROM v2_recipes WHERE id=$1",
         recipe_id,
     )
     if recipe is None:
@@ -102,8 +103,6 @@ async def _detail(connection, recipe_id: int):
     )
     return {
         "id": recipe["id"],
-        "author_id": recipe["author_id"],
-        "author": recipe["author"],
         "title": recipe["title"],
         "description": recipe["description"],
         "base_servings": str(recipe["base_servings"]),
@@ -111,8 +110,8 @@ async def _detail(connection, recipe_id: int):
         "cook_minutes": recipe["cook_minutes"],
         "steps": _decoded(recipe["steps"]),
         "revision": recipe["revision"],
-        "created_at": recipe["created_at"],
-        "updated_at": recipe["updated_at"],
+        "created_at": recipe["created_at"].astimezone(_PARIS).date().isoformat(),
+        "updated_at": recipe["updated_at"].astimezone(_PARIS).date().isoformat(),
         "ingredients": [
             {
                 "id": item["id"],
@@ -200,7 +199,8 @@ async def list_recipes(
         )
         return {
             "items": [
-                {**dict(row), "base_servings": str(row["base_servings"])}
+                {**dict(row), "base_servings": str(row["base_servings"]),
+                 "updated_at": row["updated_at"].astimezone(_PARIS).date().isoformat()}
                 for row in rows
             ],
             "total": total,
@@ -216,6 +216,24 @@ async def get_recipe(recipe_id: int):
     connection = await _connect()
     try:
         return await _detail(connection, recipe_id)
+    finally:
+        await connection.close()
+
+
+@router.get("/{recipe_id}/access")
+async def recipe_access(recipe_id: int, request: Request, response: Response):
+    """Private edit permission, never included in the public recipe cache."""
+    response.headers["Cache-Control"] = "private, no-store"
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        await require_visible(connection, "recipe", recipe_id)
+        row = await connection.fetchrow(
+            "SELECT author_id FROM v2_recipes WHERE id=$1", recipe_id
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="Recette introuvable.")
+        return {"can_edit": user["role"] == "admin" or row["author_id"] == user["id"]}
     finally:
         await connection.close()
 

@@ -1,8 +1,14 @@
 name: price-checker-v2-${PRICE_CHECKER_V2_ENV:-prod}
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "2"
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *bounded-logging
     environment:
       POSTGRES_DB: ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod}
       POSTGRES_USER: ${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_prod}
@@ -24,7 +30,8 @@ services:
     build:
       context: ../../backend
     restart: unless-stopped
-    command: ["uvicorn", "app.main_v2:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+    logging: *bounded-logging
+    command: ["uvicorn", "app.main_v2:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-access-log"]
     environment:
       APP_ENV: ${PRICE_CHECKER_V2_ENV:-prod}
       PRICE_CHECKER_V2_STATE_DIR: /state
@@ -41,6 +48,7 @@ services:
       context: ../../frontend
       dockerfile: Dockerfile.v2
     restart: unless-stopped
+    logging: *bounded-logging
     ports: ["127.0.0.1:${PRICE_CHECKER_V2_PORT:-8080}:8080"]
     depends_on: [backend]
     networks: [internal]

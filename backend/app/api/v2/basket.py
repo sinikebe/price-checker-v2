@@ -1,105 +1,58 @@
-"""Per-account V2 basket; clients retain and reconcile offline operations."""
+"""Read-once legacy server baskets; all new basket writes stay in the browser."""
 
 import json
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, model_validator
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
 
 router = APIRouter(prefix="/api/v2/basket", tags=["v2-basket"])
 
 
-class BasketInput(BaseModel):
-    product_ids: list[int] = Field(max_length=300)
-    revision: int = Field(ge=0)
-
-    @model_validator(mode="after")
-    def unique_ids(self):
-        if any(value <= 0 for value in self.product_ids):
-            raise ValueError("Identifiant produit invalide.")
-        if len(set(self.product_ids)) != len(self.product_ids):
-            raise ValueError("Un produit ne peut figurer qu'une fois dans le panier.")
-        return self
-
-
 async def _user(connection, request):
     user = await _current_user(connection, request)
     if user is None:
-        raise HTTPException(
-            status_code=401, detail="Connectez-vous pour synchroniser le panier."
-        )
+        raise HTTPException(status_code=401, detail="Connectez-vous pour récupérer l'ancien panier.")
     expected = request.headers.get("x-v2-basket-user-id")
     if expected is not None and expected != str(user["id"]):
-        raise HTTPException(status_code=409, detail="Le compte a changé pendant la synchronisation.")
+        raise HTTPException(status_code=409, detail="Le compte a changé.")
     return user
 
 
-@router.get("")
-async def get_basket(request: Request):
+@router.get("/legacy")
+async def legacy_basket(request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
     connection = await _connect()
     try:
         user = await _user(connection, request)
         row = await connection.fetchrow(
-            "SELECT product_ids, revision FROM v2_user_baskets WHERE user_id=$1",
-            user["id"],
+            "SELECT product_ids FROM v2_user_baskets WHERE user_id=$1", user["id"]
         )
-        return {
-            "product_ids": json.loads(row["product_ids"]) if row else [],
-            "revision": row["revision"] if row else 0,
-        }
+        return {"product_ids": json.loads(row["product_ids"]) if row else []}
     finally:
         await connection.close()
 
 
-@router.put("")
-async def put_basket(payload: BasketInput, request: Request):
+@router.delete("/legacy", status_code=204)
+async def clear_legacy_basket(request: Request, response: Response):
     _secure_write(request)
+    response.headers["Cache-Control"] = "private, no-store"
     connection = await _connect()
     try:
         user = await _user(connection, request)
-        async with connection.transaction():
-            if payload.product_ids:
-                found = await connection.fetch(
-                    "SELECT p.id FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
-                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
-                    "WHERE w.kind='product' AND w.content_id=p.id)",
-                    payload.product_ids,
-                )
-                if {row["id"] for row in found} != set(payload.product_ids):
-                    raise HTTPException(status_code=422, detail="Produit introuvable.")
-            row = await connection.fetchrow(
-                "SELECT revision FROM v2_user_baskets WHERE user_id=$1 FOR UPDATE",
-                user["id"],
-            )
-            if row is None:
-                if payload.revision != 0:
-                    raise HTTPException(
-                        status_code=409, detail="Panier modifié ailleurs."
-                    )
-                revision = await connection.fetchval(
-                    "INSERT INTO v2_user_baskets(user_id,product_ids) "
-                    "VALUES($1,$2::jsonb) ON CONFLICT (user_id) DO NOTHING "
-                    "RETURNING revision",
-                    user["id"],
-                    json.dumps(payload.product_ids),
-                )
-                if revision is None:
-                    raise HTTPException(
-                        status_code=409, detail="Panier modifié ailleurs."
-                    )
-            else:
-                if row["revision"] != payload.revision:
-                    raise HTTPException(
-                        status_code=409, detail="Panier modifié ailleurs."
-                    )
-                revision = await connection.fetchval(
-                    "UPDATE v2_user_baskets SET product_ids=$1::jsonb, "
-                    "revision=revision+1, updated_at=now() "
-                    "WHERE user_id=$2 RETURNING revision",
-                    json.dumps(payload.product_ids),
-                    user["id"],
-                )
-        return {"product_ids": payload.product_ids, "revision": revision}
+        await connection.execute(
+            "DELETE FROM v2_user_baskets WHERE user_id=$1", user["id"]
+        )
     finally:
         await connection.close()
+
+
+@router.get("")
+async def obsolete_basket():
+    raise HTTPException(status_code=410, detail="Le panier est désormais local à cet appareil.")
+
+
+@router.put("")
+async def obsolete_basket_write(request: Request):
+    _secure_write(request)
+    raise HTTPException(status_code=410, detail="Le panier est désormais local à cet appareil.")

@@ -87,6 +87,8 @@ Le timer systemd vérifie la planification chaque minute, mais **aucune mise à 
 Voir `systemctl status price-checker-v2-<env>-update.timer` et `journalctl -u price-checker-v2-<env>-update.service` pour diagnostiquer. Le dernier résultat apparaît aussi dans les paramètres. La rotation du certificat PostgreSQL reste assurée par `update.sh` lorsqu'une tentative planifiée est lancée.
 
 
+Les proxys V2 ne journalisent pas les accès HTTP routiniers ; les journaux Docker sont plafonnés à deux fichiers de 10 Mio par service et les sessions expirées/limiteurs de connexion sont purgés périodiquement. Configurer la rotation du journal d’erreurs du proxy hôte selon la politique locale ; les sauvegardes et leur durée de conservation restent à définir avant l’ouverture publique.
+
 Pour diagnostiquer, consulter `docker compose --env-file /opt/price-checker-v2/source/.env -f /opt/price-checker-v2/source/deployment/v2/compose.yaml logs --tail=100`. Le fichier `.env` local conserve la configuration de l'installation et est ignoré par Git. Exporter `PRICE_CHECKER_V2_DATA_DIR` avant l'installation si le stockage persistant est monté ailleurs ; ne pas remplacer ce volume pendant les mises à jour.
 
 ## Instance de développement isolée

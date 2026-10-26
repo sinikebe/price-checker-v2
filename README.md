@@ -4,7 +4,7 @@ Catalogue collaboratif de produits, panier et recettes, avec une application web
 
 Le projet est en cours de développement. Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
 
-Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
+Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
 
 ## Installation sur serveur
 

@@ -33,6 +33,7 @@ export default function V2ReportControl({ kind, contentId, user }: {
         <textarea id={"report-reason-" + kind + "-" + contentId} value={reason}
           minLength={10} maxLength={1000} required rows={3}
           onChange={event => setReason(event.target.value)} />
+        <p>Décrivez le problème sans nom, coordonnées ni autre donnée personnelle. Ce motif sera visible par les modérateurs, pas publié.</p>
         <div className="v2-workspace-actions">
           <button type="submit" className="v2-button v2-button-primary" disabled={busy || reason.trim().length < 10}>Envoyer</button>
           <button type="button" className="v2-button v2-button-secondary" onClick={() => setOpen(false)}>Annuler</button>

@@ -13,7 +13,7 @@ export type RecipeInput = {
   steps: string[]; ingredients: RecipeIngredient[];
 };
 export type Recipe = RecipeInput & {
-  id: number; author_id: number | null; author: string; revision: number;
+  id: number; revision: number;
   created_at: string; updated_at: string;
 };
 export type RecipeSummary = Pick<Recipe, "id" | "title" | "description" | "base_servings" | "prep_minutes" | "cook_minutes" | "updated_at" | "revision"> & { ingredient_count: number };

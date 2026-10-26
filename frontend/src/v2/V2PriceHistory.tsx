@@ -19,16 +19,17 @@ type DraftForm = { retailer: string; store_name: string; city: string; postal_co
 type PricesResponse = { observations: Observation[]; truncated: boolean };
 const channels: Record<Channel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const money = (value: string | number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
-const date = (value: string) => new Date(value).toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
-const dateTime = (value: string) => new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+const dayTime = (value: string) => new Date(value + "T12:00:00").getTime();
+const date = (value: string | number) => new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value)
+  .toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
 const seriesLabel = (row: Observation) => [row.retailer, row.store_name, row.city, row.postal_code, channels[row.sales_channel]].filter(Boolean).join(" · ");
-function localNow() {
+function localToday() {
   const value = new Date();
-  return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 function initialForm(): DraftForm {
   return { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "in_store",
-    price: "", observed_at: localNow(), note: "" };
+    price: "", observed_at: localToday(), note: "" };
 }
 
 async function priceRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
@@ -50,11 +51,11 @@ const chartWidth = 800, chartHeight = 300, chartLeft = 62, chartRight = 22, char
 const plotWidth = chartWidth - chartLeft - chartRight;
 const plotHeight = chartHeight - chartTop - chartBottom;
 const maxZoom = 128;
-const pointLabel = (row: Observation) => [money(row.price), dateTime(row.observed_at), seriesLabel(row)].join(" · ");
+const pointLabel = (row: Observation) => [money(row.price), date(row.observed_at), seriesLabel(row)].join(" · ");
 
 function PriceChart({ observations }: { observations: Observation[] }) {
   const points = observations.filter(row => row.available && row.correction_status !== "active")
-    .sort((a, b) => new Date(a.observed_at).getTime() - new Date(b.observed_at).getTime() || a.id - b.id);
+    .sort((a, b) => dayTime(a.observed_at) - dayTime(b.observed_at) || a.id - b.id);
   if (!points.length) return <p>Aucun relevé disponible à tracer.</p>;
   return <InteractivePriceChart points={points} />;
 }
@@ -88,7 +89,7 @@ function InteractivePriceChart({ points }: { points: Observation[] }) {
     };
   }, []);
 
-  const times = points.map(row => new Date(row.observed_at).getTime());
+  const times = points.map(row => dayTime(row.observed_at));
   const first = Math.min(...times), last = Math.max(...times);
   const fullStart = first === last ? first - 12 * 60 * 60 * 1000 : first;
   const fullEnd = first === last ? last + 12 * 60 * 60 * 1000 : last;
@@ -97,14 +98,12 @@ function InteractivePriceChart({ points }: { points: Observation[] }) {
   const low = Math.min(...values), high = Math.max(...values);
   const padding = Math.max(0.1, (high - low) * .15);
   const min = Math.max(0, low - padding), max = high + padding;
-  const baseX = (row: Observation) => chartLeft + (new Date(row.observed_at).getTime() - fullStart) / fullSpan * plotWidth;
+  const baseX = (row: Observation) => chartLeft + (dayTime(row.observed_at) - fullStart) / fullSpan * plotWidth;
   const x = (row: Observation) => transform.applyX(baseX(row));
   const y = (row: Observation) => chartTop + (max - Number(row.price)) / (max - min) * plotHeight;
   const axisTime = (pixel: number) => fullStart + (transform.invertX(pixel) - chartLeft) / plotWidth * fullSpan;
   const visibleStart = axisTime(chartLeft), visibleEnd = axisTime(chartWidth - chartRight);
-  const axisDate = (value: number) => visibleEnd - visibleStart < 2 * 86400000
-    ? new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
-    : date(new Date(value).toISOString());
+  const axisDate = (value: number) => date(value);
 
   function changeZoom(factor: number) {
     if (svgRef.current && zoomRef.current)
@@ -175,7 +174,7 @@ function InteractivePriceChart({ points }: { points: Observation[] }) {
     {hovered && <div id={tooltipId} className="v2-price-tooltip" role="tooltip"
       style={{ left: hovered.left, top: hovered.top, transform: hovered.above ? "translateY(-100%)" : undefined }}>
       <strong>{money(hovered.row.price)}</strong>
-      <span>{dateTime(hovered.row.observed_at)}</span>
+      <span>{date(hovered.row.observed_at)}</span>
       <span>{seriesLabel(hovered.row)}</span>
     </div>}
   </>;
@@ -214,9 +213,9 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     setError("");
     try {
       await priceRequest(`/products/${productId}/drafts`, "POST", {
-        ...form, observed_at: new Date(form.observed_at).toISOString(),
+        ...form,
       });
-      setForm(previous => ({ ...previous, price: "", note: "", observed_at: localNow() }));
+      setForm(previous => ({ ...previous, price: "", note: "", observed_at: localToday() }));
       setNotice("Relevé envoyé. Il sera visible publiquement après validation.");
       await refresh();
     } catch (reason) {
@@ -250,7 +249,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         <caption>Relevés publiés de ce produit</caption>
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
         <tbody>{observations.map(row => <tr key={row.id}>
-          <td>{dateTime(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
+          <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
           <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}</td>
           <td>{channels[row.sales_channel]}</td>
           <td>{row.source === "manual" ? "Relevé validé" : row.source === "third_party" ? row.source_provider || "Source externe" : "Connecteur"}</td>
@@ -278,17 +277,18 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           <label>Prix en euros<input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal"
             required value={form.price} disabled={busy}
             onChange={event => setForm({ ...form, price: event.target.value })} /></label>
-          <label>Date et heure du relevé<input type="datetime-local" required value={form.observed_at} disabled={busy}
+          <label>Date du relevé<input type="date" required value={form.observed_at} disabled={busy}
             onChange={event => setForm({ ...form, observed_at: event.target.value })} /></label>
           <label>Précision facultative<input maxLength={1000} value={form.note} disabled={busy}
-            onChange={event => setForm({ ...form, note: event.target.value })} /></label>
+            onChange={event => setForm({ ...form, note: event.target.value })} />
+            <small>Ce texte sera vérifié avant publication. N'indiquez ni nom, ni coordonnées, ni donnée personnelle.</small></label>
         </div>
         <button type="submit" className="v2-button v2-button-primary" disabled={busy}>{busy ? "Envoi…" : "Envoyer le relevé"}</button>
       </form>
     </div>}
     {user && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
         <ul>{drafts.map(draft => <li key={draft.id}>
-          <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {dateTime(draft.observed_at)}
+          <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
             {draft.note && <small> · {draft.note}</small>}
             <small> · {draft.status === "draft" ? "En attente" : draft.status === "approved" ? "Publié" : "Refusé"}{user.role === "admin" && draft.author_id !== user.id && ` · ${draft.author}`}</small></span>
           {user.role === "admin" && draft.status === "draft" && <span className="v2-price-review">

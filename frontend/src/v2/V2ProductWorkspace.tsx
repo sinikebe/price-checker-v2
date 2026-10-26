@@ -357,7 +357,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
     {mode === "history" ? <div className="v2-workspace-card"><h2>Historique des modifications</h2>
       {!events ? <p>Chargement…</p> : events.length === 0 ? <p>Aucune modification.</p> : events.map(event =>
         <article key={event.id} className="v2-workspace-event"><strong>{event.event_type === "created" ? "Création" : event.event_type === "new_version" ? "Nouvelle version" : event.event_type === "superseded" ? "Remplacé par une nouvelle version" : "Correction"}</strong>
-          <span> · {event.actor} · {new Date(event.created_at).toLocaleString("fr-FR")}</span>
+          <span> · {new Date(event.created_at + "T12:00:00").toLocaleDateString("fr-FR")}</span>
           {event.before && <ul>{fields.filter(field => event.before?.[field.key] !== event.after[field.key]).map(field =>
             <li key={field.key}><strong>{field.label} :</strong> {event.before?.[field.key] || "—"} → {event.after[field.key] || "—"}</li>)}
             {JSON.stringify(event.before.tags) !== JSON.stringify(event.after.tags) &&

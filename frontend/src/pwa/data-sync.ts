@@ -1,4 +1,4 @@
-import { activeBasketUser, basketOpsKey, readBasketOps, readV2Basket, writeV2Basket, type BasketOp } from "../v2/v2-basket-storage";
+import { activeBasketUser, basketImportedKey, basketOpsKey, readBasketOps, readV2Basket, writeV2Basket, type BasketOp, type BasketProduct } from "../v2/v2-basket-storage";
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 
@@ -7,10 +7,11 @@ const ATTEMPT_KEY = "v2:pwa:sync-attempt";
 const VERSIONS_KEY = "v2:pwa:versions";
 const RECIPES_KEY = "v2:pwa:recipe-summaries";
 const RECIPES_READY_KEY = "v2:pwa:recipe-summaries-ready";
-const CACHE_NAME = "price-checker-offline-data-v2";
+const CACHE_GENERATION_KEY = "v2:pwa:cache-generation";
+const CACHE_NAME = "price-checker-offline-data-v3";
 export const SYNC_EVENT = "v2-pwa-data-synced";
-type Versions = { products: number; recipes: number; basket: number; user_id: number | null };
-type ServerBasket = { product_ids: number[]; revision: number };
+type Versions = { products: number; recipes: number; user_id: number | null };
+type LegacyBasket = { product_ids: number[] };
 let pending: Promise<void> | null = null;
 let basketPending: Promise<void> | null = null;
 
@@ -93,62 +94,40 @@ function applyOps(ids: number[], ops: BasketOp[]): number[] {
   return next;
 }
 
-async function syncBasket(userId: number, cache: Cache): Promise<number> {
-  const stillCurrent = () => {
-    if (activeBasketUser() !== userId) throw new Error("Basket account changed during sync");
-  };
-  const identityHeaders = { "X-V2-Basket-User-ID": String(userId) };
-  stillCurrent();
-  const withdrawn = await withdrawnProducts();
-  const initialOps = JSON.stringify(readBasketOps(userId));
-  const ops: BasketOp[] = (JSON.parse(initialOps) as BasketOp[])
-    .filter(op => op.type !== "add" || typeof op.id !== "number" || !withdrawn.has(op.id));
-  for (let attempt = 0; attempt < 3; attempt++) {
-    stillCurrent();
-    const remoteResponse = await fetch("/api/v2/basket", { cache: "no-store", headers: identityHeaders });
-    if (!remoteResponse.ok) throw new Error("Basket sync unavailable");
-    const remote = await remoteResponse.json() as ServerBasket;
-    stillCurrent();
-    const ids = applyOps(remote.product_ids.filter(id => !withdrawn.has(id)), ops);
-    let revision = remote.revision;
-    if (JSON.stringify(ids) !== JSON.stringify(remote.product_ids)) {
-      const saved = await fetch("/api/v2/basket", {
-        method: "PUT", headers: { "Content-Type": "application/json", ...identityHeaders },
-        body: JSON.stringify({ product_ids: ids, revision: remote.revision }),
-      });
-      stillCurrent();
-      if (saved.status === 409) continue;
-      if (!saved.ok) throw new Error("Basket sync failed");
-      revision = (await saved.json() as ServerBasket).revision;
-      stillCurrent();
-    }
-    const catalogResponse = await cache.match("/api/v2/products");
-    const catalog: Product[] = catalogResponse ? await catalogResponse.json() : [];
-    const byId = new Map(catalog.map(product => [product.id, product]));
-    const remoteProducts = new Map<number, Product>();
+export function importLegacyBasket(): Promise<void> {
+  if (basketPending) return basketPending;
+  const userId = activeBasketUser();
+  if (!navigator.onLine || !userId || localStorage.getItem(basketImportedKey(userId)) === "1") return Promise.resolve();
+  basketPending = (async () => {
+    const headers = { "X-V2-Basket-User-ID": String(userId) };
+    const response = await fetch("/api/v2/basket/legacy", { cache: "no-store", headers });
+    if (!response.ok || activeBasketUser() !== userId) return;
+    const legacy = await response.json() as LegacyBasket;
+    const before = readV2Basket(userId);
+    const opsBefore = JSON.stringify(readBasketOps(userId));
+    const ids = applyOps(legacy.product_ids, JSON.parse(opsBefore) as BasketOp[]);
+    const imported: BasketProduct[] = [];
     for (const id of ids) {
-      stillCurrent();
-      const product = byId.get(id) ?? await fresh<Product>("/api/v2/products/" + id, cache);
-      remoteProducts.set(id, product);
+      if (activeBasketUser() !== userId) return;
+      if (before.some(item => item.id === id)) continue;
+      const result = await fetch("/api/v2/products/" + id, { cache: "no-store" });
+      if (result.status === 404) continue;
+      if (!result.ok) throw new Error("Legacy basket product unavailable");
+      const product = await result.json() as Product;
+      imported.push({ id: product.id, data: product.data, revision: product.revision });
     }
-    stillCurrent();
-    // Re-read operations and local products after every await, then commit synchronously.
-    const latestOps = readBasketOps(userId);
-    const remaining = JSON.stringify(latestOps.slice(0, ops.length)) === initialOps
-      ? latestOps.slice(ops.length) : latestOps;
-    const displayIds = applyOps(ids, remaining).filter(id => !withdrawn.has(id));
-    const local = new Map(readV2Basket(userId).map(product => [product.id, product]));
-    const products = displayIds.map(id => {
-      const product = byId.get(id) ?? local.get(id) ?? remoteProducts.get(id);
-      if (!product) throw new Error("Basket product unavailable");
-      return { id, data: product.data, revision: product.revision };
-    });
-    writeV2Basket(products, userId);
-    if (remaining.length) localStorage.setItem(basketOpsKey(userId), JSON.stringify(remaining));
-    else localStorage.removeItem(basketOpsKey(userId));
-    return revision;
-  }
-  throw new Error("Basket changed concurrently");
+    if (activeBasketUser() !== userId || JSON.stringify(readBasketOps(userId)) !== opsBefore) return;
+    const latest = readV2Basket(userId);
+    const removedDuringImport = new Set(before.filter(item => !latest.some(current => current.id === item.id)).map(item => item.id));
+    const additions = imported.filter(item => !removedDuringImport.has(item.id) && !latest.some(current => current.id === item.id));
+    if (additions.length) writeV2Basket([...latest, ...additions], userId);
+    const cleared = await fetch("/api/v2/basket/legacy", { method: "DELETE", headers });
+    if (!cleared.ok) throw new Error("Legacy basket cleanup failed");
+    localStorage.setItem(basketImportedKey(userId), "1");
+    localStorage.removeItem(basketOpsKey(userId));
+  })().catch(() => { /* Retain old server data for another import attempt. */ })
+    .finally(() => { basketPending = null; });
+  return basketPending;
 }
 
 export function offlineRecipeSummaries(): RecipeSummary[] {
@@ -157,18 +136,19 @@ export function offlineRecipeSummaries(): RecipeSummary[] {
 }
 
 async function run() {
+  if ("caches" in window) await caches.delete("price-checker-offline-data-v2");
   if (!navigator.onLine || !window.location.pathname.startsWith("/v2")) return;
   const userId = activeBasketUser();
   const attemptKey = `${ATTEMPT_KEY}:${userId ?? "anon"}`;
   const versionsKey = `${VERSIONS_KEY}:${userId ?? "anon"}`;
   const last = Number(localStorage.getItem(attemptKey) || 0);
-  if (Date.now() - last < TEN_MINUTES) return;
+  if (Date.now() - last < TEN_MINUTES && localStorage.getItem(CACHE_GENERATION_KEY) === "3") return;
   localStorage.setItem(attemptKey, String(Date.now()));
-  const previous = readJson<Versions>(versionsKey);
+  const previous = localStorage.getItem(CACHE_GENERATION_KEY) === "3" ? readJson<Versions>(versionsKey) : null;
   const cache = await caches.open(CACHE_NAME);
   const cachedCatalog = await cache.match("/api/v2/products");
   const etag = previous && cachedCatalog && localStorage.getItem(RECIPES_READY_KEY) === "1"
-    ? `"u${previous.user_id ?? "anon"}-p${previous.products}-r${previous.recipes}-b${previous.basket}"` : null;
+    ? '"u' + (previous.user_id ?? "anon") + '-p' + previous.products + '-r' + previous.recipes + '"' : null;
   const response = await fetch("/api/v2/sync/versions", {
     cache: "no-store", headers: etag ? { "If-None-Match": etag } : undefined,
   });
@@ -179,31 +159,12 @@ async function run() {
   if (!previous || previous.recipes !== versions.recipes || localStorage.getItem(RECIPES_READY_KEY) !== "1") await syncRecipes(cache);
   if (!previous || previous.products !== versions.products) await syncProducts(cache, userId);
   if (activeBasketUser() !== userId) return;
-  if (userId && (!previous || previous.basket !== versions.basket || readBasketOps(userId).length)) versions.basket = await syncBasket(userId, cache);
-  if (activeBasketUser() !== userId) return;
   localStorage.setItem(versionsKey, JSON.stringify(versions));
+  localStorage.setItem(CACHE_GENERATION_KEY, "3");
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
 export function syncV2Data() {
   if (!pending) pending = run().catch(() => { /* last good offline data remains intact */ }).finally(() => { pending = null; });
   return pending;
-}
-
-export function flushV2BasketOps() {
-  if (basketPending) return basketPending;
-  const userId = activeBasketUser();
-  if (!navigator.onLine || !userId || !readBasketOps(userId).length) return Promise.resolve();
-  let succeeded = false;
-  basketPending = (async () => {
-    if (pending) await pending;
-    if (activeBasketUser() !== userId || !readBasketOps(userId).length) return;
-    const cache = await caches.open(CACHE_NAME);
-    const revision = await syncBasket(userId, cache);
-    succeeded = true;
-    const key = `${VERSIONS_KEY}:${userId}`;
-    const versions = readJson<Versions>(key);
-    if (versions) localStorage.setItem(key, JSON.stringify({ ...versions, basket: revision }));
-  })().catch(() => { /* retain unsent local operations */ }).finally(() => { basketPending = null; if (succeeded && readBasketOps(userId).length) void flushV2BasketOps(); });
-  return basketPending;
 }

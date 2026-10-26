@@ -36,7 +36,7 @@ export type V2OffSnapshot = {
   field_count: number; presented_field_count: number; sections: OffSection[];
 };
 export type ProductEvent = {
-  id: number; event_type: string; actor: string; created_at: string;
+  id: number; event_type: string; created_at: string;
   before: ProductData | null; after: ProductData;
 };
 export const emptyProduct = (): ProductData => ({

@@ -121,16 +121,23 @@ async def test_basket_rejects_client_bound_to_another_account(monkeypatch, isola
         transport = httpx.ASGITransport(app=app, client=("192.0.2.78", 1234))
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
             client.cookies.set("pc_v2_session", token, path="/api/v2")
+            await connection.execute(
+                "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
+                user_ids[0], "[123]",
+            )
             wrong = {"X-V2-Basket-User-ID": str(user_ids[1])}
-            assert (await client.get("/api/v2/basket", headers=wrong)).status_code == 409
+            assert (await client.get("/api/v2/basket/legacy", headers=wrong)).status_code == 409
+            assert (await client.delete("/api/v2/basket/legacy", headers=wrong)).status_code == 409
+            rightful = {"X-V2-Basket-User-ID": str(user_ids[0])}
+            fetched = await client.get("/api/v2/basket/legacy", headers=rightful)
+            assert fetched.status_code == 200
+            assert fetched.json()["product_ids"] == [123]
+            assert fetched.headers["cache-control"] == "private, no-store"
+            assert (await client.get("/api/v2/basket")).status_code == 410
             assert (await client.put(
-                "/api/v2/basket", headers=wrong,
-                json={"product_ids": [], "revision": 0},
-            )).status_code == 409
-            assert (await client.get(
-                "/api/v2/basket",
-                headers={"X-V2-Basket-User-ID": str(user_ids[0])},
-            )).status_code == 200
+                "/api/v2/basket", json={"product_ids": [123], "revision": 0},
+            )).status_code == 410
+            assert (await client.delete("/api/v2/basket/legacy", headers=rightful)).status_code == 204
             assert await connection.fetchval(
                 "SELECT count(*) FROM v2_user_baskets WHERE user_id=ANY($1::bigint[])",
                 user_ids,
@@ -161,6 +168,36 @@ async def test_expired_sessions_are_purged_before_a_new_session(isolated_config)
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_sessions WHERE expires_at <= now()"
         ) == 0
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_auth_rows_expire_without_new_logins(isolated_config):
+    connection = await connect_v2(isolated_config)
+    try:
+        user_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('retention','retention','test','visitor') RETURNING id"
+        )
+        await connection.execute(
+            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+            "VALUES($1,$2,now()-interval '1 day'),"
+            "($3,$2,now()+interval '1 day')",
+            "a" * 64, user_id, "b" * 64,
+        )
+        await connection.execute(
+            "INSERT INTO v2_auth_limits(key,window_started_at,attempts) "
+            "VALUES($1,now()-interval '2 hours',1),($2,now(),1)",
+            "old-retention", "live-retention",
+        )
+        await auth.purge_ephemeral_auth_data(connection)
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_sessions WHERE user_id=$1", user_id
+        ) == 1
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_auth_limits"
+        ) == 1
     finally:
         await connection.close()
 

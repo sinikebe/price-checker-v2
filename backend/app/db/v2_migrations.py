@@ -459,6 +459,17 @@ MIGRATIONS = {
         ALTER TABLE v2_product_events ALTER COLUMN actor_id DROP NOT NULL;
         ALTER TABLE v2_product_events ALTER COLUMN draft_id DROP NOT NULL;
     """,
+    "0015_price_days": """
+        -- The service only needs the calendar day of a price reading.
+        -- Keep the existing timestamptz columns for backwards compatibility,
+        -- but irreversibly discard the old time of day.
+        UPDATE v2_price_drafts SET observed_at =
+            ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
+            AT TIME ZONE 'Europe/Paris';
+        UPDATE v2_price_observations SET observed_at =
+            ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
+            AT TIME ZONE 'Europe/Paris';
+    """,
 
 }
 

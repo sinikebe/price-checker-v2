@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI
+import asyncpg
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v2.account_data import router as account_data_router
+from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
 from app.api.v2.basket import router as basket_router
 from app.api.v2.moderation import router as moderation_router
@@ -26,15 +29,31 @@ from app.services.v2_off_refresh_queue import off_refresh_worker
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
 
+async def retention_worker():
+    while True:
+        try:
+            connection = await _connect()
+            try:
+                await purge_ephemeral_auth_data(connection)
+            finally:
+                await connection.close()
+        except (HTTPException, OSError, TimeoutError, asyncpg.PostgresError):
+            logging.getLogger(__name__).warning("V2 ephemeral-data cleanup deferred")
+        await asyncio.sleep(3600)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    worker = asyncio.create_task(off_refresh_worker())
+    workers = [asyncio.create_task(off_refresh_worker()),
+               asyncio.create_task(retention_worker())]
     try:
         yield
     finally:
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
+        for worker in workers:
+            worker.cancel()
+        for worker in workers:
+            with suppress(asyncio.CancelledError):
+                await worker
         await aclose_off_client()
         await close_v2_pool()
 

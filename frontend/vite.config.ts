@@ -30,7 +30,7 @@ export default defineConfig({
           ((/^\/api\/v2\/recipes(?:\/\d+)?$/.test(url.pathname) ||
             /^\/api\/v2\/products(?:\/\d+)?$/.test(url.pathname))),
         handler: 'NetworkFirst',
-        options: { networkTimeoutSeconds: 3, cacheName: 'price-checker-offline-data-v2', expiration: { maxEntries: 600 } },
+        options: { networkTimeoutSeconds: 3, cacheName: 'price-checker-offline-data-v3', expiration: { maxEntries: 600 } },
       }],
     },
   })],

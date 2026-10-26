@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
@@ -20,6 +21,11 @@ from app.services.v2_write_limits import (
 )
 
 router = APIRouter(prefix="/api/v2/prices", tags=["v2-prices"])
+_PARIS = ZoneInfo("Europe/Paris")
+
+
+def _day(value: datetime) -> str:
+    return value.astimezone(_PARIS).date().isoformat()
 
 
 class PriceDraftCreate(BaseModel):
@@ -44,14 +50,22 @@ class PriceDraftCreate(BaseModel):
             raise ValueError("L’enseigne, le point de vente et la ville ou zone sont nécessaires.")
         return value
 
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def parse_day(cls, value):
+        if isinstance(value, str) and len(value) == 10:
+            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+        return value
+
     @field_validator("observed_at")
     @classmethod
     def valid_date(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Indiquez une date et un fuseau horaire.")
-        if value > datetime.now(UTC) + timedelta(minutes=5):
+        day = value.astimezone(_PARIS).date()
+        if day > datetime.now(_PARIS).date():
             raise ValueError("Un prix ne peut pas être relevé dans le futur.")
-        return value
+        return datetime.combine(day, time(12), tzinfo=_PARIS)
 
 
 async def _user(connection: asyncpg.Connection, request: Request) -> dict:
@@ -113,7 +127,7 @@ def _observation(row: asyncpg.Record) -> dict:
     return {
         "id": row["id"],
         "price": str(row["price"]),
-        "observed_at": row["observed_at"],
+        "observed_at": _day(row["observed_at"]),
         "retailer": row["retailer"],
         "retailer_id": row["retailer_id"],
         "store_name": row["store_name"],
@@ -135,7 +149,7 @@ def _draft(row: asyncpg.Record) -> dict:
         "author": row["author"],
         "author_id": row["author_id"],
         "price": str(row["price"]),
-        "observed_at": row["observed_at"],
+        "observed_at": _day(row["observed_at"]),
         "retailer": row["retailer"],
         "store_name": row["store_name"],
         "city": row["city"],

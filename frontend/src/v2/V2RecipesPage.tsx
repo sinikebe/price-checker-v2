@@ -59,6 +59,9 @@ function List({ user, onLogout }: Props) {
 
 function Detail({ id, user, onLogout }: Props) {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [access, setAccess] = useState<{ recipeId: number; userId: number; canEdit: boolean } | null>(null);
+  const userId = user?.id;
+  const canEdit = access !== null && access.recipeId === id && access.userId === userId && access.canEdit;
   const [products, setProducts] = useState<Product[]>([]);
   const [productsError, setProductsError] = useState(false);
   const [error, setError] = useState("");
@@ -71,6 +74,16 @@ function Detail({ id, user, onLogout }: Props) {
     productRequest<Product[]>("").then(value => { if (active) { setProducts(value); setProductsError(false); } }).catch(() => { if (active) setProductsError(true); });
     return () => { active = false; };
   }, [id]);
+  useEffect(() => {
+    let active = true;
+    if (userId && id !== undefined) {
+      const recipeId = id;
+      recipeRequest<{ can_edit: boolean }>("/" + recipeId + "/access")
+        .then(value => { if (active) setAccess({ recipeId, userId, canEdit: value.can_edit }); })
+        .catch(() => { if (active) setAccess({ recipeId, userId, canEdit: false }); });
+    }
+    return () => { active = false; };
+  }, [id, userId]);
   async function remove() {
     if (!recipe || !window.confirm(`Supprimer « ${recipe.title} » ?`)) return;
     setDeleting(true);
@@ -81,8 +94,8 @@ function Detail({ id, user, onLogout }: Props) {
     <Link className="v2-recipes-back" to="/v2/recettes">← Toutes les recettes</Link>
     {error && <p role="alert" className="v2-recipes-error">{error}</p>}
     {!recipe && !error && <p>Chargement…</p>}
-    {recipe && <><div className="v2-recipes-heading"><div><span className="v2-section-kicker">RECETTE · {recipe.author}</span><h1>{recipe.title}<span>.</span></h1><p>{recipe.description}</p></div>
-      {(user?.id === recipe.author_id || user?.role === "admin") && <div className="v2-recipes-actions"><Link className="v2-button v2-button-secondary" to={`/v2/recettes/${recipe.id}/modifier`}>Modifier</Link><button className="v2-button v2-button-secondary" disabled={deleting} onClick={() => { void remove(); }}>Supprimer</button></div>}</div>
+    {recipe && <><div className="v2-recipes-heading"><div><span className="v2-section-kicker">RECETTE</span><h1>{recipe.title}<span>.</span></h1><p>{recipe.description}</p></div>
+      {canEdit && <div className="v2-recipes-actions"><Link className="v2-button v2-button-secondary" to={`/v2/recettes/${recipe.id}/modifier`}>Modifier</Link><button className="v2-button v2-button-secondary" disabled={deleting} onClick={() => { void remove(); }}>Supprimer</button></div>}</div>
       <div className="v2-recipes-detail-grid"><section className="v2-recipes-card"><h2>Ingrédients</h2>
         <label className="v2-recipes-servings">Pour <input aria-label="Nombre de portions" type="number" min="0.001" step="0.001" value={servings} onChange={event => setServings(event.target.value)} /> portions</label>
         <ul className="v2-recipes-ingredients">{recipe.ingredients.map(item => {

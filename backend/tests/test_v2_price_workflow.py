@@ -6,6 +6,7 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -59,6 +60,7 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
         transport = httpx.ASGITransport(app=app)
         base = f"/api/v2/prices/products/{product_id}"
         observed = (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0).isoformat()
+        observed_day = datetime.fromisoformat(observed).astimezone(ZoneInfo("Europe/Paris")).date().isoformat()
         payload = {
             "retailer": "Disposable Shop", "store_name": "Centre",
             "city": "Paris", "postal_code": "75001", "sales_channel": "in_store",
@@ -74,7 +76,8 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
                                       headers={"x-test-user": "author"})
             assert first.status_code == 201, first.text
             first_id = first.json()["id"]
-            second = await client.post(base + "/drafts", json={**payload, "sales_channel": "drive"},
+            second = await client.post(base + "/drafts", json={**payload, "sales_channel": "drive",
+                                                             "observed_at": observed_day},
                                        headers={"x-test-user": "author"})
             assert second.status_code == 201, second.text
             second_id = second.json()["id"]
@@ -82,6 +85,7 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
             assert (await client.get(base + "/drafts", headers={"x-test-user": "other"})).json() == []
             own = (await client.get(base + "/drafts", headers={"x-test-user": "author"})).json()
             assert {row["id"] for row in own} == {first_id, second_id}
+            assert all(row["observed_at"] == observed_day for row in own)
             assert (await client.post(f"/api/v2/prices/drafts/{first_id}/approve",
                                       headers={"x-test-user": "other"})).status_code == 403
             for draft_id in (first_id, second_id):
@@ -92,6 +96,11 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
             assert len(observations) == 2
             assert {row["sales_channel"] for row in observations} == {"in_store", "drive"}
             assert all(row["price"] == "2.50" for row in observations)
+            assert all(row["observed_at"] == observed_day for row in observations)
+            stored = await connection.fetch(
+                "SELECT observed_at FROM v2_price_observations WHERE product_id=$1", product_id
+            )
+            assert len({row["observed_at"] for row in stored}) == 1
             assert all(row["retailer"] == "Disposable Shop" for row in observations)
             assert (await client.post(f"/api/v2/prices/drafts/{first_id}/approve",
                                       headers={"x-test-user": "admin"})).status_code == 404
