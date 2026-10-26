@@ -21,6 +21,12 @@ class ComponentVersionsTests(unittest.TestCase):
             {"database", "application"},
         )
 
+    def test_product_files_shared_with_off_bump_both(self):
+        self.assertEqual(
+            classify(["backend/app/api/v2/products.py"]),
+            {"application", "products", "open_food_facts"},
+        )
+
     def test_shared_sync_changes_bump_each_affected_component_once(self):
         self.assertEqual(
             classify(["frontend/src/pwa/data-sync.ts", "backend/app/api/v2/basket.py"]),

@@ -22,7 +22,7 @@ BACKEND_PACKAGE = ROOT / "backend/pyproject.toml"
 # A rule may affect several components. The application version is bumped
 # once for every push with at least one affected implementation component.
 RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("backend/app/api/v2/products.py", ("products",)),
+    ("backend/app/api/v2/products.py", ("products", "open_food_facts")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
     ("backend/app/api/v2/basket.py", ("basket",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
@@ -37,12 +37,12 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
-    ("frontend/src/v2/V2ProductWorkspace.tsx", ("products",)),
+    ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2BarcodeScanner.tsx", ("products",)),
     ("frontend/src/v2/V2BarcodeSearch.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2Off*.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/off-types.ts", ("open_food_facts",)),
-    ("frontend/src/v2/v2-products-api.ts", ("products",)),
+    ("frontend/src/v2/v2-products-api.ts", ("products", "open_food_facts")),
     ("frontend/src/v2/v2-product-workspace.css", ("products",)),
     ("frontend/src/v2/V2RecipesPage.tsx", ("recipes",)),
     ("frontend/src/v2/v2-recipes-*.ts", ("recipes",)),
