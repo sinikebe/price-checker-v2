@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { select } from "d3-selection";
+import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 import type { V2User } from "./v2-auth-api";
 import "./v2-price-history.css";
 
@@ -44,40 +46,138 @@ async function priceRequest<T>(path: string, method = "GET", body?: object): Pro
   return response.json() as Promise<T>;
 }
 
+const chartWidth = 800, chartHeight = 300, chartLeft = 62, chartRight = 22, chartTop = 22, chartBottom = 42;
+const plotWidth = chartWidth - chartLeft - chartRight;
+const plotHeight = chartHeight - chartTop - chartBottom;
+const maxZoom = 128;
+const pointLabel = (row: Observation) => [money(row.price), dateTime(row.observed_at), seriesLabel(row)].join(" · ");
+
 function PriceChart({ observations }: { observations: Observation[] }) {
   const points = observations.filter(row => row.available && row.correction_status !== "active")
     .sort((a, b) => new Date(a.observed_at).getTime() - new Date(b.observed_at).getTime() || a.id - b.id);
   if (!points.length) return <p>Aucun relevé disponible à tracer.</p>;
-  const width = 800, height = 300, left = 62, right = 22, top = 22, bottom = 42;
-  const values = points.map(row => Number(row.price));
-  const min = Math.max(0, Math.min(...values) - Math.max(0.1, (Math.max(...values) - Math.min(...values)) * .15));
-  const max = Math.max(...values) + Math.max(0.1, (Math.max(...values) - Math.min(...values)) * .15);
+  return <InteractivePriceChart points={points} />;
+}
+
+function InteractivePriceChart({ points }: { points: Observation[] }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const clipId = "v2-price-clip-" + useId().replace(/:/g, "");
+  const tooltipId = "v2-price-tooltip-" + useId().replace(/:/g, "");
+  const [transform, setTransform] = useState<ZoomTransform>(zoomIdentity);
+  const [hovered, setHovered] = useState<{ row: Observation; left: number; top: number; above: boolean } | null>(null);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const behavior = zoom<SVGSVGElement, unknown>()
+      .scaleExtent([1, maxZoom])
+      .extent([[chartLeft, chartTop], [chartWidth - chartRight, chartHeight - chartBottom]])
+      .translateExtent([[chartLeft, chartTop], [chartWidth - chartRight, chartHeight - chartBottom]])
+      .touchable(() => false)
+      .on("zoom", (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
+        setTransform(event.transform);
+        setHovered(null);
+      });
+    const selection = select(svg);
+    selection.call(behavior);
+    zoomRef.current = behavior;
+    return () => {
+      selection.on(".zoom", null);
+      zoomRef.current = null;
+    };
+  }, []);
+
   const times = points.map(row => new Date(row.observed_at).getTime());
-  const start = Math.min(...times), end = Math.max(...times);
-  const x = (row: Observation) => left + ((new Date(row.observed_at).getTime() - start) / (end - start || 1)) * (width - left - right);
-  const y = (row: Observation) => top + ((max - Number(row.price)) / (max - min)) * (height - top - bottom);
-  const singleX = (row: Observation) => start === end ? (left + width - right) / 2 : x(row);
+  const first = Math.min(...times), last = Math.max(...times);
+  const fullStart = first === last ? first - 12 * 60 * 60 * 1000 : first;
+  const fullEnd = first === last ? last + 12 * 60 * 60 * 1000 : last;
+  const fullSpan = fullEnd - fullStart;
+  const values = points.map(row => Number(row.price));
+  const low = Math.min(...values), high = Math.max(...values);
+  const padding = Math.max(0.1, (high - low) * .15);
+  const min = Math.max(0, low - padding), max = high + padding;
+  const baseX = (row: Observation) => chartLeft + (new Date(row.observed_at).getTime() - fullStart) / fullSpan * plotWidth;
+  const x = (row: Observation) => transform.applyX(baseX(row));
+  const y = (row: Observation) => chartTop + (max - Number(row.price)) / (max - min) * plotHeight;
+  const axisTime = (pixel: number) => fullStart + (transform.invertX(pixel) - chartLeft) / plotWidth * fullSpan;
+  const visibleStart = axisTime(chartLeft), visibleEnd = axisTime(chartWidth - chartRight);
+  const axisDate = (value: number) => visibleEnd - visibleStart < 2 * 86400000
+    ? new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+    : date(new Date(value).toISOString());
+
+  function changeZoom(factor: number) {
+    if (svgRef.current && zoomRef.current)
+      zoomRef.current.scaleBy(select(svgRef.current), factor, [chartLeft + plotWidth / 2, chartTop + plotHeight / 2]);
+  }
+  function moveView(direction: number) {
+    if (svgRef.current && zoomRef.current)
+      zoomRef.current.translateBy(select(svgRef.current), direction * plotWidth * .25 / transform.k, 0);
+  }
+  function resetView() {
+    if (svgRef.current && zoomRef.current)
+      zoomRef.current.transform(select(svgRef.current), zoomIdentity);
+  }
+  function showTooltip(row: Observation, clientX: number, clientY: number) {
+    setHovered({
+      row,
+      left: Math.max(12, Math.min(clientX + 14, window.innerWidth - 250)),
+      top: clientY > 140 ? clientY - 12 : clientY + 18,
+      above: clientY > 140,
+    });
+  }
+
   return <>
+    <div className="v2-price-chart-controls">
+      <div className="v2-price-chart-buttons" aria-label="Commandes du graphique des prix">
+        <button type="button" onClick={() => changeZoom(1.6)} disabled={transform.k >= maxZoom - .01} aria-label="Zoomer">+</button>
+        <button type="button" onClick={() => changeZoom(1 / 1.6)} disabled={transform.k <= 1.001} aria-label="Dézoomer">−</button>
+        <button type="button" onClick={() => moveView(.25)} disabled={transform.k <= 1.001} aria-label="Reculer dans le temps">←</button>
+        <button type="button" onClick={() => moveView(-.25)} disabled={transform.k <= 1.001} aria-label="Avancer dans le temps">→</button>
+        <button type="button" onClick={resetView} disabled={transform.k <= 1.001}>Réinitialiser</button>
+      </div>
+      <span className="v2-price-chart-range" role="status">{axisDate(visibleStart)} – {axisDate(visibleEnd)}{transform.k > 1.001 && " · ×" + transform.k.toFixed(1)}</span>
+    </div>
+    <p className="v2-price-chart-help">À la souris : molette pour zoomer dans le temps, glisser pour se déplacer. Sur mobile et au clavier, utilisez les boutons.</p>
     <div className="v2-price-chart-scroll">
-      <svg className="v2-price-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby="v2-price-chart-title v2-price-chart-description">
+      <svg ref={svgRef} className="v2-price-chart" viewBox={["0", "0", chartWidth, chartHeight].join(" ")}
+        role="group" aria-labelledby="v2-price-chart-title v2-price-chart-description">
         <title id="v2-price-chart-title">Évolution des prix relevés</title>
-        <desc id="v2-price-chart-description">Une seule courbe relie les relevés disponibles et non contestés de tous les points de vente et canaux, dans l’ordre chronologique. Le tableau suivant détaille chaque relevé.</desc>
+        <desc id="v2-price-chart-description">Une seule courbe relie les prix disponibles et non contestés. Zoomez sur les dates avec la molette ou les boutons, déplacez la vue en glissant et réinitialisez-la avec le bouton. Chaque point est accessible au clavier ; le tableau contient tous les relevés.</desc>
+        <defs>
+          <clipPath id={clipId}><rect x={chartLeft} y={chartTop} width={plotWidth} height={plotHeight} /></clipPath>
+          <clipPath id={clipId + "-dots"}><rect x={chartLeft - 9} y={chartTop - 9} width={plotWidth + 18} height={plotHeight + 18} /></clipPath>
+        </defs>
         {[0, .5, 1].map(fraction => {
           const value = min + (max - min) * fraction;
-          const ordinate = top + (1 - fraction) * (height - top - bottom);
-          return <g key={fraction}><line x1={left} y1={ordinate} x2={width - right} y2={ordinate} className="v2-price-gridline" />
-            <text x={left - 10} y={ordinate + 4} textAnchor="end" className="v2-price-axis-label">{money(value)}</text></g>;
+          const ordinate = chartTop + (1 - fraction) * plotHeight;
+          return <g key={fraction}><line x1={chartLeft} y1={ordinate} x2={chartWidth - chartRight} y2={ordinate} className="v2-price-gridline" />
+            <text x={chartLeft - 10} y={ordinate + 4} textAnchor="end" className="v2-price-axis-label">{money(value)}</text></g>;
         })}
-        <text x={left} y={height - 12} className="v2-price-axis-label">{date(new Date(start).toISOString())}</text>
-        <text x={width - right} y={height - 12} textAnchor="end" className="v2-price-axis-label">{date(new Date(end).toISOString())}</text>
-        {points.length > 1 && <polyline className="v2-price-line" fill="none" strokeWidth="3"
-          points={points.map(row => `${singleX(row)},${y(row)}`).join(" ")} />}
-        {points.map(row => <circle className="v2-price-dot" key={row.id} cx={singleX(row)} cy={y(row)} r="6"
-          stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2">
-          <title>{seriesLabel(row)} · {dateTime(row.observed_at)} · {money(row.price)}</title>
-        </circle>)}
+        <text x={chartLeft} y={chartHeight - 12} className="v2-price-axis-label">{axisDate(visibleStart)}</text>
+        <text x={chartWidth - chartRight} y={chartHeight - 12} textAnchor="end" className="v2-price-axis-label">{axisDate(visibleEnd)}</text>
+        {points.length > 1 && <g clipPath={"url(#" + clipId + ")"}>
+          <polyline className="v2-price-line" fill="none" strokeWidth="3"
+            points={points.map(row => [x(row), y(row)].join(",")).join(" ")} />
+        </g>}
+        <g clipPath={"url(#" + clipId + "-dots)"}>
+          {points.map(row => <circle className="v2-price-dot" key={row.id} cx={x(row)} cy={y(row)} r="7"
+            stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2" tabIndex={0}
+            aria-label={pointLabel(row)} aria-describedby={hovered?.row.id === row.id ? tooltipId : undefined}
+            onPointerEnter={event => showTooltip(row, event.clientX, event.clientY)}
+            onPointerMove={event => showTooltip(row, event.clientX, event.clientY)}
+            onPointerLeave={() => setHovered(null)}
+            onFocus={event => { const bounds = event.currentTarget.getBoundingClientRect(); showTooltip(row, bounds.right, bounds.top); }}
+            onBlur={() => setHovered(null)} />)}
+        </g>
       </svg>
     </div>
+    {hovered && <div id={tooltipId} className="v2-price-tooltip" role="tooltip"
+      style={{ left: hovered.left, top: hovered.top, transform: hovered.above ? "translateY(-100%)" : undefined }}>
+      <strong>{money(hovered.row.price)}</strong>
+      <span>{dateTime(hovered.row.observed_at)}</span>
+      <span>{seriesLabel(hovered.row)}</span>
+    </div>}
   </>;
 }
 

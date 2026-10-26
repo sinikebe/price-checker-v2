@@ -8,7 +8,7 @@ Une correction n'écrase pas un ancien relevé. C'est une observation manuelle a
 
 Les références `product_id` portent sur des fiches V2 publiées. Lorsqu'une fiche reçoit une nouvelle version (composition ou format changé), les anciennes observations gardent leur référence historique. Un lecteur peut remonter `predecessor_id` pour présenter cet historique archivé, mais ne doit pas le fusionner dans le prix courant de la nouvelle version. `import_key` est facultatif et sert aux imports idempotents, sans imposer une source particulière.
 
-Le schéma ne contient pas de prix initiaux. Les routes V2 exposent les observations publiées et les propositions privées ; la fiche produit affiche les relevés disponibles et non contestés sur une courbe chronologique unique, sans distinguer les magasins ou canaux en séries séparées. Le tableau conserve le détail de chaque relevé. L’export/import V2 transfère les produits et prix publiés entre instances.
+Le schéma ne contient pas de prix initiaux. Les routes V2 exposent les observations publiées et les propositions privées ; la fiche produit affiche les relevés disponibles et non contestés sur une courbe chronologique unique, sans distinguer les magasins ou canaux en séries séparées. Le graphique affiche le détail de chaque point au survol ou au focus clavier ; la molette et les boutons zooment dans le temps, le glisser-déposer et les flèches déplacent la vue, et le bouton Réinitialiser restaure la période complète. Le tableau conserve le détail de chaque relevé. L’export/import V2 transfère les produits et prix publiés entre instances.
 
 ## Provenance et contributions
 

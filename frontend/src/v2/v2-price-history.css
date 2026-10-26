@@ -4,9 +4,22 @@
 .v2-price-heading p, .v2-price-history p { color: var(--v2-muted, #617467); line-height: 1.55; }
 .v2-price-latest { padding: 10px 14px; border-radius: 10px; background: #e9f4e8; color: #205e42; }
 .v2-price-chart-scroll, .v2-price-table-scroll { overflow-x: auto; }
-.v2-price-history .v2-price-chart { display: block; min-width: 560px; width: 100%; height: auto; aspect-ratio: 8 / 3; margin: 16px 0 2px; }
+.v2-price-chart-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; }
+.v2-price-chart-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.v2-price-chart-buttons button { min-width: 36px; padding: 6px 10px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 8px; background: #fff; color: #205e42; font: inherit; font-weight: 700; cursor: pointer; }
+.v2-price-chart-buttons button:hover:not(:disabled) { background: #e9f4e8; }
+.v2-price-chart-buttons button:focus-visible { outline: 3px solid #20795e; outline-offset: 2px; }
+.v2-price-chart-buttons button:disabled { opacity: .45; cursor: not-allowed; }
+.v2-price-chart-range, .v2-price-chart-help { font-size: .82rem; }
+.v2-price-chart-range { color: var(--v2-muted, #617467); }
+.v2-price-history .v2-price-chart-help { margin: 7px 0 0; }
+.v2-price-history .v2-price-chart { display: block; min-width: 560px; width: 100%; height: auto; aspect-ratio: 8 / 3; margin: 12px 0 2px; cursor: grab; }
+.v2-price-history .v2-price-chart:active { cursor: grabbing; }
 .v2-price-line { stroke: #227856; stroke-linejoin: round; stroke-linecap: round; }
-.v2-price-dot { fill: #227856; }
+.v2-price-dot { fill: #227856; cursor: help; }
+.v2-price-dot:is(:hover, :focus-visible) { stroke-width: 3; outline: none; }
+.v2-price-tooltip { position: fixed; z-index: 30; display: grid; gap: 2px; width: 230px; max-width: calc(100vw - 24px); padding: 10px 12px; border-radius: 9px; background: #183f31; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); pointer-events: none; font-size: .82rem; line-height: 1.35; }
+.v2-price-tooltip strong { font-size: 1rem; }
 .v2-price-gridline { stroke: #dae5dc; stroke-width: 1; }
 .v2-price-axis-label { fill: #526b5b; font-size: 12px; }
 .v2-price-table-scroll table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; }
@@ -28,6 +41,9 @@
 .v2-price-note { margin-top: 14px; font-size: .9rem; }
 .v2-price-error { color: #a32739 !important; font-weight: 700; }
 .v2-price-success { color: #2e7955 !important; font-weight: 700; }
+html[data-v2-theme="dark"] .v2-price-chart-buttons button { background: #1b3028; color: #d4f5c1; border-color: #517164; }
+html[data-v2-theme="dark"] .v2-price-chart-buttons button:hover:not(:disabled) { background: #294b36; }
+html[data-v2-theme="dark"] .v2-price-tooltip { background: #d4f5c1; color: #18322e; }
 html[data-v2-theme="dark"] .v2-price-latest { background: #294b36; color: #d4f5c1; }
 html[data-v2-theme="dark"] .v2-price-line { stroke: #a9d989; }
 html[data-v2-theme="dark"] .v2-price-dot { fill: #a9d989; }
