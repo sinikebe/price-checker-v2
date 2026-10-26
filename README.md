@@ -2,7 +2,7 @@
 
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
-Le projet est en cours de développement. La gestion des produits, du panier et des recettes est disponible ; le schéma des prix, magasins et relevés est documenté, mais ses interfaces de saisie et de consultation ne sont pas encore actives.
+Le projet est en cours de développement. Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus. Un compte peut proposer un prix, publié après validation administrative.
 
 ## Installation sur serveur
 

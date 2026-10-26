@@ -16,12 +16,10 @@ type DraftForm = { retailer: string; store_name: string; city: string; postal_co
   sales_channel: Channel; price: string; observed_at: string; note: string };
 type PricesResponse = { observations: Observation[]; truncated: boolean };
 const channels: Record<Channel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
-const colors = ["#227856", "#2b67ad", "#a46b18", "#a43c74", "#6954a9", "#a44632"];
 const money = (value: string | number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
 const date = (value: string) => new Date(value).toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
 const dateTime = (value: string) => new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 const seriesLabel = (row: Observation) => [row.retailer, row.store_name, row.city, row.postal_code, channels[row.sales_channel]].filter(Boolean).join(" · ");
-const seriesKey = (row: Observation) => row.store_id + ":" + row.sales_channel;
 function localNow() {
   const value = new Date();
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -48,9 +46,8 @@ async function priceRequest<T>(path: string, method = "GET", body?: object): Pro
 
 function PriceChart({ observations }: { observations: Observation[] }) {
   const points = observations.filter(row => row.available && row.correction_status !== "active")
-    .slice().reverse();
+    .sort((a, b) => new Date(a.observed_at).getTime() - new Date(b.observed_at).getTime() || a.id - b.id);
   if (!points.length) return <p>Aucun relevé disponible à tracer.</p>;
-  const series = [...new Map(points.map(row => [seriesKey(row), seriesLabel(row)])).entries()];
   const width = 800, height = 300, left = 62, right = 22, top = 22, bottom = 42;
   const values = points.map(row => Number(row.price));
   const min = Math.max(0, Math.min(...values) - Math.max(0.1, (Math.max(...values) - Math.min(...values)) * .15));
@@ -64,7 +61,7 @@ function PriceChart({ observations }: { observations: Observation[] }) {
     <div className="v2-price-chart-scroll">
       <svg className="v2-price-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby="v2-price-chart-title v2-price-chart-description">
         <title id="v2-price-chart-title">Évolution des prix relevés</title>
-        <desc id="v2-price-chart-description">Un tracé par point de vente et canal. Le tableau suivant contient chaque relevé avec sa date et son prix.</desc>
+        <desc id="v2-price-chart-description">Une seule courbe relie les relevés disponibles et non contestés de tous les points de vente et canaux, dans l’ordre chronologique. Le tableau suivant détaille chaque relevé.</desc>
         {[0, .5, 1].map(fraction => {
           const value = min + (max - min) * fraction;
           const ordinate = top + (1 - fraction) * (height - top - bottom);
@@ -73,22 +70,14 @@ function PriceChart({ observations }: { observations: Observation[] }) {
         })}
         <text x={left} y={height - 12} className="v2-price-axis-label">{date(new Date(start).toISOString())}</text>
         <text x={width - right} y={height - 12} textAnchor="end" className="v2-price-axis-label">{date(new Date(end).toISOString())}</text>
-        {series.map(([key, label], index) => {
-          const group = points.filter(row => seriesKey(row) === key);
-          const color = colors[index % colors.length];
-          return <g key={key}>
-            {group.length > 1 && <polyline fill="none" stroke={color} strokeWidth="3"
-              points={group.map(row => `${singleX(row)},${y(row)}`).join(" ")} />}
-            {group.map(row => <circle key={row.id} cx={singleX(row)} cy={y(row)} r="6"
-              fill={color} stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2">
-              <title>{label} · {date(row.observed_at)} · {money(row.price)}</title>
-            </circle>)}
-          </g>;
-        })}
+        {points.length > 1 && <polyline className="v2-price-line" fill="none" strokeWidth="3"
+          points={points.map(row => `${singleX(row)},${y(row)}`).join(" ")} />}
+        {points.map(row => <circle className="v2-price-dot" key={row.id} cx={singleX(row)} cy={y(row)} r="6"
+          stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2">
+          <title>{seriesLabel(row)} · {dateTime(row.observed_at)} · {money(row.price)}</title>
+        </circle>)}
       </svg>
     </div>
-    <div className="v2-price-legend" aria-label="Séries du graphique">{series.map(([key, label], index) =>
-      <span key={key}><i style={{ backgroundColor: colors[index % colors.length] }} aria-hidden="true" />{label}</span>)}</div>
   </>;
 }
 
@@ -151,7 +140,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
   const latest = observations.find(row => row.available && row.correction_status !== "active");
   return <section className="v2-workspace-card v2-price-history" aria-labelledby="v2-price-heading">
     <div className="v2-price-heading"><div><h2 id="v2-price-heading">Prix relevés</h2>
-      <p>Historique de cette référence précise, par point de vente et canal.</p></div>
+      <p>Tous les prix disponibles et non contestés de cette référence sont reliés sur une seule courbe.</p></div>
       {latest && <strong className="v2-price-latest">Dernier relevé : {money(latest.price)}</strong>}
     </div>
     {!prices && !error && <p>Chargement des prix…</p>}

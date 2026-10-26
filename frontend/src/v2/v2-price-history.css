@@ -5,11 +5,10 @@
 .v2-price-latest { padding: 10px 14px; border-radius: 10px; background: #e9f4e8; color: #205e42; }
 .v2-price-chart-scroll, .v2-price-table-scroll { overflow-x: auto; }
 .v2-price-chart { display: block; min-width: 560px; width: 100%; margin: 16px 0 2px; }
+.v2-price-line { stroke: #227856; stroke-linejoin: round; stroke-linecap: round; }
+.v2-price-dot { fill: #227856; }
 .v2-price-gridline { stroke: #dae5dc; stroke-width: 1; }
 .v2-price-axis-label { fill: #526b5b; font-size: 12px; }
-.v2-price-legend { display: flex; flex-wrap: wrap; gap: 7px 17px; margin: 0 0 20px; font-size: .82rem; }
-.v2-price-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.v2-price-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .v2-price-table-scroll table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; }
 .v2-price-table-scroll caption { margin-bottom: 8px; text-align: left; font-weight: 700; }
 .v2-price-table-scroll :is(th,td) { padding: 10px 12px; border-bottom: 1px solid var(--v2-line, #dce8db); vertical-align: top; }
@@ -30,6 +29,8 @@
 .v2-price-error { color: #a32739 !important; font-weight: 700; }
 .v2-price-success { color: #2e7955 !important; font-weight: 700; }
 html[data-v2-theme="dark"] .v2-price-latest { background: #294b36; color: #d4f5c1; }
+html[data-v2-theme="dark"] .v2-price-line { stroke: #a9d989; }
+html[data-v2-theme="dark"] .v2-price-dot { fill: #a9d989; }
 html[data-v2-theme="dark"] .v2-price-gridline { stroke: #476054; }
 html[data-v2-theme="dark"] .v2-price-axis-label { fill: #b2c9b8; }
 html[data-v2-theme="dark"] .v2-price-fields :is(input,select) { background: #172822; border-color: #517164; color: #edf5eb; }
