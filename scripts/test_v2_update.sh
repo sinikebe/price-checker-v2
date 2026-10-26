@@ -31,7 +31,10 @@ trap cleanup EXIT
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0=$source_dir
-base=$(git -C "$source_dir" rev-parse "${V2_UPGRADE_BASE_REF:-HEAD^}")
+base_ref="${V2_UPGRADE_BASE_REF:-HEAD^}"
+# GitHub uses all-zero before SHA when a branch is created.
+if [[ "$base_ref" =~ ^0+$ ]]; then base_ref=HEAD^; fi
+base=$(git -C "$source_dir" rev-parse "$base_ref")
 head=$(git -C "$source_dir" rev-parse HEAD)
 git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$base:refs/heads/main"
