@@ -41,16 +41,18 @@ PY
 "${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" |
   python3 -c 'import json,sys; assert json.load(sys.stdin)["admin_initialized"] is False'
-python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/access-code" <<'PY' |
-  curl -fsS -H "Content-Type: application/json" --data-binary @- \
-    "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/admin" |
-  python3 -c 'import json,sys; assert json.load(sys.stdin)["role"] == "admin"'
+python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/access-code" "$sandbox/bootstrap.json" <<'PYBOOT'
 import json
+import os
 import sys
 with open(sys.argv[1]) as source:
     code = source.read().strip()
-print(json.dumps({"access_code": code, "password": "ci-bootstrap-password"}))
-PY
+with open(sys.argv[2], "w") as target:
+    json.dump({"access_code": code, "password": "ci-bootstrap-password"}, target)
+os.chmod(sys.argv[2], 0o600)
+PYBOOT
+curl -fsS -H "Content-Type: application/json"   --data-binary @"$sandbox/bootstrap.json"   "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/admin" |
+  python3 -c 'import json,sys; assert json.load(sys.stdin)["role"] == "admin"'
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" |
   python3 -c 'import json,sys; assert json.load(sys.stdin)["admin_initialized"] is True'
 echo "Fresh install smoke passed: limited app role, API and admin bootstrap healthy."
