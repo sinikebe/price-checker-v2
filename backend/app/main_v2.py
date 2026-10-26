@@ -21,6 +21,7 @@ from app.api.v2.transfers import router as transfers_router
 from app.api.v2.updates import router as updates_router
 from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
+from app.services.v2_db_pool import close_v2_pool
 from app.services.v2_off_refresh_queue import off_refresh_worker
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
@@ -35,6 +36,7 @@ async def lifespan(_: FastAPI):
         with suppress(asyncio.CancelledError):
             await worker
         await aclose_off_client()
+        await close_v2_pool()
 
 
 app = FastAPI(title="Price Checker V2 API", lifespan=lifespan)

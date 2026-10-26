@@ -342,3 +342,27 @@ async def test_account_export_is_private_and_excludes_credentials(isolated_db):
             assert "Other private draft" not in response.text
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_api_pool_bounds_concurrent_connections(isolated_db, monkeypatch):
+    from app.services import v2_db_pool
+
+    await v2_db_pool.close_v2_pool()
+    monkeypatch.setattr(v2_db_pool, "_POOL_SIZE", 2)
+    first = await v2_db_pool.acquire_v2(isolated_db)
+    second = await v2_db_pool.acquire_v2(isolated_db)
+    waiting = asyncio.create_task(v2_db_pool.acquire_v2(isolated_db))
+    try:
+        await asyncio.sleep(0.1)
+        assert not waiting.done()
+        await first.close()
+        third = await asyncio.wait_for(waiting, 2)
+        assert await third.fetchval("SELECT 1") == 1
+        await third.close()
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+        await first.close()
+        await second.close()
+        await v2_db_pool.close_v2_pool()

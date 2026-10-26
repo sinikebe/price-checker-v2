@@ -23,7 +23,7 @@ from app.api.v2.setup import (
     _require_secure_transport,
 )
 from app.core.config import get_settings
-from app.db.v2_migrations import connect_v2
+from app.services.v2_db_pool import acquire_v2
 
 router = APIRouter(prefix="/api/v2/auth", tags=["v2-auth"])
 
@@ -146,12 +146,12 @@ async def _purge_expired_limits(connection: asyncpg.Connection) -> None:
     )
 
 
-async def _connect() -> asyncpg.Connection:
+async def _connect():
     config = _read_config()
     if config is None:
         raise HTTPException(status_code=503, detail="Configurez d'abord la base V2.")
     try:
-        return await connect_v2(config)
+        return await acquire_v2(config)
     except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
         raise HTTPException(status_code=503, detail="Base V2 indisponible.") from exc
 
