@@ -69,7 +69,13 @@ if [[ "$bundled_db" == 1 ]] && ! openssl x509 -in "$cert_dir/server.crt" \
     -checkend $((60 * 86400)) -noout >/dev/null 2>&1; then
   renew_cert=1
 fi
-if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 ]]; then
+needs_role_split=0
+if [[ "$bundled_db" == 1 && -f "$config_file" &&
+      ( "$db_user" == "$PRICE_CHECKER_V2_DB_NAME" ||
+        ! -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ) ]]; then
+  needs_role_split=1
+fi
+if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 && "$needs_role_split" == 0 ]]; then
   echo "Already current: $old_sha"
   exit 0
 fi

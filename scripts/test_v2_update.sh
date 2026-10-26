@@ -31,7 +31,7 @@ trap cleanup EXIT
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0=$source_dir
-base=$(git -C "$source_dir" rev-parse HEAD^)
+base=$(git -C "$source_dir" rev-parse "${V2_UPGRADE_BASE_REF:-HEAD^}")
 head=$(git -C "$source_dir" rev-parse HEAD)
 git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$base:refs/heads/main"
@@ -84,6 +84,11 @@ before=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c 
 git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
 PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
 [[ $(git -C "$repo" rev-parse HEAD) == "$head" ]] || { echo "Updater did not install candidate commit." >&2; exit 1; }
+# A legacy updater cannot execute newly added post-upgrade logic on its first
+# pass. The new updater must finish that transition at the same SHA.
+if [[ ! -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]]; then
+  PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
+fi
 "${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
 "${compose[@]}" run --rm --no-deps \
   -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
