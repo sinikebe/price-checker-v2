@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
+
 from app.api.v2 import auth, setup
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
