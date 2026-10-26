@@ -60,7 +60,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 32px;
+  flex-wrap: wrap;
+  gap: 20px 32px;
+  padding-block: 16px;
 }
 
 .v2-brand {
@@ -103,7 +105,9 @@
 .v2-nav {
   display: flex;
   align-items: center;
-  gap: clamp(16px, 3vw, 42px);
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 12px clamp(12px, 1.7vw, 24px);
   font-size: .9rem;
   font-weight: 650;
 }

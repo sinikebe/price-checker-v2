@@ -33,6 +33,12 @@ class ComponentVersionsTests(unittest.TestCase):
             {"application", "pwa", "products", "recipes", "basket"},
         )
 
+    def test_preferences_and_updater_paths_are_classified(self):
+        self.assertEqual(classify([
+            "frontend/src/v2/V2SettingsPage.tsx", "frontend/src/v2/v2-dark.css",
+            "frontend/src/pwa/PwaUpdateContext.tsx",
+        ]), {"application", "pwa"})
+
     def test_docs_tests_ci_and_generated_versions_do_not_bump(self):
         self.assertEqual(classify([
             "README.md", "backend/tests/test_v2_off.py",

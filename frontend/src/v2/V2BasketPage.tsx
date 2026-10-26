@@ -9,7 +9,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
     <header className="v2-header"><div className="v2-wrap v2-header-inner">
       <Link className="v2-brand" to="/v2">price<span className="v2-brand-accent">checker</span>.</Link>
-      <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
+      <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link><Link to="/v2/parametres">Paramètres</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
     </div></header>
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
       <div className="v2-recipes-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Enregistré sur cet appareil et disponible hors ligne. Les prix apparaîtront lorsqu’ils seront disponibles.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Choisir des produits →</Link></div>

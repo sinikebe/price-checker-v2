@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useRegisterSW } from "virtual:pwa-register/react";
+import { usePwaUpdate } from "./PwaUpdateState";
 import "./pwa-controls.css";
 import { flushV2BasketOps, syncV2Data } from "./data-sync";
 import { V2_BASKET_LOCAL_CHANGE } from "../v2/v2-basket-storage";
@@ -11,15 +11,7 @@ export default function PwaControls() {
   const [online, setOnline] = useState(navigator.onLine);
   const [installed, setInstalled] = useState(window.matchMedia("(display-mode: standalone)").matches);
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
-    onRegisteredSW(_url, registration) {
-      if (!registration) return;
-      const check = () => { if (document.visibilityState === "visible" && navigator.onLine) void registration.update(); };
-      check();
-      document.addEventListener("visibilitychange", check);
-      window.addEventListener("online", check);
-    },
-  });
+  const { needRefresh, dismissUpdate, applyUpdate } = usePwaUpdate();
   useEffect(() => {
     const install = (event: Event) => { event.preventDefault(); setInstallEvent(event as InstallEvent); };
     const installedNow = () => { setInstallEvent(null); setInstalled(true); };
@@ -55,7 +47,7 @@ export default function PwaControls() {
   if (!needRefresh && !installEvent && online && (!isIos || installed)) return null;
   return <div className="pwa-controls" role="status" aria-live="polite">
     {!online && <span>Hors ligne · panier et recettes enregistrés disponibles</span>}
-    {needRefresh && <><span>Nouvelle version disponible</span><button type="button" onClick={() => void updateServiceWorker(true)}>Mettre à jour</button><button type="button" onClick={() => setNeedRefresh(false)}>Plus tard</button></>}
+    {needRefresh && <><span>Nouvelle version disponible</span><button type="button" onClick={() => void applyUpdate()}>Mettre à jour</button><button type="button" onClick={() => dismissUpdate()}>Plus tard</button></>}
     {installEvent && !installed && <button type="button" onClick={() => void askInstall()}>Installer l’app</button>}
     {isIos && !installed && !installEvent && <span>Pour installer : Partager → Sur l’écran d’accueil</span>}
   </div>;

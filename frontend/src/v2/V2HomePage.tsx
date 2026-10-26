@@ -77,8 +77,7 @@ export default function V2HomePage({ user, onLogout }: {
             <Link to="/v2/produits/nouveau">Ajouter un produit</Link>
             {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
             {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
-            <Link to="/v2/produits">Explorer les produits</Link>
-            {user?.role === "admin" && <Link to="/v2/settings/database">Paramètres</Link>}
+            <Link to="/v2/parametres">Paramètres</Link>
             <Link className="v2-nav-basket" to="/v2/panier">
               Mon panier <span className="v2-count">{basketCount}</span>
             </Link>

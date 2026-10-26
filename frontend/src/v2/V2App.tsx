@@ -21,10 +21,11 @@ export default function V2App() {
 
   if (path === "/v2/versions") return <V2VersionsPage />;
   if (path === "/" || path === "/v2") return <V2BasketProvider><V2Gateway /></V2BasketProvider>;
-  if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
+  if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
     || workspaceMode || recipeMode || path === "/v2/panier") {
     return <V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
+      preferencesMode={path === "/v2/parametres"}
       authMode={path === "/v2/connexion" ? "login" : path === "/v2/inscription" ? "register" : undefined}
       recipeMode={recipeMode}
       basketMode={path === "/v2/panier"}

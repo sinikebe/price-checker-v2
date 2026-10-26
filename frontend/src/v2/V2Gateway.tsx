@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
 import apiClient from "../api/client";
+import V2SettingsPage from "./V2SettingsPage";
 import V2HomePage from "./V2HomePage";
 import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2RecipesPage from "./V2RecipesPage";
@@ -361,8 +362,9 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, authMode, workspaceMode, workspaceId, recipeMode, recipeId, basketMode = false }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, recipeMode, recipeId, basketMode = false }: {
   settingsMode?: boolean;
+  preferencesMode?: boolean;
   authMode?: "login" | "register";
   workspaceMode?: "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
   workspaceId?: number;
@@ -435,6 +437,7 @@ export default function V2Gateway({ settingsMode = false, authMode, workspaceMod
     return <SetupPage configured environment={status.app_env}
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
+  if (preferencesMode) return <V2SettingsPage user={authStatus.user} />;
   if (!authStatus.admin_initialized) {
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }

@@ -1,0 +1,19 @@
+.v2-settings-main { max-width: 990px; padding-block: 55px 100px; }
+.v2-settings-main h1 { margin: 10px 0 34px; font-size: clamp(2.4rem, 5vw, 4.3rem); letter-spacing: -.06em; line-height: 1.1; }
+.v2-settings-main h1 span { color: #78ae69; }
+.v2-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.v2-settings-card { padding: clamp(24px, 3vw, 32px); border: 1px solid var(--v2-line); border-radius: 20px; background: #fff; }
+.v2-settings-card h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.v2-settings-card p { margin: 0 0 20px; color: var(--v2-muted); }
+.v2-theme-options { display: flex; flex-wrap: wrap; gap: 9px; margin: 25px 0 0; padding: 0; border: 0; }
+.v2-theme-options legend { margin-bottom: 9px; font-weight: 700; }
+.v2-theme-options label { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--v2-line); border-radius: 10px; cursor: pointer; }
+.v2-theme-options label.v2-theme-selected { border-color: #5a9d70; background: #eef8eb; }
+.v2-theme-options input { accent-color: #2f8061; }
+.v2-settings-status { min-height: 2em; font-weight: 700; }
+.v2-settings-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.v2-settings-actions button { cursor: pointer; border-width: 1px; }
+.v2-settings-actions button:disabled { opacity: .65; cursor: wait; }
+.v2-settings-card .v2-settings-note { margin-bottom: 14px; font-size: .84rem; }
+.v2-settings-link { color: #2e7955 !important; font-weight: 700; }
+@media (max-width: 700px) { .v2-settings-grid { grid-template-columns: 1fr; } .v2-settings-main { padding-block: 38px 75px; } }

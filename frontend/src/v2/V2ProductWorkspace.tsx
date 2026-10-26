@@ -45,7 +45,7 @@ function Frame({ children, user, onLogout }: { children: React.ReactNode; user: 
       <Link className="v2-brand" to="/v2"><span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
         <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
       <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/panier">Panier</Link>
+        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
         <Link to="/v2/produits/nouveau">Ajouter</Link>
         {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
         {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
