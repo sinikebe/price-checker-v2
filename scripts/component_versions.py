@@ -38,6 +38,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/openfoodfacts_client.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_snapshot.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_refresh_queue.py", ("open_food_facts",)),
+    ("backend/app/services/v2_write_limits.py", ("accounts", "products", "recipes")),
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),

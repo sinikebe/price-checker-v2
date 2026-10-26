@@ -9,8 +9,6 @@ source_dir=$(cd "$(dirname "$0")/.." && pwd)
 sandbox=$(mktemp -d /tmp/price-checker-v2-ci-XXXXXX)
 bare=$sandbox/origin.git
 repo=$sandbox/source
-# The installed base can predate the in-context Dockerfile fix.
-export COMPOSE_BAKE=false
 export PRICE_CHECKER_V2_ENV=dev
 export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
 export PRICE_CHECKER_V2_DB_NAME=v2_ci_update
@@ -39,7 +37,10 @@ git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$base:refs/heads/main"
 git clone -q --branch main "$bare" "$repo"
 
-"$repo/deployment/v2/install.sh"
+# The historical base keeps its Dockerfile outside the build context;
+# Buildx 0.37+ refuses that layout. This exception applies only to the old
+# install; the candidate update builds with normal entitlement checks.
+BUILDX_BAKE_ENTITLEMENTS_FS=0 "$repo/deployment/v2/install.sh"
 password_file=$PRICE_CHECKER_V2_DATA_DIR/postgres/password
 config_file=$PRICE_CHECKER_V2_DATA_DIR/state/database.json
 python3 - "$password_file" "$config_file" <<'PY'
