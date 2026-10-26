@@ -470,7 +470,33 @@ MIGRATIONS = {
             ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
             AT TIME ZONE 'Europe/Paris';
     """,
-
+    "0016_recipe_review": """
+        -- Existing recipes are already published. New creations and edits
+        -- enter this private review queue before touching public rows.
+        CREATE TABLE v2_recipe_submissions (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            author_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            recipe_id bigint REFERENCES v2_recipes(id) ON DELETE CASCADE,
+            payload jsonb NOT NULL,
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            base_revision integer CHECK (base_revision > 0),
+            status varchar(16) NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            reviewed_at timestamptz,
+            reviewer_id bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            result_recipe_id bigint REFERENCES v2_recipes(id) ON DELETE SET NULL,
+            CONSTRAINT v2_recipe_submission_target CHECK
+                ((recipe_id IS NULL) = (base_revision IS NULL))
+        );
+        CREATE INDEX v2_recipe_review_queue
+            ON v2_recipe_submissions(status, created_at, id);
+        CREATE INDEX v2_recipe_submission_author
+            ON v2_recipe_submissions(author_id, created_at DESC);
+        CREATE UNIQUE INDEX v2_one_pending_recipe_edit
+            ON v2_recipe_submissions(author_id, recipe_id)
+            WHERE status='pending' AND recipe_id IS NOT NULL;
+    """,
 }
 
 

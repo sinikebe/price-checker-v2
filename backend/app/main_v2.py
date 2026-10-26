@@ -17,6 +17,7 @@ from app.api.v2.basket import router as basket_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
 from app.api.v2.products import router as products_router
+from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
 from app.api.v2.setup import router as setup_router
 from app.api.v2.sync import router as sync_router
@@ -77,6 +78,7 @@ for router in (
     prices_router,
     transfers_router,
     recipes_router,
+    recipe_submissions_router,
     sync_router,
     basket_router,
     updates_router,

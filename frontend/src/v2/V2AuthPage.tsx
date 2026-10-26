@@ -89,7 +89,7 @@ export default function V2AuthPage({
                   spellCheck={false} minLength={3} maxLength={32} required value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="Votre pseudo" />
-                {isRegister && <small>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore. Ce pseudo apparaîtra avec vos recettes et contributions publiques : n’y mettez pas d’information personnelle.</small>}
+                {isRegister && <small>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore. Ce pseudo sert à vous connecter et aux échanges privés avec la modération. Il n’est pas affiché comme auteur public ; évitez néanmoins les informations personnelles.</small>}
               </div>
             )}
             {isAdmin && (

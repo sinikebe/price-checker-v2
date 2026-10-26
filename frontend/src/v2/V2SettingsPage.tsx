@@ -7,6 +7,7 @@ import versions from "./component-versions.json";
 import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2TransferPanel from "./V2TransferPanel";
 import V2ModerationPanel from "./V2ModerationPanel";
+import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import V2AccountDeletion from "./V2AccountDeletion";
 import "./v2-settings.css";
 
@@ -106,6 +107,7 @@ export default function V2SettingsPage({ user, onAccountDeleted }: {
           onAccountDeleted();
         }} />}
         {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
+        {user?.role === "admin" && <V2RecipeReviewPanel />}
         {user?.role === "admin" && <V2ModerationPanel />}
         {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}
         {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">

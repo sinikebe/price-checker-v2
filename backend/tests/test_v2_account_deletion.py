@@ -11,7 +11,6 @@ from pathlib import Path
 import httpx
 import pytest
 import pytest_asyncio
-
 from app.api.v2 import auth, setup
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
@@ -151,6 +150,10 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             "VALUES('product',$1,$2,'Private report')", product_id, user_id,
         )
         await connection.execute(
+            "INSERT INTO v2_recipe_submissions(author_id,payload) VALUES($1,$2::jsonb)",
+            user_id, json.dumps({"title": "Pending private recipe"}),
+        )
+        await connection.execute(
             "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
             user_id, json.dumps([product_id]),
         )
@@ -167,7 +170,9 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             client.cookies.set("pc_v2_session", admin_token, path="/api/v2")
             assert (await client.get(recipe_path + "/access")).json() == {"can_edit": True}
             client.cookies.set("pc_v2_session", first_token, path="/api/v2")
-            assert (await client.get("/api/v2/account/export")).status_code == 200
+            exported = await client.get("/api/v2/account/export")
+            assert exported.status_code == 200
+            assert exported.json()["recipe_submissions"][0]["payload"]["title"] == "Pending private recipe"
             wrong = await client.request(
                 "DELETE", "/api/v2/account", json={"password": "incorrect"}
             )
@@ -214,6 +219,9 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
         ) == 0
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_price_drafts WHERE author_id=$1", user_id
+        ) == 0
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_recipe_submissions WHERE author_id=$1", user_id
         ) == 0
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_content_reports WHERE reporter_id=$1", user_id

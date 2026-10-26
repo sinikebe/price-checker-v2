@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/v2/account", tags=["v2-account-data"])
 class AccountDeletion(BaseModel):
     password: SecretStr
 
-_JSON_FIELDS = {"data", "steps", "product_ids", "before_data", "after_data", "raw_payload"}
+_JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload"}
 
 
 def _rows(rows) -> list[dict]:
@@ -72,6 +72,11 @@ async def export_account_data(request: Request):
                 "ON r.id=i.recipe_id WHERE r.author_id=$1 ORDER BY i.recipe_id,i.position",
                 user_id,
             )
+            recipe_submissions = await connection.fetch(
+                "SELECT id,recipe_id,payload,base_revision,revision,status,created_at,"
+                "reviewed_at,result_recipe_id FROM v2_recipe_submissions "
+                "WHERE author_id=$1 ORDER BY id", user_id,
+            )
             price_drafts = await connection.fetch(
                 "SELECT id, product_id, retailer_id, store_id, entry_kind, "
                 "captured_via, source_url, price, quantity_text, observed_at, "
@@ -98,6 +103,7 @@ async def export_account_data(request: Request):
             "product_events": _rows(product_events),
             "recipes": _rows(recipes),
             "recipe_ingredients": _rows(ingredients),
+            "recipe_submissions": _rows(recipe_submissions),
             "price_drafts": _rows(price_drafts),
             "published_prices": _rows(published_prices),
             "reports": _rows(reports),

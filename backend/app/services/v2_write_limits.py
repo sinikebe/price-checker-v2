@@ -32,9 +32,10 @@ async def check_open_limit(
 ) -> None:
     if user["role"] == "admin":
         return
-    if table not in {"v2_product_drafts", "v2_price_drafts", "v2_recipes"}:
+    if table not in {"v2_product_drafts", "v2_price_drafts", "v2_recipes", "v2_recipe_submissions"}:
         raise ValueError("Unsupported contribution table")
-    status = "" if table == "v2_recipes" else " AND status='draft'"
+    status = ("" if table == "v2_recipes" else " AND status='pending'"
+              if table == "v2_recipe_submissions" else " AND status='draft'")
     count = await connection.fetchval(
         f"SELECT count(*) FROM {table} WHERE author_id=$1{status}", user["id"]
     )

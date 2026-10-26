@@ -238,8 +238,9 @@ async def recipe_access(recipe_id: int, request: Request, response: Response):
         await connection.close()
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=202)
 async def create_recipe(payload: RecipeInput, request: Request):
+    """Submit a new recipe privately; only a reviewer may publish it."""
     _secure_write(request)
     connection = await _connect()
     try:
@@ -247,64 +248,56 @@ async def create_recipe(payload: RecipeInput, request: Request):
         async with connection.transaction():
             await check_write_limit(connection, user)
             await check_open_limit(
-                connection, user, table="v2_recipes", maximum=MAX_RECIPES,
+                connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
             )
-            row = await connection.fetchrow(
-                "INSERT INTO v2_recipes "
-                "(author_id,title,description,base_servings, "
-                "prep_minutes,cook_minutes,steps) "
-                "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id",
-                user["id"],
-                payload.title,
-                payload.description,
-                payload.base_servings,
-                payload.prep_minutes,
-                payload.cook_minutes,
-                json.dumps(payload.steps, ensure_ascii=False),
+            submission_id = await connection.fetchval(
+                "INSERT INTO v2_recipe_submissions(author_id,payload) "
+                "VALUES($1,$2::jsonb) RETURNING id",
+                user["id"], payload.model_dump_json(),
             )
-            await _replace_ingredients(connection, row["id"], payload.ingredients)
-        return await _detail(connection, row["id"])
+        return {"submission_id": submission_id, "status": "pending"}
     finally:
         await connection.close()
 
 
-@router.put("/{recipe_id}")
+@router.put("/{recipe_id}", status_code=202)
 async def update_recipe(recipe_id: int, payload: RecipeUpdate, request: Request):
+    """Keep the approved version visible while its replacement is reviewed."""
     _secure_write(request)
     connection = await _connect()
     try:
         user = await _user(connection, request)
         async with connection.transaction():
             await check_write_limit(connection, user)
+            await require_visible(connection, "recipe", recipe_id)
             existing = await connection.fetchrow(
-                "SELECT author_id FROM v2_recipes WHERE id=$1 FOR UPDATE", recipe_id
+                "SELECT author_id,revision FROM v2_recipes WHERE id=$1 FOR UPDATE",
+                recipe_id,
             )
             if existing is None:
                 raise HTTPException(status_code=404, detail="Recette introuvable.")
             if existing["author_id"] != user["id"] and user["role"] != "admin":
-                raise HTTPException(
-                    status_code=403, detail="Recette d'un autre auteur."
-                )
-            updated = await connection.fetchval(
-                "UPDATE v2_recipes SET title=$1, description=$2, base_servings=$3, "
-                "prep_minutes=$4, cook_minutes=$5, steps=$6::jsonb, "
-                "revision=revision+1, updated_at=now() "
-                "WHERE id=$7 AND revision=$8 RETURNING revision",
-                payload.title,
-                payload.description,
-                payload.base_servings,
-                payload.prep_minutes,
-                payload.cook_minutes,
-                json.dumps(payload.steps, ensure_ascii=False),
-                recipe_id,
-                payload.revision,
+                raise HTTPException(status_code=403, detail="Recette d'un autre auteur.")
+            if existing["revision"] != payload.revision:
+                raise HTTPException(status_code=409, detail="La recette a été modifiée ailleurs.")
+            open_edit = await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM v2_recipe_submissions "
+                "WHERE author_id=$1 AND recipe_id=$2 AND status='pending')",
+                user["id"], recipe_id,
             )
-            if updated is None:
-                raise HTTPException(
-                    status_code=409, detail="La recette a été modifiée ailleurs."
-                )
-            await _replace_ingredients(connection, recipe_id, payload.ingredients)
-        return await _detail(connection, recipe_id)
+            if open_edit:
+                raise HTTPException(status_code=409, detail="Une modification attend déjà validation.")
+            await check_open_limit(
+                connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
+            )
+            submission_id = await connection.fetchval(
+                "INSERT INTO v2_recipe_submissions"
+                "(author_id,recipe_id,base_revision,payload) "
+                "VALUES($1,$2,$3,$4::jsonb) RETURNING id",
+                user["id"], recipe_id, payload.revision,
+                payload.model_dump_json(exclude={"revision"}),
+            )
+        return {"submission_id": submission_id, "status": "pending", "recipe_id": recipe_id}
     finally:
         await connection.close()
 

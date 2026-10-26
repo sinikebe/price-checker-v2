@@ -17,6 +17,16 @@ export type Recipe = RecipeInput & {
   created_at: string; updated_at: string;
 };
 export type RecipeSummary = Pick<Recipe, "id" | "title" | "description" | "base_servings" | "prep_minutes" | "cook_minutes" | "updated_at" | "revision"> & { ingredient_count: number };
+export type RecipeSubmission = {
+  id: number; recipe_id: number | null; result_recipe_id: number | null;
+  title: string; status: "pending" | "approved" | "rejected";
+  created_at: string; reviewed_at: string | null;
+};
+export type RecipeProposal = { submission_id: number; status: "pending"; recipe_id?: number };
+export type RecipeReview = {
+  id: number; recipe_id: number | null; base_revision: number | null;
+  author: string; created_at: string; payload: RecipeInput;
+};
 export type RecipePage = { items: RecipeSummary[]; total: number; page: number; page_size: number };
 
 export async function recipeRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
@@ -34,6 +44,7 @@ export async function recipeRequest<T>(path: string, method = "GET", body?: obje
     throw new Error(typeof detail === "string" ? detail : validation ?? "La requête a échoué.");
   }
   const result = response.status === 204 ? undefined : await response.json();
-  if (method !== "GET") await cacheRecipeWrite(method, path, result as Recipe | undefined);
+  if ((method === "DELETE" && /^\/\d+$/.test(path)) || (method !== "GET" && result && typeof result === "object" && "ingredients" in result))
+    await cacheRecipeWrite(method, path, result as Recipe | undefined);
   return result as T;
 }
