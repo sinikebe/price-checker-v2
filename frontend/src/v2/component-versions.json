@@ -1,17 +1,17 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.19",
+    "version": "0.1.20",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "status": "active"
   },
   "recipes": {
     "label": "Recettes",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "status": "active"
   },
   "basket": {
@@ -21,22 +21,22 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "status": "active"
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "status": "active"
   },
   "pwa": {
     "label": "Mode hors ligne / PWA",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "status": "active"
   },
   "deployment": {
