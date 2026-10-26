@@ -34,7 +34,7 @@ async def main() -> None:
                 for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
             ])
             if role != config["username"] or not limited or not can_write:
-                raise ValueError("Application role lacks permissions or is privileged")
+                raise ValueError(f"Application role check: role={role}, limited={limited}, can_write={can_write}")
             print("Bundled database application role is limited and writable.")
             return
         database = config["database"]
