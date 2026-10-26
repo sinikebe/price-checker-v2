@@ -27,6 +27,7 @@ from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
 from app.services.v2_db_pool import close_v2_pool
 from app.services.v2_off_refresh_queue import off_refresh_worker
+from app.services.v2_private_retention import purge_private_data
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
 
@@ -36,10 +37,11 @@ async def retention_worker():
             connection = await _connect()
             try:
                 await purge_ephemeral_auth_data(connection)
+                await purge_private_data(connection)
             finally:
                 await connection.close()
         except (HTTPException, OSError, TimeoutError, asyncpg.PostgresError):
-            logging.getLogger(__name__).warning("V2 ephemeral-data cleanup deferred")
+            logging.getLogger(__name__).warning("V2 private-data cleanup deferred")
         await asyncio.sleep(3600)
 
 

@@ -113,7 +113,7 @@ async def resolve_report(report_id: int, payload: ReportDecision, request: Reque
                 await connection.execute(
                     "INSERT INTO v2_content_withdrawals"
                     "(kind,content_id,reason,withdrawn_by) VALUES($1,$2,$3,$4)",
-                    report["kind"], report["content_id"], report["reason"], admin["id"],
+                    report["kind"], report["content_id"], "Signalement traité", admin["id"],
                 )
                 collection = "products" if report["kind"] == "product" else "recipes"
                 await connection.execute(

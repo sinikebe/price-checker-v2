@@ -45,6 +45,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/v2_visibility.py", ("products", "recipes")),
     ("backend/app/services/v2_trusted_proxy.py", ("accounts", "deployment")),
     ("backend/app/services/v2_db_pool.py", ("database",)),
+    ("backend/app/services/v2_private_retention.py", ("accounts", "database")),
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),

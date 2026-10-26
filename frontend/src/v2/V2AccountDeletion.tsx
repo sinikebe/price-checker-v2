@@ -8,7 +8,7 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
     const prefixes = [
       `v2:product:new:${id}`, `v2:product:edit:${id}:`,
       `v2:product:draft:${id}:`, `v2:recipe:new:${id}`,
-      `v2:recipe:edit:${id}:`,
+      `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
     ];
     const exact = [
       `v2:basket:user:${id}`, `v2:basket:ops:${id}`, `v2:basket:imported:${id}`,

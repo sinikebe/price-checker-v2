@@ -77,7 +77,7 @@ jobs:
       - name: Check shell syntax
         run: |
           bash -n deployment/v2/install.sh deployment/v2/update.sh deployment/v2/install-scheduler.sh deployment/v2/configure-local-db.sh scripts/test_v2_update.sh scripts/test_v2_install.sh
-          python3 -m py_compile deployment/v2/scheduled_update.py
+          python3 -m py_compile deployment/v2/scheduled_update.py deployment/v2/prune_local_backups.py
       - name: Check component versions and path rules
         run: |
           python3 scripts/component_versions.py check
