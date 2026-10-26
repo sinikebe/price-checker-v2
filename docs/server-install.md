@@ -45,7 +45,50 @@ Le certificat PostgreSQL local est renouvelé par ce même script dès qu’il l
 
 Sur une installation externe qui utilise encore l’ancien script refusant cette mise à jour, mettre d’abord le checkout à jour par `git fetch origin main` puis `git merge --ff-only origin/main` **après avoir réalisé et vérifié une sauvegarde externe indépendante** ; lancer ensuite le nouveau `update.sh`. Cette transition ponctuelle ne doit pas utiliser l’ancien updater.
 
-Un push sur GitHub ne met pas le serveur à jour automatiquement. Lancer la commande après vérification des changements, ou la planifier explicitement dans une tâche système une fois l'installation validée.
+Un push sur GitHub ne met pas le serveur à jour automatiquement tant que le programmateur ci-dessous n'est pas installé **et** activé dans les paramètres administrateur.
+
+## Maintenance et planification quotidienne
+
+Le reverse proxy doit servir la page de maintenance **en dehors des conteneurs**. Copier `deployment/v2/maintenance.html` vers `/var/www/price-checker-v2-maintenance.html` (mode 0644). Ajouter au bloc `server` HTTPS de Nginx, en adaptant `dev` à `prod` pour une installation de production :
+
+```nginx
+error_page 503 =503 /v2-maintenance.html;
+location = /v2-maintenance.html {
+    internal;
+    alias /var/www/price-checker-v2-maintenance.html;
+    default_type text/html;
+    add_header Cache-Control "no-store" always;
+}
+location = /v2-maintenance-state {
+    default_type application/json;
+    add_header Cache-Control "no-store" always;
+    if (-f /run/price-checker-v2-dev-maintenance) {
+        return 200 '{"maintenance":true}';
+    }
+    return 200 '{"maintenance":false}';
+}
+```
+
+Dans le `location /` qui proxifie l'application, placer **avant** `proxy_pass` :
+
+```nginx
+if (-f /run/price-checker-v2-dev-maintenance) {
+    return 503;
+}
+```
+
+Tester avec `nginx -t` avant de recharger Nginx. Le marqueur est créé par `update.sh` après les vérifications préliminaires, puis supprimé quand l'API est saine. Si une erreur laisse l'application indisponible, le marqueur reste en place : réparer l'instance, vérifier l'API, puis retirer le marqueur manuellement. Une page PWA déjà ouverte interroge `/v2-maintenance-state` toutes les 10 secondes et affiche aussi le message.
+
+Installer le timer sur le **serveur installé**, après avoir configuré Nginx :
+
+```sh
+sudo /opt/price-checker-v2/source/deployment/v2/install-scheduler.sh
+```
+
+Le timer systemd vérifie la planification chaque minute, mais **aucune mise à jour n'est activée par défaut**. Dans `/v2/parametres`, un administrateur peut choisir l'heure, le fuseau (Europe/Paris par défaut) et activer ou désactiver les mises à jour quotidiennes. Le timer n'exécute qu'une tentative par jour local, y compris au passage à l'heure d'hiver ; une heure inexistante au passage à l'heure d'été est sautée. Il ne met à jour que `main` en fast-forward et exige la réussite de la CI du commit cible (ou du parent d'un commit de version généré par la CI). Si GitHub ou la CI n'est pas disponible, il n'installe rien ce jour-là. L'updater conserve ses sauvegardes et son rollback.
+
+Voir `systemctl status price-checker-v2-<env>-update.timer` et `journalctl -u price-checker-v2-<env>-update.service` pour diagnostiquer. Le dernier résultat apparaît aussi dans les paramètres. La rotation du certificat PostgreSQL reste assurée par `update.sh` lorsqu'une tentative planifiée est lancée.
+
 
 Pour diagnostiquer, consulter `docker compose --env-file /opt/price-checker-v2/source/.env -f /opt/price-checker-v2/source/deployment/v2/compose.yaml logs --tail=100`. Le fichier `.env` local conserve la configuration de l'installation et est ignoré par Git. Exporter `PRICE_CHECKER_V2_DATA_DIR` avant l'installation si le stockage persistant est monté ailleurs ; ne pas remplacer ce volume pendant les mises à jour.
 

@@ -13,6 +13,7 @@ from app.api.v2.products import router as products_router
 from app.api.v2.recipes import router as recipes_router
 from app.api.v2.setup import router as setup_router
 from app.api.v2.sync import router as sync_router
+from app.api.v2.updates import router as updates_router
 from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
 
@@ -39,6 +40,7 @@ for router in (
     recipes_router,
     sync_router,
     basket_router,
+    updates_router,
 ):
     app.include_router(router)
 

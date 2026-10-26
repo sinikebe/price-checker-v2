@@ -17,3 +17,14 @@
 .v2-settings-card .v2-settings-note { margin-bottom: 14px; font-size: .84rem; }
 .v2-settings-link { color: #2e7955 !important; font-weight: 700; }
 @media (max-width: 700px) { .v2-settings-grid { grid-template-columns: 1fr; } .v2-settings-main { padding-block: 38px 75px; } }
+
+.v2-server-schedule { grid-column: 1 / -1; }
+.v2-schedule-toggle { display: flex; align-items: center; gap: 10px; margin: 8px 0 20px; font-weight: 700; }
+.v2-schedule-toggle input { width: 19px; height: 19px; accent-color: #2f8061; }
+.v2-schedule-fields { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+.v2-schedule-fields label { display: grid; gap: 7px; min-width: 190px; font-weight: 700; }
+.v2-schedule-fields :is(input,select) { padding: 10px 12px; border: 1px solid var(--v2-line); border-radius: 10px; background: #fff; color: var(--v2-ink); }
+.v2-settings-card .v2-schedule-error { color: #a82b37; font-weight: 700; }
+.v2-settings-card .v2-schedule-success { color: #2e7955; font-weight: 700; }
+html[data-v2-theme="dark"] .v2-settings-card .v2-schedule-error { color: #ffacb2; }
+html[data-v2-theme="dark"] .v2-settings-card .v2-schedule-success { color: #a9d989; }

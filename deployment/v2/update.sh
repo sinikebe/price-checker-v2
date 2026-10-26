@@ -26,6 +26,10 @@ flock -n 9 || { echo "Another V2 update is running." >&2; exit 1; }
 old_sha="$(git -C "$repo_dir" rev-parse HEAD)"
 git -C "$repo_dir" fetch origin main
 new_sha="$(git -C "$repo_dir" rev-parse FETCH_HEAD)"
+if [[ -n "${PRICE_CHECKER_V2_EXPECTED_SHA:-}" && "$new_sha" != "$PRICE_CHECKER_V2_EXPECTED_SHA" ]]; then
+  echo "origin/main moved after CI verification; refusing update." >&2
+  exit 1
+fi
 git -C "$repo_dir" merge-base --is-ancestor "$old_sha" "$new_sha" || {
   echo "origin/main is not a fast-forward; refusing update." >&2; exit 1;
 }
@@ -69,6 +73,17 @@ if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 ]]; then
   exit 0
 fi
 
+[[ "$PRICE_CHECKER_V2_ENV" == dev || "$PRICE_CHECKER_V2_ENV" == prod ]] || {
+  echo "Invalid V2 environment." >&2; exit 1;
+}
+maintenance_marker="/run/price-checker-v2-$PRICE_CHECKER_V2_ENV-maintenance"
+[[ ! -e "$maintenance_marker" ]] || {
+  echo "Maintenance marker already exists; inspect the previous update." >&2; exit 1;
+}
+health_path=/api/v2/setup/status
+if [[ -f "$config_file" ]]; then health_path=/api/v2/auth/status; fi
+install -m 0644 /dev/null "$maintenance_marker"
+maintenance_owned=1
 umask 077
 backup="$PRICE_CHECKER_V2_DATA_DIR/backups/$(date -u +%Y%m%dT%H%M%SZ)-$old_sha.dump"
 backup_part="$backup.part"
@@ -81,6 +96,13 @@ cleanup() {
   [[ -z "$new_key" ]] || rm -f "$new_key"
   [[ -z "$new_crt" ]] || rm -f "$new_crt"
   rm -f "$backup_part"
+  if [[ "${maintenance_owned:-0}" == 1 ]]; then
+    if curl -fs "http://127.0.0.1:$PRICE_CHECKER_V2_PORT$health_path" >/dev/null 2>&1; then
+      rm -f "$maintenance_marker"
+    else
+      echo "Application not healthy; maintenance marker retained at $maintenance_marker" >&2
+    fi
+  fi
 }
 trap cleanup EXIT
 if [[ "$bundled_db" == 1 ]]; then

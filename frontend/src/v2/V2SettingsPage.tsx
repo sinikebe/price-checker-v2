@@ -4,6 +4,7 @@ import type { V2User } from "./v2-auth-api";
 import { useV2Theme } from "./V2ThemeContext";
 import { usePwaUpdate } from "../pwa/PwaUpdateState";
 import versions from "./component-versions.json";
+import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -65,6 +66,7 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
           <p className="v2-settings-note">La mise à jour actualise l’application sur cet appareil, pas le serveur. Elle recharge cette page : terminez vos modifications en cours avant de continuer.</p>
           <Link className="v2-settings-link" to="/v2/versions">Détail des versions →</Link>
         </section>
+        {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
         {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">
           <h2 id="v2-server-heading">Serveur</h2>
           <p>Nom d’hôte et configuration PostgreSQL de cette instance.</p>

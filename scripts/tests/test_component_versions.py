@@ -39,6 +39,13 @@ class ComponentVersionsTests(unittest.TestCase):
             "frontend/src/pwa/PwaUpdateContext.tsx",
         ]), {"application", "pwa"})
 
+    def test_maintenance_and_schedule_bump_deployment(self):
+        self.assertEqual(classify([
+            "backend/app/api/v2/updates.py",
+            "frontend/src/v2/V2ServerUpdateSchedule.tsx",
+            "deployment/v2/scheduled_update.py",
+        ]), {"application", "deployment"})
+
     def test_docs_tests_ci_and_generated_versions_do_not_bump(self):
         self.assertEqual(classify([
             "README.md", "backend/tests/test_v2_off.py",

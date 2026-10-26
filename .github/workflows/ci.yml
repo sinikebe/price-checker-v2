@@ -73,7 +73,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check shell syntax
-        run: bash -n deployment/v2/install.sh deployment/v2/update.sh
+        run: |
+          bash -n deployment/v2/install.sh deployment/v2/update.sh deployment/v2/install-scheduler.sh
+          python3 -m py_compile deployment/v2/scheduled_update.py
       - name: Check component versions and path rules
         run: |
           python3 scripts/component_versions.py check
