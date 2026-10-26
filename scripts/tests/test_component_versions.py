@@ -21,6 +21,11 @@ class ComponentVersionsTests(unittest.TestCase):
             {"database", "application"},
         )
 
+    def test_price_history_files_bump_products(self):
+        self.assertEqual(classify([
+            "backend/app/api/v2/prices.py", "frontend/src/v2/V2PriceHistory.tsx",
+        ]), {"application", "products"})
+
     def test_product_files_shared_with_off_bump_both(self):
         self.assertEqual(
             classify(["backend/app/api/v2/products.py"]),

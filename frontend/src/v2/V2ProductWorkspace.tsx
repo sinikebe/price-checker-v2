@@ -4,6 +4,7 @@ import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
+import V2PriceHistory from "./V2PriceHistory";
 import { useV2Basket } from "./V2BasketContext";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -356,6 +357,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
+    {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
   </Frame>;
 }

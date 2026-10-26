@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 
+import certifi
 import httpx
 
 from app.core.config import get_settings
@@ -37,7 +39,11 @@ async def get_off_client() -> httpx.AsyncClient:
                     # OFF's published per-IP limits are enforced here, in the
                     # transport, so every caller shares the same budget. See
                     # app/services/off_rate_limit.py.
-                    transport=RateLimitedTransport(httpx.AsyncHTTPTransport()),
+                    # The app's SSL_CERT_FILE points to the private PostgreSQL
+                    # certificate. Use public roots explicitly for OFF only.
+                    transport=RateLimitedTransport(httpx.AsyncHTTPTransport(
+                        verify=ssl.create_default_context(cafile=certifi.where())
+                    )),
                 )
     return _client
 

@@ -23,6 +23,7 @@ BACKEND_PACKAGE = ROOT / "backend/pyproject.toml"
 # once for every push with at least one affected implementation component.
 RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/products.py", ("products", "open_food_facts")),
+    ("backend/app/api/v2/prices.py", ("products",)),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
     ("backend/app/api/v2/basket.py", ("basket",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
@@ -39,6 +40,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
     ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
+    ("frontend/src/v2/V2PriceHistory.tsx", ("products",)),
+    ("frontend/src/v2/v2-price-history.css", ("products",)),
     ("frontend/src/v2/V2BarcodeScanner.tsx", ("products",)),
     ("frontend/src/v2/V2BarcodeSearch.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2Off*.tsx", ("products", "open_food_facts")),

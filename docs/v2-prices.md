@@ -1,0 +1,7 @@
+# Prix V2 sur les fiches produit
+
+La fiche d'une référence publiée affiche ses relevés de prix V2 approuvés : graphique chronologique par **point de vente et canal** (magasin, drive, livraison), puis tableau accessible avec date, prix, enseigne et provenance. Les 200 relevés les plus récents sont affichés ; les valeurs contestées et les offres indisponibles restent lisibles dans le tableau mais ne forment pas une courbe de prix courant. Une référence remplacée garde son historique, sans accepter de nouveaux relevés.
+
+Une personne connectée peut proposer un prix pour cette référence exacte, avec enseigne, point de vente/service, ville ou zone desservie, canal, date et prix du conditionnement. La proposition est privée à son auteur et aux administrateurs jusqu'à validation. L'administrateur peut publier ou refuser sur la fiche produit. Une publication crée une observation append-only avec auteur du relevé, approbateur et date ; elle ne modifie pas la fiche produit. Les observations manuelles identiques pour un même produit, magasin, canal, instant, prix et quantité sont refusées à la publication.
+
+Migration `0009_price_channels` distingue les canaux dans les brouillons et observations existants, avec `in_store` par défaut pour les anciennes lignes. Les observations de sources externes ou connecteurs restent distinctes des propositions manuelles. **Aucun prix V1 n'est importé** ; l'absence de relevés V2 est indiquée, sans donnée fictive. L'intégration Open Prices et les règles de comparaison avancées restent des étapes séparées.

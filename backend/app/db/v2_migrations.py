@@ -363,6 +363,24 @@ MIGRATIONS = {
         CREATE INDEX v2_auth_limits_window_idx
             ON v2_auth_limits(window_started_at);
     """,
+    "0009_price_channels": """
+        -- A physical store and its drive/delivery services are separate
+        -- contexts for price comparison, even if they share store identity.
+        ALTER TABLE v2_price_drafts ADD COLUMN sales_channel varchar(16)
+            NOT NULL DEFAULT 'in_store'
+            CHECK (sales_channel IN ('in_store', 'drive', 'delivery'));
+        ALTER TABLE v2_price_observations ADD COLUMN sales_channel varchar(16)
+            NOT NULL DEFAULT 'in_store'
+            CHECK (sales_channel IN ('in_store', 'drive', 'delivery'));
+        DROP INDEX v2_price_observations_manual_idx;
+        CREATE UNIQUE INDEX v2_price_observations_manual_idx
+            ON v2_price_observations(product_id, store_id, sales_channel,
+                observed_at, price, coalesce(quantity_text, ''))
+            WHERE source = 'manual';
+        CREATE INDEX v2_price_observations_product_date_idx
+            ON v2_price_observations(product_id, observed_at DESC, id DESC)
+            WHERE NOT superseded;
+    """,
 
 }
 
