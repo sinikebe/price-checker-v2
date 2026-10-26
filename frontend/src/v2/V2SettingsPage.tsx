@@ -7,6 +7,7 @@ import versions from "./component-versions.json";
 import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2TransferPanel from "./V2TransferPanel";
 import V2ModerationPanel from "./V2ModerationPanel";
+import V2AccountDeletion from "./V2AccountDeletion";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -19,11 +20,14 @@ const updateMessages = {
   error: "La vérification a échoué. Réessayez plus tard.",
 };
 
-export default function V2SettingsPage({ user }: { user: V2User | null }) {
+export default function V2SettingsPage({ user, onAccountDeleted }: {
+  user: V2User | null; onAccountDeleted: () => void;
+}) {
   const { choice, setChoice } = useV2Theme();
   const { checkState, checkForUpdates, applyUpdate } = usePwaUpdate();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [deleteNotice, setDeleteNotice] = useState("");
   async function exportAccount() {
     if (exporting) return;
     setExporting(true); setExportError("");
@@ -62,6 +66,7 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
     <main id="v2-settings-main" className="v2-wrap v2-settings-main">
       <span className="v2-section-kicker">PRÉFÉRENCES</span>
       <h1>Paramètres<span>.</span></h1>
+      {deleteNotice && <p className="v2-settings-success" role="status">{deleteNotice}</p>}
       <div className="v2-settings-grid">
         <section className="v2-settings-card" aria-labelledby="v2-theme-heading">
           <h2 id="v2-theme-heading">Apparence</h2>
@@ -94,6 +99,12 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
             onClick={() => { void exportAccount(); }}>{exporting ? "Préparation…" : "Exporter mes données"}</button>
           {exportError && <p role="alert">{exportError}</p>}
         </section>}
+        {user && user.role !== "admin" && <V2AccountDeletion userId={user.id} onDeleted={cleared => {
+          setDeleteNotice(cleared
+            ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."
+            : "Compte supprimé sur le serveur. Effacez aussi les données de ce site dans votre navigateur : le nettoyage local n’a pas abouti.");
+          onAccountDeleted();
+        }} />}
         {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
         {user?.role === "admin" && <V2ModerationPanel />}
         {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}

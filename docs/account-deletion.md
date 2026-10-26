@@ -1,0 +1,7 @@
+# Suppression d’un compte V2
+
+Un compte non administrateur peut télécharger son export JSON dans **Paramètres → Mes données**, puis demander sa suppression dans **Paramètres → Supprimer mon compte**. Le mot de passe et une confirmation explicite sont nécessaires. L’API `DELETE /api/v2/account` exige une session et une origine autorisée ; elle limite les tentatives.
+
+La suppression est transactionnelle : la ligne du compte, ses sessions, brouillons de produit/prix, panier et signalements personnels sont effacés. Les recettes, prix et historiques de produit déjà publiés restent consultables, mais leurs références à ce compte sont retirées ; une recette sans auteur affiche « Compte supprimé ». La révision des recettes conservées change pour rafraîchir les copies PWA. Le compte administrateur initial ne peut pas être supprimé par ce parcours, afin de ne pas rendre l’instance ingérable.
+
+Le navigateur qui déclenche la suppression retire les brouillons et paniers locaux associés à ce compte, invalide le cache de données hors ligne et avertit les autres onglets de revérifier leur session. Si ce nettoyage local échoue, l’interface demande d’effacer les données du site manuellement. Une exportation déjà téléchargée, les copies sur d’autres appareils et les anciennes sauvegardes ne sont pas supprimées par cette requête. La durée de conservation et la purge des sauvegardes doivent encore être fixées avant l’ouverture publique ; ce document décrit le comportement technique, pas une validation juridique.

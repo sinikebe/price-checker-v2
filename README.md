@@ -4,6 +4,8 @@ Catalogue collaboratif de produits, panier et recettes, avec une application web
 
 Le projet est en cours de développement. Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
 
+Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
+
 ## Installation sur serveur
 
 Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL et construit l'API et l'interface web. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.

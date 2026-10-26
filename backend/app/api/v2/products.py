@@ -731,8 +731,8 @@ async def product_history(product_id: int):
     try:
         await require_visible(connection, "product", product_id)
         rows = await connection.fetch(
-            "SELECT e.*, u.username AS actor FROM v2_product_events e "
-            "JOIN v2_users u ON u.id=e.actor_id WHERE e.product_id=$1 "
+            "SELECT e.*, COALESCE(u.username, 'Compte supprimé') AS actor FROM v2_product_events e "
+            "LEFT JOIN v2_users u ON u.id=e.actor_id WHERE e.product_id=$1 "
             "ORDER BY e.created_at DESC, e.id DESC",
             product_id,
         )

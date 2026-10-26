@@ -452,6 +452,13 @@ MIGRATIONS = {
             ADD COLUMN rejected_at timestamptz,
             ADD COLUMN rejected_by bigint REFERENCES v2_users(id);
     """,
+    "0014_account_erasure": """
+        -- Published contributions outlive the account, but no stable author
+        -- identifier may remain on them after the account is deleted.
+        ALTER TABLE v2_recipes ALTER COLUMN author_id DROP NOT NULL;
+        ALTER TABLE v2_product_events ALTER COLUMN actor_id DROP NOT NULL;
+        ALTER TABLE v2_product_events ALTER COLUMN draft_id DROP NOT NULL;
+    """,
 
 }
 

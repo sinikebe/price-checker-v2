@@ -50,6 +50,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2PriceHistory.tsx", ("products",)),
     ("frontend/src/v2/V2ReportControl.tsx", ("products", "recipes")),
+    ("frontend/src/v2/V2AccountDeletion.tsx", ("accounts", "pwa")),
     ("frontend/src/v2/V2ModerationPanel.tsx", ("products", "recipes")),
     ("frontend/src/v2/v2-moderation-api.ts", ("products", "recipes")),
     ("frontend/src/v2/v2-price-history.css", ("products",)),

@@ -4,13 +4,27 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, SecretStr
 
-from app.api.v2.auth import _connect, _current_user
+from app.api.v2.auth import (
+    _COOKIE_NAME,
+    _bump_limit,
+    _connect,
+    _current_user,
+    _limit_key,
+    _secure_write,
+    _verify_password,
+)
 
 router = APIRouter(prefix="/api/v2/account", tags=["v2-account-data"])
+
+
+class AccountDeletion(BaseModel):
+    password: SecretStr
+
 _JSON_FIELDS = {"data", "steps", "product_ids", "before_data", "after_data", "raw_payload"}
 
 
@@ -37,6 +51,8 @@ async def export_account_data(request: Request):
             account = await connection.fetchrow(
                 "SELECT id, username, role, created_at FROM v2_users WHERE id=$1", user_id
             )
+            if account is None:
+                raise HTTPException(status_code=401, detail="Session expirée.")
             product_drafts = await connection.fetch(
                 "SELECT id, product_id, data, status, revision, change_kind, "
                 "created_at, updated_at FROM v2_product_drafts "
@@ -94,5 +110,77 @@ async def export_account_data(request: Request):
                 "Content-Disposition": 'attachment; filename="price-checker-v2-account.json"',
             },
         )
+    finally:
+        await connection.close()
+
+
+@router.delete("", status_code=204)
+async def delete_account(
+    payload: AccountDeletion, request: Request, response: Response,
+):
+    _secure_write(request)
+    password = payload.password.get_secret_value()
+    if not password or len(password.encode("utf-8")) > 1024:
+        raise HTTPException(status_code=422, detail="Mot de passe invalide.")
+    connection = await _connect()
+    try:
+        user = await _current_user(connection, request)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Connectez-vous pour supprimer votre compte.")
+        if await _bump_limit(
+            connection, _limit_key("account-delete", request, str(user["id"])),
+            3600,
+        ) > 5:
+            raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
+        async with connection.transaction():
+            account = await connection.fetchrow(
+                "SELECT id, role, password_hash FROM v2_users WHERE id=$1 FOR UPDATE",
+                user["id"],
+            )
+            if account is None:
+                raise HTTPException(status_code=401, detail="Session expirée.")
+            if account["role"] == "admin":
+                raise HTTPException(
+                    status_code=409,
+                    detail="Le compte administrateur initial ne peut pas être supprimé ici.",
+                )
+            if not await _verify_password(account["password_hash"], password):
+                raise HTTPException(status_code=401, detail="Mot de passe incorrect.")
+            user_id = account["id"]
+            # Keep published recipes and audit history, without an author link.
+            # A revision bump invalidates already cached recipe details in the PWA.
+            await connection.execute(
+                "UPDATE v2_recipes SET author_id=NULL, revision=revision+1, "
+                "updated_at=now() WHERE author_id=$1", user_id,
+            )
+            await connection.execute(
+                "UPDATE v2_product_events SET actor_id=NULL WHERE actor_id=$1",
+                user_id,
+            )
+            await connection.execute(
+                "UPDATE v2_product_events SET draft_id=NULL WHERE draft_id IN "
+                "(SELECT id FROM v2_product_drafts WHERE author_id=$1)", user_id,
+            )
+            await connection.execute(
+                "UPDATE v2_price_observations SET contributor_id=NULL, "
+                "price_draft_id=NULL WHERE contributor_id=$1 OR price_draft_id IN "
+                "(SELECT id FROM v2_price_drafts WHERE author_id=$1)", user_id,
+            )
+            await connection.execute(
+                "UPDATE v2_offers SET price_draft_id=NULL WHERE price_draft_id IN "
+                "(SELECT id FROM v2_price_drafts WHERE author_id=$1)", user_id,
+            )
+            # Drafts, personal reports, basket and all sessions do not survive.
+            await connection.execute(
+                "DELETE FROM v2_content_reports WHERE reporter_id=$1", user_id,
+            )
+            await connection.execute(
+                "DELETE FROM v2_product_drafts WHERE author_id=$1", user_id,
+            )
+            await connection.execute(
+                "DELETE FROM v2_price_drafts WHERE author_id=$1", user_id,
+            )
+            await connection.execute("DELETE FROM v2_users WHERE id=$1", user_id)
+        response.delete_cookie(_COOKIE_NAME, path="/api/v2")
     finally:
         await connection.close()

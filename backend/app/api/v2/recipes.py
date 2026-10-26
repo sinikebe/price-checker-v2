@@ -86,8 +86,8 @@ def _decoded(value):
 async def _detail(connection, recipe_id: int):
     await require_visible(connection, "recipe", recipe_id)
     recipe = await connection.fetchrow(
-        "SELECT r.*, u.username AS author FROM v2_recipes r "
-        "JOIN v2_users u ON u.id=r.author_id WHERE r.id=$1",
+        "SELECT r.*, COALESCE(u.username, 'Compte supprimé') AS author FROM v2_recipes r "
+        "LEFT JOIN v2_users u ON u.id=r.author_id WHERE r.id=$1",
         recipe_id,
     )
     if recipe is None:
