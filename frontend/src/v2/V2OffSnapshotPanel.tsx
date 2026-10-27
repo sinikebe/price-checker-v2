@@ -139,7 +139,7 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
           <p>{snapshot.field_count} champs reçus, dont {snapshot.presented_field_count} classés.{" "}
             <a href={snapshot.off_url} target="_blank" rel="noreferrer">Voir chez OFF ↗</a></p>
           <div className="v2-off-full-sections">{snapshot.sections.map(section =>
-            <Section key={section.id} section={section} />)}</div>
+            <Section key={`${productId}:${section.id}`} section={section} />)}</div>
         </>}
       </>}
   </section>;
