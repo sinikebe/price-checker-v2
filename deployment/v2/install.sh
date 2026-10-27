@@ -57,7 +57,7 @@ fi
 export PRICE_CHECKER_V2_ENV PRICE_CHECKER_V2_DATA_DIR PRICE_CHECKER_V2_DB_NAME PRICE_CHECKER_V2_PORT
 # Production legal text belongs to this instance, never to the checkout/image.
 if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
-  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal"
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal" --backend-access
 fi
 compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 install -d -m 0700 "$PRICE_CHECKER_V2_DATA_DIR"

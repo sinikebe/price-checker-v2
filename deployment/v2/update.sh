@@ -20,7 +20,7 @@ compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
   echo "V2 is not installed." >&2; exit 1;
 }
 if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
-  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal"
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal" --backend-access
 fi
 exec 9>"$PRICE_CHECKER_V2_DATA_DIR/update.lock"
 flock -n 9 || { echo "Another V2 update is running." >&2; exit 1; }
