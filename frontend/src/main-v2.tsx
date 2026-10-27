@@ -6,6 +6,7 @@ import V2App from "./v2/V2App";
 import { V2ThemeProvider } from "./v2/V2Theme";
 import { PwaUpdateProvider } from "./pwa/PwaUpdateContext";
 import V2PwaMount from "./pwa/V2PwaMount";
+import { PwaInstallProvider } from "./pwa/PwaInstallContext";
 import V2MaintenanceOverlay from "./v2/V2MaintenanceOverlay";
 import "./v2/v2-base.css";
 
@@ -19,9 +20,11 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <V2ThemeProvider>
           <PwaUpdateProvider>
-            <V2App />
-            <V2PwaMount />
-            <V2MaintenanceOverlay />
+            <PwaInstallProvider>
+              <V2App />
+              <V2PwaMount />
+              <V2MaintenanceOverlay />
+            </PwaInstallProvider>
           </PwaUpdateProvider>
         </V2ThemeProvider>
       </BrowserRouter>

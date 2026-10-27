@@ -2,11 +2,15 @@
 
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
-Le projet est en cours de développement. Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
+Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
 
 Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
 
 Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
+
+## Installer l’application sur un appareil
+
+Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne.
 
 ## Installation sur serveur
 
