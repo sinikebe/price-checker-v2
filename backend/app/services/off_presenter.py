@@ -160,12 +160,12 @@ _NUTRITION_META: list[tuple[str, str, str]] = [
 ]
 
 _SECTION_SPECS: list[tuple[str, str, list[tuple[str, str, str]], bool]] = [
-    ("identity", "Identité", _IDENTITY, False),
-    ("scores", "Scores", _SCORES, False),
-    ("ingredients", "Ingrédients & additifs", _INGREDIENTS, False),
-    ("allergens", "Allergènes & traces", _ALLERGENS, False),
-    ("labels", "Labels", _LABELS, False),
-    ("origin", "Origine & distribution", _ORIGIN, False),
+    ("identity", "Identité", _IDENTITY, True),
+    ("scores", "Scores", _SCORES, True),
+    ("ingredients", "Ingrédients & additifs", _INGREDIENTS, True),
+    ("allergens", "Allergènes & traces", _ALLERGENS, True),
+    ("labels", "Labels", _LABELS, True),
+    ("origin", "Origine & distribution", _ORIGIN, True),
     ("packaging", "Emballage", _PACKAGING, True),
     ("provenance", "Source & fraîcheur", _PROVENANCE, True),
 ]
