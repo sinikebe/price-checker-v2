@@ -4,7 +4,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -153,4 +153,108 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
     finally:
         await admin.execute(f'DROP DATABASE "{source_name}" WITH (FORCE)')
         await admin.execute(f'DROP DATABASE "{target_name}" WITH (FORCE)')
+        await admin.close()
+
+
+@pytest.mark.asyncio
+async def test_identical_product_adoption_preserves_visibility_and_idempotence(monkeypatch):
+    admin_config = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
+    database = f"transfer_adopt_{uuid4().hex[:10]}"
+    admin = await connect_v2(admin_config)
+    await admin.execute(f'CREATE DATABASE "{database}"')
+    config = {**admin_config, "database": database}
+    try:
+        await migrate_v2(config)
+        target = await connect_v2(config)
+        product_data = {
+            "name": "Sample tea", "brand": "Sample", "package": "Box",
+            "quantity": "20 bags", "ean": "3017620422003",
+        }
+        hidden_data = {**product_data, "ean": "3017620422004"}
+        try:
+            old = await target.fetchval(
+                "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+                json.dumps({**product_data, "name": "Old tea"}),
+            )
+            existing = await target.fetchval(
+                "INSERT INTO v2_products(data,predecessor_id) "
+                "VALUES($1::jsonb,$2) RETURNING id",
+                json.dumps(product_data), old,
+            )
+            withdrawn = await target.fetchval(
+                "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+                json.dumps(hidden_data),
+            )
+            moderator = await target.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES('moderator','moderator','unused','admin') RETURNING id"
+            )
+            await target.execute(
+                "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
+                "VALUES('product',$1,'test',$2)", withdrawn, moderator,
+            )
+        finally:
+            await target.close()
+
+        async def fake_connect():
+            return await connect_v2(config)
+
+        async def fake_admin(request):
+            if request.headers.get("x-test-admin") != "yes":
+                raise HTTPException(status_code=403)
+
+        monkeypatch.setattr(transfers, "_connect", fake_connect)
+        monkeypatch.setattr(transfers, "_require_admin", fake_admin)
+        bundle = {
+            "format": "price-checker-v2-transfer", "schema_version": 1,
+            "source_instance": str(uuid4()),
+            "products": [{"id": 101, "predecessor_id": None, "data": product_data}],
+            "retailers": [{"id": 201, "name": "Sample Market"}],
+            "stores": [{"id": 301, "retailer_id": 201, "name": "Centre"}],
+            "prices": [{"id": 401, "product_id": 101, "store_id": 301,
+                        "source": "manual", "price": "2.50",
+                        "observed_at": "2026-10-27"}],
+        }
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            first = await client.post("/api/v2/transfers/import", json=bundle,
+                                      headers={"x-test-admin": "yes"})
+            assert first.status_code == 200, first.text
+            assert first.json() == {
+                "products_imported": 0, "prices_imported": 1,
+                "products_already_present": 1, "prices_already_present": 0,
+            }
+            again = await client.post("/api/v2/transfers/import", json=bundle,
+                                      headers={"x-test-admin": "yes"})
+            assert again.status_code == 200, again.text
+            assert again.json()["products_already_present"] == 1
+            assert again.json()["prices_already_present"] == 1
+            target = await connect_v2(config)
+            try:
+                assert await target.fetchval(
+                    "SELECT target_id FROM v2_transfer_product_map "
+                    "WHERE source_instance=$1 AND source_id=101",
+                    UUID(bundle["source_instance"]),
+                ) == existing
+                assert await target.fetchval(
+                    "SELECT product_id FROM v2_price_observations WHERE import_key IS NOT NULL"
+                ) == existing
+                assert await target.fetchval("SELECT count(*) FROM v2_products") == 3
+            finally:
+                await target.close()
+
+            hidden_bundle = json.loads(json.dumps(bundle))
+            hidden_bundle["source_instance"] = str(uuid4())
+            hidden_bundle["products"][0]["data"] = hidden_data
+            refused = await client.post("/api/v2/transfers/import", json=hidden_bundle,
+                                        headers={"x-test-admin": "yes"})
+            assert refused.status_code == 409, refused.text
+            target = await connect_v2(config)
+            try:
+                assert await target.fetchval("SELECT count(*) FROM v2_transfer_product_map") == 1
+                assert await target.fetchval("SELECT count(*) FROM v2_price_observations") == 1
+            finally:
+                await target.close()
+    finally:
+        await admin.execute(f'DROP DATABASE "{database}" WITH (FORCE)')
         await admin.close()

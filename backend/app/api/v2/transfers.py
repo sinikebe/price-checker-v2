@@ -232,7 +232,9 @@ async def _import_products(
                         ancestors.append(product_map[previous])
                         previous = products[previous].predecessor_id
                     collision = await connection.fetchrow(
-                        "SELECT p.id,p.data FROM v2_products p WHERE p.data->>'ean' <> '' "
+                        "SELECT p.id,p.data,EXISTS(SELECT 1 FROM v2_content_withdrawals w "
+                        "WHERE w.kind='product' AND w.content_id=p.id) AS withdrawn "
+                        "FROM v2_products p WHERE p.data->>'ean' <> '' "
                         "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
                         "AND NOT EXISTS (SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
                         "AND NOT (p.id = ANY($2::bigint[])) "
@@ -242,9 +244,8 @@ async def _import_products(
                         existing = ProductData.model_validate(
                             _decoded(collision["data"])
                         ).model_dump(mode="json")
-                        if product.predecessor_id is None and (
-                            existing == product.data.model_dump(mode="json")
-                        ):
+                        if (product.predecessor_id is None and not collision["withdrawn"]
+                                and existing == product.data.model_dump(mode="json")):
                             existing_id = collision["id"]
                         else:
                             raise HTTPException(
