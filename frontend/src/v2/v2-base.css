@@ -2,3 +2,33 @@
 html, body, #root { min-height: 100%; margin: 0; }
 body { font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif; }
 button, input, textarea, select { font: inherit; }
+
+.v2-early-notice {
+  border-bottom: 1px solid #b9d18e;
+  background: #e7f2d2;
+  color: #18322e;
+  font: 0.9rem/1.4 "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+}
+.v2-early-notice-inner {
+  width: min(1200px, calc(100% - 32px));
+  margin-inline: auto;
+  padding-block: .6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+}
+.v2-early-notice p { margin: 0; }
+.v2-early-notice button {
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: .4rem;
+  padding: .35rem .65rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.v2-early-notice button:hover { background: #d4e9af; }
+.v2-early-notice button:focus-visible { outline: 3px solid #20795e; outline-offset: 2px; }
+html[data-v2-theme="dark"] .v2-early-notice { border-color: #4c6544; background: #203b2e; color: #e7f5d4; }
+html[data-v2-theme="dark"] .v2-early-notice button:hover { background: #315344; }

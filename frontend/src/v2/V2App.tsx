@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import V2Gateway from "./V2Gateway";
 import V2VersionsPage from "./V2VersionsPage";
@@ -6,8 +6,31 @@ import V2LegalPage from "./V2LegalPage";
 import V2SiteFooter from "./V2SiteFooter";
 import { V2BasketProvider } from "./V2BasketContext";
 
+const NOTICE_DISMISSED_KEY = "v2-early-notice-dismissed";
+
+function V2EarlyNotice() {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return window.sessionStorage.getItem(NOTICE_DISMISSED_KEY) === "1"; }
+    catch { return false; }
+  });
+  if (dismissed) return null;
+
+  function dismiss() {
+    try { window.sessionStorage.setItem(NOTICE_DISMISSED_KEY, "1"); }
+    catch { /* The notice can still be closed when browser storage is unavailable. */ }
+    setDismissed(true);
+  }
+
+  return <aside className="v2-early-notice" aria-label="Information sur la version du site">
+    <div className="v2-early-notice-inner">
+      <p><strong>Version en développement.</strong> Price Checker est encore en phase initiale : certaines fonctions peuvent évoluer ou être incomplètes.</p>
+      <button type="button" onClick={dismiss} aria-label="Fermer le bandeau d’information">Fermer</button>
+    </div>
+  </aside>;
+}
+
 function withFooter(page: ReactNode) {
-  return <>{page}<V2SiteFooter /></>;
+  return <><V2EarlyNotice />{page}<V2SiteFooter /></>;
 }
 
 export default function V2App() {
