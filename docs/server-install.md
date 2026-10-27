@@ -7,8 +7,30 @@ Ce guide décrit l'installation de Price Checker V2 depuis la branche `main`. Il
 - Docker Engine, le plugin `docker compose`, Git, OpenSSL, curl et Python 3 (pour vérifier la cible de la sauvegarde avant une mise à jour).
 - Espace disque pour les images, PostgreSQL et les sauvegardes avant mise à jour.
 - Un répertoire persistant et sauvegardé pour `/var/lib/price-checker-v2`, **ainsi que** le volume Docker `price-checker-v2-prod_postgres_data`. Le répertoire seul ne contient pas les données de la base.
-- Un reverse proxy HTTPS vers `127.0.0.1:8080`. Il doit transmettre `Host`, définir lui-même `X-Forwarded-Proto: https` et remplacer `X-Forwarded-For` par l'adresse réelle du client. Ne pas faire confiance aux valeurs de ces en-têtes envoyées par le navigateur.
+- Un reverse proxy HTTPS vers `127.0.0.1:8080`, à partir du modèle
+  [`deployment/v2/nginx-host.example.conf`](../deployment/v2/nginx-host.example.conf).
+  Il doit **remplacer** `Host`, `X-Real-IP`, `X-Forwarded-For` et
+  `X-Forwarded-Proto` ; ne pas relayer ceux du navigateur. Ne jamais exposer
+  directement `:8080`. Le web ne transmet au backend qu'une seule adresse
+  `X-Forwarded-For` issue de `X-Real-IP`, et le backend ne la lit que si le
+  pair réseau est le conteneur web actuellement résolu.
 - N'exposer publiquement que les ports nécessaires au service HTTPS. Les ports 8080 et 5432 doivent rester privés.
+
+## Informations légales par instance
+
+Avant une installation **de production**, préparer trois documents Markdown décrivant **cette instance réelle** : `mentions.md`, `confidentialite.md` et `conditions.md`. Placez-les sous `/var/lib/price-checker-v2/state/legal/` (ou sous `$PRICE_CHECKER_V2_DATA_DIR/state/legal/` si ce répertoire est personnalisé). Cette arborescence reste hors du dépôt et des images Docker ; ne déposez pas de coordonnées ou de notices d'une instance dans Git. Le conteneur API lit ces fichiers sans connexion à la base de données et les sert sans mise en cache à `/api/v2/legal/{mentions,confidentialite,conditions}`. Le site ne contient aucun texte de secours : si un document manque, sa page signale son indisponibilité. L'installation de production refuse les documents absents ou vides.
+
+Les fichiers doivent être lisibles par l'utilisateur `1000` du conteneur backend. Exemple après avoir rédigé et vérifié les trois documents **en dehors du dépôt** :
+
+```sh
+sudo install -d -m 0700 /var/lib/price-checker-v2
+sudo install -d -o 1000 -g 1000 -m 0700 /var/lib/price-checker-v2/state /var/lib/price-checker-v2/state/legal
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/mentions.md /var/lib/price-checker-v2/state/legal/mentions.md
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/confidentialite.md /var/lib/price-checker-v2/state/legal/confidentialite.md
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/conditions.md /var/lib/price-checker-v2/state/legal/conditions.md
+```
+
+Ces documents sont publics **une fois servis**, bien que leurs fichiers sources restent privés. Indiquez-y l'éditeur, le contact, l'hébergement et les traitements correspondant à l'installation effectivement exposée ; actualisez-les lors d'un changement d'hébergeur ou de base. Le code n'affirme pas qu'une région, un prestataire ou une sauvegarde existe. Une dev peut fonctionner sans ces fichiers, mais ses pages légales seront indisponibles tant qu'elle n'aura pas ses propres documents. Vérifiez les trois URL sur le domaine final avant ouverture ; leur présence ne vaut pas validation juridique.
 
 ## Installation
 
@@ -18,20 +40,9 @@ sudo git clone --branch main --single-branch https://github.com/sinikebe/price-c
 sudo /opt/price-checker-v2/source/deployment/v2/install.sh
 ```
 
-L'installation exige un checkout `main` propre. Elle crée un mot de passe PostgreSQL aléatoire dans `/var/lib/price-checker-v2/postgres/password`, génère un certificat TLS local pour le nom `db`, puis construit les conteneurs. Aucun compte administrateur n'est créé automatiquement. Le serveur web est lié à `127.0.0.1:8080`, sans exposition directe sur le réseau.
+L'installation exige un checkout `main` propre. Elle crée le mot de passe propriétaire PostgreSQL, un certificat TLS local pour `db`, applique les migrations puis crée un rôle applicatif non superutilisateur. Le conteneur backend ordinaire ne monte que sa configuration limitée dans `state/database.json` ; la configuration propriétaire est conservée dans `postgres/migration.json` et montée seulement dans le conteneur de migration lors des mises à jour. Le serveur web reste lié à `127.0.0.1:8080`.
 
-Configurer le reverse proxy HTTPS, puis ouvrir `https://<votre-domaine>/v2`. Le code d'installation se trouve dans `/var/lib/price-checker-v2/state/access-code` après le premier accès à l'API. Pour la base locale créée par le script, utiliser :
-
-| Champ | Valeur |
-| --- | --- |
-| Fournisseur | PostgreSQL |
-| Hôte | `db` |
-| Port | `5432` |
-| Base et utilisateur | `pricechecker_v2_prod` |
-| Mot de passe | contenu de `/var/lib/price-checker-v2/postgres/password` |
-| TLS | `verify-full` |
-
-Lire le code et le mot de passe uniquement sur le serveur, par exemple avec `sudo cat`, sans les recopier dans Git. Le nom d'hôte public peut être renseigné dans l'interface. Le certificat PostgreSQL local n'est pas le certificat HTTPS public.
+Configurer le reverse proxy HTTPS, puis ouvrir `https://<votre-domaine>/v2` pour créer l'administrateur. Le code d'installation se trouve dans `/var/lib/price-checker-v2/state/access-code` après le premier accès à l'API. La base locale est déjà configurée ; ne pas recopier les mots de passe PostgreSQL dans Git. Le certificat PostgreSQL local n'est pas le certificat HTTPS public.
 
 ## Mise à jour depuis `main`
 
@@ -39,11 +50,11 @@ Lire le code et le mot de passe uniquement sur le serveur, par exemple avec `sud
 sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
-Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il sauvegarde **la base réellement configurée** au format dump vérifié dans `/var/lib/price-checker-v2/backups/` avant toute migration. Pour une base externe, il emploie l’hôte, le port, la base, l’utilisateur et le mode TLS de la configuration V2 ; le mot de passe passe par un fichier temporaire protégé, effacé après la sauvegarde. Le client `pg_dump` fourni est celui de PostgreSQL 16 : s’il ne peut pas sauvegarder une base d’une autre version, la mise à jour s’arrête avant le changement de code et les migrations. Une connexion réseau au serveur externe depuis le conteneur `db` est nécessaire. Le script reconstruit ensuite les images, applique les migrations, redémarre l’application et vérifie une requête API impliquant la base. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
+Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il sauvegarde **la base réellement configurée** au format dump vérifié dans `/var/lib/price-checker-v2/backups/` avant toute migration. Pour une base externe, il emploie l’hôte, le port, la base, l’utilisateur et le mode TLS de la configuration V2 ; le mot de passe passe par un fichier temporaire protégé, effacé après la sauvegarde. Le client `pg_dump` fourni est celui de PostgreSQL 16 : s’il ne peut pas sauvegarder une base d’une autre version, la mise à jour s’arrête avant le changement de code et les migrations. Une connexion réseau au serveur externe depuis le conteneur `db` est nécessaire. Le script reconstruit ensuite les images, applique les migrations avec le rôle propriétaire monté uniquement dans le conteneur de migration, réattribue les droits applicatifs, redémarre l’application et vérifie une requête API impliquant la base. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
+
 
 Le certificat PostgreSQL local est renouvelé par ce même script dès qu’il lui reste moins de 60 jours de validité, même sans nouveau commit. La base et l’API sont redémarrées ensemble ; l’ancien certificat et sa clé restent dans un répertoire de sauvegarde protégé. Exécuter `update.sh` périodiquement (au moins une fois par mois) pour que cette rotation se produise avant l’expiration. Ce certificat ne concerne pas une base externe.
 
-Sur une installation externe qui utilise encore l’ancien script refusant cette mise à jour, mettre d’abord le checkout à jour par `git fetch origin main` puis `git merge --ff-only origin/main` **après avoir réalisé et vérifié une sauvegarde externe indépendante** ; lancer ensuite le nouveau `update.sh`. Cette transition ponctuelle ne doit pas utiliser l’ancien updater.
 
 Un push sur GitHub ne met pas le serveur à jour automatiquement tant que le programmateur ci-dessous n'est pas installé **et** activé dans les paramètres administrateur.
 
@@ -85,10 +96,12 @@ Installer le timer sur le **serveur installé**, après avoir configuré Nginx :
 sudo /opt/price-checker-v2/source/deployment/v2/install-scheduler.sh
 ```
 
-Le timer systemd vérifie la planification chaque minute, mais **aucune mise à jour n'est activée par défaut**. Dans `/v2/parametres`, un administrateur peut choisir l'heure, le fuseau (Europe/Paris par défaut) et activer ou désactiver les mises à jour quotidiennes. Le timer n'exécute qu'une tentative par jour local, y compris au passage à l'heure d'hiver ; une heure inexistante au passage à l'heure d'été est sautée. Il ne met à jour que `main` en fast-forward et exige la réussite de la CI du commit cible (ou du parent d'un commit de version généré par la CI). Si GitHub ou la CI n'est pas disponible, il n'installe rien ce jour-là. L'updater conserve ses sauvegardes et son rollback.
+Le timer systemd vérifie la planification chaque minute, mais **aucune mise à jour n'est activée par défaut**. Dans `/v2/parametres`, un administrateur peut choisir l'heure, le fuseau (Europe/Paris par défaut) et activer ou désactiver les mises à jour quotidiennes. Le timer n'exécute qu'une tentative par jour local, y compris au passage à l'heure d'hiver ; une heure inexistante au passage à l'heure d'été est sautée. Il met à jour `main` en production ou la branche configurée (`dev` possible uniquement sur l’instance de développement), en fast-forward, et exige la réussite de la CI du commit cible. Si GitHub ou la CI n'est pas disponible, il n'installe rien ce jour-là. L'updater conserve ses sauvegardes et son rollback.
 
 Voir `systemctl status price-checker-v2-<env>-update.timer` et `journalctl -u price-checker-v2-<env>-update.service` pour diagnostiquer. Le dernier résultat apparaît aussi dans les paramètres. La rotation du certificat PostgreSQL reste assurée par `update.sh` lorsqu'une tentative planifiée est lancée.
 
+
+Les proxys V2 ne journalisent pas les accès HTTP routiniers ; les journaux Docker sont plafonnés à deux fichiers de 10 Mio par service et les sessions expirées/limiteurs de connexion sont purgés périodiquement. Configurer la rotation du journal d’erreurs du proxy hôte selon la politique locale ; les sauvegardes et leur durée de conservation restent à définir avant l’ouverture publique.
 
 Pour diagnostiquer, consulter `docker compose --env-file /opt/price-checker-v2/source/.env -f /opt/price-checker-v2/source/deployment/v2/compose.yaml logs --tail=100`. Le fichier `.env` local conserve la configuration de l'installation et est ignoré par Git. Exporter `PRICE_CHECKER_V2_DATA_DIR` avant l'installation si le stockage persistant est monté ailleurs ; ne pas remplacer ce volume pendant les mises à jour.
 

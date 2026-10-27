@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.services.v2_visibility import require_visible
+from app.services.v2_write_limits import (
+    MAX_PRICE_DRAFTS,
+    check_open_limit,
+    check_write_limit,
+)
 
 router = APIRouter(prefix="/api/v2/prices", tags=["v2-prices"])
+_PARIS = ZoneInfo("Europe/Paris")
+
+
+def _day(value: datetime) -> str:
+    return value.astimezone(_PARIS).date().isoformat()
 
 
 class PriceDraftCreate(BaseModel):
@@ -38,14 +50,22 @@ class PriceDraftCreate(BaseModel):
             raise ValueError("L’enseigne, le point de vente et la ville ou zone sont nécessaires.")
         return value
 
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def parse_day(cls, value):
+        if isinstance(value, str) and len(value) == 10:
+            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+        return value
+
     @field_validator("observed_at")
     @classmethod
     def valid_date(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Indiquez une date et un fuseau horaire.")
-        if value > datetime.now(UTC) + timedelta(minutes=5):
+        day = value.astimezone(_PARIS).date()
+        if day > datetime.now(_PARIS).date():
             raise ValueError("Un prix ne peut pas être relevé dans le futur.")
-        return value
+        return datetime.combine(day, time(12), tzinfo=_PARIS)
 
 
 async def _user(connection: asyncpg.Connection, request: Request) -> dict:
@@ -56,6 +76,7 @@ async def _user(connection: asyncpg.Connection, request: Request) -> dict:
 
 
 async def _product(connection: asyncpg.Connection, product_id: int, *, current: bool = False) -> None:
+    await require_visible(connection, "product", product_id)
     exists = await connection.fetchval(
         "SELECT EXISTS(SELECT 1 FROM v2_products WHERE id=$1)", product_id
     )
@@ -106,7 +127,7 @@ def _observation(row: asyncpg.Record) -> dict:
     return {
         "id": row["id"],
         "price": str(row["price"]),
-        "observed_at": row["observed_at"],
+        "observed_at": _day(row["observed_at"]),
         "retailer": row["retailer"],
         "retailer_id": row["retailer_id"],
         "store_name": row["store_name"],
@@ -128,7 +149,7 @@ def _draft(row: asyncpg.Record) -> dict:
         "author": row["author"],
         "author_id": row["author_id"],
         "price": str(row["price"]),
-        "observed_at": row["observed_at"],
+        "observed_at": _day(row["observed_at"]),
         "retailer": row["retailer"],
         "store_name": row["store_name"],
         "city": row["city"],
@@ -198,6 +219,11 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
     try:
         user = await _user(connection, request)
         async with connection.transaction():
+            await check_write_limit(connection, user)
+            await check_open_limit(
+                connection, user, table="v2_price_drafts",
+                maximum=MAX_PRICE_DRAFTS,
+            )
             await _product(connection, product_id, current=True)
             retailer_id, store_id = await _retailer_store(connection, payload)
             quantity = await connection.fetchval(

@@ -2,7 +2,7 @@ name: Code checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
     branches: [main]
 
@@ -69,61 +69,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Check shell syntax
         run: |
-          bash -n deployment/v2/install.sh deployment/v2/update.sh deployment/v2/install-scheduler.sh
-          python3 -m py_compile deployment/v2/scheduled_update.py
+          bash -n deployment/v2/install.sh deployment/v2/update.sh deployment/v2/install-scheduler.sh deployment/v2/configure-local-db.sh scripts/test_v2_update.sh scripts/test_v2_install.sh
+          python3 -m py_compile deployment/v2/scheduled_update.py deployment/v2/prune_local_backups.py
       - name: Check component versions and path rules
         run: |
           python3 scripts/component_versions.py check
           python3 -m unittest discover -s scripts/tests -v
+      - name: Verify version changes against main
+        run: |
+          git fetch --no-tags origin main
+          python3 scripts/component_versions.py verify --base "$(git merge-base HEAD origin/main)" --head HEAD
       - name: Validate Compose configuration
         run: |
           mkdir -p "$RUNNER_TEMP/price-checker-v2/postgres"
           printf '%s' 'ci-only-password' > "$RUNNER_TEMP/price-checker-v2/postgres/password"
           PRICE_CHECKER_V2_DATA_DIR="$RUNNER_TEMP/price-checker-v2" docker compose -f deployment/v2/compose.yaml config --quiet
 
-  version:
-    name: Bump affected component versions
-    if: github.event_name == 'push'
-    needs: [backend, frontend, deployment]
+
+  upgrade:
+    name: Installed V2 upgrade preserves data
     runs-on: ubuntu-latest
-    concurrency:
-      group: component-versions-main
-      cancel-in-progress: false
-    permissions:
-      contents: write
+    timeout-minutes: 35
+    env:
+      # On push, test the entire pushed batch from the previously installed SHA.
+      # On PR, this is empty and the test uses the prior dev revision.
+      V2_UPGRADE_BASE_REF: ${{ github.event.before }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Commit patch versions after successful checks
-        env:
-          BASE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
-            git fetch origin main
-            git switch -C version-bump origin/main
-            python3 scripts/component_versions.py bump --base "$BASE_SHA" --head "$HEAD_SHA"
-            if git diff --quiet; then
-              echo "No application component changed."
-              exit 0
-            fi
-            git add frontend/src/v2/component-versions.json frontend/package.json frontend/package-lock.json backend/pyproject.toml
-            git commit -m "chore: bump affected component versions [skip ci]"
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            echo "Main moved during versioning; retrying against the new tip ($attempt/3)."
-          done
-          echo "Could not push component versions after three attempts." >&2
-          exit 1
+      - name: Install prior revision, seed data and run guarded updater
+        run: sudo env V2_UPGRADE_BASE_REF="$V2_UPGRADE_BASE_REF" bash scripts/test_v2_update.sh
+      - name: Install current revision and bootstrap an administrator
+        run: sudo bash scripts/test_v2_install.sh

@@ -159,16 +159,6 @@ MIGRATIONS = {
             FOR EACH STATEMENT EXECUTE FUNCTION v2_bump_pwa_version();
     """,
 
-    "0006_user_baskets": """
-        CREATE TABLE v2_user_baskets (
-            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
-            product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-            updated_at timestamptz NOT NULL DEFAULT now(),
-            CONSTRAINT v2_basket_is_array CHECK (jsonb_typeof(product_ids)='array')
-        );
-    """,
-
     "0007_price_history": """
         -- Retailer identity and physical/online store identity are distinct.
         CREATE TABLE v2_retailers (
@@ -416,6 +406,98 @@ MIGRATIONS = {
         );
         CREATE INDEX v2_off_refresh_queue_due_idx
             ON v2_off_refresh_queue(next_attempt_at, requested_at);
+    """,
+    "0013_content_moderation": """
+        CREATE TABLE v2_content_reports (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            kind varchar(16) NOT NULL CHECK (kind IN ('product', 'recipe')),
+            content_id bigint NOT NULL CHECK (content_id > 0),
+            reporter_id bigint NOT NULL REFERENCES v2_users(id),
+            reason varchar(1000) NOT NULL CHECK (btrim(reason) <> ''),
+            status varchar(16) NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'dismissed', 'withdrawn')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            reviewed_at timestamptz,
+            reviewed_by bigint REFERENCES v2_users(id)
+        );
+        CREATE UNIQUE INDEX v2_one_open_report_per_user_content
+            ON v2_content_reports(kind, content_id, reporter_id)
+            WHERE status='open';
+        CREATE INDEX v2_content_reports_queue
+            ON v2_content_reports(status, created_at, id);
+        CREATE TABLE v2_content_withdrawals (
+            kind varchar(16) NOT NULL CHECK (kind IN ('product', 'recipe')),
+            content_id bigint NOT NULL CHECK (content_id > 0),
+            reason varchar(1000) NOT NULL,
+            withdrawn_at timestamptz NOT NULL DEFAULT now(),
+            withdrawn_by bigint NOT NULL REFERENCES v2_users(id),
+            PRIMARY KEY(kind, content_id)
+        );
+        ALTER TABLE v2_product_drafts
+            DROP CONSTRAINT v2_product_drafts_status_check;
+        ALTER TABLE v2_product_drafts
+            ADD CONSTRAINT v2_product_drafts_status_check
+            CHECK (status IN ('draft', 'approved', 'rejected'));
+        ALTER TABLE v2_product_drafts
+            ADD COLUMN rejected_at timestamptz,
+            ADD COLUMN rejected_by bigint REFERENCES v2_users(id);
+    """,
+    "0014_account_erasure": """
+        -- Published contributions outlive the account, but no stable author
+        -- identifier may remain on them after the account is deleted.
+        ALTER TABLE v2_recipes ALTER COLUMN author_id DROP NOT NULL;
+        ALTER TABLE v2_product_events ALTER COLUMN actor_id DROP NOT NULL;
+        ALTER TABLE v2_product_events ALTER COLUMN draft_id DROP NOT NULL;
+    """,
+    "0015_price_days": """
+        -- The current dev schema stores readings as timestamptz. Normalize
+        -- them to noon in Europe/Paris so the actual time of day is discarded.
+        UPDATE v2_price_drafts SET observed_at =
+            ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
+            AT TIME ZONE 'Europe/Paris';
+        UPDATE v2_price_observations SET observed_at =
+            ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
+            AT TIME ZONE 'Europe/Paris';
+    """,
+    "0016_recipe_review": """
+        -- Existing recipes are already published. New creations and edits
+        -- enter this private review queue before touching public rows.
+        CREATE TABLE v2_recipe_submissions (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            author_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            recipe_id bigint REFERENCES v2_recipes(id) ON DELETE CASCADE,
+            payload jsonb NOT NULL,
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            base_revision integer CHECK (base_revision > 0),
+            status varchar(16) NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            reviewed_at timestamptz,
+            reviewer_id bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            result_recipe_id bigint REFERENCES v2_recipes(id) ON DELETE SET NULL,
+            CONSTRAINT v2_recipe_submission_target CHECK
+                ((recipe_id IS NULL) = (base_revision IS NULL))
+        );
+        CREATE INDEX v2_recipe_review_queue
+            ON v2_recipe_submissions(status, created_at, id);
+        CREATE INDEX v2_recipe_submission_author
+            ON v2_recipe_submissions(author_id, created_at DESC);
+        CREATE UNIQUE INDEX v2_one_pending_recipe_edit
+            ON v2_recipe_submissions(author_id, recipe_id)
+            WHERE status='pending' AND recipe_id IS NOT NULL;
+    """,
+    "0017_local_basket_only": """
+        -- Refuse to discard unexpected rows while removing obsolete storage.
+        DO $$
+        BEGIN
+            IF to_regclass('v2_user_baskets') IS NOT NULL THEN
+                IF EXISTS (SELECT 1 FROM v2_user_baskets) THEN
+                    RAISE EXCEPTION 'Obsolete basket table is not empty';
+                END IF;
+                DROP TABLE v2_user_baskets;
+            END IF;
+        END
+        $$;
     """,
 
 }

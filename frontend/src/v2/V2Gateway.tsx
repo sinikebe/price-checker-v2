@@ -401,6 +401,16 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     window.dispatchEvent(new Event("v2-auth-ready"));
   }, [status?.configured, status?.app_env, authStatus, activateUserBasket]);
 
+  useEffect(() => {
+    const accountDeletedElsewhere = (event: StorageEvent) => {
+      if (event.key !== "v2:account:deleted") return;
+      setAuthStatus(null);
+      setAttempt(value => value + 1);
+    };
+    window.addEventListener("storage", accountDeletedElsewhere);
+    return () => window.removeEventListener("storage", accountDeletedElsewhere);
+  }, []);
+
   function authenticated(user: V2User) {
     setAuthStatus({ admin_initialized: true, user });
   }
@@ -437,7 +447,9 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <SetupPage configured environment={status.app_env}
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
-  if (preferencesMode) return <V2SettingsPage user={authStatus.user} />;
+  if (preferencesMode) return <V2SettingsPage user={authStatus.user} onAccountDeleted={() => {
+    setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
+  }} />;
   if (!authStatus.admin_initialized) {
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }

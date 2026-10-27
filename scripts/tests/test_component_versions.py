@@ -34,7 +34,7 @@ class ComponentVersionsTests(unittest.TestCase):
 
     def test_shared_sync_changes_bump_each_affected_component_once(self):
         self.assertEqual(
-            classify(["frontend/src/pwa/data-sync.ts", "backend/app/api/v2/basket.py"]),
+            classify(["frontend/src/pwa/data-sync.ts", "frontend/src/v2/V2BasketContext.tsx"]),
             {"application", "pwa", "products", "recipes", "basket"},
         )
 

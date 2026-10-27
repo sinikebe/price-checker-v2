@@ -2,11 +2,23 @@
 
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
-Le projet est en cours de développement. Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
+Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
+
+Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
+
+Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
+
+## Installer l’application sur un appareil
+
+Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne.
+
+## Informations du service
+
+Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (`/v2/confidentialite`) et **Conditions d’utilisation** (`/v2/conditions-utilisation`) sont liées depuis le pied de page et l’inscription. Leur **contenu appartient à chaque instance**, dans trois fichiers Markdown sous son répertoire d’état privé : il n’est ni inclus dans ce dépôt ni copié d’une autre installation. La production refuse de s’installer si ces fichiers manquent. Voir la [procédure d’installation](docs/server-install.md#informations-légales-par-instance) avant de rendre le site public.
 
 ## Installation sur serveur
 
-Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL et construit l'API et l'interface web. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
+Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL, Python 3 et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL locale par défaut et construit l'API et l'interface web. La configuration de l'application permet aussi de choisir une base PostgreSQL externe, dont Supabase. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
 
 ```sh
 sudo install -d -m 0755 /opt/price-checker-v2
@@ -28,7 +40,9 @@ Elle n'est pas déclenchée automatiquement par un push.
 
 La page **Versions** est accessible depuis le pied de page de l'accueil V2 (`/v2/versions`). Son [manifeste dans le dépôt](frontend/src/v2/component-versions.json) est inclus dans le build web. Elle distingue l'application, les produits, recettes, panier, connexion PostgreSQL, connexion Open Food Facts, comptes, PWA et déploiement. Open Prices est affiché « prévu » : la provenance existe dans le schéma de prix, mais aucun connecteur utilisable n'est encore livré.
 
-Après réussite des contrôles sur un push vers `main`, la [CI](.github/workflows/ci.yml) ajoute un commit qui incrémente le correctif (dernier nombre) **une fois par composant concerné**, d'après les chemins modifiés. Un changement partagé peut incrémenter plusieurs composants ; la version globale de l'application avance dès qu'un composant actif change. Les versions du paquet frontend, de son lockfile et du paquet backend suivent cette version globale. Documentation, tests et manifeste seuls ne déclenchent aucun incrément. Les règles sont dans [le script de versionnement](scripts/component_versions.py) ; un nouveau fichier applicatif sans règle fait échouer la CI pour imposer un rattachement explicite. La CI ne crée ni tag ni déploiement. Les versions sont celles du code, pas des révisions de synchronisation PWA ni du schéma des données.
+Les versions sont incrémentées dans les commits de développement, avant la PR vers `main`. La [CI](.github/workflows/ci.yml) vérifie que les composants modifiés ont une version supérieure à celle de `main` et que les métadonnées des paquets restent cohérentes ; elle ne pousse plus de commit automatiquement. Un changement partagé peut incrémenter plusieurs composants. Documentation et tests seuls ne demandent pas d'incrément. Les règles sont dans [le script de versionnement](scripts/component_versions.py) ; un nouveau fichier applicatif sans règle fait échouer la CI pour imposer un rattachement explicite. La CI ne crée ni tag ni déploiement. Les versions sont celles du code, pas des révisions de synchronisation PWA ni du schéma des données.
+
+Le travail V2 passe par la branche `dev`, puis par une PR vers `main`. La protection de `main` exige une PR à jour et les contrôles backend, frontend, déploiement et **mise à jour d'une installation existante**. Ce dernier installe une révision antérieure, crée des données, lance le véritable `update.sh`, vérifie le démarrage, la conservation des données et la restauration de la sauvegarde ; il teste aussi une installation neuve. Les pushs sur `dev` exercent également ce parcours depuis le SHA précédant le push. L'instance privée de développement suit `dev` ; une publication sur `main` ou en production est une opération distincte.
 
 Les incréments automatiques sont des correctifs ; les changements de version majeure/mineure restent des décisions de publication explicites. Une version affichée sur une installation ne change qu'après mise à jour de cette installation.
 

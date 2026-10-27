@@ -6,15 +6,17 @@ if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root (sudo); this script prepares protected server state." >&2
   exit 1
 fi
-for tool in docker openssl curl git; do
+for tool in docker openssl curl git python3; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
 docker compose version >/dev/null || { echo "Docker Compose plugin is required" >&2; exit 1; }
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose_file="$repo_dir/deployment/v2/compose.yaml"
-[[ "$(git -C "$repo_dir" branch --show-current)" == main ]] || {
-  echo "Installation requires the main branch." >&2; exit 1;
+source_branch="$(git -C "$repo_dir" branch --show-current)"
+[[ "$source_branch" == main ||
+   ( "${PRICE_CHECKER_V2_ENV:-prod}" == dev && "$source_branch" == dev ) ]] || {
+  echo "Installation requires main, or dev for a private development instance." >&2; exit 1;
 }
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout must be clean." >&2; exit 1;
@@ -31,6 +33,10 @@ if [[ "$PRICE_CHECKER_V2_ENV" == dev ]]; then default_data_dir+="-dev"; fi
 export PRICE_CHECKER_V2_DATA_DIR="${PRICE_CHECKER_V2_DATA_DIR:-$default_data_dir}"
 export PRICE_CHECKER_V2_DB_NAME="${PRICE_CHECKER_V2_DB_NAME:-pricechecker_v2_$PRICE_CHECKER_V2_ENV}"
 export PRICE_CHECKER_V2_PORT="${PRICE_CHECKER_V2_PORT:-8080}"
+export PRICE_CHECKER_V2_GIT_BRANCH="${PRICE_CHECKER_V2_GIT_BRANCH:-$source_branch}"
+[[ "$PRICE_CHECKER_V2_GIT_BRANCH" == "$source_branch" ]] || {
+  echo "Update branch must match the installed checkout." >&2; exit 1;
+}
 [[ "$PRICE_CHECKER_V2_DATA_DIR" =~ ^/[A-Za-z0-9/_-]+$ ]] || {
   echo "Data directory must be an absolute path without spaces." >&2; exit 1;
 }
@@ -45,9 +51,14 @@ if [[ -f "$repo_dir/.env" ]]; then
 else
   printf 'PRICE_CHECKER_V2_ENV=%s\nPRICE_CHECKER_V2_DATA_DIR=%s\nPRICE_CHECKER_V2_DB_NAME=%s\nPRICE_CHECKER_V2_PORT=%s\n' \
     "$PRICE_CHECKER_V2_ENV" "$PRICE_CHECKER_V2_DATA_DIR" "$PRICE_CHECKER_V2_DB_NAME" "$PRICE_CHECKER_V2_PORT" > "$repo_dir/.env"
+  printf 'PRICE_CHECKER_V2_GIT_BRANCH=%s\n' "$PRICE_CHECKER_V2_GIT_BRANCH" >> "$repo_dir/.env"
   chmod 0600 "$repo_dir/.env"
 fi
 export PRICE_CHECKER_V2_ENV PRICE_CHECKER_V2_DATA_DIR PRICE_CHECKER_V2_DB_NAME PRICE_CHECKER_V2_PORT
+# Production legal text belongs to this instance, never to the checkout/image.
+if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal" --backend-access
+fi
 compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 install -d -m 0700 "$PRICE_CHECKER_V2_DATA_DIR"
 install -d -m 0755 "$PRICE_CHECKER_V2_DATA_DIR/certs"
@@ -78,12 +89,45 @@ chmod 0644 "$PRICE_CHECKER_V2_DATA_DIR/certs/server.crt"
 
 "${compose[@]}" build backend
 "${compose[@]}" build web
+"${compose[@]}" up -d --wait db
+if [[ ! -f "$PRICE_CHECKER_V2_DATA_DIR/state/database.json" ]]; then
+  python3 - "$PRICE_CHECKER_V2_DATA_DIR" "$PRICE_CHECKER_V2_DB_NAME" <<'PYCONFIG'
+import json
+import os
+import sys
+from pathlib import Path
+directory, name = Path(sys.argv[1]), sys.argv[2]
+config = {
+    "provider": "postgres", "project_url": "", "public_hostname": "",
+    "host": "db", "port": 5432, "database": name, "username": name,
+    "password": (directory / "postgres" / "password").read_text().strip(),
+    "tls_mode": "verify-full",
+}
+path = directory / "state" / "database.json"
+path.write_text(json.dumps(config))
+os.chown(path, 1000, 1000)
+os.chmod(path, 0o600)
+PYCONFIG
+fi
+local_owner=$(python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/database.json" "$PRICE_CHECKER_V2_DB_NAME" <<'PYCONFIG'
+import json
+import sys
+with open(sys.argv[1]) as source:
+    config = json.load(source)
+print(int(config.get("provider") == "postgres" and config.get("host") == "db"
+          and config.get("database") == sys.argv[2]
+          and config.get("username") == sys.argv[2]))
+PYCONFIG
+)
+if [[ $local_owner == 1 ]]; then
+  "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  "$repo_dir/deployment/v2/configure-local-db.sh"
+fi
 "${compose[@]}" up -d
 for attempt in {1..30}; do
   if curl -fs http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/setup/status >/dev/null 2>&1; then
-    echo "V2 installed at loopback :$PRICE_CHECKER_V2_PORT. Configure HTTPS proxy before first-run setup."
-    echo "PostgreSQL host=db, port=5432, database/user=$PRICE_CHECKER_V2_DB_NAME, TLS=verify-full."
-    echo "Read the PostgreSQL password locally: $PRICE_CHECKER_V2_DATA_DIR/postgres/password"
+    echo "V2 installed at loopback :$PRICE_CHECKER_V2_PORT. Configure HTTPS proxy before admin bootstrap."
+    echo "Bundled PostgreSQL uses a limited application role; migration credentials stay outside the runtime mount."
     echo "Read the setup code locally after first API request: $PRICE_CHECKER_V2_DATA_DIR/state/access-code"
     exit 0
   fi

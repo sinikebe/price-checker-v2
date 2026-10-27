@@ -1,11 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallContext";
 import { useV2Basket } from "./V2BasketContext";
 import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
-import versions from "./component-versions.json";
+
+const installMessages: Record<InstallOutcome, string> = {
+  accepted: "Installation lancée. Suivez les indications du navigateur.",
+  dismissed: "Installation annulée. Vous pourrez réessayer plus tard.",
+  ios: "Sur iPhone ou iPad : touchez Partager, puis Sur l’écran d’accueil.",
+  manual: "Si votre navigateur le propose, ouvrez son menu et choisissez Installer l’application.",
+  installed: "L’application est déjà installée sur cet appareil.",
+  error: "L’installation n’a pas pu démarrer. Réessayez depuis le menu du navigateur.",
+};
 
 function ArrowIcon() {
   return (
@@ -46,7 +55,13 @@ export default function V2HomePage({ user, onLogout }: {
   onLogout: () => Promise<void>;
 }) {
   const { products } = useV2Basket();
+  const { installed, requestInstall } = usePwaInstall();
+  const [installMessage, setInstallMessage] = useState("");
   const basketCount = products.length;
+
+  async function installApp() {
+    setInstallMessage(installMessages[await requestInstall()]);
+  }
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -113,7 +128,10 @@ export default function V2HomePage({ user, onLogout }: {
                 <Link className="v2-button v2-button-secondary" to="/v2/panier">
                   Voir mon panier
                 </Link>
+                {!installed && <button className="v2-button v2-button-secondary" type="button"
+                  onClick={() => { void installApp(); }}>Installer l’application</button>}
               </div>
+              {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
               <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course.</p>
             </div>
 
@@ -178,12 +196,12 @@ export default function V2HomePage({ user, onLogout }: {
                 : "Gardez vos produits sous la main pour organiser vos prochaines courses."}</span>
               <span className="v2-action-link">Ouvrir mon panier <ArrowIcon /></span>
             </Link>
-            <div className="v2-action-card v2-action-card-future">
+            <Link className="v2-action-card" to="/v2/produits">
               <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
               <span className="v2-action-title">Je partage un prix</span>
-              <span className="v2-action-description">La contribution depuis votre compte arrivera dans une prochaine étape.</span>
-              <span className="v2-action-link">Bientôt disponible</span>
-            </div>
+              <span className="v2-action-description">Choisissez un produit, puis proposez un prix soumis à validation.</span>
+              <span className="v2-action-link">Choisir un produit <ArrowIcon /></span>
+            </Link>
           </div>
         </section>
 
@@ -202,12 +220,6 @@ export default function V2HomePage({ user, onLogout }: {
         </section>
       </main>
 
-      <footer className="v2-footer">
-        <div className="v2-wrap v2-footer-inner">
-          <span>Price Checker · Des courses plus simples, à votre façon.</span>
-          <Link to="/v2/versions">Version {versions.application.version} · Détails</Link>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -6,12 +6,12 @@ from fastapi import HTTPException
 from app.api.v2.setup import _validated_hostname
 
 
-@pytest.mark.parametrize("value", ["dev-price-checker", "machine.local", "localhost", "192.168.1.244"])
+@pytest.mark.parametrize("value", ["test-machine", "machine.local", "localhost", "192.168.50.10"])
 def test_local_hostname_is_accepted_in_development(value):
     assert _validated_hostname(value, allow_local=True) == value
 
 
-@pytest.mark.parametrize("value", ["dev-price-checker", "localhost", "192.168.1.244"])
+@pytest.mark.parametrize("value", ["test-machine", "localhost", "192.168.50.10"])
 def test_local_hostname_is_rejected_in_production(value):
     with pytest.raises(HTTPException) as exc:
         _validated_hostname(value)

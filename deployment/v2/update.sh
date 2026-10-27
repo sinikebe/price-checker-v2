@@ -5,7 +5,11 @@ if [[ ${EUID} -ne 0 ]]; then echo "Run as root (sudo)." >&2; exit 1; fi
 for tool in docker git curl flock python3 openssl; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
-repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+script_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+repo_dir="$script_repo_dir"
+[[ "$repo_dir" = /* && -d "$repo_dir/.git" ]] || {
+  echo "Invalid installed source directory." >&2; exit 1;
+}
 compose_file="$repo_dir/deployment/v2/compose.yaml"
 [[ -f "$repo_dir/.env" ]] || { echo "Installation configuration missing." >&2; exit 1; }
 set -a
@@ -15,23 +19,30 @@ compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 [[ "$PRICE_CHECKER_V2_DATA_DIR" = /* && -d "$PRICE_CHECKER_V2_DATA_DIR/state" ]] || {
   echo "V2 is not installed." >&2; exit 1;
 }
+if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal" --backend-access
+fi
 exec 9>"$PRICE_CHECKER_V2_DATA_DIR/update.lock"
 flock -n 9 || { echo "Another V2 update is running." >&2; exit 1; }
-[[ "$(git -C "$repo_dir" branch --show-current)" == main ]] || {
-  echo "Update requires main." >&2; exit 1;
+target_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-main}"
+[[ "$target_branch" == main || ( "$PRICE_CHECKER_V2_ENV" == dev && "$target_branch" == dev ) ]] || {
+  echo "Invalid update branch for this environment." >&2; exit 1;
+}
+[[ "$(git -C "$repo_dir" branch --show-current)" == "$target_branch" ]] || {
+  echo "Update checkout is on the wrong branch." >&2; exit 1;
 }
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout has local changes; refusing update." >&2; exit 1;
 }
 old_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-git -C "$repo_dir" fetch origin main
-new_sha="$(git -C "$repo_dir" rev-parse FETCH_HEAD)"
+git -C "$repo_dir" fetch origin "refs/heads/$target_branch:refs/remotes/origin/$target_branch"
+new_sha="$(git -C "$repo_dir" rev-parse "refs/remotes/origin/$target_branch")"
 if [[ -n "${PRICE_CHECKER_V2_EXPECTED_SHA:-}" && "$new_sha" != "$PRICE_CHECKER_V2_EXPECTED_SHA" ]]; then
-  echo "origin/main moved after CI verification; refusing update." >&2
+  echo "Target branch moved after CI verification; refusing update." >&2
   exit 1
 fi
 git -C "$repo_dir" merge-base --is-ancestor "$old_sha" "$new_sha" || {
-  echo "origin/main is not a fast-forward; refusing update." >&2; exit 1;
+  echo "Target branch is not a fast-forward; refusing update." >&2; exit 1;
 }
 for file in backend/app/main_v2.py frontend/v2.html deployment/v2/compose.yaml deployment/v2/update.sh; do
   git -C "$repo_dir" cat-file -e "$new_sha:$file" || {
@@ -53,9 +64,12 @@ print(config["host"], config["port"], config["database"], config["username"],
 PYCONFIG
 )"
   IFS=$'\t' read -r db_host db_port db_name db_user db_tls <<< "$configured_target"
-  if [[ "$db_host" != db || "$db_port" != 5432 ||
-        "$db_name" != "$PRICE_CHECKER_V2_DB_NAME" ||
-        "$db_user" != "$PRICE_CHECKER_V2_DB_NAME" ]]; then
+  if [[ "$db_host" == db && "$db_port" == 5432 &&
+        "$db_name" == "$PRICE_CHECKER_V2_DB_NAME" ]]; then
+    [[ "$db_user" == "$PRICE_CHECKER_V2_DB_NAME"_app ]] || {
+      echo "Bundled database requires its limited application role." >&2; exit 1;
+    }
+  else
     bundled_db=0
   fi
   [[ "$db_tls" == disable || "$db_tls" == require || "$db_tls" == verify-full ]] || {
@@ -76,7 +90,8 @@ fi
 [[ "$PRICE_CHECKER_V2_ENV" == dev || "$PRICE_CHECKER_V2_ENV" == prod ]] || {
   echo "Invalid V2 environment." >&2; exit 1;
 }
-maintenance_marker="/run/price-checker-v2-$PRICE_CHECKER_V2_ENV-maintenance"
+maintenance_marker="${PRICE_CHECKER_V2_MAINTENANCE_MARKER:-/run/price-checker-v2-$PRICE_CHECKER_V2_ENV-maintenance}"
+[[ "$maintenance_marker" = /* ]] || { echo "Invalid maintenance marker path." >&2; exit 1; }
 [[ ! -e "$maintenance_marker" ]] || {
   echo "Maintenance marker already exists; inspect the previous update." >&2; exit 1;
 }
@@ -189,7 +204,19 @@ if [[ "$renew_cert" == 1 ]]; then
   "${compose[@]}" up -d --wait --no-deps --force-recreate db
 fi
 if [[ -f "$config_file" ]]; then
-  "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  if [[ "$bundled_db" == 1 ]]; then
+    [[ -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]] || {
+      echo "Bundled database migration role is not configured." >&2; exit 1;
+    }
+    "${compose[@]}" run --rm --no-deps \
+      -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
+      -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
+  else
+    "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+  fi
+  if [[ "$bundled_db" == 1 ]]; then
+    "$repo_dir/deployment/v2/configure-local-db.sh"
+  fi
 fi
 "${compose[@]}" up -d --no-deps backend web
 health_path=/api/v2/setup/status
@@ -205,4 +232,7 @@ done
 [[ "$healthy" == 1 ]] || { echo "Health check failed." >&2; false; }
 trap - ERR
 if [[ "$renew_cert" == 1 ]]; then echo "Bundled database certificate renewed."; fi
-echo "Updated V2: $old_sha -> $new_sha"
+echo "Updated V2 ($target_branch): $old_sha -> $new_sha"
+if ! python3 "$repo_dir/deployment/v2/prune_local_backups.py" "${PRICE_CHECKER_V2_DATA_DIR}/backups" "$backup"; then
+  echo "Local backup pruning deferred; inspect the backup directory." >&2
+fi

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -20,6 +21,7 @@ from app.api.v2.setup import _require_admin
 router = APIRouter(prefix="/api/v2/transfers", tags=["v2-transfers"])
 MAX_BUNDLE_BYTES = 24 * 1024 * 1024
 MAX_ID = 9223372036854775807
+_PARIS = ZoneInfo("Europe/Paris")
 
 
 class TransferProduct(BaseModel):
@@ -58,12 +60,19 @@ class TransferPrice(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
     sales_channel: Literal["in_store", "drive", "delivery"] = "in_store"
 
+    @field_validator("observed_at", mode="before")
+    @classmethod
+    def parse_day(cls, value):
+        if isinstance(value, str) and len(value) == 10:
+            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+        return value
+
     @field_validator("observed_at")
     @classmethod
-    def require_timezone(cls, value: datetime) -> datetime:
+    def normalize_day(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("La date du relevé doit inclure un fuseau horaire.")
-        return value
+        return datetime.combine(value.astimezone(_PARIS).date(), time(12), tzinfo=_PARIS)
 
 
 class TransferBundle(BaseModel):
@@ -108,6 +117,15 @@ async def export_products_prices(request: Request):
         source = await connection.fetchval(
             "SELECT instance_id FROM v2_transfer_instance WHERE singleton=true"
         )
+        hidden = await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM v2_content_withdrawals "
+            "WHERE kind='product')"
+        )
+        if hidden:
+            raise HTTPException(
+                status_code=409,
+                detail="Export bloqué : un contenu retiré nécessite une sélection manuelle.",
+            )
         products = await connection.fetch(
             "SELECT id, predecessor_id, data FROM v2_products ORDER BY id"
         )
@@ -137,7 +155,7 @@ async def export_products_prices(request: Request):
             "prices": [{**dict(row), "price": str(row["price"]),
                         "unit_price_amount": (str(row["unit_price_amount"])
                                               if row["unit_price_amount"] is not None else None),
-                        "observed_at": row["observed_at"].isoformat()} for row in prices],
+                        "observed_at": row["observed_at"].astimezone(_PARIS).date().isoformat()} for row in prices],
         }
         body = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode()
         if len(body) > MAX_BUNDLE_BYTES:

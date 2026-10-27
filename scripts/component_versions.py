@@ -26,8 +26,10 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/prices.py", ("products",)),
     ("backend/app/api/v2/transfers.py", ("products", "database")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
-    ("backend/app/api/v2/basket.py", ("basket",)),
+    ("backend/app/api/v2/recipe_submissions.py", ("recipes",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
+    ("backend/app/api/v2/account_data.py", ("accounts",)),
+    ("backend/app/api/v2/moderation.py", ("products", "recipes", "accounts", "pwa")),
     ("backend/app/api/v2/setup.py", ("database",)),
     ("backend/app/api/v2/updates.py", ("deployment",)),
     ("backend/app/api/v2/sync.py", ("pwa", "products", "recipes", "basket")),
@@ -38,11 +40,20 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/openfoodfacts_client.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_snapshot.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_refresh_queue.py", ("open_food_facts",)),
+    ("backend/app/services/v2_write_limits.py", ("accounts", "products", "recipes")),
+    ("backend/app/services/v2_visibility.py", ("products", "recipes")),
+    ("backend/app/services/v2_trusted_proxy.py", ("accounts", "deployment")),
+    ("backend/app/services/v2_db_pool.py", ("database",)),
+    ("backend/app/services/v2_private_retention.py", ("accounts", "database")),
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
     ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2PriceHistory.tsx", ("products",)),
+    ("frontend/src/v2/V2ReportControl.tsx", ("products", "recipes")),
+    ("frontend/src/v2/V2AccountDeletion.tsx", ("accounts", "pwa")),
+    ("frontend/src/v2/V2ModerationPanel.tsx", ("products", "recipes")),
+    ("frontend/src/v2/v2-moderation-api.ts", ("products", "recipes")),
     ("frontend/src/v2/v2-price-history.css", ("products",)),
     ("frontend/src/v2/V2BarcodeScanner.tsx", ("products",)),
     ("frontend/src/v2/V2BarcodeSearch.tsx", ("products", "open_food_facts")),
@@ -52,6 +63,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-products-api.ts", ("products", "open_food_facts")),
     ("frontend/src/v2/v2-product-workspace.css", ("products",)),
     ("frontend/src/v2/V2RecipesPage.tsx", ("recipes",)),
+    ("frontend/src/v2/V2RecipeReviewPanel.tsx", ("recipes",)),
     ("frontend/src/v2/v2-recipes-*.ts", ("recipes",)),
     ("frontend/src/v2/v2-recipes.css", ("recipes",)),
     ("frontend/src/recipes/*.ts", ("recipes",)),
@@ -66,15 +78,20 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/pwa/*", ("pwa",)),
     ("frontend/vite.config.ts", ("pwa",)),
     ("backend/Dockerfile", ("deployment",)),
+    ("frontend/Dockerfile.v2", ("deployment",)),
     ("frontend/nginx.v2.conf", ("deployment",)),
     ("deployment/v2/*", ("deployment",)),
     ("backend/app/*.py", ("application",)),
     ("backend/app/api/*.py", ("application",)),
     ("backend/app/api/v2/__init__.py", ("application",)),
+    ("backend/app/api/v2/legal.py", ("application",)),
     ("backend/app/services/__init__.py", ("application",)),
     ("backend/app/schemas/__init__.py", ("application",)),
     ("frontend/src/v2/V2App.tsx", ("application",)),
     ("frontend/src/v2/V2HomePage.tsx", ("application",)),
+    ("frontend/src/v2/V2LegalPage.tsx", ("application",)),
+    ("frontend/src/v2/V2SiteFooter.tsx", ("application",)),
+    ("frontend/src/v2/v2-legal.css", ("application",)),
     ("frontend/src/v2/V2ServerUpdateSchedule.tsx", ("deployment",)),
     ("frontend/src/v2/V2TransferPanel.tsx", ("products", "database")),
     ("frontend/src/v2/V2MaintenanceOverlay.tsx", ("deployment",)),
@@ -103,6 +120,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 RUNTIME_PREFIXES = ("backend/app/", "frontend/src/", "deployment/v2/", "frontend/public-v2/")
 RUNTIME_FILES = {
     "backend/Dockerfile", "backend/requirements.txt", "backend/pyproject.toml",
+    "frontend/Dockerfile.v2",
     "frontend/package.json", "frontend/package-lock.json", "frontend/nginx.v2.conf",
     "frontend/vite.config.ts", "frontend/v2.html", "frontend/eslint.config.js",
 }
@@ -199,7 +217,7 @@ def bump(versions: dict, affected: set[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check", "bump", "preview"))
+    parser.add_argument("action", choices=("check", "bump", "preview", "verify"))
     parser.add_argument("--base", help="Git commit preceding the push")
     parser.add_argument("--head", help="Git commit at the end of the push")
     args = parser.parse_args()
@@ -209,9 +227,22 @@ def main() -> None:
         return
     if not args.base or not args.head:
         parser.error("bump/preview nécessitent --base et --head")
-    paths = _git("diff", "--name-only", "-z", args.base, args.head)
+    paths = _git("diff", "--diff-filter=ACMRTUXB", "--name-only", "-z", args.base, args.head)
     affected = classify(paths)
     print("Composants concernés : " + (", ".join(sorted(affected)) if affected else "aucun"))
+    if args.action == "verify":
+        previous = json.loads(subprocess.run(
+            ["git", "show", f"{args.base}:frontend/src/v2/component-versions.json"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout)
+        stale = [
+            key for key in affected
+            if versions[key]["status"] == "active"
+            and tuple(map(int, versions[key]["version"].split(".")))
+            <= tuple(map(int, previous[key]["version"].split(".")))
+        ]
+        if stale:
+            raise ValueError("Versions non augmentées depuis main : " + ", ".join(sorted(stale)))
     if args.action == "bump" and affected:
         bump(versions, affected)
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { useV2Theme } from "./V2ThemeContext";
@@ -6,6 +6,9 @@ import { usePwaUpdate } from "../pwa/PwaUpdateState";
 import versions from "./component-versions.json";
 import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2TransferPanel from "./V2TransferPanel";
+import V2ModerationPanel from "./V2ModerationPanel";
+import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
+import V2AccountDeletion from "./V2AccountDeletion";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -18,9 +21,31 @@ const updateMessages = {
   error: "La vérification a échoué. Réessayez plus tard.",
 };
 
-export default function V2SettingsPage({ user }: { user: V2User | null }) {
+export default function V2SettingsPage({ user, onAccountDeleted }: {
+  user: V2User | null; onAccountDeleted: () => void;
+}) {
   const { choice, setChoice } = useV2Theme();
   const { checkState, checkForUpdates, applyUpdate } = usePwaUpdate();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [deleteNotice, setDeleteNotice] = useState("");
+  async function exportAccount() {
+    if (exporting) return;
+    setExporting(true); setExportError("");
+    try {
+      const response = await fetch("/api/v2/account/export", {
+        credentials: "same-origin", cache: "no-store",
+      });
+      if (!response.ok) throw new Error("L’export n’a pas pu être préparé.");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "price-checker-v2-account.json";
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (reason) { setExportError(String(reason)); }
+    finally { setExporting(false); }
+  }
   useEffect(() => {
     const previousTitle = document.title;
     document.title = "Paramètres | Price Checker";
@@ -42,6 +67,7 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
     <main id="v2-settings-main" className="v2-wrap v2-settings-main">
       <span className="v2-section-kicker">PRÉFÉRENCES</span>
       <h1>Paramètres<span>.</span></h1>
+      {deleteNotice && <p className="v2-settings-success" role="status">{deleteNotice}</p>}
       <div className="v2-settings-grid">
         <section className="v2-settings-card" aria-labelledby="v2-theme-heading">
           <h2 id="v2-theme-heading">Apparence</h2>
@@ -67,7 +93,22 @@ export default function V2SettingsPage({ user }: { user: V2User | null }) {
           <p className="v2-settings-note">La mise à jour actualise l’application sur cet appareil, pas le serveur. Elle recharge cette page : terminez vos modifications en cours avant de continuer.</p>
           <Link className="v2-settings-link" to="/v2/versions">Détail des versions →</Link>
         </section>
+        {user && <section className="v2-settings-card" aria-labelledby="v2-account-data-heading">
+          <h2 id="v2-account-data-heading">Mes données</h2>
+          <p>Téléchargez votre compte, vos brouillons, recettes, relevés et signalements au format JSON.</p>
+          <button type="button" className="v2-button v2-button-secondary" disabled={exporting}
+            onClick={() => { void exportAccount(); }}>{exporting ? "Préparation…" : "Exporter mes données"}</button>
+          {exportError && <p role="alert">{exportError}</p>}
+        </section>}
+        {user && user.role !== "admin" && <V2AccountDeletion userId={user.id} onDeleted={cleared => {
+          setDeleteNotice(cleared
+            ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."
+            : "Compte supprimé sur le serveur. Effacez aussi les données de ce site dans votre navigateur : le nettoyage local n’a pas abouti.");
+          onAccountDeleted();
+        }} />}
         {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
+        {user?.role === "admin" && <V2RecipeReviewPanel />}
+        {user?.role === "admin" && <V2ModerationPanel />}
         {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}
         {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">
           <h2 id="v2-server-heading">Serveur</h2>

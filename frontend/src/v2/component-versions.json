@@ -1,47 +1,47 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.11",
+    "version": "0.1.29",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.6",
+    "version": "0.1.13",
     "status": "active"
   },
   "recipes": {
     "label": "Recettes",
-    "version": "0.1.1",
+    "version": "0.1.8",
     "status": "active"
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.1",
+    "version": "0.1.4",
     "status": "active"
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.3",
+    "version": "0.1.11",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.4",
+    "version": "0.1.8",
     "status": "active"
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.1",
+    "version": "0.1.12",
     "status": "active"
   },
   "pwa": {
     "label": "Mode hors ligne / PWA",
-    "version": "0.1.3",
+    "version": "0.1.11",
     "status": "active"
   },
   "deployment": {
     "label": "Installation et mise à jour",
-    "version": "0.1.4",
+    "version": "0.1.14",
     "status": "active"
   },
   "open_prices": {

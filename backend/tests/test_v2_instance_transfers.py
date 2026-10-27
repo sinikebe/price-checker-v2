@@ -82,6 +82,7 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
                                     "retailers", "stores", "prices"}
             assert len(archive["products"]) == 2
             assert len(archive["prices"]) == 2
+            assert all(len(item["observed_at"]) == 10 for item in archive["prices"])
             assert {item["sales_channel"] for item in archive["prices"]} == {"in_store", "drive"}
             assert (await client.post("/api/v2/transfers/import", json=archive)).status_code == 403
             assert (await client.post("/api/v2/transfers/import", json=archive,

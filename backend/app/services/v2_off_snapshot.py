@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from app.services.off_rate_limit import OffRateLimited
-from app.services.openfoodfacts_client import get_off_client
+from app.services.openfoodfacts_client import off_json_get
 
 OFF_PRODUCT_PAGE = "https://world.openfoodfacts.org/product"
 _OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product"
@@ -22,11 +22,9 @@ class OffUnavailable(RuntimeError):
 
 async def fetch_full_off_product(barcode: str) -> dict[str, Any] | None:
     try:
-        response = await (await get_off_client()).get(
-            f"{_OFF_PRODUCT_URL}/{barcode}.json"
+        data = await off_json_get(
+            f"{_OFF_PRODUCT_URL}/{barcode}.json", max_bytes=16 * 1024 * 1024
         )
-        response.raise_for_status()
-        data = response.json()
     except OffRateLimited:
         raise
     except (httpx.HTTPError, ValueError) as exc:

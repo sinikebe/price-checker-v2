@@ -5,6 +5,7 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2ReportControl from "./V2ReportControl";
 import { useV2Basket } from "./V2BasketContext";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -59,21 +60,24 @@ function Frame({ children, user, onLogout }: { children: React.ReactNode; user: 
 }
 
 function useCollection<T>(path: string, enabled = true) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ path: string; data: T | null; error: string }>({ path: "", data: null, error: "" });
   const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    productRequest<T>(path).then(value => { if (active) setData(value); })
-      .catch(reason => { if (active) setError(String(reason)); });
+    productRequest<T>(path).then(value => { if (active) setResult({ path, data: value, error: "" }); })
+      .catch(reason => { if (active) setResult({ path, data: null, error: String(reason) }); });
     return () => { active = false; };
   }, [path, enabled, reload]);
-  return { data, error, refresh: () => setReload(value => value + 1) };
+  return { data: enabled && result.path === path ? result.data : null,
+    error: enabled && result.path === path ? result.error : "",
+    refresh: () => setReload(value => value + 1) };
 }
 
 function ListPage({ mode, user, onLogout }: Props) {
-  const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? "/drafts/review" : "";
+  const [page, setPage] = useState(0);
+  const pageSize = 30;
+  const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? `/drafts/review?limit=${pageSize}&offset=${page * pageSize}` : "";
   const { data, error } = useCollection<(Draft | Product)[]>(path, mode !== "review" || user?.role === "admin");
   const title = mode === "mine" ? "Mes brouillons" : mode === "review" ? "Propositions à valider" : "Produits publiés";
   return <Frame user={user} onLogout={onLogout}>
@@ -89,10 +93,17 @@ function ListPage({ mode, user, onLogout }: Props) {
         const href = draft ? "/v2/brouillons/" + item.id : "/v2/produits/" + item.id;
         return <Link key={item.id} to={href} className="v2-workspace-list-item">
           <div><strong>{item.data.brand} {item.data.name || "Produit sans nom"}</strong>
-            <small>{item.data.quantity || "Quantité à préciser"} · {draft ? item.product_id ? "Modification" : "Nouveau produit" : "Publié"}</small></div>
+            <small>{item.data.quantity || "Quantité à préciser"} · {draft ? item.status === "rejected" ? "Rejeté" : item.product_id ? "Modification" : "Nouveau produit" : "Publié"}</small></div>
           <span>{draft ? "Voir le brouillon" : "Voir la fiche"} →</span>
         </Link>;
       })}</div>}
+    {mode === "review" && data && (page > 0 || data.length === pageSize) && <div className="v2-settings-actions">
+      <button type="button" className="v2-button v2-button-secondary" disabled={page === 0}
+        onClick={() => setPage(value => Math.max(0, value - 1))}>Précédent</button>
+      <span>Page {page + 1}</span>
+      <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
+        onClick={() => setPage(value => value + 1)}>Suivant</button>
+    </div>}
   </Frame>;
 }
 
@@ -214,17 +225,28 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
   const successorId = draft?.successor_id ?? baseProduct?.successor_id;
   const isReview = mode === "draft" && draft && user?.role === "admin" && draft.author_id !== user.id;
-  const readonly = Boolean(isReview);
+  const readonly = Boolean(isReview || draft?.status === "rejected");
   async function approve() {
     if (!draft || busy || dirty || successorId) return;
     setBusy(true); setError("");
     try {
-      const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST");
+      const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST", { revision: draft.revision });
       navigate("/v2/produits/" + product.id);
     } catch (reason) { setError(String(reason)); setBusy(false); }
   }
+  async function reject() {
+    if (!draft || busy || dirty || draft.status !== "draft") return;
+    if (!window.confirm("Rejeter cette proposition ?")) return;
+    setBusy(true); setError("");
+    try {
+      const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
+      setDraft(rejected);
+      setNotice("Proposition rejetée. Elle reste visible pour son auteur.");
+    } catch (reason) { setError(String(reason)); }
+    finally { setBusy(false); }
+  }
   async function discardSuperseded() {
-    if (!draft || !successorId || draft.author_id !== user?.id || busy) return;
+    if (!draft || (!successorId && draft.status !== "rejected") || draft.author_id !== user?.id || busy) return;
     if (!window.confirm("Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.")) return;
     setBusy(true); setError("");
     try {
@@ -236,10 +258,11 @@ function Editor({ mode, id, user, onLogout }: Props) {
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
       <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
-      <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</p></div>
+      <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier. Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
-    {successorId && <div role="alert"><p>Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>
+    {draft?.status === "rejected" && <div role="status"><p>Cette proposition a été rejetée. Elle ne peut plus être publiée ni modifiée.</p><button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Supprimer ce brouillon rejeté</button></div>}
+    {successorId && draft?.status !== "rejected" && <div role="alert"><p>Cette référence possède déjà une version plus récente. Votre ancien brouillon reste consultable pour recopier vos changements, mais ne peut plus être publié. <Link to={"/v2/produits/" + successorId + "/modifier"}>Proposer une modification de la version actuelle →</Link></p>
       {draft && draft.author_id === user?.id && <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Abandonner cet ancien brouillon</button>}
     </div>}
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
@@ -261,7 +284,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             {!data.group.trim() && <small>Renseignez d’abord le groupe.</small>}
           </div>
           <div className="v2-workspace-structured"><h3>Fiches par enseigne</h3>
-            <ul>{data.retailer_links.map(link => <li key={link.retailer}><strong>{link.retailer}</strong> · {link.source === "capture" ? "capture" : "saisie manuelle"} · {safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">Voir la fiche ↗</a> : "Lien invalide"} <button type="button" onClick={() => persist({ ...data, retailer_links: data.retailer_links.filter(item => item.retailer !== link.retailer) }, changeKind)}>Retirer</button></li>)}</ul>
+            <ul>{data.retailer_links.map(link => <li key={link.retailer}><strong>{link.retailer}</strong> · {link.source === "capture" ? "capture" : "saisie manuelle"} · {safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">Voir la fiche ↗</a> : "Lien invalide"} {user?.role === "admin" && <small style={{ overflowWrap: "anywhere" }}>Destination : {link.url}</small>} <button type="button" onClick={() => persist({ ...data, retailer_links: data.retailer_links.filter(item => item.retailer !== link.retailer) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Enseigne <input value={retailerInput} onChange={event => setRetailerInput(event.target.value)} maxLength={100} /></label>
             <label>URL de la fiche <input type="url" value={urlInput} onChange={event => setUrlInput(event.target.value)} maxLength={1000} /></label>
             <button type="button" onClick={() => { const retailer = retailerInput.trim(); const url = urlInput.trim(); if (!retailer || !/^https?:\/\//i.test(url)) return; persist({ ...data, retailer_links: [...data.retailer_links.filter(link => link.retailer.toLocaleLowerCase() !== retailer.toLocaleLowerCase()), { retailer, url, source: "manual" }] }, changeKind); setRetailerInput(""); setUrlInput(""); }}>Ajouter ou remplacer le lien</button>
@@ -298,7 +321,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         </div>}
         <div className="v2-workspace-actions">
           {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict || Boolean(successorId)} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
-          {draft && user?.role === "admin" && <button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button>}
+          {draft?.status === "draft" && user?.role === "admin" && <><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty} onClick={() => { void reject(); }}>Rejeter</button></>}
         </div>
         {dirty && draft && user?.role === "admin" && <p>Enregistrez vos changements locaux avant de valider.</p>}
         {localError && <p role="alert">{localError}</p>}
@@ -334,7 +357,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
     {mode === "history" ? <div className="v2-workspace-card"><h2>Historique des modifications</h2>
       {!events ? <p>Chargement…</p> : events.length === 0 ? <p>Aucune modification.</p> : events.map(event =>
         <article key={event.id} className="v2-workspace-event"><strong>{event.event_type === "created" ? "Création" : event.event_type === "new_version" ? "Nouvelle version" : event.event_type === "superseded" ? "Remplacé par une nouvelle version" : "Correction"}</strong>
-          <span> · {event.actor} · {new Date(event.created_at).toLocaleString("fr-FR")}</span>
+          <span> · {new Date(event.created_at + "T12:00:00").toLocaleDateString("fr-FR")}</span>
           {event.before && <ul>{fields.filter(field => event.before?.[field.key] !== event.after[field.key]).map(field =>
             <li key={field.key}><strong>{field.label} :</strong> {event.before?.[field.key] || "—"} → {event.after[field.key] || "—"}</li>)}
             {JSON.stringify(event.before.tags) !== JSON.stringify(event.after.tags) &&
@@ -359,6 +382,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
       </div>}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
+    {id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }
 

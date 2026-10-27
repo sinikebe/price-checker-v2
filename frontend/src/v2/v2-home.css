@@ -233,6 +233,18 @@
   margin-top: 31px;
 }
 
+.v2-hero-actions button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.v2-install-message {
+  max-width: 520px;
+  margin-top: 14px;
+  color: #345b43;
+  font-size: .9rem;
+}
+
 .v2-button {
   display: inline-flex;
   min-height: 51px;
@@ -651,6 +663,13 @@
   font-size: .79rem;
 }
 
+.v2-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+
 .v2-footer a {
   display: inline-flex;
   align-items: center;
@@ -891,3 +910,5 @@
     gap: 14px;
   }
 }
+
+.v2-site-footer { min-height: 0; }

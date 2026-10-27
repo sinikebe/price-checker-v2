@@ -89,7 +89,7 @@ export default function V2AuthPage({
                   spellCheck={false} minLength={3} maxLength={32} required value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="Votre pseudo" />
-                {isRegister && <small>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore.</small>}
+                {isRegister && <small>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore. Ce pseudo sert à vous connecter et aux échanges privés avec la modération. Il n’est pas affiché comme auteur public ; évitez néanmoins les informations personnelles.</small>}
               </div>
             )}
             {isAdmin && (
@@ -114,6 +114,7 @@ export default function V2AuthPage({
                   required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
               </div>
             )}
+            {isRegister && <p className="v2-auth-legal">Avant de créer un compte, consultez la <Link to="/v2/confidentialite">notice de confidentialité</Link> et les <Link to="/v2/conditions-utilisation">conditions d’utilisation</Link>.</p>}
             {error && <p className="v2-setup-message v2-setup-error" role="alert">{error}</p>}
             <button className="v2-setup-primary" disabled={busy}>
               {busy ? "Un instant…" : isAdmin ? "Créer l'administrateur" : isRegister ? "Créer mon compte" : "Me connecter"}

@@ -2,7 +2,7 @@ import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 import { readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
 
-const CACHE_NAME = "price-checker-offline-data-v2";
+const CACHE_NAME = "price-checker-offline-data-v3";
 async function cache() { return "caches" in window ? caches.open(CACHE_NAME) : null; }
 
 export async function cacheRecipeWrite(method: string, path: string, result: Recipe | undefined) {

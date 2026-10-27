@@ -75,9 +75,9 @@ def ci_sha(target: str) -> str:
     return git("rev-parse", f"{target}^")
 
 
-def ci_succeeded(sha: str) -> bool:
+def ci_succeeded(sha: str, branch: str = "main") -> bool:
     url = ("https://api.github.com/repos/sinikebe/price-checker-v2/"
-           f"actions/workflows/ci.yml/runs?event=push&branch=main&head_sha={sha}&per_page=10")
+           f"actions/workflows/ci.yml/runs?event=push&branch={branch}&head_sha={sha}&per_page=10")
     request = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "price-checker-v2-scheduled-update",
@@ -91,8 +91,12 @@ def ci_succeeded(sha: str) -> bool:
 def main() -> int:
     if os.geteuid() != 0:
         raise RuntimeError("The scheduler must run as root")
-    if os.environ.get("PRICE_CHECKER_V2_ENV") not in {"dev", "prod"}:
+    environment = os.environ.get("PRICE_CHECKER_V2_ENV")
+    if environment not in {"dev", "prod"}:
         raise RuntimeError("Invalid installation environment")
+    branch = os.environ.get("PRICE_CHECKER_V2_GIT_BRANCH", "main")
+    if branch not in ({"main", "dev"} if environment == "dev" else {"main"}):
+        raise RuntimeError("Invalid update branch")
     if not (STATE / "update-scheduler-installed").is_file():
         raise RuntimeError("The scheduler is not installed")
     # This lock also prevents duplicate runs during a repeated DST minute.
@@ -110,12 +114,12 @@ def main() -> int:
         try:
             os.chmod(day_file, 0o600)
             old = git("rev-parse", "HEAD")
-            git("fetch", "origin", "main")
+            git("fetch", "origin", branch)
             target = git("rev-parse", "FETCH_HEAD")
             if not subprocess.run(["git", "-C", str(REPO), "merge-base",
                                    "--is-ancestor", old, target], check=False).returncode == 0:
-                raise RuntimeError("Remote main is not a fast-forward")
-            if old != target and not ci_succeeded(ci_sha(target)):
+                raise RuntimeError("Remote update branch is not a fast-forward")
+            if old != target and not ci_succeeded(ci_sha(target), branch):
                 raise RuntimeError("CI has not passed for the target commit")
             env = os.environ.copy()
             env["PRICE_CHECKER_V2_EXPECTED_SHA"] = target

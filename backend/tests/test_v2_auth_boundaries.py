@@ -1,8 +1,9 @@
-"""Origin login cap and basket account fences on disposable PostgreSQL."""
+"""Authentication limits and session boundaries on disposable PostgreSQL."""
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -56,10 +57,12 @@ async def test_login_cap_is_shared_across_unknown_usernames_and_expired_rows_are
     suffix = secrets.token_hex(4)
     names = ["audit" + suffix + str(index) for index in range(5)]
     remote = "192.0.2.77"
+    monkeypatch.setattr(auth, "_access_code", lambda: "ci-limit-key")
     keys = [
-        hashlib.sha256(("login-origin:" + remote + ":").encode()).hexdigest(),
-        *(hashlib.sha256(("login:" + remote + ":" + name).encode()).hexdigest()
-          for name in names),
+        hmac.new(b"ci-limit-key", ("login-origin:" + remote + ":").encode(),
+                 hashlib.sha256).hexdigest(),
+        *(hmac.new(b"ci-limit-key", ("login:" + remote + ":" + name).encode(),
+                   hashlib.sha256).hexdigest() for name in names),
     ]
     connection = await connect_v2(config)
     try:
@@ -96,51 +99,6 @@ async def test_login_cap_is_shared_across_unknown_usernames_and_expired_rows_are
 
 
 @pytest.mark.asyncio
-async def test_basket_rejects_client_bound_to_another_account(monkeypatch, isolated_config):
-    config = isolated_config
-    monkeypatch.setattr(auth, "_read_config", lambda: config)
-    connection = await connect_v2(config)
-    user_ids = []
-    try:
-        suffix = secrets.token_hex(4)
-        for index in range(2):
-            user_ids.append(await connection.fetchval(
-                "INSERT INTO v2_users(username,username_key,password_hash,role) "
-                "VALUES($1,$1,'test','visitor') RETURNING id",
-                "basket_audit_" + suffix + str(index),
-            ))
-        token = secrets.token_urlsafe(32)
-        await connection.execute(
-            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
-            "VALUES($1,$2,now()+interval '1 hour')",
-            hashlib.sha256(token.encode()).hexdigest(), user_ids[0],
-        )
-        transport = httpx.ASGITransport(app=app, client=("192.0.2.78", 1234))
-        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-            client.cookies.set("pc_v2_session", token, path="/api/v2")
-            wrong = {"X-V2-Basket-User-ID": str(user_ids[1])}
-            assert (await client.get("/api/v2/basket", headers=wrong)).status_code == 409
-            assert (await client.put(
-                "/api/v2/basket", headers=wrong,
-                json={"product_ids": [], "revision": 0},
-            )).status_code == 409
-            assert (await client.get(
-                "/api/v2/basket",
-                headers={"X-V2-Basket-User-ID": str(user_ids[0])},
-            )).status_code == 200
-            assert await connection.fetchval(
-                "SELECT count(*) FROM v2_user_baskets WHERE user_id=ANY($1::bigint[])",
-                user_ids,
-            ) == 0
-    finally:
-        if user_ids:
-            await connection.execute(
-                "DELETE FROM v2_users WHERE id=ANY($1::bigint[])", user_ids
-            )
-        await connection.close()
-
-
-@pytest.mark.asyncio
 async def test_expired_sessions_are_purged_before_a_new_session(isolated_config):
     from fastapi import Response
 
@@ -158,6 +116,36 @@ async def test_expired_sessions_are_purged_before_a_new_session(isolated_config)
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_sessions WHERE expires_at <= now()"
         ) == 0
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_auth_rows_expire_without_new_logins(isolated_config):
+    connection = await connect_v2(isolated_config)
+    try:
+        user_id = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) "
+            "VALUES('retention','retention','test','visitor') RETURNING id"
+        )
+        await connection.execute(
+            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+            "VALUES($1,$2,now()-interval '1 day'),"
+            "($3,$2,now()+interval '1 day')",
+            "a" * 64, user_id, "b" * 64,
+        )
+        await connection.execute(
+            "INSERT INTO v2_auth_limits(key,window_started_at,attempts) "
+            "VALUES($1,now()-interval '2 hours',1),($2,now(),1)",
+            "old-retention", "live-retention",
+        )
+        await auth.purge_ephemeral_auth_data(connection)
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_sessions WHERE user_id=$1", user_id
+        ) == 1
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_auth_limits"
+        ) == 1
     finally:
         await connection.close()
 
