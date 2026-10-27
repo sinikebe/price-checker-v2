@@ -6,7 +6,7 @@ if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root (sudo); this script prepares protected server state." >&2
   exit 1
 fi
-for tool in docker openssl curl git; do
+for tool in docker openssl curl git python3; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
 docker compose version >/dev/null || { echo "Docker Compose plugin is required" >&2; exit 1; }
@@ -55,6 +55,10 @@ else
   chmod 0600 "$repo_dir/.env"
 fi
 export PRICE_CHECKER_V2_ENV PRICE_CHECKER_V2_DATA_DIR PRICE_CHECKER_V2_DB_NAME PRICE_CHECKER_V2_PORT
+# Production legal text belongs to this instance, never to the checkout/image.
+if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal"
+fi
 compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 install -d -m 0700 "$PRICE_CHECKER_V2_DATA_DIR"
 install -d -m 0755 "$PRICE_CHECKER_V2_DATA_DIR/certs"

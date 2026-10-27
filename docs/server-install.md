@@ -16,6 +16,22 @@ Ce guide décrit l'installation de Price Checker V2 depuis la branche `main`. Il
   pair réseau est le conteneur web actuellement résolu.
 - N'exposer publiquement que les ports nécessaires au service HTTPS. Les ports 8080 et 5432 doivent rester privés.
 
+## Informations légales par instance
+
+Avant une installation **de production**, préparer trois documents Markdown décrivant **cette instance réelle** : `mentions.md`, `confidentialite.md` et `conditions.md`. Placez-les sous `/var/lib/price-checker-v2/state/legal/` (ou sous `$PRICE_CHECKER_V2_DATA_DIR/state/legal/` si ce répertoire est personnalisé). Cette arborescence reste hors du dépôt et des images Docker ; ne déposez pas de coordonnées ou de notices d'une instance dans Git. Le conteneur API lit ces fichiers sans connexion à la base de données et les sert sans mise en cache à `/api/v2/legal/{mentions,confidentialite,conditions}`. Le site ne contient aucun texte de secours : si un document manque, sa page signale son indisponibilité. L'installation de production refuse les documents absents ou vides.
+
+Les fichiers doivent être lisibles par l'utilisateur `1000` du conteneur backend. Exemple après avoir rédigé et vérifié les trois documents **en dehors du dépôt** :
+
+```sh
+sudo install -d -m 0700 /var/lib/price-checker-v2
+sudo install -d -o 1000 -g 1000 -m 0700 /var/lib/price-checker-v2/state /var/lib/price-checker-v2/state/legal
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/mentions.md /var/lib/price-checker-v2/state/legal/mentions.md
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/confidentialite.md /var/lib/price-checker-v2/state/legal/confidentialite.md
+sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/conditions.md /var/lib/price-checker-v2/state/legal/conditions.md
+```
+
+Ces documents sont publics **une fois servis**, bien que leurs fichiers sources restent privés. Indiquez-y l'éditeur, le contact, l'hébergement et les traitements correspondant à l'installation effectivement exposée ; actualisez-les lors d'un changement d'hébergeur ou de base. Le code n'affirme pas qu'une région, un prestataire ou une sauvegarde existe. Une dev peut fonctionner sans ces fichiers, mais ses pages légales seront indisponibles tant qu'elle n'aura pas ses propres documents. Vérifiez les trois URL sur le domaine final avant ouverture ; leur présence ne vaut pas validation juridique.
+
 ## Installation
 
 ```sh

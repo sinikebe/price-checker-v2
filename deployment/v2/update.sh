@@ -19,6 +19,9 @@ compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 [[ "$PRICE_CHECKER_V2_DATA_DIR" = /* && -d "$PRICE_CHECKER_V2_DATA_DIR/state" ]] || {
   echo "V2 is not installed." >&2; exit 1;
 }
+if [[ "$PRICE_CHECKER_V2_ENV" == prod ]]; then
+  python3 "$repo_dir/deployment/v2/check-legal-docs.py" "$PRICE_CHECKER_V2_DATA_DIR/state/legal"
+fi
 exec 9>"$PRICE_CHECKER_V2_DATA_DIR/update.lock"
 flock -n 9 || { echo "Another V2 update is running." >&2; exit 1; }
 target_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-main}"

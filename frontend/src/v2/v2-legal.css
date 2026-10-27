@@ -24,3 +24,6 @@ html[data-v2-theme="dark"] .v2-legal-back,
 html[data-v2-theme="dark"] .v2-legal-content a,
 html[data-v2-theme="dark"] .v2-legal-nav a { color: #aee1a8 !important; }
 html[data-v2-theme="dark"] .v2-legal-nav a[aria-current="page"] { background: #294636; }
+
+.v2-legal-content > h2 { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--v2-line); }
+.v2-legal-content > h2:first-child { margin-top: 0; padding-top: 0; border: 0; }

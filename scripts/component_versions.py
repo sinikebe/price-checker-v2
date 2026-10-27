@@ -84,6 +84,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/*.py", ("application",)),
     ("backend/app/api/*.py", ("application",)),
     ("backend/app/api/v2/__init__.py", ("application",)),
+    ("backend/app/api/v2/legal.py", ("application",)),
     ("backend/app/services/__init__.py", ("application",)),
     ("backend/app/schemas/__init__.py", ("application",)),
     ("frontend/src/v2/V2App.tsx", ("application",)),

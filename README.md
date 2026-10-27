@@ -14,11 +14,11 @@ Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitat
 
 ## Informations du service
 
-Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (`/v2/confidentialite`) et **Conditions d’utilisation** (`/v2/conditions-utilisation`) sont accessibles dans l’application sans compte, y compris avant l’initialisation de la base de données. Elles sont liées depuis le pied de chaque page et depuis l’inscription. Les renseignements propres à une installation de production doivent correspondre à son hébergeur et à ses traitements réels avant son ouverture.
+Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (`/v2/confidentialite`) et **Conditions d’utilisation** (`/v2/conditions-utilisation`) sont liées depuis le pied de page et l’inscription. Leur **contenu appartient à chaque instance**, dans trois fichiers Markdown sous son répertoire d’état privé : il n’est ni inclus dans ce dépôt ni copié d’une autre installation. La production refuse de s’installer si ces fichiers manquent. Voir la [procédure d’installation](docs/server-install.md#informations-légales-par-instance) avant de rendre le site public.
 
 ## Installation sur serveur
 
-Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL locale par défaut et construit l'API et l'interface web. La configuration de l'application permet aussi de choisir un projet Supabase PostgreSQL distinct pour la production. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
+Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL, Python 3 et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL locale par défaut et construit l'API et l'interface web. La configuration de l'application permet aussi de choisir une base PostgreSQL externe, dont Supabase. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
 
 ```sh
 sudo install -d -m 0755 /opt/price-checker-v2
