@@ -14,7 +14,7 @@ Un compte peut exporter ses données puis demander sa suppression ; les contribu
 
 ## Installer l’application sur un appareil
 
-Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne.
+Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne. Depuis le panier, deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque produit au prix relevé le plus bas. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti.
 
 ## Informations du service
 
