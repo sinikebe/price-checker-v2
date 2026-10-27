@@ -44,3 +44,7 @@ html[data-v2-theme="dark"] .v2-transfer-file input { --v2-input-background: #172
 html[data-v2-theme="dark"] .v2-settings-delete-field input { --v2-input-background: #172822; }
 html[data-v2-theme="dark"] .v2-settings-delete-button { color: #ffacb2; border-color: #ffacb2; }
 html[data-v2-theme="dark"] .v2-settings-success { color: #a9d989; }
+
+.v2-manual-update { margin: 20px 0 28px; padding-bottom: 24px; border-bottom: 1px solid var(--v2-line); }
+.v2-manual-update h3 { margin: 0 0 9px; font-size: 1.05rem; }
+.v2-manual-update .v2-settings-note { margin: 10px 0 0; }

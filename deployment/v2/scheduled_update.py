@@ -99,25 +99,50 @@ def main() -> int:
         raise RuntimeError("Invalid update branch")
     if not (STATE / "update-scheduler-installed").is_file():
         raise RuntimeError("The scheduler is not installed")
-    # This lock also prevents duplicate runs during a repeated DST minute.
+    # This lock serializes timer invocations, including repeated DST minutes.
     with (DATA / "scheduled-update.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        due = schedule_at(datetime.now().astimezone())
-        if due is None:
-            return 0
-        _, local = due
-        day = local.date().isoformat()
-        day_file = DATA / "scheduled-update-day"
-        if day_file.exists() and day_file.read_text(encoding="ascii").strip() == day:
-            return 0
-        day_file.write_text(day, encoding="ascii")
-        try:
+        request_path = STATE / "update-manual-request.json"
+        active_path = STATE / "update-manual-active.json"
+        manual = False
+        if active_path.exists() or request_path.exists():
+            # The API creates this lock before publishing a request.
+            with (STATE / "update-manual.lock").open("a+b") as request_lock:
+                fcntl.flock(request_lock, fcntl.LOCK_EX)
+                if active_path.exists():
+                    # A previous worker was interrupted. Do not silently retry an
+                    # operation whose completion cannot be established.
+                    atomic_json(STATE / "update-last-run.json", {
+                        "at": datetime.now().astimezone().isoformat(),
+                        "result": "failed", "trigger": "manual",
+                        "message": "Previous manual update was interrupted",
+                    })
+                    active_path.unlink()
+                    return 1
+                if request_path.exists():
+                    os.replace(request_path, active_path)
+                    manual = True
+                    atomic_json(STATE / "update-last-run.json", {
+                        "at": datetime.now().astimezone().isoformat(),
+                        "result": "running", "trigger": "manual",
+                    })
+        if not manual:
+            due = schedule_at(datetime.now().astimezone())
+            if due is None:
+                return 0
+            _, local = due
+            day = local.date().isoformat()
+            day_file = DATA / "scheduled-update-day"
+            if day_file.exists() and day_file.read_text(encoding="ascii").strip() == day:
+                return 0
+            day_file.write_text(day, encoding="ascii")
             os.chmod(day_file, 0o600)
+        try:
             old = git("rev-parse", "HEAD")
             git("fetch", "origin", branch)
             target = git("rev-parse", "FETCH_HEAD")
-            if not subprocess.run(["git", "-C", str(REPO), "merge-base",
-                                   "--is-ancestor", old, target], check=False).returncode == 0:
+            if subprocess.run(["git", "-C", str(REPO), "merge-base",
+                               "--is-ancestor", old, target], check=False).returncode != 0:
                 raise RuntimeError("Remote update branch is not a fast-forward")
             if old != target and not ci_succeeded(ci_sha(target), branch):
                 raise RuntimeError("CI has not passed for the target commit")
@@ -125,19 +150,28 @@ def main() -> int:
             env["PRICE_CHECKER_V2_EXPECTED_SHA"] = target
             subprocess.run([str(REPO / "deployment/v2/update.sh")], env=env, check=True)
             result = "current" if old == target else "updated"
-            atomic_json(STATE / "update-last-run.json", {
+            outcome = {
                 "at": datetime.now().astimezone().isoformat(), "result": result,
                 "from": old[:12], "to": target[:12],
-            })
-            return 0
+                "trigger": "manual" if manual else "scheduled",
+            }
+            code = 0
         except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError,
                 urllib.error.URLError) as exc:
-            atomic_json(STATE / "update-last-run.json", {
+            outcome = {
                 "at": datetime.now().astimezone().isoformat(), "result": "failed",
-                "message": str(exc)[:200],
-            })
-            print(f"Scheduled update failed: {exc}", file=sys.stderr)
-            return 1
+                "message": str(exc)[:200], "trigger": "manual" if manual else "scheduled",
+            }
+            print(f"Server update failed: {exc}", file=sys.stderr)
+            code = 1
+        if manual:
+            with (STATE / "update-manual.lock").open("a+b") as request_lock:
+                fcntl.flock(request_lock, fcntl.LOCK_EX)
+                atomic_json(STATE / "update-last-run.json", outcome)
+                active_path.unlink()
+        else:
+            atomic_json(STATE / "update-last-run.json", outcome)
+        return code
 
 
 if __name__ == "__main__":

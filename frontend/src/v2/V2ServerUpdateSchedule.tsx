@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-type LastRun = { at: string; result: "current" | "updated" | "failed"; from?: string; to?: string; message?: string };
+type LastRun = { at: string; result: "current" | "updated" | "failed" | "running"; trigger?: "manual" | "scheduled"; from?: string; to?: string; message?: string };
 type Schedule = {
   enabled: boolean;
   time: string;
@@ -8,11 +8,12 @@ type Schedule = {
   revision: number;
   scheduler_installed: boolean;
   last_run: LastRun | null;
+  manual_state: "queued" | "running" | null;
 };
 type Draft = Pick<Schedule, "enabled" | "time" | "timezone">;
 
-async function scheduleRequest(method: "GET" | "PUT", body?: object): Promise<Schedule> {
-  const response = await fetch("/api/v2/updates/schedule", {
+async function scheduleRequest(method: "GET" | "PUT" | "POST", body?: object): Promise<Schedule> {
+  const response = await fetch(method === "POST" ? "/api/v2/updates/run" : "/api/v2/updates/schedule", {
     method, credentials: "same-origin", cache: "no-store",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -43,6 +44,41 @@ export default function V2ServerUpdateSchedule() {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!saved?.manual_state) return;
+    let active = true;
+    const interval = window.setInterval(() => {
+      void scheduleRequest("GET").then(value => {
+        if (!active) return;
+        setSaved(value);
+        if (!value.manual_state && value.last_run?.trigger === "manual") {
+          setNotice(value.last_run.result === "updated" ? "Serveur mis à jour." :
+            value.last_run.result === "current" ? "Le serveur est déjà à jour." :
+              "La mise à jour du serveur a échoué. Consultez les journaux serveur.");
+        }
+      }).catch(() => {
+        // The web server may briefly return 503 while the guarded updater runs.
+      });
+    }, 5000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [saved?.manual_state]);
+
+  async function runNow() {
+    if (pending || !saved?.scheduler_installed || saved.manual_state) return;
+    setPending(true);
+    setError("");
+    setNotice("");
+    try {
+      const value = await scheduleRequest("POST");
+      setSaved(value);
+      setNotice("Mise à jour demandée. Le contrôle démarre au prochain passage du programmateur.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Demande impossible.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function reload() {
     setPending(true);
@@ -83,7 +119,23 @@ export default function V2ServerUpdateSchedule() {
 
   return <section className="v2-settings-card v2-server-schedule" aria-labelledby="v2-schedule-heading">
     <h2 id="v2-schedule-heading">Mises à jour du serveur</h2>
-    <p>Planifiez la mise à jour quotidienne de cette instance. Une sauvegarde et les contrôles de santé sont effectués avant sa remise en ligne.</p>
+    <p>Mettez à jour cette instance maintenant ou planifiez les mises à jour quotidiennes. Une sauvegarde et des contrôles de santé précèdent sa remise en ligne.</p>
+    {saved && <div className="v2-manual-update">
+      <h3>Mise à jour immédiate</h3>
+      <p>Recherche la dernière version validée par la CI et l’installe avec sauvegarde et contrôle de santé. Le site peut être temporairement indisponible.</p>
+      <button className="v2-button v2-button-secondary" type="button"
+        onClick={() => void runNow()}
+        disabled={pending || !saved.scheduler_installed || saved.manual_state !== null}>
+        {saved.manual_state === "queued" ? "Mise à jour demandée" :
+          saved.manual_state === "running" ? "Mise à jour en cours…" :
+            "Mettre à jour le serveur maintenant"}
+      </button>
+      {!saved.scheduler_installed && <p className="v2-settings-note">Le programme de mise à jour n’est pas installé sur ce serveur.</p>}
+      {saved.manual_state && <p className="v2-settings-note" role="status">
+        {saved.manual_state === "queued" ? "Demande en attente du prochain contrôle (environ une minute)." :
+          "Mise à jour du serveur en cours. La page peut se recharger."}
+      </p>}
+    </div>}
     {draft && saved ? <form onSubmit={event => void save(event)}>
       <label className="v2-schedule-toggle">
         <input type="checkbox" checked={draft.enabled} disabled={pending || (!saved.scheduler_installed && !draft.enabled)}
@@ -109,7 +161,7 @@ export default function V2ServerUpdateSchedule() {
         <button className="v2-button v2-button-primary" type="submit" disabled={pending || (draft.enabled && !saved.scheduler_installed)}>Enregistrer la planification</button>
         {conflict && <button className="v2-button v2-button-secondary" type="button" onClick={() => void reload()} disabled={pending}>Recharger la version du serveur</button>}
       </div>
-      {saved.last_run && <p className="v2-settings-note">Dernière tentative : {new Date(saved.last_run.at).toLocaleString("fr-FR")} — {saved.last_run.result === "updated" ? "mise à jour effectuée" : saved.last_run.result === "current" ? "déjà à jour" : "échec (voir les journaux serveur)"}.</p>}
+      {saved.last_run && <p className="v2-settings-note">Dernière tentative : {new Date(saved.last_run.at).toLocaleString("fr-FR")} — {saved.last_run.result === "updated" ? "mise à jour effectuée" : saved.last_run.result === "current" ? "déjà à jour" : saved.last_run.result === "running" ? "en cours" : "échec (voir les journaux serveur)"}.</p>}
     </form> : !error && <p role="status">Chargement de la planification…</p>}
     {error && <p className="v2-schedule-error" role="alert">{error}</p>}
     {!draft && error && <button className="v2-button v2-button-secondary" type="button" onClick={() => void reload()} disabled={pending}>Réessayer</button>}
