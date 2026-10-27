@@ -8,7 +8,6 @@ from pathlib import Path
 
 import asyncpg
 import pytest
-
 from app.db.v2_migrations import connect_v2, migrate_v2
 
 pytestmark = pytest.mark.skipif(
@@ -19,8 +18,12 @@ pytestmark = pytest.mark.skipif(
 @pytest.mark.asyncio
 async def test_v2_price_provenance_and_constraints():
     config = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    assert "0007_price_history" in await migrate_v2(config)
+    await migrate_v2(config)
     connection = await connect_v2(config)
+    assert await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_schema_migrations WHERE version=$1)",
+        "0007_price_history",
+    )
     try:
         async with connection.transaction():
             product_id = await connection.fetchval(

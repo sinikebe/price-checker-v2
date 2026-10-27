@@ -2,7 +2,6 @@
 
 import httpx
 import pytest
-
 from app.main_v2 import app
 
 

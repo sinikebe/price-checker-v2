@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v2.account_data import router as account_data_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
+from app.api.v2.catalogue import router as catalogue_router
 from app.api.v2.legal import router as legal_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
@@ -27,6 +28,7 @@ from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
 from app.services.v2_db_pool import close_v2_pool
 from app.services.v2_off_refresh_queue import off_refresh_worker
+from app.services.v2_open_prices_sync import open_prices_worker
 from app.services.v2_private_retention import purge_private_data
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
@@ -48,7 +50,8 @@ async def retention_worker():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     workers = [asyncio.create_task(off_refresh_worker()),
-               asyncio.create_task(retention_worker())]
+               asyncio.create_task(retention_worker()),
+               asyncio.create_task(open_prices_worker())]
     try:
         yield
     finally:
@@ -78,6 +81,7 @@ for router in (
     auth_router,
     account_data_router,
     products_router,
+    catalogue_router,
     prices_router,
     transfers_router,
     recipes_router,

@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-
 from app.api.v2 import prices
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app

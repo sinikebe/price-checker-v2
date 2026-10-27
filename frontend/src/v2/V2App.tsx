@@ -13,6 +13,10 @@ function withFooter(page: ReactNode) {
 export default function V2App() {
   const path = useLocation().pathname.replace(/\/+$/, "") || "/";
   const product = path.match(/^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/);
+  const category = path.match(/^\/v2\/categories\/([^/]+)$/);
+  let categoryName: string | undefined;
+  try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }
+  catch { categoryName = undefined; }
   const recipe = path.match(/^\/v2\/recettes\/(\d+)(?:\/(modifier))?$/);
   const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
   const recipeMode = path === "/v2/recettes" ? "list"
@@ -32,7 +36,7 @@ export default function V2App() {
   if (path === "/v2/versions") return withFooter(<V2VersionsPage />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || workspaceMode || recipeMode || path === "/v2/panier") {
+    || workspaceMode || category || recipeMode || path === "/v2/panier") {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
       preferencesMode={path === "/v2/parametres"}
@@ -40,6 +44,7 @@ export default function V2App() {
       recipeMode={recipeMode}
       basketMode={path === "/v2/panier"}
       recipeId={recipe ? Number(recipe[1]) : undefined}
+      categoryName={categoryName}
       workspaceMode={workspaceMode}
       workspaceId={draft ? Number(draft[1]) : product ? Number(product[1]) : undefined}
     /></V2BasketProvider>);

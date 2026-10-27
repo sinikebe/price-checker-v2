@@ -5,15 +5,14 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
-from httpx import ASGITransport, AsyncClient
-
 from app.api.v2 import products
 from app.main_v2 import app
 from app.schemas.openfoodfacts import (
     OpenFoodFactsSearchResponse,
     OpenFoodFactsSuggestion,
 )
+from fastapi import HTTPException
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.mark.asyncio

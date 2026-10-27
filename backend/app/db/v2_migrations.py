@@ -499,6 +499,21 @@ MIGRATIONS = {
         END
         $$;
     """,
+    "0018_open_prices_sync": """
+        -- Shared scheduler state prevents bursts across backend workers/restarts.
+        CREATE TABLE v2_open_prices_sync_control (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            next_run_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_open_prices_sync_control(singleton) VALUES(true);
+        CREATE TABLE v2_open_prices_sync_state (
+            product_id bigint PRIMARY KEY REFERENCES v2_products(id) ON DELETE CASCADE,
+            checked_at timestamptz NOT NULL,
+            imported_count integer NOT NULL DEFAULT 0
+        );
+        CREATE INDEX v2_open_prices_sync_checked_idx
+            ON v2_open_prices_sync_state(checked_at);
+    """,
 
 }
 
