@@ -1,0 +1,45 @@
+.v2-basket-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; }
+.v2-basket-actions button { cursor: pointer; }
+.v2-basket-actions button[aria-pressed="true"] { background: #285f43; border-color: #285f43; color: white; }
+.v2-basket-comparison { margin-bottom: 25px; }
+.v2-basket-comparison-heading, .v2-basket-store-heading { display: flex; align-items: start; justify-content: space-between; gap: 15px; }
+.v2-basket-comparison-heading { margin-bottom: 18px; }
+.v2-basket-comparison-heading h2, .v2-basket-store h3 { margin: 0 0 5px; }
+.v2-basket-comparison-heading p, .v2-basket-store-heading p { margin: 0; }
+.v2-basket-comparison-heading button { flex: none; }
+.v2-basket-store-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.v2-basket-store { min-width: 0; padding: 16px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
+.v2-basket-store h3 { color: #244b36; }
+.v2-basket-total { display: grid; gap: 3px; flex: none; text-align: right; }
+.v2-basket-total strong, .v2-basket-split-total strong { color: #214d36; font-size: 1.35rem; }
+.v2-basket-total span, .v2-basket-split-total small { color: var(--v2-muted, #617467); font-size: .82rem; }
+.v2-basket-lines { margin: 10px 0 0; padding: 0; list-style: none; }
+.v2-basket-lines li { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--v2-line, #e8eee8); }
+.v2-basket-lines a { min-width: 0; color: #317c54; font-weight: 650; }
+.v2-basket-reading { display: flex; flex: none; align-items: center; justify-content: end; flex-wrap: wrap; gap: 5px 8px; text-align: right; }
+.v2-basket-reading small { color: var(--v2-muted, #617467); }
+.v2-basket-age { padding: 3px 7px; border-radius: 99px; font-size: .72rem; font-weight: 700; }
+.v2-basket-age[data-age="recent"] { background: #d8f1e3; color: #175f3d; }
+.v2-basket-age[data-age="aging"] { background: #fff0c8; color: #775000; }
+.v2-basket-age[data-age="old"] { background: #e7ecef; color: #485665; }
+.v2-basket-split-total { display: grid; gap: 3px; margin-bottom: 15px; padding: 16px; border-radius: 11px; background: #edf5eb; }
+.v2-basket-missing { margin: 12px 0 0; color: #775000 !important; font-size: .87rem; }
+.v2-basket-freshness-help { margin: 15px 0 0; font-size: .82rem; }
+.v2-basket-clear { margin-top: 20px; }
+html[data-v2-theme="dark"] .v2-basket-actions button[aria-pressed="true"] { background: #42694a; border-color: #719d76; color: white; }
+html[data-v2-theme="dark"] .v2-basket-store { background: #1b3028; }
+html[data-v2-theme="dark"] .v2-basket-store h3, html[data-v2-theme="dark"] .v2-basket-total strong, html[data-v2-theme="dark"] .v2-basket-split-total strong { color: #d4f5c1; }
+html[data-v2-theme="dark"] .v2-basket-lines a { color: #a9d989; }
+html[data-v2-theme="dark"] .v2-basket-split-total { background: #294032; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="recent"] { background: #244c39; color: #c9f3d5; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="aging"] { background: #574322; color: #ffe5ac; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="old"] { background: #34414b; color: #d8e0e7; }
+html[data-v2-theme="dark"] .v2-basket-missing { color: #ffe5ac !important; }
+@media (max-width: 600px) {
+  .v2-basket-actions > button { flex: 1 1 100%; }
+  .v2-basket-comparison-heading { flex-direction: column; }
+  .v2-basket-store-heading { flex-direction: column; }
+  .v2-basket-total { text-align: left; }
+  .v2-basket-lines li { flex-direction: column; gap: 5px; }
+  .v2-basket-reading { justify-content: start; text-align: left; }
+}
