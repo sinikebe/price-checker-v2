@@ -59,11 +59,11 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as source:
     config = json.load(source)
-print(config["host"], config["port"], config["database"], config["username"],
-      config["tls_mode"], sep="\t")
+print(config["provider"], config["host"], config["port"], config["database"],
+      config["username"], config["tls_mode"], sep="\t")
 PYCONFIG
 )"
-  IFS=$'\t' read -r db_host db_port db_name db_user db_tls <<< "$configured_target"
+  IFS=$'\t' read -r db_provider db_host db_port db_name db_user db_tls <<< "$configured_target"
   if [[ "$db_host" == db && "$db_port" == 5432 &&
         "$db_name" == "$PRICE_CHECKER_V2_DB_NAME" ]]; then
     [[ "$db_user" == "$PRICE_CHECKER_V2_DB_NAME"_app ]] || {
@@ -144,17 +144,27 @@ PYPASS
   chown --reference="$cert_dir/server.key" "$pgpass_file"
   pg_env=(-e PGPASSFILE="/certs/${pgpass_file##*/}" -e PGSSLMODE="$db_tls")
   if [[ "$db_tls" == verify-full ]]; then
-    pg_env+=(-e PGSSLROOTCERT=/etc/ssl/certs/ca-certificates.crt)
+    if [[ "$db_provider" == supabase ]]; then
+      pg_env+=(-e PGSSLROOTCERT=/certs/supabase-ca.crt)
+    else
+      pg_env+=(-e PGSSLROOTCERT=/etc/ssl/certs/ca-certificates.crt)
+    fi
   fi
-  "${compose[@]}" exec -T "${pg_env[@]}" db pg_dump \
+  "${compose[@]}" run --rm --no-deps -T "${pg_env[@]}" pg-client pg_dump \
     -h "$db_host" -p "$db_port" -U "$db_user" -d "$db_name" -Fc > "$backup_part"
   rm -f "$pgpass_file"
   pgpass_file=""
 fi
 [[ -s "$backup_part" ]] || { echo "Database backup failed." >&2; exit 1; }
-"${compose[@]}" exec -T db pg_restore -l < "$backup_part" > /dev/null || {
-  echo "Database backup is unreadable." >&2; exit 1;
-}
+if [[ "$bundled_db" == 1 ]]; then
+  "${compose[@]}" exec -T db pg_restore -l < "$backup_part" > /dev/null || {
+    echo "Database backup is unreadable." >&2; exit 1;
+  }
+else
+  "${compose[@]}" run --rm --no-deps -T pg-client pg_restore -l < "$backup_part" > /dev/null || {
+    echo "External database backup is unreadable." >&2; exit 1;
+  }
+fi
 mv "$backup_part" "$backup"
 echo "Database backup: $backup"
 

@@ -510,6 +510,10 @@ def ssl_option(config: dict) -> bool | str | ssl.SSLContext:
     if mode == "require":
         return "require"
     if mode == "verify-full":
+        if config.get("provider") == "supabase":
+            return ssl.create_default_context(cafile="/certs/supabase-ca.crt")
+        if config.get("host") == "db":
+            return ssl.create_default_context(cafile="/certs/server.crt")
         return ssl.create_default_context()
     raise ValueError("Unsupported V2 TLS mode")
 

@@ -10,6 +10,8 @@ sandbox=$(mktemp -d /tmp/price-checker-v2-ci-XXXXXX)
 bare=$sandbox/origin.git
 repo=$sandbox/source
 export PRICE_CHECKER_V2_ENV=dev
+# Older main revisions keep Dockerfile.web outside the frontend build context.
+export COMPOSE_BAKE=false
 export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
 # Do not mask the host's real private dev while exercising disposable instances.
 export PRICE_CHECKER_V2_MAINTENANCE_MARKER=$sandbox/maintenance

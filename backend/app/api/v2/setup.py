@@ -6,7 +6,6 @@ import json
 import os
 import re
 import secrets
-import ssl
 import tempfile
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
@@ -17,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, SecretStr
 
 from app.core.config import get_settings
-from app.db.v2_migrations import migrate_v2
+from app.db.v2_migrations import migrate_v2, ssl_option
 
 router = APIRouter(prefix="/api/v2/setup", tags=["v2-setup"])
 
@@ -270,14 +269,6 @@ def _validated_config(request: DatabaseRequest, previous: dict | None) -> dict:
 
 
 async def _test_connection(config: dict) -> None:
-    tls_mode = config["tls_mode"]
-    ssl_option = (
-        False
-        if tls_mode == "disable"
-        else ssl.create_default_context()
-        if tls_mode == "verify-full"
-        else "require"
-    )
     connection = None
     try:
         connection = await asyncpg.connect(
@@ -286,7 +277,7 @@ async def _test_connection(config: dict) -> None:
             user=config["username"],
             password=config["password"],
             database=config["database"],
-            ssl=ssl_option,
+            ssl=ssl_option(config),
             timeout=8,
         )
         await connection.fetchval("SELECT 1")
