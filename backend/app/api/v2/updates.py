@@ -10,7 +10,9 @@ import json
 import os
 import re
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Request
@@ -61,8 +63,11 @@ def _status(directory: Path, schedule: dict) -> dict:
         last_run = None
     except (OSError, ValueError):
         last_run = None
+    manual_state = ("running" if (directory / "update-manual-active.json").exists()
+                    else "queued" if (directory / "update-manual-request.json").exists()
+                    else None)
     return {**schedule, "scheduler_installed": (directory / "update-scheduler-installed").is_file(),
-            "last_run": last_run}
+            "last_run": last_run, "manual_state": manual_state}
 
 
 @router.get("/schedule")
@@ -104,3 +109,32 @@ async def update_schedule(payload: ScheduleChange, request: Request):
         finally:
             Path(name).unlink(missing_ok=True)
     return _status(directory, saved)
+
+
+@router.post("/run", status_code=202)
+async def request_update(request: Request):
+    """Queue one admin-requested run for the root-owned timer; never run shell commands here."""
+    from app.api.v2.auth import _secure_write
+
+    _secure_write(request)
+    await _require_admin(request)
+    directory = _ensure_state_dir()
+    if not (directory / "update-scheduler-installed").is_file():
+        raise HTTPException(status_code=503, detail="Le programme de mise à jour n’est pas installé.")
+    schedule = _read_schedule(directory)
+    with (directory / "update-manual.lock").open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if ((directory / "update-manual-request.json").exists()
+                or (directory / "update-manual-active.json").exists()):
+            raise HTTPException(status_code=409, detail="Une mise à jour du serveur est déjà demandée.")
+        payload = {"id": uuid4().hex, "requested_at": datetime.now(UTC).isoformat()}
+        descriptor, name = tempfile.mkstemp(prefix=".update-manual-", dir=directory)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+                json.dump(payload, target)
+                target.flush()
+                os.fsync(target.fileno())
+            os.replace(name, directory / "update-manual-request.json")
+        finally:
+            Path(name).unlink(missing_ok=True)
+    return _status(directory, schedule)
