@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+
 from app.api.v2 import legal
 from app.main_v2 import app
 

@@ -3,6 +3,7 @@ import json
 
 import httpx
 import pytest
+
 from app.api.v2 import updates
 from app.main_v2 import app
 

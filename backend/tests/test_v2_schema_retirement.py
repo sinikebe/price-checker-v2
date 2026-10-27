@@ -9,6 +9,7 @@ from pathlib import Path
 
 import asyncpg
 import pytest
+
 from app.db.v2_migrations import connect_v2, migrate_v2
 
 pytestmark = pytest.mark.skipif(

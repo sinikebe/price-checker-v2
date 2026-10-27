@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+
 from app.api.v2 import off
 from app.services import openfoodfacts_client
 from app.services.openfoodfacts_client import OFF_SEARCH_URL

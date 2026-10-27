@@ -8,6 +8,7 @@ import secrets
 from pathlib import Path
 
 import pytest
+
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.services.v2_private_retention import purge_private_data
 
