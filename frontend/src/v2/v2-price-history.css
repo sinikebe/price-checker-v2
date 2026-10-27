@@ -8,6 +8,8 @@
 .v2-price-store-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .v2-price-store-card { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 12px; border: 1px solid var(--v2-line, #cbd9ce); border-inline-start: 5px solid; border-radius: 9px; }
 .v2-price-store-name { display: flex; align-items: start; gap: 8px; line-height: 1.3; }
+.v2-price-store-name > div { display: grid; gap: 2px; min-width: 0; }
+.v2-price-store-name small { color: var(--v2-muted, #617467); font-size: .77rem; font-weight: 500; }
 .v2-price-store-swatch { flex: none; width: 11px; height: 11px; margin-top: 3px; border-radius: 50%; }
 .v2-price-store-reading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; }
 .v2-price-store-reading > strong { font-size: 1.35rem; line-height: 1.2; }
