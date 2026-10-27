@@ -213,8 +213,9 @@ async def _import_products(
                 if target is None or mapped["fingerprint"] != fingerprint or (
                     ProductData.model_validate(_decoded(target["data"])).model_dump(mode="json")
                     != product.data.model_dump(mode="json")
-                ) or target["predecessor_id"] != (
-                    product_map.get(product.predecessor_id)
+                ) or (
+                    product.predecessor_id is not None
+                    and target["predecessor_id"] != product_map[product.predecessor_id]
                 ):
                     raise HTTPException(
                         status_code=409,
@@ -223,36 +224,48 @@ async def _import_products(
                 target_id = mapped["target_id"]
             else:
                 ean = product.data.ean
+                existing_id = None
                 if ean and source_id not in predecessor_ids:
                     ancestors = []
                     previous = product.predecessor_id
                     while previous is not None:
                         ancestors.append(product_map[previous])
                         previous = products[previous].predecessor_id
-                    collision = await connection.fetchval(
-                        "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
+                    collision = await connection.fetchrow(
+                        "SELECT p.id,p.data FROM v2_products p WHERE p.data->>'ean' <> '' "
                         "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
                         "AND NOT EXISTS (SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
                         "AND NOT (p.id = ANY($2::bigint[])) "
                         "LIMIT 1", ean, ancestors,
                     )
                     if collision is not None:
-                        raise HTTPException(
-                            status_code=409,
-                            detail=f"Code-barres déjà présent sur cette instance : {ean}.",
-                        )
-                target_id = await connection.fetchval(
-                    "INSERT INTO v2_products(data,predecessor_id) "
-                    "VALUES($1::jsonb,$2) RETURNING id",
-                    json.dumps(product.data.model_dump(mode="json"), ensure_ascii=False),
-                    product_map.get(product.predecessor_id),
-                )
+                        existing = ProductData.model_validate(
+                            _decoded(collision["data"])
+                        ).model_dump(mode="json")
+                        if product.predecessor_id is None and (
+                            existing == product.data.model_dump(mode="json")
+                        ):
+                            existing_id = collision["id"]
+                        else:
+                            raise HTTPException(
+                                status_code=409,
+                                detail=f"Code-barres déjà présent sur cette instance : {ean}.",
+                            )
+                if existing_id is None:
+                    target_id = await connection.fetchval(
+                        "INSERT INTO v2_products(data,predecessor_id) "
+                        "VALUES($1::jsonb,$2) RETURNING id",
+                        json.dumps(product.data.model_dump(mode="json"), ensure_ascii=False),
+                        product_map.get(product.predecessor_id),
+                    )
+                    inserted_products += 1
+                else:
+                    target_id = existing_id
                 await connection.execute(
                     "INSERT INTO v2_transfer_product_map "
                     "(source_instance,source_id,target_id,fingerprint) VALUES($1,$2,$3,$4)",
                     source, source_id, target_id, fingerprint,
                 )
-                inserted_products += 1
             product_map[source_id] = target_id
             del pending[source_id]
             progress = True
