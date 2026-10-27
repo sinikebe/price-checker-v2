@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
@@ -345,6 +345,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
   const basket = useV2Basket();
   const { data: product, error } = useCollection<Product>("/" + id);
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", mode === "history");
+  useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
   const d = completeProductData(product.data);
