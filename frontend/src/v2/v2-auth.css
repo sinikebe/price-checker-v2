@@ -76,3 +76,6 @@
   .v2-auth .v2-wrap { width: min(100% - 32px, 1200px); }
   .v2-auth-card > button { width: 100%; }
 }
+
+.v2-auth-legal { margin: 0; color: #5d7169; line-height: 1.55; }
+.v2-auth-legal a { color: #246846 !important; text-decoration: underline !important; }

@@ -12,6 +12,10 @@ Un compte peut exporter ses données puis demander sa suppression ; les contribu
 
 Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne.
 
+## Informations du service
+
+Les pages [Mentions légales](/v2/mentions-legales), [Confidentialité](/v2/confidentialite) et [Conditions d’utilisation](/v2/conditions-utilisation) sont accessibles dans l’application sans compte, y compris avant l’initialisation de la base de données. Elles sont liées depuis le pied de chaque page et depuis l’inscription. Les renseignements propres à une installation de production doivent correspondre à son hébergeur et à ses traitements réels avant son ouverture.
+
 ## Installation sur serveur
 
 Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL et construit l'API et l'interface web. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.

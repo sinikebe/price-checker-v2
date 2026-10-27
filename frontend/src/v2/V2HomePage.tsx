@@ -6,7 +6,6 @@ import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
-import versions from "./component-versions.json";
 
 const installMessages: Record<InstallOutcome, string> = {
   accepted: "Installation lancée. Suivez les indications du navigateur.",
@@ -221,15 +220,6 @@ export default function V2HomePage({ user, onLogout }: {
         </section>
       </main>
 
-      <footer className="v2-footer">
-        <div className="v2-wrap v2-footer-inner">
-          <span>Price Checker · Des courses plus simples, à votre façon.</span>
-          <div className="v2-footer-links">
-            <a href="https://github.com/sinikebe/price-checker-v2">Code source sur GitHub ↗</a>
-            <Link to="/v2/versions">Version {versions.application.version} · Détails</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
