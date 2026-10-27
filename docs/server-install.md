@@ -58,7 +58,7 @@ sudo /opt/price-checker-v2/source/deployment/v2/install.sh
 
 L'installation exige un checkout `main` propre. Elle crée le mot de passe propriétaire PostgreSQL, un certificat TLS local pour `db`, applique les migrations puis crée un rôle applicatif non superutilisateur. Le conteneur backend ordinaire ne monte que sa configuration limitée dans `state/database.json` ; la configuration propriétaire est conservée dans `postgres/migration.json` et montée seulement dans le conteneur de migration lors des mises à jour. Le serveur web reste lié à `127.0.0.1:8080`.
 
-Configurer le reverse proxy HTTPS, puis ouvrir `https://<votre-domaine>/v2` pour créer l'administrateur. Le code d'installation se trouve dans `/var/lib/price-checker-v2/state/access-code` après le premier accès à l'API. La base locale est déjà configurée ; ne pas recopier les mots de passe PostgreSQL dans Git. Le certificat PostgreSQL local n'est pas le certificat HTTPS public.
+Configurer le reverse proxy HTTPS. Le code d'installation se trouve dans `/var/lib/price-checker-v2/state/access-code` après le premier accès à l'API. Pour la production Supabase, suivre ensuite **Base Supabase de production** ci-dessus et vérifier la connexion avant de créer l'administrateur. La base locale est déjà configurée pour un démarrage sans Supabase ; ne pas recopier les mots de passe PostgreSQL dans Git. Le certificat PostgreSQL local n'est pas le certificat HTTPS public.
 
 ## Mise à jour depuis `main`
 
@@ -66,7 +66,7 @@ Configurer le reverse proxy HTTPS, puis ouvrir `https://<votre-domaine>/v2` pour
 sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
-Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il sauvegarde **la base réellement configurée** au format dump vérifié dans `/var/lib/price-checker-v2/backups/` avant toute migration. Pour une base externe, il emploie l’hôte, le port, la base, l’utilisateur et le mode TLS de la configuration V2 ; le mot de passe passe par un fichier temporaire protégé, effacé après la sauvegarde. Le client `pg_dump` fourni est celui de PostgreSQL 16 : s’il ne peut pas sauvegarder une base d’une autre version, la mise à jour s’arrête avant le changement de code et les migrations. Une connexion réseau au serveur externe depuis le conteneur `db` est nécessaire. Le script reconstruit ensuite les images, applique les migrations avec le rôle propriétaire monté uniquement dans le conteneur de migration, réattribue les droits applicatifs, redémarre l’application et vérifie une requête API impliquant la base. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
+Le script verrouille l'opération, refuse un checkout sale ou une branche autre que `main`, récupère `origin/main` et exige une avance fast-forward. Il sauvegarde **la base réellement configurée** au format dump vérifié dans `/var/lib/price-checker-v2/backups/` avant toute migration. Pour une base externe, il emploie l’hôte, le port, la base, l’utilisateur et le mode TLS de la configuration V2 ; le mot de passe passe par un fichier temporaire protégé, effacé après la sauvegarde. Le conteneur de sauvegarde `pg-client` fournit le client PostgreSQL 17 ; si la sauvegarde de la base configurée échoue, la mise à jour s’arrête avant le changement de code et les migrations. Une connexion réseau au serveur externe depuis ce conteneur est nécessaire. Le script reconstruit ensuite les images, applique les migrations avec le rôle propriétaire monté uniquement dans le conteneur de migration, réattribue les droits applicatifs, redémarre l’application et vérifie une requête API impliquant la base. En cas d'échec après le changement de commit, il restaure le code et reconstruit les anciens conteneurs. **Les migrations de base déjà exécutées ne sont pas annulées automatiquement** : conserver le dump pour une restauration manuelle si nécessaire.
 
 
 Le certificat PostgreSQL local est renouvelé par ce même script dès qu’il lui reste moins de 60 jours de validité, même sans nouveau commit. La base et l’API sont redémarrées ensemble ; l’ancien certificat et sa clé restent dans un répertoire de sauvegarde protégé. Exécuter `update.sh` périodiquement (au moins une fois par mois) pour que cette rotation se produise avant l’expiration. Ce certificat ne concerne pas une base externe.
@@ -76,33 +76,7 @@ Un push sur GitHub ne met pas le serveur à jour automatiquement tant que le pro
 
 ## Maintenance et planification quotidienne
 
-Le reverse proxy doit servir la page de maintenance **en dehors des conteneurs**. Copier `deployment/v2/maintenance.html` vers `/var/www/price-checker-v2-maintenance.html` (mode 0644). Ajouter au bloc `server` HTTPS de Nginx, en adaptant `dev` à `prod` pour une installation de production :
-
-```nginx
-error_page 503 =503 /v2-maintenance.html;
-location = /v2-maintenance.html {
-    internal;
-    alias /var/www/price-checker-v2-maintenance.html;
-    default_type text/html;
-    add_header Cache-Control "no-store" always;
-}
-location = /v2-maintenance-state {
-    default_type application/json;
-    add_header Cache-Control "no-store" always;
-    if (-f /run/price-checker-v2-dev-maintenance) {
-        return 200 '{"maintenance":true}';
-    }
-    return 200 '{"maintenance":false}';
-}
-```
-
-Dans le `location /` qui proxifie l'application, placer **avant** `proxy_pass` :
-
-```nginx
-if (-f /run/price-checker-v2-dev-maintenance) {
-    return 503;
-}
-```
+Le reverse proxy doit servir la page de maintenance **en dehors des conteneurs**. Copier `deployment/v2/maintenance.html` vers `/var/www/price-checker-v2-maintenance.html` (mode 0644). Le [modèle Nginx complet](../deployment/v2/nginx-host.example.conf) inclut déjà la page de maintenance et l'état `/v2-maintenance-state` avec le marqueur de production `/run/price-checker-v2-prod-maintenance`. Pour une instance de développement, remplacer `prod` par `dev` dans le chemin du marqueur.
 
 Tester avec `nginx -t` avant de recharger Nginx. Le marqueur est créé par `update.sh` après les vérifications préliminaires, puis supprimé quand l'API est saine. Si une erreur laisse l'application indisponible, le marqueur reste en place : réparer l'instance, vérifier l'API, puis retirer le marqueur manuellement. Une page PWA déjà ouverte interroge `/v2-maintenance-state` toutes les 10 secondes et affiche aussi le message.
 

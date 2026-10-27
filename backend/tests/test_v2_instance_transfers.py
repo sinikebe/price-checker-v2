@@ -130,6 +130,22 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
             changed["products"][0]["data"]["name"] = "Changed at source"
             assert (await client.post("/api/v2/transfers/import", json=changed,
                                       headers={"x-test-admin": "yes"})).status_code == 409
+            cycle = json.loads(json.dumps(archive))
+            cycle["products"][0]["predecessor_id"] = cycle["products"][1]["id"]
+            cycle["products"].append({
+                "id": max(item["id"] for item in cycle["products"]) + 1,
+                "predecessor_id": None,
+                "data": {"name": "Independent", "brand": "Sample", "package": "Bag", "quantity": "100 g"},
+            })
+            refused_cycle = await client.post("/api/v2/transfers/import", json=cycle,
+                                              headers={"x-test-admin": "yes"})
+            assert refused_cycle.status_code == 422, refused_cycle.text
+            target = await connect_v2(target_config)
+            try:
+                assert await target.fetchval("SELECT count(*) FROM v2_products") == 2
+                assert await target.fetchval("SELECT count(*) FROM v2_transfer_product_map") == 2
+            finally:
+                await target.close()
             broken = json.loads(json.dumps(archive))
             broken["stores"] = []
             assert (await client.post("/api/v2/transfers/import", json=broken,

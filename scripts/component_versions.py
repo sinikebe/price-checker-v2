@@ -23,6 +23,7 @@ BACKEND_PACKAGE = ROOT / "backend/pyproject.toml"
 # once for every push with at least one affected implementation component.
 RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/products.py", ("products", "open_food_facts")),
+    ("backend/app/api/v2/catalogue.py", ("products",)),
     ("backend/app/api/v2/prices.py", ("products",)),
     ("backend/app/api/v2/transfers.py", ("products", "database")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
@@ -40,6 +41,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/openfoodfacts_client.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_snapshot.py", ("open_food_facts",)),
     ("backend/app/services/v2_off_refresh_queue.py", ("open_food_facts",)),
+    ("backend/app/services/v2_open_prices_sync.py", ("open_prices",)),
     ("backend/app/services/v2_write_limits.py", ("accounts", "products", "recipes")),
     ("backend/app/services/v2_visibility.py", ("products", "recipes")),
     ("backend/app/services/v2_trusted_proxy.py", ("accounts", "deployment")),
@@ -49,7 +51,9 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/schemas/off.py", ("open_food_facts",)),
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
     ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
-    ("frontend/src/v2/V2PriceHistory.tsx", ("products",)),
+    ("frontend/src/v2/V2PriceHistory.tsx", ("products", "open_prices")),
+    ("frontend/src/v2/V2CataloguePage.tsx", ("products", "open_prices")),
+    ("frontend/src/v2/v2-catalogue.css", ("products",)),
     ("frontend/src/v2/V2ReportControl.tsx", ("products", "recipes")),
     ("frontend/src/v2/V2AccountDeletion.tsx", ("accounts", "pwa")),
     ("frontend/src/v2/V2ModerationPanel.tsx", ("products", "recipes")),
@@ -238,6 +242,7 @@ def main() -> None:
         stale = [
             key for key in affected
             if versions[key]["status"] == "active"
+            and previous[key]["version"] is not None
             and tuple(map(int, versions[key]["version"].split(".")))
             <= tuple(map(int, previous[key]["version"].split(".")))
         ]

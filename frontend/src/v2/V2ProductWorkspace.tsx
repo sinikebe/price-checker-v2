@@ -40,7 +40,7 @@ function safeProductUrl(value: string): string | null {
   catch { return null; }
 }
 
-function Frame({ children, user, onLogout }: { children: React.ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
+export function Frame({ children, user, onLogout }: { children: React.ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
   return <div className="v2-home v2-workspace">
     <a className="v2-skip" href="#v2-workspace-main">Aller au contenu</a>
     <header className="v2-header"><div className="v2-wrap v2-header-inner">
@@ -371,6 +371,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         </article>)}</div> :
       <div className="v2-workspace-card"><h2>Fiche produit</h2><dl className="v2-workspace-facts">
         {fields.filter(field => d[field.key]).map(field => <div key={field.key}><dt>{field.label}</dt><dd>{d[field.key]}</dd></div>)}</dl>
+        {d.group && <p><Link to={"/v2/categories/" + encodeURIComponent(d.group)}>Voir les produits du groupe « {d.group} » →</Link></p>}
         {d.tags.length > 0 && <p><strong>Étiquettes du groupe :</strong> {d.tags.join(" · ")}</p>}
         {d.nutrition_checked_at && <p><strong>Dernier contrôle nutritionnel :</strong> {new Date(d.nutrition_checked_at).toLocaleString("fr-FR")}</p>}
         {d.quantity_amount && d.quantity_unit && <p><strong>Quantité analysée :</strong> {d.quantity_amount} {d.quantity_unit}{d.quantity_count_noun && ` (${d.quantity_count_noun})`}</p>}

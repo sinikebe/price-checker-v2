@@ -2,7 +2,7 @@
 
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
-Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative.
+Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Les groupes comparables servent de catégories dans le catalogue : recherche par référence, groupe ou magasin, pagination 10/20/50, et fiche de groupe avec graphique et liens vers ses produits.
 
 Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
 
@@ -38,7 +38,7 @@ Elle n'est pas déclenchée automatiquement par un push.
 
 ## Versions des composants
 
-La page **Versions** est accessible depuis le pied de page de l'accueil V2 (`/v2/versions`). Son [manifeste dans le dépôt](frontend/src/v2/component-versions.json) est inclus dans le build web. Elle distingue l'application, les produits, recettes, panier, connexion PostgreSQL, connexion Open Food Facts, comptes, PWA et déploiement. Open Prices est affiché « prévu » : la provenance existe dans le schéma de prix, mais aucun connecteur utilisable n'est encore livré.
+La page **Versions** est accessible depuis le pied de page de l'accueil V2 (`/v2/versions`). Son [manifeste dans le dépôt](frontend/src/v2/component-versions.json) est inclus dans le build web. Elle distingue l'application, les produits, recettes, panier, connexion PostgreSQL, connexions Open Food Facts et Open Prices, comptes, PWA et déploiement. Open Prices importe à faible débit des relevés publics français en euros pour les produits ayant un code-barres ; les relevés restent identifiés comme source tierce. Voir [la politique de synchronisation](docs/v2-prices.md#synchronisation-open-prices).
 
 Les versions sont incrémentées dans les commits de développement, avant la PR vers `main`. La [CI](.github/workflows/ci.yml) vérifie que les composants modifiés ont une version supérieure à celle de `main` et que les métadonnées des paquets restent cohérentes ; elle ne pousse plus de commit automatiquement. Un changement partagé peut incrémenter plusieurs composants. Documentation et tests seuls ne demandent pas d'incrément. Les règles sont dans [le script de versionnement](scripts/component_versions.py) ; un nouveau fichier applicatif sans règle fait échouer la CI pour imposer un rattachement explicite. La CI ne crée ni tag ni déploiement. Les versions sont celles du code, pas des révisions de synchronisation PWA ni du schéma des données.
 

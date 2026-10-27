@@ -2,8 +2,8 @@ import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 import { readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
 
-const CACHE_NAME = "price-checker-offline-data-v3";
-async function cache() { return "caches" in window ? caches.open(CACHE_NAME) : null; }
+import { PWA_CACHE_NAME, PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY } from "./cache-keys";
+async function cache() { return "caches" in window ? caches.open(PWA_CACHE_NAME) : null; }
 
 export async function cacheRecipeWrite(method: string, path: string, result: Recipe | undefined) {
   try {
@@ -15,12 +15,12 @@ export async function cacheRecipeWrite(method: string, path: string, result: Rec
     }
     if (method === "DELETE") await store.delete(`/api/v2/recipes/${id}`);
     else if (result) await store.put(`/api/v2/recipes/${id}`, new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } }));
-    const raw = localStorage.getItem("v2:pwa:recipe-summaries");
+    const raw = localStorage.getItem(PWA_RECIPES_KEY);
     const list: RecipeSummary[] = raw ? JSON.parse(raw) : [];
     const next = list.filter(item => item.id !== id);
     if (result) next.push({ id: result.id, title: result.title, description: result.description, base_servings: result.base_servings, prep_minutes: result.prep_minutes, cook_minutes: result.cook_minutes, updated_at: result.updated_at, revision: result.revision, ingredient_count: result.ingredients.length });
-    localStorage.setItem("v2:pwa:recipe-summaries", JSON.stringify(next));
-    localStorage.setItem("v2:pwa:recipe-summaries-ready", "1");
+    localStorage.setItem(PWA_RECIPES_KEY, JSON.stringify(next));
+    localStorage.setItem(PWA_RECIPES_READY_KEY, "1");
   } catch { /* online save succeeded; cache is best-effort */ }
 }
 

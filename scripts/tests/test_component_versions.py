@@ -21,10 +21,10 @@ class ComponentVersionsTests(unittest.TestCase):
             {"database", "application"},
         )
 
-    def test_price_history_files_bump_products(self):
+    def test_price_history_files_bump_products_and_open_prices(self):
         self.assertEqual(classify([
             "backend/app/api/v2/prices.py", "frontend/src/v2/V2PriceHistory.tsx",
-        ]), {"application", "products"})
+        ]), {"application", "products", "open_prices"})
 
     def test_product_files_shared_with_off_bump_both(self):
         self.assertEqual(
@@ -62,14 +62,17 @@ class ComponentVersionsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "future_connector.py"):
             classify(["backend/app/services/future_connector.py"])
 
-    def test_planned_open_prices_has_no_automatic_bump(self):
-        self.assertNotIn("open_prices", classify(["backend/app/services/off_rate_limit.py"]))
+    def test_open_prices_connector_is_classified(self):
+        self.assertEqual(
+            classify(["backend/app/services/v2_open_prices_sync.py"]),
+            {"application", "open_prices"},
+        )
         self.assertEqual(bump_patch("0.1.9"), "0.1.10")
 
     def test_manifest_and_existing_source_paths_are_consistent(self):
         versions = validate()
-        self.assertIsNone(versions["open_prices"]["version"])
-        self.assertEqual(versions["open_prices"]["status"], "planned")
+        self.assertRegex(versions["open_prices"]["version"], r"^\d+\.\d+\.\d+$")
+        self.assertEqual(versions["open_prices"]["status"], "active")
 
 
 if __name__ == "__main__":
