@@ -2,7 +2,24 @@
 .v2-price-heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px; }
 .v2-price-heading h2 { margin-bottom: 6px; }
 .v2-price-heading p, .v2-price-history p { color: var(--v2-muted, #617467); line-height: 1.55; }
-.v2-price-latest { padding: 10px 14px; border-radius: 10px; background: #e9f4e8; color: #205e42; }
+.v2-price-store-summary { margin: 18px 0 8px; }
+.v2-price-store-summary h3 { margin: 0 0 4px; }
+.v2-price-store-summary > p { margin: 4px 0 12px; font-size: .9rem; }
+.v2-price-store-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.v2-price-store-card { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 12px; border: 1px solid var(--v2-line, #cbd9ce); border-inline-start: 5px solid; border-radius: 9px; }
+.v2-price-store-name { display: flex; align-items: start; gap: 8px; line-height: 1.3; }
+.v2-price-store-swatch { flex: none; width: 11px; height: 11px; margin-top: 3px; border-radius: 50%; }
+.v2-price-store-reading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; }
+.v2-price-store-reading > strong { font-size: 1.35rem; line-height: 1.2; }
+.v2-price-store-invalid { text-decoration: line-through; opacity: .75; }
+.v2-price-store-best { font-size: .76rem; font-weight: 700; color: #285586; }
+.v2-price-store-unavailable { font-size: .78rem; font-weight: 700; color: #9b3640; }
+.v2-price-store-date { font-size: .84rem; color: var(--v2-muted, #617467); }
+.v2-price-freshness { justify-self: start; padding: 3px 8px; border-radius: 999px; font-size: .73rem; font-weight: 700; }
+.v2-price-freshness[data-age="recent"] { background: #d8f1e3; color: #175f3d; }
+.v2-price-freshness[data-age="aging"] { background: #fff0c8; color: #775000; }
+.v2-price-freshness[data-age="old"] { background: #e7ecef; color: #485665; }
+.v2-price-history .v2-price-freshness-help { margin: 9px 0; font-size: .79rem; }
 .v2-price-chart-scroll, .v2-price-table-scroll { overflow-x: auto; }
 .v2-price-chart-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 14px; }
 .v2-price-chart-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -15,8 +32,8 @@
 .v2-price-history .v2-price-chart-help { margin: 7px 0 0; }
 .v2-price-history .v2-price-chart { display: block; min-width: 560px; width: 100%; height: auto; aspect-ratio: 8 / 3; margin: 12px 0 2px; cursor: grab; }
 .v2-price-history .v2-price-chart:active { cursor: grabbing; }
-.v2-price-line { stroke: #227856; stroke-linejoin: round; stroke-linecap: round; }
-.v2-price-dot { fill: #227856; cursor: help; }
+.v2-price-line { stroke-linejoin: round; stroke-linecap: round; }
+.v2-price-dot { cursor: help; }
 .v2-price-dot:is(:hover, :focus-visible) { stroke-width: 3; outline: none; }
 .v2-price-tooltip { position: fixed; z-index: 30; display: grid; gap: 2px; width: 230px; max-width: calc(100vw - 24px); padding: 10px 12px; border-radius: 9px; background: #183f31; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); pointer-events: none; font-size: .82rem; line-height: 1.35; }
 .v2-price-tooltip strong { font-size: 1rem; }
@@ -44,9 +61,11 @@
 html[data-v2-theme="dark"] .v2-price-chart-buttons button { background: #1b3028; color: #d4f5c1; border-color: #517164; }
 html[data-v2-theme="dark"] .v2-price-chart-buttons button:hover:not(:disabled) { background: #294b36; }
 html[data-v2-theme="dark"] .v2-price-tooltip { background: #d4f5c1; color: #18322e; }
-html[data-v2-theme="dark"] .v2-price-latest { background: #294b36; color: #d4f5c1; }
-html[data-v2-theme="dark"] .v2-price-line { stroke: #a9d989; }
-html[data-v2-theme="dark"] .v2-price-dot { fill: #a9d989; }
+html[data-v2-theme="dark"] .v2-price-store-best { color: #a8cdfa; }
+html[data-v2-theme="dark"] .v2-price-store-unavailable { color: #ffacb2; }
+html[data-v2-theme="dark"] .v2-price-freshness[data-age="recent"] { background: #244c39; color: #c9f3d5; }
+html[data-v2-theme="dark"] .v2-price-freshness[data-age="aging"] { background: #574322; color: #ffe5ac; }
+html[data-v2-theme="dark"] .v2-price-freshness[data-age="old"] { background: #34414b; color: #d8e0e7; }
 html[data-v2-theme="dark"] .v2-price-gridline { stroke: #476054; }
 html[data-v2-theme="dark"] .v2-price-axis-label { fill: #b2c9b8; }
 html[data-v2-theme="dark"] .v2-price-fields :is(input,select) { background: #172822; border-color: #517164; color: #edf5eb; }

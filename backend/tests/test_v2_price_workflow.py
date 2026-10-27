@@ -102,6 +102,12 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
             )
             assert len({row["observed_at"] for row in stored}) == 1
             assert all(row["retailer"] == "Disposable Shop" for row in observations)
+            latest = (await client.get(base)).json()
+            assert {(row["store_id"], row["sales_channel"]) for row in latest["latest_by_store"]} == {
+                (observations[0]["store_id"], "in_store"),
+                (observations[0]["store_id"], "drive"),
+            }
+            assert latest["stores_truncated"] is False
             assert (await client.post(f"/api/v2/prices/drafts/{first_id}/approve",
                                       headers={"x-test-user": "admin"})).status_code == 404
             duplicate = await client.post(base + "/drafts", json=payload,
@@ -112,6 +118,47 @@ async def test_price_drafts_are_private_until_approved(monkeypatch):
             assert (await client.get(base)).json()["observations"] == observations
             assert (await client.post(f"/api/v2/prices/drafts/{duplicate_id}/reject",
                                       headers={"x-test-user": "admin"})).status_code == 200
+            unavailable_id = await connection.fetchval(
+                """
+                INSERT INTO v2_price_observations(
+                    product_id,retailer_id,store_id,source,price,observed_at,
+                    sales_channel,available)
+                SELECT product_id,retailer_id,store_id,'manual',2.45,now(),
+                       sales_channel,false
+                FROM v2_price_observations
+                WHERE product_id=$1 AND sales_channel='in_store'
+                LIMIT 1 RETURNING id
+                """,
+                product_id,
+            )
+            latest = (await client.get(base)).json()["latest_by_store"]
+            assert len(latest) == 2
+            assert next(row for row in latest if row["sales_channel"] == "in_store")["id"] == unavailable_id
+            assert next(row for row in latest if row["sales_channel"] == "in_store")["available"] is False
+            other_store_id = await connection.fetchval(
+                "INSERT INTO v2_stores(retailer_id,name,city,postal_code,import_key) "
+                "VALUES($1,'Other store','Lyon','69001','price-test-other') RETURNING id",
+                observations[0]["retailer_id"],
+            )
+            old_store_price_id = await connection.fetchval(
+                "INSERT INTO v2_price_observations("
+                "product_id,retailer_id,store_id,source,price,observed_at,sales_channel) "
+                "VALUES($1,$2,$3,'manual',1.95,now()-interval '300 days','in_store') "
+                "RETURNING id",
+                product_id, observations[0]["retailer_id"], other_store_id,
+            )
+            await connection.execute(
+                "INSERT INTO v2_price_observations("
+                "product_id,retailer_id,store_id,source,price,observed_at,sales_channel) "
+                "SELECT $1,$2,$3,'manual',3.00 + n / 100.0,"
+                "now() - n * interval '1 minute','in_store' "
+                "FROM generate_series(1,201) AS n",
+                product_id, observations[0]["retailer_id"], observations[0]["store_id"],
+            )
+            capped = (await client.get(base)).json()
+            assert len(capped["observations"]) == 200 and capped["truncated"] is True
+            assert old_store_price_id not in {row["id"] for row in capped["observations"]}
+            assert old_store_price_id in {row["id"] for row in capped["latest_by_store"]}
             assert (await client.get("/api/v2/prices/products/999999999")).status_code == 404
     finally:
         if product_id is not None:
