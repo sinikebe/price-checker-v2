@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.v2.auth import _connect
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
+from app.services.v2_price_history import COMPACT_HISTORY_CTE
 
 router = APIRouter(prefix="/api/v2/catalogue", tags=["v2-catalogue"])
 
@@ -118,21 +119,22 @@ async def category_detail(name: str):
             raise HTTPException(status_code=404, detail="Catégorie introuvable.")
         ids = [row["id"] for row in rows]
         observations = await connection.fetch(
-            """SELECT * FROM (
-                 SELECT o.id, o.product_id, o.price, o.observed_at,
-                        r.name AS retailer, s.name AS store_name, s.city,
-                        row_number() OVER (
-                          PARTITION BY o.product_id
-                          ORDER BY o.observed_at DESC, o.id DESC
-                        ) AS rank
-                 FROM v2_price_observations o
-                 JOIN v2_retailers r ON r.id=o.retailer_id
-                 JOIN v2_stores s ON s.id=o.store_id
-                 WHERE o.product_id=ANY($1::bigint[]) AND NOT o.superseded
-                   AND o.available
-                   AND o.correction_status IS DISTINCT FROM 'active'
-               ) recent WHERE rank<=30
-               ORDER BY observed_at, id""",
+            COMPACT_HISTORY_CTE + """
+            SELECT * FROM (
+                SELECT c.id,c.product_id,c.price,c.observed_at,
+                       r.name AS retailer,s.name AS store_name,s.city,
+                       row_number() OVER (
+                           PARTITION BY c.product_id
+                           ORDER BY c.observed_at DESC,c.id DESC
+                       ) AS rank
+                FROM compact_history c
+                JOIN v2_retailers r ON r.id=c.retailer_id
+                JOIN v2_stores s ON s.id=c.store_id
+                WHERE c.available
+                  AND c.correction_status IS DISTINCT FROM 'active'
+            ) recent WHERE rank<=30
+            ORDER BY observed_at,id
+            """,
             ids,
         )
         return {
