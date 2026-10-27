@@ -14,9 +14,29 @@ type CategoryDetail = { name: string; products: Product[]; observations: Observa
 type Props = { name?: string; user: V2User | null; onLogout: () => Promise<void> };
 const pageSizes = [10, 20, 50];
 const colors = ["#3068aa", "#d9653b", "#229b82", "#865ac2", "#c2467e", "#af8129", "#516293", "#277482"];
+type UnitMetric = "g" | "ml" | "piece";
+type ChartMetric = UnitMetric | "price";
+const unitMetrics: UnitMetric[] = ["g", "ml", "piece"];
+const metricLabels: Record<ChartMetric, string> = {
+  g: "Prix au kg", ml: "Prix au litre", piece: "Prix par unité", price: "Prix du produit",
+};
+const metricUnits: Record<ChartMetric, string> = {
+  g: "€/kg", ml: "€/L", piece: "€/unité", price: "€",
+};
 
 function productName(product: Product): string {
   return [product.data.brand, product.data.name || "Produit sans nom"].filter(Boolean).join(" ");
+}
+function quantityFor(product: Product): { amount: number; unit: UnitMetric } | null {
+  const amount = Number(product.data.quantity_amount);
+  const unit = product.data.quantity_unit;
+  return Number.isFinite(amount) && amount > 0 && unit && unitMetrics.includes(unit)
+    ? { amount, unit } : null;
+}
+function matchesSubset(product: Product, subset: string): boolean {
+  const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
+  const haystack = fold([product.data.name, product.data.commercial_name, product.data.brand, ...(product.data.tags ?? [])].join(" "));
+  return fold(subset.trim()).split(/\s+/).every(word => haystack.includes(word));
 }
 async function offlineCatalogue(path: string): Promise<unknown> {
   const products = await productRequest<Product[]>("");
@@ -97,65 +117,118 @@ function Pagination({ total, page, size, onChange }: { total: number; page: numb
 }
 function ProductLink({ product }: { product: Product }) {
   return <Link className="v2-workspace-list-item" to={"/v2/produits/" + product.id}>
-    <div><strong>{productName(product)}</strong><small>{product.data.quantity || "Quantité à préciser"}</small></div>
+    <div><strong>{productName(product)}</strong><small>{[product.data.commercial_name, product.data.quantity || "Quantité à préciser"].filter(Boolean).join(" · ")}</small></div>
     <span>Voir la fiche →</span>
   </Link>;
 }
-function CategoryChart({ detail }: { detail: CategoryDetail }) {
-  const points = detail.observations.map(item => ({ ...item, time: Date.parse(item.observed_at), amount: Number(item.price) }))
-    .filter(item => Number.isFinite(item.time) && Number.isFinite(item.amount));
-  if (!points.length) return <p>Aucun prix connu pour les produits de cette catégorie.</p>;
-  const width = 760, height = 280, left = 48, right = 20, top = 18, bottom = 38;
+function CategoryChart({ detail, products, metric }: { detail: CategoryDetail; products: Product[]; metric: ChartMetric }) {
+  const byId = new Map(products.map(product => [product.id, product]));
+  const points = detail.observations.flatMap(item => {
+    const product = byId.get(item.product_id);
+    if (!product) return [];
+    const time = Date.parse(item.observed_at), price = Number(item.price);
+    if (!Number.isFinite(time) || !Number.isFinite(price) || price < 0) return [];
+    const quantity = quantityFor(product);
+    if (metric !== "price" && (!quantity || quantity.unit !== metric || price === 0)) return [];
+    const amount = metric === "price" ? price : price * (metric === "piece" ? 1 : 1000) / quantity!.amount;
+    return Number.isFinite(amount) ? [{ ...item, time, amount }] : [];
+  });
+  if (!points.length) return <p>Aucun prix comparable à tracer pour cette sélection. Choisissez une autre métrique ou d’autres produits.</p>;
+  const width = 760, height = 280, left = 70, right = 20, top = 18, bottom = 38;
   const times = points.map(point => point.time), amounts = points.map(point => point.amount);
   const minTime = Math.min(...times), maxTime = Math.max(...times);
   const maxPrice = Math.max(1, ...amounts) * 1.1;
   const x = (time: number) => left + (time - minTime) / (maxTime - minTime || 1) * (width - left - right);
   const y = (amount: number) => height - bottom - amount / maxPrice * (height - top - bottom);
   const dateLabel = (time: number) => new Date(time).toLocaleDateString("fr-FR");
+  const amountLabel = (amount: number) => amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + metricUnits[metric];
   return <div className="v2-catalogue-chart">
-    <div className="v2-catalogue-chart-scroll"><svg role="img" aria-label={"Évolution des prix de " + detail.name} viewBox={"0 0 " + width + " " + height}>
+    <div className="v2-catalogue-chart-scroll"><svg role="img" aria-label={"Évolution des prix de " + detail.name + " en " + metricUnits[metric]} viewBox={"0 0 " + width + " " + height}>
       <line x1={left} y1={top} x2={left} y2={height - bottom} stroke="currentColor" />
       <line x1={left} y1={height - bottom} x2={width - right} y2={height - bottom} stroke="currentColor" />
-      <text x={left - 8} y={top + 4} textAnchor="end">{maxPrice.toFixed(2)} €</text>
-      <text x={left - 8} y={height - bottom + 4} textAnchor="end">0 €</text>
+      <text x={left - 8} y={top + 4} textAnchor="end">{amountLabel(maxPrice)}</text>
+      <text x={left - 8} y={height - bottom + 4} textAnchor="end">{amountLabel(0)}</text>
       <text x={left} y={height - 9}>{dateLabel(minTime)}</text>
       <text x={width - right} y={height - 9} textAnchor="end">{dateLabel(maxTime)}</text>
-      {detail.products.map((product, index) => {
+      {products.map((product, index) => {
         const series = points.filter(point => point.product_id === product.id).sort((a, b) => a.time - b.time);
         const color = colors[index % colors.length];
         return <g key={product.id}>
           {series.length > 1 && <polyline fill="none" stroke={color} strokeWidth="2.5"
             points={series.map(point => x(point.time) + "," + y(point.amount)).join(" ")} />}
           {series.map(point => <circle key={point.id} cx={x(point.time)} cy={y(point.amount)} r="4" fill={color}>
-            <title>{productName(product) + " · " + dateLabel(point.time) + " · " + point.amount.toFixed(2) + " € · " + point.retailer}</title>
+            <title>{productName(product) + " · " + dateLabel(point.time) + " · " + amountLabel(point.amount) + " · " + point.retailer}</title>
           </circle>)}
         </g>;
       })}
     </svg></div>
-    <ul className="v2-catalogue-legend">{detail.products.map(product => {
-      const index = detail.products.findIndex(item => item.id === product.id);
-      return <li key={product.id}><span style={{ backgroundColor: colors[index % colors.length] }} /><Link to={"/v2/produits/" + product.id}>{productName(product)}</Link>{!points.some(point => point.product_id === product.id) && <small> · aucun prix</small>}</li>;
-    })}</ul>
+    <ul className="v2-catalogue-legend">{products.map((product, index) =>
+      <li key={product.id}><span style={{ backgroundColor: colors[index % colors.length] }} /><Link to={"/v2/produits/" + product.id}>{productName(product)}</Link>
+        {!points.some(point => point.product_id === product.id) && <small> · {metric !== "price" && quantityFor(product)?.unit !== metric ? "quantité non comparable" : "aucun prix"}</small>}</li>
+    )}</ul>
+    {metric !== "price" && products.some(product => quantityFor(product)?.unit !== metric) &&
+      <p className="v2-catalogue-source">Les produits sans quantité compatible avec {metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.</p>}
     <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} prix récents par produit. Les prix Open Prices sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
   </div>;
 }
 function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
   const [params, setParams] = useSearchParams();
   const page = pageNumber(params), size = pageSize(params);
+  const subset = params.get("subset") || "";
   const { data, error } = useCatalogue<CategoryDetail>("/categories/" + encodeURIComponent(name));
-  function changePage(nextPage: number, nextSize: number) {
-    setParams({ page: String(nextPage), size: String(nextSize) });
-  }
   const products = data?.products ?? [];
+  const selectedProducts = products.filter(product => matchesSubset(product, subset));
+  const availableMetrics = unitMetrics.map(unit => ({
+    unit, count: selectedProducts.filter(product => quantityFor(product)?.unit === unit).length,
+  })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
+  const requestedMetric = params.get("metric");
+  const metric: ChartMetric = requestedMetric === "price" || availableMetrics.some(item => item.unit === requestedMetric)
+    ? requestedMetric as ChartMetric : availableMetrics[0]?.unit || "price";
+  function changePage(nextPage: number, nextSize: number) {
+    const next = new URLSearchParams(params);
+    next.set("page", String(nextPage));
+    next.set("size", String(nextSize));
+    setParams(next);
+  }
+  function changeSubset(value: string) {
+    const next = new URLSearchParams(params);
+    if (value) next.set("subset", value);
+    else next.delete("subset");
+    next.set("page", "1");
+    setParams(next, { replace: true });
+  }
+  function changeMetric(value: string) {
+    const next = new URLSearchParams(params);
+    next.set("metric", value);
+    setParams(next);
+  }
   return <Frame user={user} onLogout={onLogout}>
     <p><Link to="/v2/produits">← Toutes les catégories</Link></p>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATÉGORIE</span>
       <h1>{data?.name || name}<span>.</span></h1><p>{products.length} produit{products.length > 1 ? "s" : ""} dans cette catégorie.</p></div></div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
-      <h2>Prix de tous les produits</h2>{!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}<CategoryChart detail={data} />
-      <h2>Produits</h2>
-      <div className="v2-workspace-list">{products.slice((page - 1) * size, page * size).map(product => <ProductLink key={product.id} product={product} />)}</div>
-      <Pagination total={products.length} page={page} size={size} onChange={changePage} />
+      <div className="v2-catalogue-detail-controls">
+        <label htmlFor="category-subset">Sous-groupe à garder
+          <input id="category-subset" type="search" value={subset} onChange={event => changeSubset(event.target.value)}
+            placeholder="Ex. Dijon" />
+          <small>Filtre le nom, le nom commercial et les mots-clés des produits.</small>
+        </label>
+        <label htmlFor="category-metric">Métrique du graphique
+          <select id="category-metric" value={metric} onChange={event => changeMetric(event.target.value)}>
+            {availableMetrics.map(item => <option key={item.unit} value={item.unit}>{metricLabels[item.unit]}</option>)}
+            <option value="price">{metricLabels.price}</option>
+          </select>
+        </label>
+      </div>
+      <p role="status">{selectedProducts.length} produit{selectedProducts.length > 1 ? "s" : ""} affiché{selectedProducts.length > 1 ? "s" : ""} sur {products.length}.</p>
+      {selectedProducts.length ? <>
+        <h2>Prix des produits sélectionnés</h2>
+        {!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
+        <CategoryChart detail={data} products={selectedProducts} metric={metric} />
+        <h2>Produits</h2>
+        <div className="v2-workspace-list">{selectedProducts.slice((page - 1) * size, page * size).map(product => <ProductLink key={product.id} product={product} />)}</div>
+        <Pagination total={selectedProducts.length} page={page} size={size} onChange={changePage} />
+      </> : <p>Aucun produit ne correspond à ce sous-groupe.</p>}
     </>}
   </Frame>;
 }

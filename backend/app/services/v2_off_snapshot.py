@@ -27,6 +27,11 @@ async def fetch_full_off_product(barcode: str) -> dict[str, Any] | None:
         )
     except OffRateLimited:
         raise
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        logger.warning("OFF full fetch failed: HTTP %s", exc.response.status_code)
+        raise OffUnavailable(str(exc)) from exc
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("OFF full fetch failed: %s", type(exc).__name__)
         raise OffUnavailable(str(exc)) from exc

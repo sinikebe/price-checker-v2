@@ -102,7 +102,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
             "Aucune fiche OFF pour ce code. Le rafraîchissement serveur sera possible plus tard.");
         } catch { setError("Quota serveur atteint et lecture directe indisponible."); }
       } else if (reason instanceof ProductApiError && reason.status === 404) {
-        setError("Aucune fiche Open Food Facts pour ce code. Vous pouvez continuer la saisie manuellement.");
+        setError("Produit introuvable sur Open Food Facts. Vous pouvez continuer la saisie manuellement.");
       } else {
         setError(reason instanceof Error ? reason.message : "Open Food Facts est indisponible.");
       }

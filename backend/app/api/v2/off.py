@@ -22,6 +22,7 @@ _OFF_FIELDS = (
     "nutriscore_grade,nova_group,nutriscore_version"
 )
 _PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product"
+_OFF_NOT_FOUND = "Produit introuvable sur Open Food Facts."
 _cache: dict[tuple[str, str], tuple[float, object]] = {}
 
 
@@ -94,7 +95,7 @@ async def get_openfoodfacts_product(barcode: str) -> OpenFoodFactsSuggestion:
     if hit:
         if cached is None:
             raise HTTPException(
-                status_code=404, detail="Produit inconnu d'Open Food Facts."
+                status_code=404, detail=_OFF_NOT_FOUND
             )
         return cached
     try:
@@ -109,6 +110,14 @@ async def get_openfoodfacts_product(barcode: str) -> OpenFoodFactsSuggestion:
             detail="Trop de requêtes vers Open Food Facts.",
             headers=retry_after_headers(exc),
         ) from exc
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            _remember(key, None)
+            raise HTTPException(status_code=404, detail=_OFF_NOT_FOUND) from exc
+        logger.warning("OFF lookup failed: HTTP %s", exc.response.status_code)
+        raise HTTPException(
+            status_code=502, detail="Open Food Facts est indisponible."
+        ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("OFF lookup failed: %s", type(exc).__name__)
         raise HTTPException(
@@ -119,7 +128,7 @@ async def get_openfoodfacts_product(barcode: str) -> OpenFoodFactsSuggestion:
     _remember(key, result)
     if result is None:
         raise HTTPException(
-            status_code=404, detail="Produit inconnu d'Open Food Facts."
+            status_code=404, detail=_OFF_NOT_FOUND
         )
     return result
 
