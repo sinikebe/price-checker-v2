@@ -16,13 +16,23 @@ type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" 
 type Channel = "in_store" | "drive" | "delivery";
 type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string;
   sales_channel: Channel; price: string; observed_at: string; note: string };
-type PricesResponse = { observations: Observation[]; truncated: boolean };
+type PricesResponse = { observations: Observation[]; truncated: boolean; latest_by_store: Observation[]; stores_truncated: boolean };
 const channels: Record<Channel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const money = (value: string | number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
 const dayTime = (value: string) => new Date(value + "T12:00:00").getTime();
 const date = (value: string | number) => new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value)
   .toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
 const seriesLabel = (row: Observation) => [row.retailer, row.store_name, row.city, row.postal_code, channels[row.sales_channel]].filter(Boolean).join(" · ");
+function storeMeta(row: Observation) {
+  const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
+  const name = fold(row.store_name);
+  return [
+    !name.includes(fold(row.retailer)) && row.retailer,
+    row.city && !name.includes(fold(row.city)) && row.city,
+    row.postal_code,
+    channels[row.sales_channel],
+  ].filter(Boolean).join(" · ");
+}
 function localToday() {
   const value = new Date();
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -51,16 +61,68 @@ const chartWidth = 800, chartHeight = 300, chartLeft = 62, chartRight = 22, char
 const plotWidth = chartWidth - chartLeft - chartRight;
 const plotHeight = chartHeight - chartTop - chartBottom;
 const maxZoom = 128;
+const seriesColors = ["#1976ad", "#c05b28", "#7757b4", "#168477", "#b5467b", "#936c15", "#537f35", "#ba5050"];
 const pointLabel = (row: Observation) => [money(row.price), date(row.observed_at), seriesLabel(row)].join(" · ");
+type PriceSeries = { key: string; label: string; points: Observation[]; latest: Observation; color: string };
+const seriesKey = (row: Observation) => row.store_id + ":" + row.sales_channel;
+const plottable = (row: Observation) => row.available && row.correction_status !== "active"
+  && Number.isFinite(Number(row.price)) && Number(row.price) >= 0;
+const newer = (left: Observation, right: Observation) =>
+  dayTime(left.observed_at) > dayTime(right.observed_at)
+  || (left.observed_at === right.observed_at && left.id > right.id);
 
-function PriceChart({ observations }: { observations: Observation[] }) {
-  const points = observations.filter(row => row.available && row.correction_status !== "active")
-    .sort((a, b) => dayTime(a.observed_at) - dayTime(b.observed_at) || a.id - b.id);
-  if (!points.length) return <p>Aucun relevé disponible à tracer.</p>;
-  return <InteractivePriceChart points={points} />;
+function buildPriceSeries(observations: Observation[], latestRows: Observation[]): PriceSeries[] {
+  const groups = new Map<string, PriceSeries>();
+  function group(row: Observation) {
+    const key = seriesKey(row);
+    let entry = groups.get(key);
+    if (!entry) {
+      entry = { key, label: seriesLabel(row), points: [], latest: row, color: "" };
+      groups.set(key, entry);
+    }
+    return entry;
+  }
+  for (const row of observations) {
+    const entry = group(row);
+    if (newer(row, entry.latest)) entry.latest = row;
+    if (plottable(row)) entry.points.push(row);
+  }
+  // The API supplies the last reading even for stores beyond the 200-row
+  // history and even when that reading makes the current price unavailable.
+  for (const row of latestRows) {
+    const entry = group(row);
+    entry.latest = row;
+    entry.label = seriesLabel(row);
+    if (plottable(row) && !entry.points.some(point => point.id === row.id)) entry.points.push(row);
+  }
+  return [...groups.values()]
+    .sort((a, b) => a.label.localeCompare(b.label, "fr"))
+    .map((entry, index) => ({
+      ...entry,
+      color: seriesColors[index % seriesColors.length],
+      points: entry.points.sort((a, b) => dayTime(a.observed_at) - dayTime(b.observed_at) || a.id - b.id),
+    }));
 }
 
-function InteractivePriceChart({ points }: { points: Observation[] }) {
+function freshness(observedAt: string) {
+  const ordinal = (value: string) => {
+    const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  const days = Math.max(0, Math.round((ordinal(localToday()) - ordinal(observedAt)) / 86400000));
+  if (!Number.isFinite(days)) return { code: "old", label: "Date à vérifier" };
+  if (days <= 30) return { code: "recent", label: "Récent · 30 j max" };
+  if (days <= 90) return { code: "aging", label: "À vérifier · 31–90 j" };
+  return { code: "old", label: "Ancien · plus de 90 j" };
+}
+
+function PriceChart({ series }: { series: PriceSeries[] }) {
+  const points = series.flatMap(item => item.points);
+  if (!points.length) return <p>Aucun relevé disponible à tracer.</p>;
+  return <InteractivePriceChart series={series} points={points} />;
+}
+
+function InteractivePriceChart({ series, points }: { series: PriceSeries[]; points: Observation[] }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const clipId = "v2-price-clip-" + useId().replace(/:/g, "");
@@ -137,12 +199,12 @@ function InteractivePriceChart({ points }: { points: Observation[] }) {
       </div>
       <span className="v2-price-chart-range" role="status">{axisDate(visibleStart)} – {axisDate(visibleEnd)}{transform.k > 1.001 && " · ×" + transform.k.toFixed(1)}</span>
     </div>
-    <p className="v2-price-chart-help">À la souris : molette pour zoomer dans le temps, glisser pour se déplacer. Sur mobile et au clavier, utilisez les boutons.</p>
+    <p className="v2-price-chart-help">Chaque couleur de courbe correspond à un magasin et un canal. À la souris : molette pour zoomer dans le temps, glisser pour se déplacer. Sur mobile et au clavier, utilisez les boutons.</p>
     <div className="v2-price-chart-scroll">
       <svg ref={svgRef} className="v2-price-chart" viewBox={["0", "0", chartWidth, chartHeight].join(" ")}
         role="group" aria-labelledby="v2-price-chart-title v2-price-chart-description">
-        <title id="v2-price-chart-title">Évolution des prix relevés</title>
-        <desc id="v2-price-chart-description">Une seule courbe relie les prix disponibles et non contestés. Zoomez sur les dates avec la molette ou les boutons, déplacez la vue en glissant et réinitialisez-la avec le bouton. Chaque point est accessible au clavier ; le tableau contient tous les relevés.</desc>
+        <title id="v2-price-chart-title">Évolution des prix par magasin et canal</title>
+        <desc id="v2-price-chart-description">Une courbe distincte pour chaque magasin et canal ; les points isolés ne sont reliés à aucun autre magasin. Les derniers prix, dates et états figurent au-dessus. Zoomez et déplacez la vue avec les commandes ; chaque point est accessible au clavier et le tableau conserve les relevés récents.</desc>
         <defs>
           <clipPath id={clipId}><rect x={chartLeft} y={chartTop} width={plotWidth} height={plotHeight} /></clipPath>
           <clipPath id={clipId + "-dots"}><rect x={chartLeft - 9} y={chartTop - 9} width={plotWidth + 18} height={plotHeight + 18} /></clipPath>
@@ -155,19 +217,22 @@ function InteractivePriceChart({ points }: { points: Observation[] }) {
         })}
         <text x={chartLeft} y={chartHeight - 12} className="v2-price-axis-label">{axisDate(visibleStart)}</text>
         <text x={chartWidth - chartRight} y={chartHeight - 12} textAnchor="end" className="v2-price-axis-label">{axisDate(visibleEnd)}</text>
-        {points.length > 1 && <g clipPath={"url(#" + clipId + ")"}>
-          <polyline className="v2-price-line" fill="none" strokeWidth="3"
-            points={points.map(row => [x(row), y(row)].join(",")).join(" ")} />
-        </g>}
+        <g clipPath={"url(#" + clipId + ")"}>
+          {series.filter(item => item.points.length > 1).map(item =>
+            <polyline key={item.key} className="v2-price-line" fill="none" stroke={item.color} strokeWidth="3"
+              aria-label={"Évolution : " + item.label}
+              points={item.points.map(row => [x(row), y(row)].join(",")).join(" ")} />)}
+        </g>
         <g clipPath={"url(#" + clipId + "-dots)"}>
-          {points.map(row => <circle className="v2-price-dot" key={row.id} cx={x(row)} cy={y(row)} r="7"
-            stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2" tabIndex={0}
-            aria-label={pointLabel(row)} aria-describedby={hovered?.row.id === row.id ? tooltipId : undefined}
-            onPointerEnter={event => showTooltip(row, event.clientX, event.clientY)}
-            onPointerMove={event => showTooltip(row, event.clientX, event.clientY)}
-            onPointerLeave={() => setHovered(null)}
-            onFocus={event => { const bounds = event.currentTarget.getBoundingClientRect(); showTooltip(row, bounds.right, bounds.top); }}
-            onBlur={() => setHovered(null)} />)}
+          {series.flatMap(item => item.points.map(row =>
+            <circle className="v2-price-dot" key={row.id} cx={x(row)} cy={y(row)} r="7"
+              fill={item.color} stroke="var(--v2-price-dot-border, #fff)" strokeWidth="2" tabIndex={0}
+              aria-label={pointLabel(row)} aria-describedby={hovered?.row.id === row.id ? tooltipId : undefined}
+              onPointerEnter={event => showTooltip(row, event.clientX, event.clientY)}
+              onPointerMove={event => showTooltip(row, event.clientX, event.clientY)}
+              onPointerLeave={() => setHovered(null)}
+              onFocus={event => { const bounds = event.currentTarget.getBoundingClientRect(); showTooltip(row, bounds.right, bounds.top); }}
+              onBlur={() => setHovered(null)} />))}
         </g>
       </svg>
     </div>
@@ -236,15 +301,42 @@ export default function V2PriceHistory({ productId, user, current }: { productId
   }
 
   const observations = prices?.observations ?? [];
-  const latest = observations.find(row => row.available && row.correction_status !== "active");
+  const series = buildPriceSeries(observations, prices?.latest_by_store ?? []);
+  const comparison = [...series].sort((a, b) => {
+    const aComparable = plottable(a.latest), bComparable = plottable(b.latest);
+    if (aComparable !== bComparable) return aComparable ? -1 : 1;
+    if (aComparable) return Number(a.latest.price) - Number(b.latest.price) || a.label.localeCompare(b.label, "fr");
+    return a.label.localeCompare(b.label, "fr");
+  });
   return <section className="v2-workspace-card v2-price-history" aria-labelledby="v2-price-heading">
     <div className="v2-price-heading"><div><h2 id="v2-price-heading">Prix relevés</h2>
-      <p>Tous les prix disponibles et non contestés de cette référence sont reliés sur une seule courbe.</p></div>
-      {latest && <strong className="v2-price-latest">Dernier relevé : {money(latest.price)}</strong>}
+      <p>Une évolution distincte par magasin et canal : aucun trait ne relie deux points de vente différents.</p></div>
     </div>
     {!prices && !error && <p>Chargement des prix…</p>}
-    {prices && (observations.length ? <>
-      <PriceChart observations={observations} />
+    {prices && (observations.length || prices.latest_by_store.length ? <>
+      <div className="v2-price-store-summary" aria-labelledby="v2-price-store-heading">
+        <h3 id="v2-price-store-heading">Dernier relevé par magasin et canal</h3>
+        <p>Prix comparables classés du moins cher au plus cher. La date indique le relevé, pas une garantie de prix actuel.</p>
+        <ul className="v2-price-store-list">{comparison.map((item, index) => {
+          const age = freshness(item.latest.observed_at);
+          const valid = plottable(item.latest);
+          return <li key={item.key} className="v2-price-store-card" style={{ borderInlineStartColor: item.color }}>
+            <div className="v2-price-store-name"><span className="v2-price-store-swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
+              <div><strong>{item.latest.store_name}</strong><small>{storeMeta(item.latest)}</small></div></div>
+            <div className="v2-price-store-reading">
+              <strong className={valid ? "" : "v2-price-store-invalid"}>{money(item.latest.price)}</strong>
+              {index === 0 && valid && <span className="v2-price-store-best">Prix relevé le plus bas</span>}
+              {!item.latest.available && <span className="v2-price-store-unavailable">Indisponible</span>}
+              {item.latest.correction_status === "active" && <span className="v2-price-store-unavailable">Contesté</span>}
+            </div>
+            <span className="v2-price-store-date">Relevé du {date(item.latest.observed_at)}</span>
+            <span className="v2-price-freshness" data-age={age.code}>{age.label}</span>
+          </li>;
+        })}</ul>
+        <p className="v2-price-freshness-help">Fraîcheur : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Un relevé ancien peut avoir changé.</p>
+        {prices.stores_truncated && <p className="v2-price-note">Seuls les 200 magasins et canaux relevés le plus récemment sont comparés.</p>}
+      </div>
+      <PriceChart series={series} />
       <div className="v2-price-table-scroll"><table>
         <caption>Relevés publiés de ce produit</caption>
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
