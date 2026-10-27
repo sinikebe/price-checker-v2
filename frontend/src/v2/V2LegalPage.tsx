@@ -19,6 +19,7 @@ function LegalContent({ kind }: { kind: LegalKind }) {
     <section>
       <h2>Hébergement</h2>
       <p>Hébergeur de l’application prévu pour la mise en production : Amazon Web Services EMEA SARL, 38 Avenue John F. Kennedy, L-1855 Luxembourg, téléphone +352 2789 0057. La région prévue pour le serveur est Europe (Stockholm), Suède.</p>
+      <p>Le stockage de la base PostgreSQL de production est prévu chez <a href="https://supabase.com/" target="_blank" rel="noreferrer">Supabase</a>. La région exacte du projet Supabase doit encore être confirmée avant l’ouverture de la production.</p>
       <p>L’installation de développement privée est distincte de la future production. Les prestataires qui traitent des données sont décrits dans la <Link to="/v2/confidentialite">notice de confidentialité</Link>.</p>
     </section>
     <section>
@@ -46,8 +47,8 @@ function LegalContent({ kind }: { kind: LegalKind }) {
     <section>
       <h2>Destinataires et services externes</h2>
       <p>L’éditeur et les administrateurs habilités accèdent aux données privées nécessaires au fonctionnement et à la modération. Les contenus publiés sont accessibles à tous et peuvent être copiés ou mis en cache par des tiers.</p>
-      <p>L’application de production est prévue sur AWS en Suède. Les messages adressés au contact sont traités par Proton Mail. Certaines images et fiches Open Food Facts peuvent être demandées directement par votre navigateur à Open Food Facts ; ce service reçoit alors les informations techniques liées à cette requête, notamment votre adresse IP. L’ouverture d’un lien externe vous conduit sur le site concerné.</p>
-      <p>La localisation exacte des copies techniques et les éventuels accès des prestataires depuis d’autres pays dépendent de la configuration de l’instance et de leurs services. Pour demander des précisions sur une instance donnée, contactez-nous.</p>
+      <p>L’application de production est prévue sur AWS en Suède, avec une base PostgreSQL fournie par Supabase ; la région de ce projet Supabase reste à confirmer. Les messages adressés au contact sont traités par Proton Mail. Certaines images et fiches Open Food Facts peuvent être demandées directement par votre navigateur à Open Food Facts ; ce service reçoit alors les informations techniques liées à cette requête, notamment votre adresse IP. L’ouverture d’un lien externe vous conduit sur le site concerné.</p>
+      <p>Supabase indique que les données principales du projet sont stockées dans sa région sélectionnée, mais que certains accès de support et traitements peuvent avoir lieu hors de cette région. Consultez ses <a href="https://supabase.com/legal/privacy-resources/data-residency-and-transfers-faq" target="_blank" rel="noreferrer">informations sur la résidence et les transferts</a>. La localisation exacte des copies techniques et les autres accès des prestataires dépendent de la configuration de l’instance et de leurs services. Pour demander des précisions sur une instance donnée, contactez-nous.</p>
     </section>
     <section>
       <h2>Durées de conservation</h2>

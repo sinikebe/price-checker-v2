@@ -18,7 +18,7 @@ Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (
 
 ## Installation sur serveur
 
-Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL et construit l'API et l'interface web. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
+Prévoir Linux, Docker Engine, Docker Compose, Git, OpenSSL et curl, ainsi qu'un reverse proxy HTTPS. Le script prépare une instance PostgreSQL locale par défaut et construit l'API et l'interface web. La configuration de l'application permet aussi de choisir un projet Supabase PostgreSQL distinct pour la production. Il n'installe pas Docker et ne configure ni DNS ni certificat HTTPS public.
 
 ```sh
 sudo install -d -m 0755 /opt/price-checker-v2
