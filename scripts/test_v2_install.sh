@@ -29,6 +29,15 @@ head=$(git -C "$source_dir" rev-parse HEAD)
 git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
 git clone -q --branch main "$bare" "$repo"
+printf 'PRICE_CHECKER_V2_ENV=dev\nPRICE_CHECKER_V2_DATA_DIR=relative\n' > "$repo/.env"
+if "$repo/deployment/v2/install.sh" > "$sandbox/invalid-install.log" 2>&1; then
+  echo "Installer accepted an invalid saved data directory." >&2; exit 1
+fi
+grep -q 'Data directory must be an absolute path' "$sandbox/invalid-install.log" || {
+  cat "$sandbox/invalid-install.log" >&2; exit 1;
+}
+[[ ! -d "$sandbox/data" ]] || { echo "Invalid saved configuration created state." >&2; exit 1; }
+rm "$repo/.env"
 "$repo/deployment/v2/install.sh"
 config=$PRICE_CHECKER_V2_DATA_DIR/state/database.json
 python3 - "$config" "$PRICE_CHECKER_V2_DB_NAME" <<'PY'

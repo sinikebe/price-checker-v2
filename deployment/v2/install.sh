@@ -13,11 +13,12 @@ docker compose version >/dev/null || { echo "Docker Compose plugin is required" 
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose_file="$repo_dir/deployment/v2/compose.yaml"
+# The saved instance configuration is authoritative on reruns. Validate the
+# effective values before creating state or starting Docker containers.
+if [[ -f "$repo_dir/.env" ]]; then
+  source "$repo_dir/.env"
+fi
 source_branch="$(git -C "$repo_dir" branch --show-current)"
-[[ "$source_branch" == main ||
-   ( "${PRICE_CHECKER_V2_ENV:-prod}" == dev && "$source_branch" == dev ) ]] || {
-  echo "Installation requires main, or dev for a private development instance." >&2; exit 1;
-}
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout must be clean." >&2; exit 1;
 }
@@ -27,6 +28,10 @@ source_branch="$(git -C "$repo_dir" branch --show-current)"
 export PRICE_CHECKER_V2_ENV="${PRICE_CHECKER_V2_ENV:-prod}"
 [[ "$PRICE_CHECKER_V2_ENV" == dev || "$PRICE_CHECKER_V2_ENV" == prod ]] || {
   echo "PRICE_CHECKER_V2_ENV must be dev or prod." >&2; exit 1;
+}
+[[ "$source_branch" == main ||
+   ( "$PRICE_CHECKER_V2_ENV" == dev && "$source_branch" == dev ) ]] || {
+  echo "Installation requires main, or dev for a private development instance." >&2; exit 1;
 }
 default_data_dir="/var/lib/price-checker-v2"
 if [[ "$PRICE_CHECKER_V2_ENV" == dev ]]; then default_data_dir+="-dev"; fi
@@ -46,9 +51,7 @@ export PRICE_CHECKER_V2_GIT_BRANCH="${PRICE_CHECKER_V2_GIT_BRANCH:-$source_branc
 [[ "$PRICE_CHECKER_V2_PORT" =~ ^[0-9]{2,5}$ ]] || {
   echo "Invalid V2 port." >&2; exit 1;
 }
-if [[ -f "$repo_dir/.env" ]]; then
-  source "$repo_dir/.env"
-else
+if [[ ! -f "$repo_dir/.env" ]]; then
   printf 'PRICE_CHECKER_V2_ENV=%s\nPRICE_CHECKER_V2_DATA_DIR=%s\nPRICE_CHECKER_V2_DB_NAME=%s\nPRICE_CHECKER_V2_PORT=%s\n' \
     "$PRICE_CHECKER_V2_ENV" "$PRICE_CHECKER_V2_DATA_DIR" "$PRICE_CHECKER_V2_DB_NAME" "$PRICE_CHECKER_V2_PORT" > "$repo_dir/.env"
   printf 'PRICE_CHECKER_V2_GIT_BRANCH=%s\n' "$PRICE_CHECKER_V2_GIT_BRANCH" >> "$repo_dir/.env"

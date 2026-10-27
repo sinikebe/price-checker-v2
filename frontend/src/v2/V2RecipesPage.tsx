@@ -6,6 +6,7 @@ import type { V2User } from "./v2-auth-api";
 import { productRequest, type Product } from "./v2-products-api";
 import { recipeRequest, type Recipe, type RecipeIngredient, type RecipeInput, type RecipePage, type RecipeUnit, type RecipeProposal, type RecipeSubmission } from "./v2-recipes-api";
 import "./v2-recipes.css";
+import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
 
 type Mode = "list" | "detail" | "new" | "edit";
@@ -53,7 +54,7 @@ function List({ user, onLogout }: Props) {
     let active = true;
     recipeRequest<RecipePage>(`?q=${encodeURIComponent(q)}&page=${page}`)
       .then(value => { if (active) { setResult(value); setError(""); } })
-      .catch(reason => { if (active) { const all = offlineRecipeSummaries().filter(item => item.title.toLocaleLowerCase().includes(q.toLocaleLowerCase())); if (all.length || localStorage.getItem("v2:pwa:recipe-summaries-ready") === "1") setResult({ items: all.slice((page - 1) * 20, page * 20), total: all.length, page, page_size: 20 }); else setError(message(reason)); } });
+      .catch(reason => { if (active) { const all = offlineRecipeSummaries().filter(item => item.title.toLocaleLowerCase().includes(q.toLocaleLowerCase())); if (all.length || localStorage.getItem(PWA_RECIPES_READY_KEY) === "1") setResult({ items: all.slice((page - 1) * 20, page * 20), total: all.length, page, page_size: 20 }); else setError(message(reason)); } });
     return () => { active = false; };
   }, [q, page, refresh]);
   return <Frame user={user} onLogout={onLogout}>

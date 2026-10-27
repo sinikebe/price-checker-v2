@@ -169,19 +169,10 @@ async def export_products_prices(request: Request):
         await connection.close()
 
 
-@router.post("/import")
-async def import_products_prices(request: Request):
-    _secure_write(request)
-    await _require_admin(request)
-    body = bytearray()
-    async for part in request.stream():
-        body.extend(part)
-        if len(body) > MAX_BUNDLE_BYTES:
-            raise HTTPException(status_code=413, detail="Fichier de transfert trop volumineux.")
-    try:
-        bundle = TransferBundle.model_validate_json(body)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Format de transfert V2 invalide.") from exc
+def _validate_import_bundle(bundle: TransferBundle) -> tuple[
+    dict[int, TransferProduct], dict[int, TransferRetailer],
+    dict[int, TransferStore], dict[int, TransferPrice],
+]:
     products = _dicts(bundle.products, "produit")
     for product in bundle.products:
         _validate_publish(product.data.model_dump(mode="json"))
@@ -195,6 +186,156 @@ async def import_products_prices(request: Request):
         raise HTTPException(status_code=422, detail="Enseigne d'un point de vente manquante.")
     if any(p.product_id not in products or p.store_id not in stores for p in bundle.prices):
         raise HTTPException(status_code=422, detail="Produit ou point de vente d'un prix manquant.")
+    return products, retailers, stores, prices
+
+
+async def _import_products(
+    connection: asyncpg.Connection, source: UUID, products: dict[int, TransferProduct],
+    predecessor_ids: set[int],
+) -> tuple[dict[int, int], int]:
+    product_map: dict[int, int] = {}
+    pending = dict(products)
+    inserted_products = 0
+    while pending:
+        progress = False
+        for source_id, product in list(pending.items()):
+            if product.predecessor_id is not None and product.predecessor_id not in product_map:
+                continue
+            fingerprint = _fingerprint(product)
+            mapped = await connection.fetchrow(
+                "SELECT target_id, fingerprint FROM v2_transfer_product_map "
+                "WHERE source_instance=$1 AND source_id=$2", source, source_id,
+            )
+            if mapped is not None:
+                target = await connection.fetchrow(
+                    "SELECT data, predecessor_id FROM v2_products WHERE id=$1", mapped["target_id"]
+                )
+                if target is None or mapped["fingerprint"] != fingerprint or (
+                    ProductData.model_validate(_decoded(target["data"])).model_dump(mode="json")
+                    != product.data.model_dump(mode="json")
+                ) or target["predecessor_id"] != (
+                    product_map.get(product.predecessor_id)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Produit {source_id} modifié depuis le précédent import.",
+                    )
+                target_id = mapped["target_id"]
+            else:
+                ean = product.data.ean
+                if ean and source_id not in predecessor_ids:
+                    ancestors = []
+                    previous = product.predecessor_id
+                    while previous is not None:
+                        ancestors.append(product_map[previous])
+                        previous = products[previous].predecessor_id
+                    collision = await connection.fetchval(
+                        "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
+                        "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
+                        "AND NOT EXISTS (SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
+                        "AND NOT (p.id = ANY($2::bigint[])) "
+                        "LIMIT 1", ean, ancestors,
+                    )
+                    if collision is not None:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Code-barres déjà présent sur cette instance : {ean}.",
+                        )
+                target_id = await connection.fetchval(
+                    "INSERT INTO v2_products(data,predecessor_id) "
+                    "VALUES($1::jsonb,$2) RETURNING id",
+                    json.dumps(product.data.model_dump(mode="json"), ensure_ascii=False),
+                    product_map.get(product.predecessor_id),
+                )
+                await connection.execute(
+                    "INSERT INTO v2_transfer_product_map "
+                    "(source_instance,source_id,target_id,fingerprint) VALUES($1,$2,$3,$4)",
+                    source, source_id, target_id, fingerprint,
+                )
+                inserted_products += 1
+            product_map[source_id] = target_id
+            del pending[source_id]
+            progress = True
+        if not progress:
+            raise HTTPException(status_code=422, detail="Cycle dans les versions produit.")
+    return product_map, inserted_products
+
+
+async def _import_locations(
+    connection: asyncpg.Connection, source: UUID,
+    retailers: dict[int, TransferRetailer], stores: dict[int, TransferStore],
+) -> tuple[dict[int, int], dict[int, int]]:
+    retailer_map: dict[int, int] = {}
+    for source_id, retailer in retailers.items():
+        key = _key(source, "r", source_id)
+        target_id = await connection.fetchval(
+            "INSERT INTO v2_retailers(code,name,import_key) "
+            "VALUES($1,$2,$3) ON CONFLICT(import_key) DO UPDATE "
+            "SET import_key=EXCLUDED.import_key RETURNING id",
+            "xfer-" + hashlib.sha256(key.encode()).hexdigest()[:32],
+            retailer.name, key,
+        )
+        retailer_map[source_id] = target_id
+    store_map: dict[int, int] = {}
+    for source_id, store in stores.items():
+        key = _key(source, "s", source_id)
+        target_id = await connection.fetchval(
+            "INSERT INTO v2_stores(retailer_id,name,city,postal_code,"
+            "supports_drive,supports_delivery,import_key) "
+            "VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(import_key) DO UPDATE "
+            "SET import_key=EXCLUDED.import_key RETURNING id",
+            retailer_map[store.retailer_id], store.name, store.city,
+            store.postal_code, store.supports_drive, store.supports_delivery, key,
+        )
+        store_map[source_id] = target_id
+    return retailer_map, store_map
+
+
+async def _import_prices(
+    connection: asyncpg.Connection, source: UUID, prices: dict[int, TransferPrice],
+    stores: dict[int, TransferStore], product_map: dict[int, int],
+    retailer_map: dict[int, int], store_map: dict[int, int],
+) -> int:
+    inserted_prices = 0
+    for source_id, price in prices.items():
+        key = _key(source, "p", source_id)
+        present = await connection.fetchval(
+            "SELECT id FROM v2_price_observations WHERE import_key=$1", key
+        )
+        if present is not None:
+            continue
+        await connection.execute(
+            "INSERT INTO v2_price_observations("
+            "product_id,retailer_id,store_id,source,source_provider,"
+            "source_record_id,price,quantity_text,unit_price_amount,"
+            "unit_price_unit,available,observed_at,note,sales_channel,import_key) "
+            "VALUES($1,$2,$3,'third_party','price-checker-v2',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+            product_map[price.product_id],
+            retailer_map[stores[price.store_id].retailer_id],
+            store_map[price.store_id], f"{source}:{source_id}",
+            price.price, price.quantity_text, price.unit_price_amount,
+            price.unit_price_unit, price.available, price.observed_at,
+            price.note, price.sales_channel, key,
+        )
+        inserted_prices += 1
+    return inserted_prices
+
+
+@router.post("/import")
+async def import_products_prices(request: Request):
+    _secure_write(request)
+    await _require_admin(request)
+    body = bytearray()
+    async for part in request.stream():
+        body.extend(part)
+        if len(body) > MAX_BUNDLE_BYTES:
+            raise HTTPException(status_code=413, detail="Fichier de transfert trop volumineux.")
+    try:
+        bundle = TransferBundle.model_validate_json(body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Format de transfert V2 invalide.") from exc
+    products, retailers, stores, prices = _validate_import_bundle(bundle)
+    predecessor_ids = {p.predecessor_id for p in bundle.products if p.predecessor_id is not None}
     connection = await _connect()
     try:
         async with connection.transaction():
@@ -204,119 +345,16 @@ async def import_products_prices(request: Request):
             )
             if own == bundle.source_instance:
                 raise HTTPException(status_code=409, detail="Cette archive provient de cette instance.")
-            source = bundle.source_instance
-            product_map: dict[int, int] = {}
-            pending = dict(products)
-            inserted_products = 0
-            while pending:
-                progress = False
-                for source_id, product in list(pending.items()):
-                    if product.predecessor_id is not None and product.predecessor_id not in product_map:
-                        continue
-                    fingerprint = _fingerprint(product)
-                    mapped = await connection.fetchrow(
-                        "SELECT target_id, fingerprint FROM v2_transfer_product_map "
-                        "WHERE source_instance=$1 AND source_id=$2", source, source_id,
-                    )
-                    if mapped is not None:
-                        target = await connection.fetchrow(
-                            "SELECT data, predecessor_id FROM v2_products WHERE id=$1", mapped["target_id"]
-                        )
-                        if target is None or mapped["fingerprint"] != fingerprint or (
-                            ProductData.model_validate(_decoded(target["data"])).model_dump(mode="json")
-                            != product.data.model_dump(mode="json")
-                        ) or target["predecessor_id"] != (
-                            product_map.get(product.predecessor_id)
-                        ):
-                            raise HTTPException(
-                                status_code=409,
-                                detail=f"Produit {source_id} modifié depuis le précédent import.",
-                            )
-                        target_id = mapped["target_id"]
-                    else:
-                        ean = product.data.ean
-                        if ean and source_id not in {
-                            p.predecessor_id for p in bundle.products if p.predecessor_id is not None
-                        }:
-                            ancestors = []
-                            previous = product.predecessor_id
-                            while previous is not None:
-                                ancestors.append(product_map[previous])
-                                previous = products[previous].predecessor_id
-                            collision = await connection.fetchval(
-                                "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
-                                "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
-                                "AND NOT EXISTS (SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
-                                "AND NOT (p.id = ANY($2::bigint[])) "
-                                "LIMIT 1", ean, ancestors,
-                            )
-                            if collision is not None:
-                                raise HTTPException(
-                                    status_code=409,
-                                    detail=f"Code-barres déjà présent sur cette instance : {ean}.",
-                                )
-                        target_id = await connection.fetchval(
-                            "INSERT INTO v2_products(data,predecessor_id) "
-                            "VALUES($1::jsonb,$2) RETURNING id",
-                            json.dumps(product.data.model_dump(mode="json"), ensure_ascii=False),
-                            product_map.get(product.predecessor_id),
-                        )
-                        await connection.execute(
-                            "INSERT INTO v2_transfer_product_map "
-                            "(source_instance,source_id,target_id,fingerprint) VALUES($1,$2,$3,$4)",
-                            source, source_id, target_id, fingerprint,
-                        )
-                        inserted_products += 1
-                    product_map[source_id] = target_id
-                    del pending[source_id]
-                    progress = True
-                if not progress:
-                    raise HTTPException(status_code=422, detail="Cycle dans les versions produit.")
-            retailer_map: dict[int, int] = {}
-            for source_id, retailer in retailers.items():
-                key = _key(source, "r", source_id)
-                target_id = await connection.fetchval(
-                    "INSERT INTO v2_retailers(code,name,import_key) "
-                    "VALUES($1,$2,$3) ON CONFLICT(import_key) DO UPDATE "
-                    "SET import_key=EXCLUDED.import_key RETURNING id",
-                    "xfer-" + hashlib.sha256(key.encode()).hexdigest()[:32],
-                    retailer.name, key,
-                )
-                retailer_map[source_id] = target_id
-            store_map: dict[int, int] = {}
-            for source_id, store in stores.items():
-                key = _key(source, "s", source_id)
-                target_id = await connection.fetchval(
-                    "INSERT INTO v2_stores(retailer_id,name,city,postal_code,"
-                    "supports_drive,supports_delivery,import_key) "
-                    "VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(import_key) DO UPDATE "
-                    "SET import_key=EXCLUDED.import_key RETURNING id",
-                    retailer_map[store.retailer_id], store.name, store.city,
-                    store.postal_code, store.supports_drive, store.supports_delivery, key,
-                )
-                store_map[source_id] = target_id
-            inserted_prices = 0
-            for source_id, price in prices.items():
-                key = _key(source, "p", source_id)
-                present = await connection.fetchval(
-                    "SELECT id FROM v2_price_observations WHERE import_key=$1", key
-                )
-                if present is not None:
-                    continue
-                await connection.execute(
-                    "INSERT INTO v2_price_observations("
-                    "product_id,retailer_id,store_id,source,source_provider,"
-                    "source_record_id,price,quantity_text,unit_price_amount,"
-                    "unit_price_unit,available,observed_at,note,sales_channel,import_key) "
-                    "VALUES($1,$2,$3,'third_party','price-checker-v2',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
-                    product_map[price.product_id],
-                    retailer_map[stores[price.store_id].retailer_id],
-                    store_map[price.store_id], f"{source}:{source_id}",
-                    price.price, price.quantity_text, price.unit_price_amount,
-                    price.unit_price_unit, price.available, price.observed_at,
-                    price.note, price.sales_channel, key,
-                )
-                inserted_prices += 1
+            product_map, inserted_products = await _import_products(
+                connection, bundle.source_instance, products, predecessor_ids
+            )
+            retailer_map, store_map = await _import_locations(
+                connection, bundle.source_instance, retailers, stores
+            )
+            inserted_prices = await _import_prices(
+                connection, bundle.source_instance, prices, stores,
+                product_map, retailer_map, store_map,
+            )
         return {"products_imported": inserted_products, "prices_imported": inserted_prices,
                 "products_already_present": len(products) - inserted_products,
                 "prices_already_present": len(prices) - inserted_prices}
