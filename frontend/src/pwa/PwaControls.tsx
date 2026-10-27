@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { usePwaUpdate } from "./PwaUpdateState";
 import "./pwa-controls.css";
-import { importLegacyBasket, syncV2Data } from "./data-sync";
-import { V2_BASKET_LOCAL_CHANGE } from "../v2/v2-basket-storage";
+import { syncV2Data } from "./data-sync";
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
@@ -15,18 +14,16 @@ export default function PwaControls() {
   useEffect(() => {
     const install = (event: Event) => { event.preventDefault(); setInstallEvent(event as InstallEvent); };
     const installedNow = () => { setInstallEvent(null); setInstalled(true); };
-    const connected = () => { setOnline(navigator.onLine); if (navigator.onLine) void syncV2Data().then(importLegacyBasket); };
-    const opened = () => { if (document.visibilityState === "visible") void syncV2Data().then(importLegacyBasket); };
-    const authenticated = () => { void syncV2Data().then(importLegacyBasket); };
-    const basketChanged = () => { void importLegacyBasket().then(importLegacyBasket); };
+    const connected = () => { setOnline(navigator.onLine); if (navigator.onLine) void syncV2Data(); };
+    const opened = () => { if (document.visibilityState === "visible") void syncV2Data(); };
+    const authenticated = () => { void syncV2Data(); };
     window.addEventListener("beforeinstallprompt", install);
     window.addEventListener("appinstalled", installedNow);
     window.addEventListener("online", connected);
     window.addEventListener("offline", connected);
     document.addEventListener("visibilitychange", opened);
     window.addEventListener("v2-auth-ready", authenticated);
-    window.addEventListener(V2_BASKET_LOCAL_CHANGE, basketChanged);
-    void syncV2Data().then(importLegacyBasket);
+    void syncV2Data();
     return () => {
       window.removeEventListener("beforeinstallprompt", install);
       window.removeEventListener("appinstalled", installedNow);
@@ -34,7 +31,6 @@ export default function PwaControls() {
       window.removeEventListener("offline", connected);
       document.removeEventListener("visibilitychange", opened);
       window.removeEventListener("v2-auth-ready", authenticated);
-      window.removeEventListener(V2_BASKET_LOCAL_CHANGE, basketChanged);
     };
   }, []);
   async function askInstall() {

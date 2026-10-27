@@ -6,20 +6,15 @@ for tool in docker git curl flock python3 openssl; do
   command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }
 done
 script_repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-repo_dir="${PRICE_CHECKER_V2_SOURCE_DIR:-$script_repo_dir}"
+repo_dir="$script_repo_dir"
 [[ "$repo_dir" = /* && -d "$repo_dir/.git" ]] || {
   echo "Invalid installed source directory." >&2; exit 1;
 }
 compose_file="$repo_dir/deployment/v2/compose.yaml"
 [[ -f "$repo_dir/.env" ]] || { echo "Installation configuration missing." >&2; exit 1; }
-requested_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-}"
 set -a
 source "$repo_dir/.env"
 set +a
-# A one-off guarded branch switch must override the installed default.
-if [[ -n "$requested_branch" ]]; then
-  PRICE_CHECKER_V2_GIT_BRANCH="$requested_branch"
-fi
 compose=(docker compose --env-file "$repo_dir/.env" -f "$compose_file")
 [[ "$PRICE_CHECKER_V2_DATA_DIR" = /* && -d "$PRICE_CHECKER_V2_DATA_DIR/state" ]] || {
   echo "V2 is not installed." >&2; exit 1;
@@ -30,22 +25,13 @@ target_branch="${PRICE_CHECKER_V2_GIT_BRANCH:-main}"
 [[ "$target_branch" == main || ( "$PRICE_CHECKER_V2_ENV" == dev && "$target_branch" == dev ) ]] || {
   echo "Invalid update branch for this environment." >&2; exit 1;
 }
-current_branch="$(git -C "$repo_dir" branch --show-current)"
-switch_to_dev=0
-if [[ "$current_branch" != "$target_branch" ]]; then
-  [[ "$PRICE_CHECKER_V2_ENV" == dev && "$current_branch" == main &&
-     "$target_branch" == dev &&
-     -z "$(git -C "$repo_dir" branch --list dev)" ]] || {
-    echo "Update checkout is on the wrong branch." >&2; exit 1;
-  }
-  switch_to_dev=1
-fi
+[[ "$(git -C "$repo_dir" branch --show-current)" == "$target_branch" ]] || {
+  echo "Update checkout is on the wrong branch." >&2; exit 1;
+}
 [[ -z "$(git -C "$repo_dir" status --porcelain)" ]] || {
   echo "Checkout has local changes; refusing update." >&2; exit 1;
 }
 old_sha="$(git -C "$repo_dir" rev-parse HEAD)"
-# Installations are cloned with --single-branch; explicitly create/update the
-# remote-tracking ref before switching the private dev checkout to dev.
 git -C "$repo_dir" fetch origin "refs/heads/$target_branch:refs/remotes/origin/$target_branch"
 new_sha="$(git -C "$repo_dir" rev-parse "refs/remotes/origin/$target_branch")"
 if [[ -n "${PRICE_CHECKER_V2_EXPECTED_SHA:-}" && "$new_sha" != "$PRICE_CHECKER_V2_EXPECTED_SHA" ]]; then
@@ -75,10 +61,12 @@ print(config["host"], config["port"], config["database"], config["username"],
 PYCONFIG
 )"
   IFS=$'\t' read -r db_host db_port db_name db_user db_tls <<< "$configured_target"
-  if [[ "$db_host" != db || "$db_port" != 5432 ||
-        "$db_name" != "$PRICE_CHECKER_V2_DB_NAME" ||
-        "$db_user" != "$PRICE_CHECKER_V2_DB_NAME" &&
-        "$db_user" != "${PRICE_CHECKER_V2_DB_NAME}_app" ]]; then
+  if [[ "$db_host" == db && "$db_port" == 5432 &&
+        "$db_name" == "$PRICE_CHECKER_V2_DB_NAME" ]]; then
+    [[ "$db_user" == "$PRICE_CHECKER_V2_DB_NAME"_app ]] || {
+      echo "Bundled database requires its limited application role." >&2; exit 1;
+    }
+  else
     bundled_db=0
   fi
   [[ "$db_tls" == disable || "$db_tls" == require || "$db_tls" == verify-full ]] || {
@@ -91,14 +79,7 @@ if [[ "$bundled_db" == 1 ]] && ! openssl x509 -in "$cert_dir/server.crt" \
     -checkend $((60 * 86400)) -noout >/dev/null 2>&1; then
   renew_cert=1
 fi
-needs_role_split=0
-if [[ "$bundled_db" == 1 && -f "$config_file" &&
-      ( "$db_user" == "$PRICE_CHECKER_V2_DB_NAME" ||
-        ! -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ) ]]; then
-  needs_role_split=1
-fi
-if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 &&
-      "$needs_role_split" == 0 && "$switch_to_dev" == 0 ]]; then
+if [[ "$new_sha" == "$old_sha" && "$renew_cert" == 0 ]]; then
   echo "Already current: $old_sha"
   exit 0
 fi
@@ -179,11 +160,6 @@ rollback() {
   echo "Update failed; restoring application commit $old_sha (database backup retained)." >&2
   # Git must restore readable source files even if backup/secret work used umask 077.
   umask 022
-  if [[ "$switch_to_dev" == 1 &&
-        "$(git -C "$repo_dir" branch --show-current)" == dev ]]; then
-    git -C "$repo_dir" branch -m main
-    git -C "$repo_dir" branch --set-upstream-to=origin/main main
-  fi
   git -C "$repo_dir" reset --hard "$old_sha"
   umask 077
   chmod 0644 "$repo_dir/frontend/nginx.v2.conf"
@@ -225,8 +201,13 @@ if [[ "$renew_cert" == 1 ]]; then
   "${compose[@]}" up -d --wait --no-deps --force-recreate db
 fi
 if [[ -f "$config_file" ]]; then
-  if [[ "$bundled_db" == 1 && -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]]; then
-    "${compose[@]}" run --rm --no-deps       -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro"       -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
+  if [[ "$bundled_db" == 1 ]]; then
+    [[ -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]] || {
+      echo "Bundled database migration role is not configured." >&2; exit 1;
+    }
+    "${compose[@]}" run --rm --no-deps \
+      -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
+      -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
   else
     "${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
   fi
@@ -246,19 +227,6 @@ for attempt in {1..30}; do
   sleep 2
 done
 [[ "$healthy" == 1 ]] || { echo "Health check failed." >&2; false; }
-if [[ "$switch_to_dev" == 1 ]]; then
-  # A --single-branch clone knows only the main fetch refspec. Register dev
-  # before asking Git to use origin/dev as the new upstream.
-  git -C "$repo_dir" remote set-branches --add origin dev
-  git -C "$repo_dir" branch -m dev
-  git -C "$repo_dir" branch --set-upstream-to=origin/dev dev
-  if grep -q '^PRICE_CHECKER_V2_GIT_BRANCH=' "$repo_dir/.env"; then
-    sed -i 's/^PRICE_CHECKER_V2_GIT_BRANCH=.*/PRICE_CHECKER_V2_GIT_BRANCH=dev/' "$repo_dir/.env"
-  else
-    printf 'PRICE_CHECKER_V2_GIT_BRANCH=dev\n' >> "$repo_dir/.env"
-  fi
-  chmod 0600 "$repo_dir/.env"
-fi
 trap - ERR
 if [[ "$renew_cert" == 1 ]]; then echo "Bundled database certificate renewed."; fi
 echo "Updated V2 ($target_branch): $old_sha -> $new_sha"

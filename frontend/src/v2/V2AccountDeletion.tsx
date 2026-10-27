@@ -11,13 +11,12 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
       `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
     ];
     const exact = [
-      `v2:basket:user:${id}`, `v2:basket:ops:${id}`, `v2:basket:imported:${id}`,
       `v2:pwa:sync-attempt:${id}`, `v2:pwa:versions:${id}`,
       "v2:pwa:recipe-summaries", "v2:pwa:recipe-summaries-ready",
       "v2:pwa:cache-generation",
     ];
     for (const key of Object.keys(localStorage)) {
-      if (exact.includes(key) || prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
+      if (exact.includes(key) || (key.startsWith("v2:basket:") && key.endsWith(":" + id)) || prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
         localStorage.removeItem(key);
       }
     }

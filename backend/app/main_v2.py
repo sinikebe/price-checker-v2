@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v2.account_data import router as account_data_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
-from app.api.v2.basket import router as basket_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
 from app.api.v2.products import router as products_router
@@ -82,7 +81,6 @@ for router in (
     recipes_router,
     recipe_submissions_router,
     sync_router,
-    basket_router,
     updates_router,
 ):
     app.include_router(router)

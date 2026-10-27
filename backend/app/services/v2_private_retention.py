@@ -1,7 +1,7 @@
 """Expire closed private records without deleting published contributions.
 
 An unresolved moderation item remains active until a reviewer decides it. The
-six-month clock starts at that decision; a legacy basket uses its last update.
+six-month clock starts at that decision.
 """
 
 from __future__ import annotations
@@ -81,13 +81,6 @@ async def purge_private_data(connection: asyncpg.Connection) -> dict[str, int]:
             )
         removed["reports"] = len(report_ids)
 
-        await connection.execute(
-            "DELETE FROM v2_user_baskets WHERE user_id IN "
-            "(SELECT user_id FROM v2_user_baskets "
-            "WHERE updated_at < now() - interval '6 months' "
-            "ORDER BY user_id LIMIT $1 FOR UPDATE SKIP LOCKED)",
-            BATCH_SIZE,
-        )
         # A withdrawn-content marker must remain, but its free-text reason is
         # no longer needed once the linked report supplies the review record.
         await connection.execute(

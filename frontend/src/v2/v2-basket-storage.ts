@@ -1,11 +1,9 @@
 import type { Product } from "./v2-products-api";
 
 export const V2_BASKET_EVENT = "v2-basket-updated";
-export const V2_BASKET_LOCAL_CHANGE = "v2-basket-local-change";
 const ACTIVE_USER_KEY = "v2:basket:active-user";
 const ANON_KEY = "v2:basket:anonymous";
 export type BasketProduct = Pick<Product, "id" | "data" | "revision">;
-export type BasketOp = { type: "add" | "remove" | "clear"; id?: number };
 
 export function activeBasketUser(): number | null {
   try { const value = Number(localStorage.getItem(ACTIVE_USER_KEY)); return value > 0 ? value : null; } catch { return null; }
@@ -24,18 +22,6 @@ export function writeV2Basket(products: BasketProduct[], userId: number | null =
   localStorage.setItem(basketKey(userId), JSON.stringify(products));
   window.dispatchEvent(new Event(V2_BASKET_EVENT));
 }
-export function basketOpsKey(userId: number) { return `v2:basket:ops:${userId}`; }
-export function basketImportedKey(userId: number) { return `v2:basket:imported:${userId}`; }
-export function readBasketOps(userId: number): BasketOp[] {
-  try { const value: unknown = JSON.parse(localStorage.getItem(basketOpsKey(userId)) ?? "[]"); return Array.isArray(value) ? value as BasketOp[] : []; } catch { return []; }
-}
-export function appendBasketOp(op: BasketOp, userId: number | null = activeBasketUser()) {
-  if (!userId) return;
-  try {
-    if (localStorage.getItem(basketImportedKey(userId)) === "1") return;
-    localStorage.setItem(basketOpsKey(userId), JSON.stringify([...readBasketOps(userId), op]));
-  } catch { /* Local basket remains available. */ }
-}
 export function activateBasketUser(userId: number | null, preserveOffline = false) {
   if (preserveOffline) return;
   const previous = activeBasketUser();
@@ -46,7 +32,6 @@ export function activateBasketUser(userId: number | null, preserveOffline = fals
       const existing = readV2Basket(userId);
       const newItems = anonymous.filter(item => !existing.some(saved => saved.id === item.id));
       writeV2Basket([...existing, ...newItems], userId);
-      for (const item of newItems) appendBasketOp({ type: "add", id: item.id }, userId);
       localStorage.removeItem(ANON_KEY);
     }
     localStorage.setItem(ACTIVE_USER_KEY, String(userId));

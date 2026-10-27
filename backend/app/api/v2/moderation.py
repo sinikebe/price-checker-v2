@@ -122,14 +122,6 @@ async def resolve_report(report_id: int, payload: ReportDecision, request: Reque
                 )
                 if report["kind"] == "product":
                     await connection.execute(
-                        "UPDATE v2_user_baskets SET product_ids=coalesce("
-                        "(SELECT jsonb_agg(item) FROM jsonb_array_elements(product_ids) item "
-                        "WHERE item <> to_jsonb($1::bigint)), '[]'::jsonb), "
-                        "revision=revision+1, updated_at=now() "
-                        "WHERE product_ids @> jsonb_build_array($1::bigint)",
-                        report["content_id"],
-                    )
-                    await connection.execute(
                         "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(),"
                         "rejected_by=$2 WHERE product_id=$1 AND status='draft'",
                         report["content_id"], admin["id"],

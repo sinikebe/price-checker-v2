@@ -159,16 +159,6 @@ MIGRATIONS = {
             FOR EACH STATEMENT EXECUTE FUNCTION v2_bump_pwa_version();
     """,
 
-    "0006_user_baskets": """
-        CREATE TABLE v2_user_baskets (
-            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
-            product_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
-            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
-            updated_at timestamptz NOT NULL DEFAULT now(),
-            CONSTRAINT v2_basket_is_array CHECK (jsonb_typeof(product_ids)='array')
-        );
-    """,
-
     "0007_price_history": """
         -- Retailer identity and physical/online store identity are distinct.
         CREATE TABLE v2_retailers (
@@ -460,9 +450,8 @@ MIGRATIONS = {
         ALTER TABLE v2_product_events ALTER COLUMN draft_id DROP NOT NULL;
     """,
     "0015_price_days": """
-        -- The service only needs the calendar day of a price reading.
-        -- Keep the existing timestamptz columns for backwards compatibility,
-        -- but irreversibly discard the old time of day.
+        -- The current dev schema stores readings as timestamptz. Normalize
+        -- them to noon in Europe/Paris so the actual time of day is discarded.
         UPDATE v2_price_drafts SET observed_at =
             ((observed_at AT TIME ZONE 'Europe/Paris')::date + time '12:00')
             AT TIME ZONE 'Europe/Paris';
@@ -497,6 +486,20 @@ MIGRATIONS = {
             ON v2_recipe_submissions(author_id, recipe_id)
             WHERE status='pending' AND recipe_id IS NOT NULL;
     """,
+    "0017_local_basket_only": """
+        -- Refuse to discard unexpected rows while removing obsolete storage.
+        DO $$
+        BEGIN
+            IF to_regclass('v2_user_baskets') IS NOT NULL THEN
+                IF EXISTS (SELECT 1 FROM v2_user_baskets) THEN
+                    RAISE EXCEPTION 'Obsolete basket table is not empty';
+                END IF;
+                DROP TABLE v2_user_baskets;
+            END IF;
+        END
+        $$;
+    """,
+
 }
 
 

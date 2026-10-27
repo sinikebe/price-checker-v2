@@ -39,6 +39,8 @@ with open(sys.argv[1]) as source:
 assert config["username"] == sys.argv[2] + "_app"
 PY
 "${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
+fresh_basket_table=$("${compose[@]}" exec -T db psql -At -U v2_ci_fresh -d v2_ci_fresh -c "SELECT to_regclass('v2_user_baskets') IS NULL")
+[[ $fresh_basket_table == t ]] || { echo "Fresh install created an obsolete server basket table." >&2; exit 1; }
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" |
   python3 -c 'import json,sys; assert json.load(sys.stdin)["admin_initialized"] is False'
 python3 - "$PRICE_CHECKER_V2_DATA_DIR/state/access-code" "$sandbox/bootstrap.json" <<'PYBOOT'

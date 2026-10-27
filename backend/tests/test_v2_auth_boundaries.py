@@ -1,4 +1,4 @@
-"""Origin login cap and basket account fences on disposable PostgreSQL."""
+"""Authentication limits and session boundaries on disposable PostgreSQL."""
 
 from __future__ import annotations
 
@@ -95,58 +95,6 @@ async def test_login_cap_is_shared_across_unknown_usernames_and_expired_rows_are
         await connection.execute(
             "DELETE FROM v2_auth_limits WHERE key=ANY($1::text[])", keys
         )
-        await connection.close()
-
-
-@pytest.mark.asyncio
-async def test_basket_rejects_client_bound_to_another_account(monkeypatch, isolated_config):
-    config = isolated_config
-    monkeypatch.setattr(auth, "_read_config", lambda: config)
-    connection = await connect_v2(config)
-    user_ids = []
-    try:
-        suffix = secrets.token_hex(4)
-        for index in range(2):
-            user_ids.append(await connection.fetchval(
-                "INSERT INTO v2_users(username,username_key,password_hash,role) "
-                "VALUES($1,$1,'test','visitor') RETURNING id",
-                "basket_audit_" + suffix + str(index),
-            ))
-        token = secrets.token_urlsafe(32)
-        await connection.execute(
-            "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
-            "VALUES($1,$2,now()+interval '1 hour')",
-            hashlib.sha256(token.encode()).hexdigest(), user_ids[0],
-        )
-        transport = httpx.ASGITransport(app=app, client=("192.0.2.78", 1234))
-        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
-            client.cookies.set("pc_v2_session", token, path="/api/v2")
-            await connection.execute(
-                "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
-                user_ids[0], "[123]",
-            )
-            wrong = {"X-V2-Basket-User-ID": str(user_ids[1])}
-            assert (await client.get("/api/v2/basket/legacy", headers=wrong)).status_code == 409
-            assert (await client.delete("/api/v2/basket/legacy", headers=wrong)).status_code == 409
-            rightful = {"X-V2-Basket-User-ID": str(user_ids[0])}
-            fetched = await client.get("/api/v2/basket/legacy", headers=rightful)
-            assert fetched.status_code == 200
-            assert fetched.json()["product_ids"] == [123]
-            assert fetched.headers["cache-control"] == "private, no-store"
-            assert (await client.get("/api/v2/basket")).status_code == 410
-            assert (await client.put(
-                "/api/v2/basket", json={"product_ids": [123], "revision": 0},
-            )).status_code == 410
-            assert (await client.delete("/api/v2/basket/legacy", headers=rightful)).status_code == 204
-            assert await connection.fetchval(
-                "SELECT count(*) FROM v2_user_baskets WHERE user_id=ANY($1::bigint[])",
-                user_ids,
-            ) == 0
-    finally:
-        if user_ids:
-            await connection.execute(
-                "DELETE FROM v2_users WHERE id=ANY($1::bigint[])", user_ids
-            )
         await connection.close()
 
 

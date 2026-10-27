@@ -191,10 +191,6 @@ async def test_report_withdrawal_hides_product_history_and_prices(isolated_db):
             json.dumps({"name": "Reported product", "brand": "CI", "quantity": "100 g"}),
         )
         await connection.execute(
-            "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
-            user_id, json.dumps([product_id]),
-        )
-        await connection.execute(
             "INSERT INTO v2_retailers(code,name) VALUES('ci','CI')"
         )
         await connection.execute(
@@ -235,12 +231,6 @@ async def test_report_withdrawal_hides_product_history_and_prices(isolated_db):
                 f"/api/v2/prices/products/{product_id}",
             ):
                 assert (await client.get(path)).status_code == 404, path
-            client.cookies.set("pc_v2_session", user_token, path="/api/v2")
-            assert (await client.get("/api/v2/basket/legacy")).json()["product_ids"] == []
-            assert (await client.put(
-                "/api/v2/basket",
-                json={"revision": 2, "product_ids": [product_id]},
-            )).status_code == 410
         assert await connection.fetchval(
             "SELECT withdrawn_by FROM v2_content_withdrawals "
             "WHERE kind='product' AND content_id=$1", product_id,

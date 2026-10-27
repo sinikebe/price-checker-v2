@@ -29,42 +29,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# GitHub's PR checkout is a test merge commit; its first parent is main.
+# On a PR merge commit, start from the preceding feature-branch revision.
+# Push builds use the previous installed SHA supplied by the workflow.
 export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0=$source_dir
-base_ref="${V2_UPGRADE_BASE_REF:-HEAD^}"
-# GitHub uses all-zero before SHA when a branch is created.
-if [[ "$base_ref" =~ ^0+$ ]]; then base_ref=HEAD^; fi
+base_ref="${V2_UPGRADE_BASE_REF:-}"
+if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]]; then
+  if git -C "$source_dir" rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+    base_ref=HEAD^2^
+  else
+    base_ref=HEAD^
+  fi
+fi
 base=$(git -C "$source_dir" rev-parse "$base_ref")
 head=$(git -C "$source_dir" rev-parse HEAD)
 git init --bare -q "$bare"
 git -C "$source_dir" push -q "$bare" "$base:refs/heads/main"
 git clone -q --single-branch --branch main "$bare" "$repo"
 
-# The historical base keeps its Dockerfile outside the build context;
-# Buildx 0.37+ refuses that layout. This exception applies only to the old
-# install; the candidate update builds with normal entitlement checks.
-BUILDX_BAKE_ENTITLEMENTS_FS=0 "$repo/deployment/v2/install.sh"
-password_file=$PRICE_CHECKER_V2_DATA_DIR/postgres/password
-config_file=$PRICE_CHECKER_V2_DATA_DIR/state/database.json
-python3 - "$password_file" "$config_file" <<'PY'
-import json
-import os
-import sys
-with open(sys.argv[1], encoding="utf-8") as source:
-    password = source.read().strip()
-config = {
-    "provider": "postgres", "project_url": "", "public_hostname": "",
-    "host": "db", "port": 5432, "database": "v2_ci_update",
-    "username": "v2_ci_update", "password": password, "tls_mode": "verify-full",
-}
-with open(sys.argv[2], "w", encoding="utf-8") as target:
-    json.dump(config, target)
-os.chown(sys.argv[2], 1000, 1000)
-os.chmod(sys.argv[2], 0o600)
-PY
-"${compose[@]}" run --rm --no-deps backend python -m app.db.v2_migrations
+"$repo/deployment/v2/install.sh"
 "${compose[@]}" exec -T db psql -v ON_ERROR_STOP=1 -U v2_ci_update -d v2_ci_update <<'SQL'
 INSERT INTO v2_users (username, username_key, password_hash, role)
 VALUES ('ci_upgrade', 'ci_upgrade', 'unused-ci-hash', 'visitor');
@@ -89,38 +73,21 @@ SQL
 before=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
 [[ $before == "1|1|1|1|1" ]] || { echo "Fixture was not seeded: $before" >&2; exit 1; }
 
-target_branch="${V2_TEST_TARGET_BRANCH:-main}"
-if [[ "$target_branch" == dev ]]; then
-  git -C "$source_dir" push -q "$bare" "$head:refs/heads/dev"
-  PRICE_CHECKER_V2_SOURCE_DIR=$repo PRICE_CHECKER_V2_GIT_BRANCH=dev \
-    PRICE_CHECKER_V2_EXPECTED_SHA=$head \
-    "$source_dir/deployment/v2/update.sh"
-  [[ $(git -C "$repo" branch --show-current) == dev ]] || {
-    echo "Private dev installation did not switch to dev." >&2; exit 1;
-  }
-  [[ $(git -C "$repo" rev-parse refs/remotes/origin/dev) == "$head" ]] || {
-    echo "Private dev installation does not track origin/dev." >&2; exit 1;
-  }
-  grep -qx 'PRICE_CHECKER_V2_GIT_BRANCH=dev' "$repo/.env" || {
-    echo "Private dev installation did not persist the dev branch." >&2; exit 1;
-  }
-else
-  [[ "$target_branch" == main ]] || exit 1
-  git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
-  PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
-fi
+git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
+PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
 [[ $(git -C "$repo" rev-parse HEAD) == "$head" ]] || { echo "Updater did not install candidate commit." >&2; exit 1; }
-# A legacy updater cannot execute newly added post-upgrade logic on its first
-# pass. The new updater must finish that transition at the same SHA.
-if [[ ! -f "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json" ]]; then
-  PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
-fi
 "${compose[@]}" run --rm --no-deps -e V2_ROLE_PROBE=1 backend python -m app.db.v2_roles
 "${compose[@]}" run --rm --no-deps \
   -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
   -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
 after=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
 [[ $after == "$before" ]] || { echo "Data changed across update: $before -> $after" >&2; exit 1; }
+remaining_basket_table=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT to_regclass('v2_user_baskets') IS NULL")
+[[ $remaining_basket_table == t ]] || { echo "Obsolete server basket table remains after update." >&2; exit 1; }
+for basket_path in basket basket/legacy; do
+  status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/$basket_path")
+  [[ $status == 404 ]] || { echo "Obsolete server basket endpoint remains: $basket_path ($status)" >&2; exit 1; }
+done
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/auth/status" >/dev/null
 curl -fsS "http://127.0.0.1:$PRICE_CHECKER_V2_PORT/api/v2/products/1" |
   python3 -c 'import json,sys; assert json.load(sys.stdin)["data"]["name"] == "CI upgrade sentinel"'

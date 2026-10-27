@@ -27,7 +27,6 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/transfers.py", ("products", "database")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
     ("backend/app/api/v2/recipe_submissions.py", ("recipes",)),
-    ("backend/app/api/v2/basket.py", ("basket",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
     ("backend/app/api/v2/account_data.py", ("accounts",)),
     ("backend/app/api/v2/moderation.py", ("products", "recipes", "accounts", "pwa")),
@@ -224,7 +223,7 @@ def main() -> None:
         return
     if not args.base or not args.head:
         parser.error("bump/preview nécessitent --base et --head")
-    paths = _git("diff", "--name-only", "-z", args.base, args.head)
+    paths = _git("diff", "--diff-filter=ACMRTUXB", "--name-only", "-z", args.base, args.head)
     affected = classify(paths)
     print("Composants concernés : " + (", ".join(sorted(affected)) if affected else "aucun"))
     if args.action == "verify":

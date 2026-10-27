@@ -1,4 +1,4 @@
-import { activeBasketUser, basketImportedKey, basketOpsKey, readBasketOps, readV2Basket, writeV2Basket, type BasketOp, type BasketProduct } from "../v2/v2-basket-storage";
+import { activeBasketUser, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 
@@ -11,10 +11,7 @@ const CACHE_GENERATION_KEY = "v2:pwa:cache-generation";
 const CACHE_NAME = "price-checker-offline-data-v3";
 export const SYNC_EVENT = "v2-pwa-data-synced";
 type Versions = { products: number; recipes: number; user_id: number | null };
-type LegacyBasket = { product_ids: number[] };
 let pending: Promise<void> | null = null;
-let basketPending: Promise<void> | null = null;
-let basketPendingUserId: number | null = null;
 
 function readJson<T>(key: string): T | null {
   try { return JSON.parse(localStorage.getItem(key) ?? "null") as T | null; } catch { return null; }
@@ -83,54 +80,6 @@ async function syncProducts(cache: Cache, userId: number | null) {
     const product = refreshed.get(item.id);
     return product ? { id: item.id, data: product.data, revision: product.revision } : item;
   }), userId);
-}
-
-function applyOps(ids: number[], ops: BasketOp[]): number[] {
-  let next = [...ids];
-  for (const op of ops) {
-    if (op.type === "clear") next = [];
-    else if (typeof op.id === "number" && op.type === "add" && !next.includes(op.id)) next.push(op.id);
-    else if (typeof op.id === "number" && op.type === "remove") next = next.filter(id => id !== op.id);
-  }
-  return next;
-}
-
-export function importLegacyBasket(): Promise<void> {
-  const userId = activeBasketUser();
-  if (basketPending) return basketPendingUserId === userId
-    ? basketPending : basketPending.then(importLegacyBasket);
-  if (!navigator.onLine || !userId || localStorage.getItem(basketImportedKey(userId)) === "1") return Promise.resolve();
-  basketPendingUserId = userId;
-  basketPending = (async () => {
-    const headers = { "X-V2-Basket-User-ID": String(userId) };
-    const response = await fetch("/api/v2/basket/legacy", { cache: "no-store", headers });
-    if (!response.ok || activeBasketUser() !== userId) return;
-    const legacy = await response.json() as LegacyBasket;
-    const before = readV2Basket(userId);
-    const opsBefore = JSON.stringify(readBasketOps(userId));
-    const ids = applyOps(legacy.product_ids, JSON.parse(opsBefore) as BasketOp[]);
-    const imported: BasketProduct[] = [];
-    for (const id of ids) {
-      if (activeBasketUser() !== userId) return;
-      if (before.some(item => item.id === id)) continue;
-      const result = await fetch("/api/v2/products/" + id, { cache: "no-store" });
-      if (result.status === 404) continue;
-      if (!result.ok) throw new Error("Legacy basket product unavailable");
-      const product = await result.json() as Product;
-      imported.push({ id: product.id, data: product.data, revision: product.revision });
-    }
-    if (activeBasketUser() !== userId || JSON.stringify(readBasketOps(userId)) !== opsBefore) return;
-    const latest = readV2Basket(userId);
-    const removedDuringImport = new Set(before.filter(item => !latest.some(current => current.id === item.id)).map(item => item.id));
-    const additions = imported.filter(item => !removedDuringImport.has(item.id) && !latest.some(current => current.id === item.id));
-    if (additions.length) writeV2Basket([...latest, ...additions], userId);
-    const cleared = await fetch("/api/v2/basket/legacy", { method: "DELETE", headers });
-    if (!cleared.ok) throw new Error("Legacy basket cleanup failed");
-    localStorage.setItem(basketImportedKey(userId), "1");
-    localStorage.removeItem(basketOpsKey(userId));
-  })().catch(() => { /* Retain old server data for another import attempt. */ })
-    .finally(() => { basketPending = null; basketPendingUserId = null; });
-  return basketPending;
 }
 
 export function offlineRecipeSummaries(): RecipeSummary[] {

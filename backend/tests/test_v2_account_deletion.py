@@ -60,6 +60,7 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
     connection = await connect_v2(isolated_db)
     password = "test-account-password"
     try:
+        assert await connection.fetchval("SELECT to_regclass('v2_user_baskets')") is None
         admin_id = await connection.fetchval(
             "INSERT INTO v2_users(username,username_key,password_hash,role) "
             "VALUES('admin','admin',$1,'admin') RETURNING id",
@@ -154,10 +155,6 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             "INSERT INTO v2_recipe_submissions(author_id,payload) VALUES($1,$2::jsonb)",
             user_id, json.dumps({"title": "Pending private recipe"}),
         )
-        await connection.execute(
-            "INSERT INTO v2_user_baskets(user_id,product_ids) VALUES($1,$2::jsonb)",
-            user_id, json.dumps([product_id]),
-        )
         transport = httpx.ASGITransport(app=app, client=("192.0.2.20", 443))
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
             client.cookies.set("pc_v2_session", first_token, path="/api/v2")
@@ -211,9 +208,6 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
         ) == 0
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_sessions WHERE user_id=$1", user_id
-        ) == 0
-        assert await connection.fetchval(
-            "SELECT count(*) FROM v2_user_baskets WHERE user_id=$1", user_id
         ) == 0
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_product_drafts WHERE author_id=$1", user_id

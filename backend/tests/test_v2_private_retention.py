@@ -118,10 +118,6 @@ async def test_closed_private_records_expire_without_losing_publication():
                 "VALUES('product',$1,'Personal information in report',$2)",
                 product, reviewer,
             )
-            await connection.execute(
-                "INSERT INTO v2_user_baskets(user_id,product_ids,updated_at) "
-                "VALUES($1,'[1]'::jsonb,now()-interval '7 months')", author,
-            )
 
             result = await purge_private_data(connection)
             assert result == {
@@ -150,9 +146,6 @@ async def test_closed_private_records_expire_without_losing_publication():
                 assert await connection.fetchval(
                     f"SELECT count(*) FROM {table} WHERE id=$1", row_id,
                 ) == 1
-            assert await connection.fetchval(
-                "SELECT count(*) FROM v2_user_baskets WHERE user_id=$1", author,
-            ) == 0
             assert await connection.fetchval(
                 "SELECT reason FROM v2_content_withdrawals "
                 "WHERE kind='product' AND content_id=$1", product,

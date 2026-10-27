@@ -92,10 +92,6 @@ async def export_account_data(request: Request):
                 "SELECT id, kind, content_id, reason, status, created_at, reviewed_at "
                 "FROM v2_content_reports WHERE reporter_id=$1 ORDER BY id", user_id
             )
-            basket = await connection.fetchrow(
-                "SELECT product_ids, updated_at FROM v2_user_baskets WHERE user_id=$1",
-                user_id,
-            )
         payload = {
             "format": "price-checker-v2-account-export",
             "account": dict(account),
@@ -107,7 +103,6 @@ async def export_account_data(request: Request):
             "price_drafts": _rows(price_drafts),
             "published_prices": _rows(published_prices),
             "reports": _rows(reports),
-            "basket": _rows([basket])[0] if basket else None,
         }
         return JSONResponse(
             content=jsonable_encoder(payload),
