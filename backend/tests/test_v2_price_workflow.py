@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from app.api.v2 import prices
+from app.api.v2 import catalogue, prices
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 
@@ -186,7 +186,7 @@ async def test_open_prices_history_keeps_only_price_run_day_boundaries(monkeypat
     try:
         product_id = await connection.fetchval(
             "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
-            '{"name":"Disposable OFF history"}',
+            '{"name":"Disposable OFF history","group":"Disposable OFF history"}',
         )
         retailer_id = await connection.fetchval(
             "INSERT INTO v2_retailers(code,name) VALUES($1,'Disposable OFF history') RETURNING id",
@@ -207,6 +207,7 @@ async def test_open_prices_history_keeps_only_price_run_day_boundaries(monkeypat
             return await connect_v2(config)
 
         monkeypatch.setattr(prices, "_connect", fake_connect)
+        monkeypatch.setattr(catalogue, "_connect", fake_connect)
 
         async def add(day, amount, *, store=store_id, channel="in_store", available=True):
             return await connection.fetchval(
@@ -245,13 +246,20 @@ async def test_open_prices_history_keeps_only_price_run_day_boundaries(monkeypat
             transport=httpx.ASGITransport(app=app), base_url="https://test"
         ) as client:
             response = await client.get(f"/api/v2/prices/products/{product_id}")
+            category = await client.get(
+                "/api/v2/catalogue/categories/Disposable%20OFF%20history"
+            )
         assert response.status_code == 200, response.text
+        assert category.status_code == 200, category.text
         payload = response.json()
         assert payload["truncated"] is False
         assert {row["id"] for row in payload["observations"]} == {
             first, last, single_day_last, unavailable, drive_last, other, repeated_last,
         }
         assert drive not in {row["id"] for row in payload["observations"]}
+        assert {row["id"] for row in category.json()["observations"]} == {
+            first, last, single_day_last, drive_last, other, repeated_last,
+        }
         assert {row["id"] for row in payload["latest_by_store"]} == {
             repeated_last, drive_last, other,
         }
