@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
 import apiClient from "../api/client";
@@ -377,6 +377,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   captureMode?: "install" | "review";
 }) {
   const { setUser: activateUserBasket } = useV2Basket();
+  const route = useLocation();
+  const [loginRedirect, setLoginRedirect] = useState("/v2");
   const [status, setStatus] = useState<Status | null>(null);
   const [authStatus, setAuthStatus] = useState<V2AuthStatus | null>(null);
   const [error, setError] = useState("");
@@ -416,6 +418,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }, []);
 
   function authenticated(user: V2User) {
+    setLoginRedirect(authMode && new URLSearchParams(route.search).get("next") === "capture" ? "/v2/capture" : "/v2");
     setAuthStatus({ admin_initialized: true, user });
   }
 
@@ -458,7 +461,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }
   if (authMode) {
-    if (authStatus.user) return <Navigate to={new URLSearchParams(window.location.search).get("next") === "capture" ? "/v2/capture" : "/v2"} replace />;
+    if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
   if (captureMode) return <V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />;
