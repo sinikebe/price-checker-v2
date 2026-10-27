@@ -26,6 +26,15 @@ services:
       retries: 10
     networks: [internal]
 
+  # PG 17 client backs up external Supabase projects without changing the
+  # bundled PG 16 data volume used by existing installations.
+  pg-client:
+    image: postgres:17-alpine
+    profiles: [tools]
+    volumes:
+      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/certs:/certs:ro
+    networks: [internal]
+
   backend:
     build:
       context: ../../backend
@@ -35,10 +44,9 @@ services:
     environment:
       APP_ENV: ${PRICE_CHECKER_V2_ENV:-prod}
       PRICE_CHECKER_V2_STATE_DIR: /state
-      SSL_CERT_FILE: /certs/server.crt
     volumes:
       - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/state:/state
-      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/certs/server.crt:/certs/server.crt:ro
+      - ${PRICE_CHECKER_V2_DATA_DIR:-/var/lib/price-checker-v2}/certs:/certs:ro
     depends_on:
       db: {condition: service_healthy}
     networks: [internal]

@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.29",
+    "version": "0.1.30",
     "status": "active"
   },
   "products": {
@@ -21,12 +21,12 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "status": "active"
   },
   "accounts": {
@@ -41,7 +41,7 @@
   },
   "deployment": {
     "label": "Installation et mise à jour",
-    "version": "0.1.14",
+    "version": "0.1.15",
     "status": "active"
   },
   "open_prices": {

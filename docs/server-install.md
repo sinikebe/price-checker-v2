@@ -32,6 +32,22 @@ sudo install -o 1000 -g 1000 -m 0600 /chemin/prive/conditions.md /var/lib/price-
 
 Ces documents sont publics **une fois servis**, bien que leurs fichiers sources restent privés. Indiquez-y l'éditeur, le contact, l'hébergement et les traitements correspondant à l'installation effectivement exposée ; actualisez-les lors d'un changement d'hébergeur ou de base. Le code n'affirme pas qu'une région, un prestataire ou une sauvegarde existe. Une dev peut fonctionner sans ces fichiers, mais ses pages légales seront indisponibles tant qu'elle n'aura pas ses propres documents. Vérifiez les trois URL sur le domaine final avant ouverture ; leur présence ne vaut pas validation juridique.
 
+## Base Supabase de production
+
+L'installation prépare d'abord une base locale de démarrage. **Avant de créer l'administrateur**, raccorder le projet Supabase de production depuis `/v2/settings/database` ; les comptes et contributions seront alors créés sur Supabase, pas sur la base locale. Conserver le conteneur `db` de Compose : il fournit aussi les outils locaux de maintenance. La base Supabase est distincte de celle de la dev.
+
+Dans Supabase → **Connect**, relever l'URL du projet, l'hôte et l'utilisateur du **Session pooler** (port 5432), la base `postgres` et le mot de passe de la base. Ne pas utiliser le pooler Transaction (port 6543). Télécharger le certificat racine de la base dans **Database → Settings → SSL Configuration** et le copier, hors dépôt, sous `/var/lib/price-checker-v2/certs/supabase-ca.crt` en mode 0644 :
+
+```sh
+sudo install -d -m 0755 /var/lib/price-checker-v2/certs
+sudo install -m 0644 /chemin/prive/certificat-supabase.crt /var/lib/price-checker-v2/certs/supabase-ca.crt
+sudo openssl x509 -in /var/lib/price-checker-v2/certs/supabase-ca.crt -noout -subject -issuer
+```
+
+Le test de connexion, les migrations et les sauvegardes de mise à jour vérifient ce certificat et le nom d'hôte ; un certificat absent ou incorrect fait échouer la connexion. Le client de sauvegarde PostgreSQL 17 est isolé du conteneur PostgreSQL 16 local.
+
+Une fois le proxy HTTPS opérationnel, ouvrir `https://<domaine>/v2/settings/database`, saisir le code d'installation du serveur et sélectionner Supabase. Tester la connexion, enregistrer, vérifier `/api/v2/auth/status`, puis seulement ouvrir `/v2` et créer l'administrateur. Ne pas activer la planification de mise à jour avant d'avoir vérifié le premier dump et une restauration de l'instance réelle. L'offre Supabase Free n'inclut pas les sauvegardes automatiques.
+
 ## Installation
 
 ```sh
