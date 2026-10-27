@@ -337,6 +337,10 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         {prices.stores_truncated && <p className="v2-price-note">Seuls les 200 magasins et canaux relevés le plus récemment sont comparés.</p>}
       </div>
       <PriceChart series={series} />
+      {observations.some(row => row.source_provider === "open_prices") && <p className="v2-price-note">
+        Les signalements Open Prices consécutifs au même prix sont résumés par leur premier et leur dernier jour ;
+        un seul point est montré si tous datent du même jour. Les relevés bruts restent conservés.
+      </p>}
       <div className="v2-price-table-scroll"><table>
         <caption>Relevés publiés de ce produit</caption>
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
