@@ -1,13 +1,14 @@
 {
   "name": "price-checker-v2-frontend",
   "private": true,
-  "version": "0.1.40",
+  "version": "0.1.41",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "build:v2": "tsc -b && vite build",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:basket": "node --test tests/v2-basket-comparison.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
