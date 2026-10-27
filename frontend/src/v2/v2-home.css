@@ -663,6 +663,9 @@
   font-size: .79rem;
 }
 
+.v2-footer-meta { display: grid; gap: .2rem; }
+.v2-footer-meta small { font-size: .75rem; }
+
 .v2-footer-links {
   display: flex;
   flex-wrap: wrap;

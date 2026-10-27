@@ -1,5 +1,9 @@
 # Price Checker V2
 
+![IA assistée](https://img.shields.io/badge/IA-assist%C3%A9e-2f7955)
+
+Plateforme développée avec l’aide d’outils d’IA.
+
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
 Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent les relevés de prix publiés sur une courbe chronologique unique, tous points de vente et canaux confondus, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Les groupes comparables servent de catégories dans le catalogue : recherche par référence, groupe ou magasin, pagination 10/20/50, et fiche de groupe avec graphique et liens vers ses produits.
