@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import V2Gateway from "./V2Gateway";
 import V2VersionsPage from "./V2VersionsPage";
@@ -36,6 +36,8 @@ function withFooter(page: ReactNode) {
 export default function V2App() {
   const path = useLocation().pathname.replace(/\/+$/, "") || "/";
   const product = path.match(/^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/);
+  const isProductRoute = Boolean(product);
+  useLayoutEffect(() => { if (isProductRoute) window.scrollTo(0, 0); }, [path, isProductRoute]);
   const category = path.match(/^\/v2\/categories\/([^/]+)$/);
   let categoryName: string | undefined;
   try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }

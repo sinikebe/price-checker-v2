@@ -107,6 +107,5 @@ class OffSection(BaseModel):
     # See app/services/off_presenter.py -- this is what makes "show all of it"
     # true by construction rather than by a maintainer remembering.
     raw: dict[str, Any] = Field(default_factory=dict)
-    # Rendered collapsed. Set on the bulky, rarely-read sections so the page
-    # opens on the things people actually came for.
-    collapsed: bool = False
+    # Keep the external sheet compact until a reader chooses a section.
+    collapsed: bool = True
