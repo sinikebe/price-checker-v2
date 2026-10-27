@@ -9,6 +9,7 @@ import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2CataloguePage from "./V2CataloguePage";
 import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
+import V2CapturePage from "./V2CapturePage";
 import { useV2Basket } from "./V2BasketContext";
 import "./v2-home.css";
 import "./v2-setup.css";
@@ -363,7 +364,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode }: {
   settingsMode?: boolean;
   preferencesMode?: boolean;
   authMode?: "login" | "register";
@@ -373,6 +374,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   recipeMode?: "list" | "detail" | "new" | "edit";
   recipeId?: number;
   basketMode?: boolean;
+  captureMode?: "install" | "review";
 }) {
   const { setUser: activateUserBasket } = useV2Basket();
   const [status, setStatus] = useState<Status | null>(null);
@@ -456,9 +458,10 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }
   if (authMode) {
-    if (authStatus.user) return <Navigate to="/v2" replace />;
+    if (authStatus.user) return <Navigate to={new URLSearchParams(window.location.search).get("next") === "capture" ? "/v2/capture" : "/v2"} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
+  if (captureMode) return <V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />;
   if (basketMode) return <V2BasketPage user={authStatus.user} onLogout={logout} />;
   if (recipeMode) {
     return <V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />;

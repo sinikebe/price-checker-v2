@@ -90,6 +90,7 @@ export default function V2HomePage({ user, onLogout }: {
             <Link to="/v2/produits">Produits</Link>
             <Link to="/v2/recettes">Recettes</Link>
             <Link to="/v2/produits/nouveau">Ajouter un produit</Link>
+            <Link to="/v2/capture/installer">Capturer un prix</Link>
             {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
             {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
             <Link to="/v2/parametres">Paramètres</Link>

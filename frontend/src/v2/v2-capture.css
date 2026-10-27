@@ -1,0 +1,13 @@
+.v2-capture { max-width: 850px; }
+.v2-capture h2 { margin-top: 0; }
+.v2-capture p { line-height: 1.55; }
+.v2-capture ol { padding-left: 1.4rem; line-height: 1.7; }
+.v2-capture .v2-button { display: inline-flex; align-items: center; margin: 0 10px 8px 0; }
+.v2-capture .v2-price-fields { margin: 16px 0; }
+.v2-capture .v2-price-fields label { display: grid; gap: 6px; font-weight: 700; }
+.v2-capture .v2-price-fields :is(input,select) { min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: #fff; color: #203f30; }
+.v2-capture-match { padding: 12px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; }
+.v2-capture-confirm { display: flex; align-items: start; gap: 9px; margin: 12px 0 18px; line-height: 1.5; }
+.v2-capture-confirm input { flex: none; margin-top: .35em; }
+html[data-v2-theme="dark"] .v2-capture .v2-price-fields :is(input,select) { background: #172822; border-color: #517164; color: #edf5eb; }
+@media (max-width: 600px) { .v2-capture .v2-price-fields { grid-template-columns: 1fr; } }

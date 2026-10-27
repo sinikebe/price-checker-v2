@@ -16,6 +16,12 @@ Un compte peut exporter ses données puis demander sa suppression ; les contribu
 
 Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne. Depuis le panier, deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque produit au prix relevé le plus bas. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti.
 
+## Relever un prix depuis une fiche d’enseigne
+
+Le bookmarklet V2 (`/v2/capture/installer`) lit la fiche produit déjà ouverte dans votre navigateur, sans nouvelle requête à l’enseigne. Après l’avoir ajouté aux favoris, choisissez d’abord le magasin ou Drive sur le site de l’enseigne, ouvrez une fiche, puis lancez « Capturer ce prix ». V2 propose le produit par EAN lorsqu’il le trouve ; vérifiez ensuite le conditionnement, le prix et le point de vente proche avant d’envoyer un relevé privé à valider.
+
+Si le prix affiché ou l’EAN ne sont pas lisibles, la capture ne les invente pas : la recherche du catalogue et le formulaire de prix restent disponibles. Les sites peuvent changer leur présentation ; la capture doit toujours être vérifiée par une personne.
+
 ## Informations du service
 
 Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (`/v2/confidentialite`) et **Conditions d’utilisation** (`/v2/conditions-utilisation`) sont liées depuis le pied de page et l’inscription. Leur **contenu appartient à chaque instance**, dans trois fichiers Markdown sous son répertoire d’état privé : il n’est ni inclus dans ce dépôt ni copié d’une autre installation. La production refuse de s’installer si ces fichiers manquent. Voir la [procédure d’installation](docs/server-install.md#informations-légales-par-instance) avant de rendre le site public.
