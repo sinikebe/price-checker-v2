@@ -1,4 +1,9 @@
 import { useState, type FormEvent } from "react";
+import {
+  PWA_CACHE_GENERATION_KEY, PWA_CACHE_NAME, PWA_PREVIOUS_CACHE_NAME,
+  PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY, PWA_SYNC_ATTEMPT_KEY,
+  PWA_VERSIONS_KEY,
+} from "../pwa/cache-keys";
 import { V2_BASKET_EVENT } from "./v2-basket-storage";
 
 async function clearDeletedAccountData(userId: number): Promise<boolean> {
@@ -11,9 +16,9 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
       `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
     ];
     const exact = [
-      `v2:pwa:sync-attempt:${id}`, `v2:pwa:versions:${id}`,
-      "v2:pwa:recipe-summaries", "v2:pwa:recipe-summaries-ready",
-      "v2:pwa:cache-generation",
+      `${PWA_SYNC_ATTEMPT_KEY}:${id}`, `${PWA_VERSIONS_KEY}:${id}`,
+      PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY,
+      PWA_CACHE_GENERATION_KEY,
     ];
     for (const key of Object.keys(localStorage)) {
       if (exact.includes(key) || (key.startsWith("v2:basket:") && key.endsWith(":" + id)) || prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
@@ -28,7 +33,7 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
     window.dispatchEvent(new Event(V2_BASKET_EVENT));
   } catch { complete = false; }
   try {
-    if ("caches" in window) await Promise.all([caches.delete("price-checker-offline-data-v2"), caches.delete("price-checker-offline-data-v3")]);
+    if ("caches" in window) await Promise.all([caches.delete(PWA_PREVIOUS_CACHE_NAME), caches.delete(PWA_CACHE_NAME)]);
   } catch { complete = false; }
   return complete;
 }

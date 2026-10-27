@@ -1,14 +1,13 @@
+import {
+  PWA_CACHE_GENERATION, PWA_CACHE_GENERATION_KEY, PWA_CACHE_NAME,
+  PWA_PREVIOUS_CACHE_NAME, PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY,
+  PWA_SYNC_ATTEMPT_KEY, PWA_VERSIONS_KEY,
+} from "./cache-keys";
 import { activeBasketUser, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 
 const TEN_MINUTES = 10 * 60 * 1000;
-const ATTEMPT_KEY = "v2:pwa:sync-attempt";
-const VERSIONS_KEY = "v2:pwa:versions";
-const RECIPES_KEY = "v2:pwa:recipe-summaries";
-const RECIPES_READY_KEY = "v2:pwa:recipe-summaries-ready";
-const CACHE_GENERATION_KEY = "v2:pwa:cache-generation";
-const CACHE_NAME = "price-checker-offline-data-v3";
 export const SYNC_EVENT = "v2-pwa-data-synced";
 type Versions = { products: number; recipes: number; user_id: number | null };
 let pending: Promise<void> | null = null;
@@ -44,8 +43,8 @@ async function syncRecipes(cache: Cache) {
     const recipe: Recipe | null = cached ? await cached.json().catch(() => null) : null;
     if (!recipe || recipe.revision !== item.revision) await fresh<Recipe>(path, cache);
   }
-  localStorage.setItem(RECIPES_KEY, JSON.stringify(items));
-  localStorage.setItem(RECIPES_READY_KEY, "1");
+  localStorage.setItem(PWA_RECIPES_KEY, JSON.stringify(items));
+  localStorage.setItem(PWA_RECIPES_READY_KEY, "1");
 }
 
 async function withdrawnProducts(): Promise<Set<number>> {
@@ -83,23 +82,23 @@ async function syncProducts(cache: Cache, userId: number | null) {
 }
 
 export function offlineRecipeSummaries(): RecipeSummary[] {
-  const value = readJson<unknown>(RECIPES_KEY);
+  const value = readJson<unknown>(PWA_RECIPES_KEY);
   return Array.isArray(value) ? value as RecipeSummary[] : [];
 }
 
 async function run() {
-  if ("caches" in window) await caches.delete("price-checker-offline-data-v2");
+  if ("caches" in window) await caches.delete(PWA_PREVIOUS_CACHE_NAME);
   if (!navigator.onLine || !window.location.pathname.startsWith("/v2")) return;
   const userId = activeBasketUser();
-  const attemptKey = `${ATTEMPT_KEY}:${userId ?? "anon"}`;
-  const versionsKey = `${VERSIONS_KEY}:${userId ?? "anon"}`;
+  const attemptKey = `${PWA_SYNC_ATTEMPT_KEY}:${userId ?? "anon"}`;
+  const versionsKey = `${PWA_VERSIONS_KEY}:${userId ?? "anon"}`;
   const last = Number(localStorage.getItem(attemptKey) || 0);
-  if (Date.now() - last < TEN_MINUTES && localStorage.getItem(CACHE_GENERATION_KEY) === "3") return;
+  if (Date.now() - last < TEN_MINUTES && localStorage.getItem(PWA_CACHE_GENERATION_KEY) === PWA_CACHE_GENERATION) return;
   localStorage.setItem(attemptKey, String(Date.now()));
-  const previous = localStorage.getItem(CACHE_GENERATION_KEY) === "3" ? readJson<Versions>(versionsKey) : null;
-  const cache = await caches.open(CACHE_NAME);
+  const previous = localStorage.getItem(PWA_CACHE_GENERATION_KEY) === PWA_CACHE_GENERATION ? readJson<Versions>(versionsKey) : null;
+  const cache = await caches.open(PWA_CACHE_NAME);
   const cachedCatalog = await cache.match("/api/v2/products");
-  const etag = previous && cachedCatalog && localStorage.getItem(RECIPES_READY_KEY) === "1"
+  const etag = previous && cachedCatalog && localStorage.getItem(PWA_RECIPES_READY_KEY) === "1"
     ? '"u' + (previous.user_id ?? "anon") + '-p' + previous.products + '-r' + previous.recipes + '"' : null;
   const response = await fetch("/api/v2/sync/versions", {
     cache: "no-store", headers: etag ? { "If-None-Match": etag } : undefined,
@@ -108,11 +107,11 @@ async function run() {
   if (!response.ok) throw new Error("Version sync unavailable");
   const versions = await response.json() as Versions;
   if (activeBasketUser() !== userId || versions.user_id !== userId) return;
-  if (!previous || previous.recipes !== versions.recipes || localStorage.getItem(RECIPES_READY_KEY) !== "1") await syncRecipes(cache);
+  if (!previous || previous.recipes !== versions.recipes || localStorage.getItem(PWA_RECIPES_READY_KEY) !== "1") await syncRecipes(cache);
   if (!previous || previous.products !== versions.products) await syncProducts(cache, userId);
   if (activeBasketUser() !== userId) return;
   localStorage.setItem(versionsKey, JSON.stringify(versions));
-  localStorage.setItem(CACHE_GENERATION_KEY, "3");
+  localStorage.setItem(PWA_CACHE_GENERATION_KEY, PWA_CACHE_GENERATION);
   window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
