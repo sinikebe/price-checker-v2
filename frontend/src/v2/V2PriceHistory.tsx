@@ -23,6 +23,16 @@ const dayTime = (value: string) => new Date(value + "T12:00:00").getTime();
 const date = (value: string | number) => new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value)
   .toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
 const seriesLabel = (row: Observation) => [row.retailer, row.store_name, row.city, row.postal_code, channels[row.sales_channel]].filter(Boolean).join(" · ");
+function storeMeta(row: Observation) {
+  const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
+  const name = fold(row.store_name);
+  return [
+    !name.includes(fold(row.retailer)) && row.retailer,
+    row.city && !name.includes(fold(row.city)) && row.city,
+    row.postal_code,
+    channels[row.sales_channel],
+  ].filter(Boolean).join(" · ");
+}
 function localToday() {
   const value = new Date();
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -312,7 +322,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           const valid = plottable(item.latest);
           return <li key={item.key} className="v2-price-store-card" style={{ borderInlineStartColor: item.color }}>
             <div className="v2-price-store-name"><span className="v2-price-store-swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
-              <strong>{item.label}</strong></div>
+              <div><strong>{item.latest.store_name}</strong><small>{storeMeta(item.latest)}</small></div></div>
             <div className="v2-price-store-reading">
               <strong className={valid ? "" : "v2-price-store-invalid"}>{money(item.latest.price)}</strong>
               {index === 0 && valid && <span className="v2-price-store-best">Prix relevé le plus bas</span>}
