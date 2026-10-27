@@ -14,7 +14,7 @@ Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitat
 
 ## Informations du service
 
-Les pages [Mentions légales](/v2/mentions-legales), [Confidentialité](/v2/confidentialite) et [Conditions d’utilisation](/v2/conditions-utilisation) sont accessibles dans l’application sans compte, y compris avant l’initialisation de la base de données. Elles sont liées depuis le pied de chaque page et depuis l’inscription. Les renseignements propres à une installation de production doivent correspondre à son hébergeur et à ses traitements réels avant son ouverture.
+Les pages **Mentions légales** (`/v2/mentions-legales`), **Confidentialité** (`/v2/confidentialite`) et **Conditions d’utilisation** (`/v2/conditions-utilisation`) sont accessibles dans l’application sans compte, y compris avant l’initialisation de la base de données. Elles sont liées depuis le pied de chaque page et depuis l’inscription. Les renseignements propres à une installation de production doivent correspondre à son hébergeur et à ses traitements réels avant son ouverture.
 
 ## Installation sur serveur
 
