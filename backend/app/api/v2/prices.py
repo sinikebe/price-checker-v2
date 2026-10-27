@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_PRICE_DRAFTS,
@@ -165,67 +166,17 @@ async def product_prices(product_id: int):
     try:
         await _product(connection, product_id)
         rows = await connection.fetch(
-            """
-            WITH ordered AS (
-                SELECT o.id,o.retailer_id,o.store_id,o.price,o.observed_at,
-                       o.sales_channel,o.source,o.source_provider,o.available,
-                       o.correction_status,o.note,
-                       (o.observed_at AT TIME ZONE 'Europe/Paris')::date AS observed_day,
-                       lag(o.source_provider) OVER series AS previous_provider,
-                       lag(o.price) OVER series AS previous_price,
-                       lag(o.available) OVER series AS previous_available,
-                       lag(o.correction_status) OVER series AS previous_correction
-                FROM v2_price_observations o
-                WHERE o.product_id=$1 AND NOT o.superseded
-                WINDOW series AS (
-                    PARTITION BY o.store_id,o.sales_channel
-                    ORDER BY o.observed_at,o.id
-                )
-            ), runs AS (
-                SELECT ordered.*,
-                       sum(CASE WHEN source_provider='open_prices'
-                                     AND previous_provider='open_prices'
-                                     AND available AND previous_available
-                                     AND correction_status IS DISTINCT FROM 'active'
-                                     AND previous_correction IS DISTINCT FROM 'active'
-                                     AND price IS NOT DISTINCT FROM previous_price
-                                     AND correction_status IS NOT DISTINCT
-                                         FROM previous_correction
-                                THEN 0 ELSE 1 END) OVER (
-                           PARTITION BY store_id,sales_channel
-                           ORDER BY observed_at,id
-                       ) AS run_number
-                FROM ordered
-            ), boundaries AS (
-                SELECT runs.*,
-                       row_number() OVER (
-                           PARTITION BY store_id,sales_channel,run_number
-                           ORDER BY observed_at,id
-                       ) AS first_in_run,
-                       row_number() OVER (
-                           PARTITION BY store_id,sales_channel,run_number
-                           ORDER BY observed_at DESC,id DESC
-                       ) AS last_in_run,
-                       min(observed_day) OVER (
-                           PARTITION BY store_id,sales_channel,run_number
-                       ) AS first_day,
-                       max(observed_day) OVER (
-                           PARTITION BY store_id,sales_channel,run_number
-                       ) AS last_day
-                FROM runs
-            )
+            COMPACT_HISTORY_CTE + """
             SELECT b.id,b.price,b.observed_at,b.sales_channel,b.source,
                    b.source_provider,b.available,b.correction_status,b.note,
                    r.name AS retailer,r.id AS retailer_id,s.name AS store_name,
                    s.id AS store_id,s.city,s.postal_code
-            FROM boundaries b
+            FROM compact_history b
             JOIN v2_retailers r ON r.id=b.retailer_id
             JOIN v2_stores s ON s.id=b.store_id
-            WHERE b.last_in_run=1
-               OR (b.first_in_run=1 AND b.first_day<>b.last_day)
             ORDER BY b.observed_at DESC,b.id DESC LIMIT 201
             """,
-            product_id,
+            [product_id],
         )
         # The chart history is capped, but a store with an older last reading
         # must not disappear from the current comparison. Keep channels apart.

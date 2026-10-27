@@ -168,7 +168,7 @@ function CategoryChart({ detail, products, metric }: { detail: CategoryDetail; p
     )}</ul>
     {metric !== "price" && products.some(product => quantityFor(product)?.unit !== metric) &&
       <p className="v2-catalogue-source">Les produits sans quantité compatible avec {metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.</p>}
-    <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} prix récents par produit. Les prix Open Prices sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
+    <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} points récents par produit. Les signalements Open Prices consécutifs au même prix sont résumés par le premier et le dernier jour de la période. Ces prix sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
   </div>;
 }
 function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
