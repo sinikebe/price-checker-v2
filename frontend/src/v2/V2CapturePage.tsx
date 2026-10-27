@@ -105,9 +105,10 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   const [store, setStore] = useState<Store>(() => storedStore(retailerFor(payload?.host || "")));
   const [price, setPrice] = useState(payload?.price?.toFixed(2) || "");
   const [observedAt, setObservedAt] = useState(today());
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(payload && retailerFor(payload.host) ? "Page produit : " + payload.url : "");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
   useEffect(() => {
@@ -115,6 +116,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     try { sessionStorage.setItem(pendingKey, JSON.stringify(payload)); } catch { /* Fragment still works. */ }
     setStore(storedStore(retailerFor(payload.host)));
     setPrice(payload.price?.toFixed(2) || "");
+    setNote(retailerFor(payload.host) ? "Page produit : " + payload.url : "");
     setConfirmed(false); setSent(false); setError("");
     if (!payload.ean) { setResolution({ status: "no-ean" }); return; }
     let active = true;
@@ -131,7 +133,8 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   }, [payload]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!user || !payload || resolution.status !== "product" || !resolution.id || !confirmed || busy) return;
+    if (!user || !payload || resolution.status !== "product" || !resolution.id || !confirmed || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/v2/prices/products/" + resolution.id + "/drafts", {
@@ -148,7 +151,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       window.history.replaceState(null, "", "/v2/capture");
       setSent(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Enregistrement impossible."); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(false); }
   }
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX</span>
@@ -183,7 +186,8 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               </select></label>
               <label>Prix du conditionnement, en €<input required type="number" min="0.01" max="99999999.99" step="0.01" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} /></label>
               <label>Date du relevé<input required type="date" max={today()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
-              <label>Précision facultative<input maxLength={1000} value={note} onChange={event => setNote(event.target.value)} /></label>
+              <label>Précision facultative<input maxLength={1000} value={note} onChange={event => setNote(event.target.value)} />
+                <small>Ce texte sera public après validation. Retirez l’URL si elle ne désigne pas une fiche publique.</small></label>
             </div>
             <label className="v2-capture-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
               J’ai vérifié le produit, son conditionnement, le prix affiché et le point de vente sélectionné.</label>
