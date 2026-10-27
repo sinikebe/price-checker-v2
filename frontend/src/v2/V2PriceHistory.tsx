@@ -252,7 +252,9 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
           <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}</td>
           <td>{channels[row.sales_channel]}</td>
-          <td>{row.source === "manual" ? "Relevé validé" : row.source === "third_party" ? row.source_provider || "Source externe" : "Connecteur"}</td>
+          <td>{row.source === "manual" ? "Relevé validé" : row.source === "third_party" ? row.source_provider === "open_prices"
+            ? <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>
+            : row.source_provider || "Source externe" : "Connecteur"}</td>
         </tr>)}</tbody>
       </table></div>
       {prices.truncated && <p className="v2-price-note">Seuls les 200 relevés les plus récents sont affichés.</p>}

@@ -8,11 +8,10 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi import HTTPException
-
 from app.api.v2 import transfers
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"

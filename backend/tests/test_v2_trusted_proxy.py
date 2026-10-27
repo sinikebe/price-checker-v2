@@ -4,9 +4,8 @@ import socket
 
 import httpx
 import pytest
-from fastapi import FastAPI, Request
-
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
+from fastapi import FastAPI, Request
 
 
 @pytest.mark.asyncio

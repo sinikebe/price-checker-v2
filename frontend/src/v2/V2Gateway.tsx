@@ -6,6 +6,7 @@ import apiClient from "../api/client";
 import V2SettingsPage from "./V2SettingsPage";
 import V2HomePage from "./V2HomePage";
 import V2ProductWorkspace from "./V2ProductWorkspace";
+import V2CataloguePage from "./V2CataloguePage";
 import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
 import { useV2Basket } from "./V2BasketContext";
@@ -362,12 +363,13 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, recipeMode, recipeId, basketMode = false }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false }: {
   settingsMode?: boolean;
   preferencesMode?: boolean;
   authMode?: "login" | "register";
   workspaceMode?: "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
   workspaceId?: number;
+  categoryName?: string;
   recipeMode?: "list" | "detail" | "new" | "edit";
   recipeId?: number;
   basketMode?: boolean;
@@ -461,6 +463,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   if (recipeMode) {
     return <V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />;
   }
+  if (workspaceMode === "catalogue" || categoryName) return <V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />;
   if (workspaceMode) {
     return <V2ProductWorkspace key={workspaceMode + ":" + workspaceId} mode={workspaceMode} id={workspaceId} user={authStatus.user} onLogout={logout} />;
   }

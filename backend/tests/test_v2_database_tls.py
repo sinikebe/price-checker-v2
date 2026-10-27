@@ -1,7 +1,6 @@
 """Database setup and runtime must use the right CA for each provider."""
 
 import pytest
-
 from app.api.v2.setup import _test_connection
 from app.db.v2_migrations import ssl_option
 
