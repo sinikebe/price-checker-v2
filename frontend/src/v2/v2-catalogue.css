@@ -15,6 +15,10 @@
 .v2-catalogue-pagination button, .v2-catalogue-pagination select { padding: .45rem .7rem; border: 1px solid #87979e; border-radius: .4rem; background: #fff; color: #14252b; }
 .v2-catalogue-pagination button:disabled { opacity: .5; }
 .v2-catalogue-pagination label { display: flex; align-items: center; gap: .4rem; }
+.v2-catalogue-detail-controls { display: flex; flex-wrap: wrap; align-items: start; gap: .8rem 1.2rem; margin: 1.5rem 0 .6rem; }
+.v2-catalogue-detail-controls label { display: grid; gap: .4rem; min-width: min(100%, 15rem); font-weight: 650; }
+.v2-catalogue-detail-controls input, .v2-catalogue-detail-controls select { width: 100%; padding: .7rem; border: 1px solid #9da9ad; border-radius: .5rem; background: #fff; color: #14252b; }
+.v2-catalogue-detail-controls small { font-weight: 400; color: #536368; }
 .v2-catalogue-chart { margin: 1rem 0 2rem; }
 .v2-catalogue-chart-scroll { overflow-x: auto; }
 .v2-catalogue-chart svg { display: block; min-width: 650px; width: 100%; height: auto; background: #fff; color: #59666b; border: 1px solid #d5e0df; border-radius: .5rem; }
