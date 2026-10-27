@@ -156,23 +156,13 @@ class SlidingWindowLimiter:
         self._hits.clear()
 
 
-# Self-imposed Open Prices budget; review against its current policy before
-# adding a connector that uses this limiter.
-OPEN_PRICES_SELF_IMPOSED_PER_MIN = 60
-OPEN_PRICES_MAX_WAIT_SECONDS = 30.0
-
 product_limiter = SlidingWindowLimiter(PRODUCT_LIMIT_PER_MIN, name="product")
 search_limiter = SlidingWindowLimiter(SEARCH_LIMIT_PER_MIN, name="search")
-open_prices_limiter = SlidingWindowLimiter(
-    OPEN_PRICES_SELF_IMPOSED_PER_MIN, name="open-prices", smooth=True
-)
-
 
 def reset_limiters() -> None:
     """Clear every bucket. For tests, which must not inherit each other's budget."""
     product_limiter.reset()
     search_limiter.reset()
-    open_prices_limiter.reset()
 
 
 def limiter_for(url: httpx.URL) -> tuple[SlidingWindowLimiter, float]:

@@ -1,6 +1,7 @@
 """The local PostgreSQL certificate must not replace public HTTPS roots for OFF."""
 
 import pytest
+
 from app.services.openfoodfacts_client import aclose_off_client, get_off_client
 
 

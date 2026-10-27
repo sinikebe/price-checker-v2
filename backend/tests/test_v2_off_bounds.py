@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+
 from app.services import openfoodfacts_client as off_client
 
 

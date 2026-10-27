@@ -1,8 +1,9 @@
 """Hostnames used on private development networks and public servers."""
 
 import pytest
-from app.api.v2.setup import _validated_hostname
 from fastapi import HTTPException
+
+from app.api.v2.setup import _validated_hostname
 
 
 @pytest.mark.parametrize("value", ["test-machine", "machine.local", "localhost", "192.168.50.10"])
@@ -33,6 +34,7 @@ async def test_dev_hostname_can_be_cleared_but_production_cannot(monkeypatch):
     from types import SimpleNamespace
 
     import httpx
+
     from app.api.v2 import setup
     from app.main_v2 import app
 
