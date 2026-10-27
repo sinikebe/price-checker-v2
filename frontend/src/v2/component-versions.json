@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.44",
+    "version": "0.1.45",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.22",
+    "version": "0.1.23",
     "status": "active"
   },
   "recipes": {
@@ -21,17 +21,17 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.13",
+    "version": "0.1.14",
     "status": "active"
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.14",
+    "version": "0.1.15",
     "status": "active"
   },
   "pwa": {
