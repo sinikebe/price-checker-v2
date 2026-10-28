@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from component_versions import bump_patch, classify, validate
+from component_versions import bump_patch, classify, stale_versions, validate
 
 
 class ComponentVersionsTests(unittest.TestCase):
@@ -20,6 +20,19 @@ class ComponentVersionsTests(unittest.TestCase):
             classify(["backend/app/api/v2/setup.py"]),
             {"database", "application"},
         )
+
+    def test_bookmarklet_files_require_their_own_version(self):
+        self.assertEqual(classify([
+            "frontend/src/v2/bookmarklet-capture.js",
+            "frontend/src/v2/V2CapturePage.tsx",
+            "frontend/src/v2/v2-capture.css",
+        ]), {"application", "products", "bookmarklet"})
+        previous = {"bookmarklet": {"status": "active", "version": "0.1.0"}}
+        current = {"bookmarklet": {"status": "active", "version": "0.1.0"}}
+        self.assertEqual(stale_versions(current, previous, {"bookmarklet"}), ["bookmarklet"])
+        current["bookmarklet"]["version"] = "0.1.1"
+        self.assertEqual(stale_versions(current, previous, {"bookmarklet"}), [])
+        self.assertEqual(stale_versions(current, {}, {"bookmarklet"}), [])
 
     def test_price_history_files_bump_products_and_open_prices(self):
         self.assertEqual(classify([
@@ -56,6 +69,7 @@ class ComponentVersionsTests(unittest.TestCase):
             "README.md", "backend/tests/test_v2_off.py",
             ".github/workflows/ci.yml", "scripts/component_versions.py",
             "frontend/src/v2/component-versions.json",
+            "frontend/src/v2/component-changelog.json",
         ]), set())
 
     def test_unmapped_runtime_file_fails_instead_of_silently_skipping(self):
@@ -69,10 +83,17 @@ class ComponentVersionsTests(unittest.TestCase):
         )
         self.assertEqual(bump_patch("0.1.9"), "0.1.10")
 
+    def test_changelog_view_paths_bump_application(self):
+        self.assertEqual(classify([
+            "frontend/src/v2/V2ChangelogPage.tsx",
+            "frontend/src/v2/v2-changelog.css",
+        ]), {"application"})
+
     def test_manifest_and_existing_source_paths_are_consistent(self):
         versions = validate()
         self.assertRegex(versions["open_prices"]["version"], r"^\d+\.\d+\.\d+$")
         self.assertEqual(versions["open_prices"]["status"], "active")
+        self.assertRegex(versions["bookmarklet"]["version"], r"^\d+\.\d+\.\d+$")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,113 @@
+{
+  "start_versions": {
+    "application": "0.1.54",
+    "products": "0.1.32",
+    "recipes": "0.1.11",
+    "basket": "0.1.6",
+    "database": "0.1.23",
+    "open_food_facts": "0.1.19",
+    "accounts": "0.1.18",
+    "pwa": "0.1.13",
+    "deployment": "0.1.17",
+    "open_prices": "0.1.12",
+    "bookmarklet": "0.1.5"
+  },
+  "baseline": {
+    "application": [
+      "Le site réunit produits, magasins, recettes et panier au même endroit."
+    ],
+    "products": [
+      "La fiche produit montre la progression des prix, magasin par magasin."
+    ],
+    "recipes": [
+      "Les recettes permettent de retrouver leurs ingrédients en un clin d’œil."
+    ],
+    "basket": [
+      "Le panier aide à comparer les courses entre magasins."
+    ],
+    "database": [
+      "Les données publiées restent en place quand le site évolue."
+    ],
+    "open_food_facts": [
+      "Les produits peuvent être enrichis grâce à Open Food Facts."
+    ],
+    "accounts": [
+      "Un compte permet de retrouver ses brouillons et ses contributions."
+    ],
+    "pwa": [
+      "Le panier et certaines pages restent accessibles sans connexion."
+    ],
+    "deployment": [
+      "Les mises à jour du site préservent les données déjà enregistrées."
+    ],
+    "open_prices": [
+      "Les relevés d’Open Prices enrichissent l’historique des prix."
+    ],
+    "bookmarklet": [
+      "Un favori permet de proposer un prix depuis la page d’une enseigne."
+    ]
+  },
+  "releases": [
+    {
+      "application_version": "0.1.55",
+      "components": {
+        "application": {
+          "version": "0.1.55",
+          "notes": [
+            "Le journal des nouveautés est arrivé. Promis, il tient mieux en poche que la liste de courses."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.58",
+      "components": {
+        "application": {
+          "version": "0.1.58",
+          "notes": [
+            "La documentation de l’API est maintenant consultable depuis le site."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.62",
+      "components": {
+        "deployment": {
+          "version": "0.1.19",
+          "notes": [
+            "Les paramètres administrateur affichent l’état du serveur et préviennent quand ses ressources sont trop sollicitées."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.65",
+      "components": {
+        "accounts": {
+          "version": "0.1.21",
+          "notes": [
+            "La double authentification et les jetons API personnels sécurisent les connexions et les accès automatisés."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.67",
+      "components": {
+        "application": {
+          "version": "0.1.67",
+          "notes": [
+            "La documentation de l’API indique désormais où utiliser les jetons personnels."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.23",
+          "notes": [
+            "La double authentification protège les connexions simultanées ; une configuration expirée peut être recommencée."
+          ]
+        }
+      }
+    }
+  ]
+}

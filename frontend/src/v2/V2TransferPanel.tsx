@@ -59,12 +59,12 @@ export default function V2TransferPanel() {
 
   return <section className="v2-settings-card v2-transfer" aria-labelledby="v2-transfer-heading">
     <h2 id="v2-transfer-heading">Transférer produits et prix</h2>
-    <p>Exportez les fiches produit publiées et leurs relevés de prix validés vers une autre instance V2. Les comptes, brouillons privés, paniers et recettes ne sont pas inclus.</p>
+    <p>Exportez les fiches produit publiées et leurs relevés de prix validés vers une autre installation de Price Checker. Les comptes, brouillons privés, paniers et recettes ne sont pas inclus.</p>
     <div className="v2-settings-actions">
       <button type="button" className="v2-button v2-button-secondary" disabled={busy}
         onClick={() => void exportData()}>Exporter un fichier JSON</button>
     </div>
-    <label className="v2-transfer-file">Archive JSON d’une autre instance V2
+    <label className="v2-transfer-file">Archive JSON d’une autre installation de Price Checker
       <input type="file" accept=".json,application/json" disabled={busy}
         onChange={event => { setFile(event.target.files?.[0] ?? null); setError(""); }} />
     </label>
@@ -72,7 +72,7 @@ export default function V2TransferPanel() {
       <button type="button" className="v2-button v2-button-primary" disabled={!file || busy}
         onClick={() => void importData()}>{busy ? "Transfert en cours…" : "Importer sur cette instance"}</button>
     </div>
-    <p className="v2-settings-note">L’import est atomique et peut être répété sans doublon. Un conflit de code-barres ou un produit déjà importé puis modifié bloque l’archive entière, sans écraser les données locales.</p>
+    <p className="v2-settings-note">L’import est effectué entièrement ou pas du tout. Il peut être répété sans créer de doublon. Un conflit de code-barres ou un produit déjà importé puis modifié bloque l’archive entière, sans écraser les données locales.</p>
     {error && <p className="v2-schedule-error" role="alert">{error}</p>}
     {notice && <p className="v2-schedule-success" role="status">{notice}</p>}
   </section>;

@@ -55,24 +55,42 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
   productId: number; ean: string; user: V2User | null;
 }) {
   const [snapshot, setSnapshot] = useState<V2OffSnapshot | null>(null);
+  const [sources, setSources] = useState<{ barcode: string; primary_source: boolean }[]>([]);
+  const [selectedBarcode, setSelectedBarcode] = useState(ean);
   const [loading, setLoading] = useState(Boolean(ean));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [temporary, setTemporary] = useState<OffBrowserPreview | null>(null);
+  useEffect(() => { setSelectedBarcode(ean); }, [productId, ean]);
   useEffect(() => {
-    if (!ean) return;
     let active = true;
-    productRequest<V2OffSnapshot>("/" + productId + "/off")
+    productRequest<{ barcode: string; primary_source: boolean }[]>("/" + productId + "/off-sources")
+      .then(value => {
+        if (active) {
+          setSources(value);
+          if (value.length === 1 && (!ean || !value[0].primary_source)) setSelectedBarcode(value[0].barcode);
+        }
+      })
+      .catch(() => { if (active) setSources([]); });
+    return () => { active = false; };
+  }, [productId, ean]);
+  useEffect(() => {
+    if (!selectedBarcode) return;
+    let active = true;
+    setLoading(true); setError(""); setSnapshot(null);
+    const path = "/" + productId + "/off" + (selectedBarcode === ean ? "" :
+      "?barcode=" + encodeURIComponent(selectedBarcode));
+    productRequest<V2OffSnapshot>(path)
       .then(value => { if (active) { setSnapshot(value); setLoading(false); } })
       .catch(reason => {
         if (!active) return;
         if (!(reason instanceof ProductApiError && reason.status === 404))
-          setError(reason instanceof Error ? reason.message : "Fiche OFF indisponible.");
+          setError(reason instanceof Error ? reason.message : "Fiche Open Food Facts indisponible.");
         setLoading(false);
       });
     return () => { active = false; };
-  }, [productId, ean]);
+  }, [productId, ean, selectedBarcode]);
   const userId = user?.id;
   useEffect(() => {
     if (userId == null || !ean) { setPending(false); setTemporary(null); return; }
@@ -81,7 +99,7 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
       try {
         const state = await productRequest<{ pending: boolean }>(`/${productId}/off/refresh-status`);
         if (!active) return;
-        if (pending && !state.pending) {
+        if (pending && !state.pending && selectedBarcode === ean) {
           void productRequest<V2OffSnapshot>(`/${productId}/off`)
             .then(value => { if (active) { setSnapshot(value); setTemporary(null); } }).catch(() => {});
         }
@@ -91,7 +109,7 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
     void check();
     const timer = window.setInterval(() => { void check(); }, 15000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [productId, ean, userId, pending]);
+  }, [productId, ean, userId, pending, selectedBarcode]);
   async function refresh() {
     if (refreshing) return;
     setRefreshing(true); setError(""); setTemporary(null);
@@ -104,9 +122,9 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
         try {
           const preview = await readOffInBrowser(ean.trim());
           setTemporary(preview);
-          setError(preview ? "Quota serveur atteint. Fiche provisoire lue par cet appareil ; mise à jour serveur en attente." :
-            "Quota serveur atteint. Mise à jour serveur en attente ; aucune fiche directe trouvée.");
-        } catch { setError("Quota serveur atteint. Mise à jour serveur en attente ; lecture directe indisponible."); }
+          setError(preview ? "Limite de consultation d’Open Food Facts atteinte. Une fiche provisoire est affichée ; sa mise à jour reste en attente." :
+            "Limite de consultation d’Open Food Facts atteinte. Mise à jour en attente ; aucune fiche provisoire disponible.");
+        } catch { setError("Limite de consultation d’Open Food Facts atteinte. La mise à jour reste en attente."); }
       } else {
         setError(reason instanceof Error ? reason.message : "Actualisation impossible.");
       }
@@ -115,29 +133,39 @@ export default function V2OffSnapshotPanel({ productId, ean, user }: {
   return <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-off-full-heading">
     <div className="v2-off-full-header"><div><span className="v2-section-kicker">SOURCE EXTERNE</span>
       <h2 id="v2-off-full-heading">Fiche Open Food Facts</h2></div>
-      {user && ean && <button type="button" className="v2-button v2-button-secondary" disabled={refreshing}
+      {user && ean && selectedBarcode === ean && <button type="button" className="v2-button v2-button-secondary" disabled={refreshing}
         onClick={() => { void refresh(); }}>{refreshing ? "Actualisation…" : snapshot ? "Actualiser la fiche" : "Récupérer la fiche"}</button>}
     </div>
-    {!ean ? <p>Ajoutez un code EAN / GTIN pour consulter la fiche OFF.</p> :
+    {!ean && sources.length === 0 ? <p>Ajoutez un code-barres pour consulter sa fiche Open Food Facts.</p> :
       <>
         <p>Ces données externes sont séparées du produit validé. Les actualiser ne modifie ni sa fiche ni son historique.</p>
+        {sources.some(source => source.barcode !== ean) && <div aria-label="Fiches Open Food Facts associées">
+          {sources.map(source => <button type="button" key={source.barcode}
+            aria-pressed={selectedBarcode === source.barcode}
+            onClick={() => setSelectedBarcode(source.barcode)}>
+            {source.primary_source ? "Fiche principale" : "Ancien code fusionné"} · {source.barcode}
+          </button>)}
+        </div>}
         {loading && <p>Chargement de la fiche enregistrée…</p>}
-        {!loading && !snapshot && !error && <p>Aucune fiche OFF enregistrée pour ce code.</p>}
+        {!loading && !snapshot && !error && <p>{selectedBarcode ?
+          "Aucune fiche Open Food Facts enregistrée pour ce code." : "Choisissez un ancien code fusionné."}</p>}
         {error && <p role="alert" className="v2-off-error">{error}</p>}
-        {pending && <p role="status">Actualisation OFF en file d’attente côté serveur. Cette fiche sera rechargée quand le quota le permettra.</p>}
+        {pending && <p role="status">La mise à jour depuis Open Food Facts est en attente. Cette fiche sera actualisée dès que possible.</p>}
         {temporary && <div className="v2-off-temporary">
-          <strong>Lecture provisoire non enregistrée : {temporary.name || "Produit OFF"}</strong>
+          <strong>Lecture provisoire non enregistrée : {temporary.name || "Produit Open Food Facts"}</strong>
           <p>{temporary.brand || "Marque inconnue"} · {temporary.quantity || "Quantité inconnue"}</p>
           {temporary.ingredients && <p>Ingrédients : {temporary.ingredients}</p>}
           {temporary.nutriscore && <p>Nutri-Score : {temporary.nutriscore.toUpperCase()}</p>}
-          <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir chez OFF ↗</a>
+          <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir chez Open Food Facts ↗</a>
         </div>}
         {snapshot && <>
+          {snapshot.source_product_id !== undefined && snapshot.source_product_id !== productId &&
+            <p>Fiche Open Food Facts d’un ancien code-barres conservée après la fusion du produit.</p>}
           <p>Récupérée le {dateLabel(snapshot.fetched_at)}
-            {snapshot.off_last_modified && <> · Mise à jour chez OFF le {dateLabel(snapshot.off_last_modified)}</>}
+            {snapshot.off_last_modified && <> · Mise à jour chez Open Food Facts le {dateLabel(snapshot.off_last_modified)}</>}
             {snapshot.off_rev !== null && <> · Révision {snapshot.off_rev}</>}</p>
-          <p>{snapshot.field_count} champs reçus, dont {snapshot.presented_field_count} classés.{" "}
-            <a href={snapshot.off_url} target="_blank" rel="noreferrer">Voir chez OFF ↗</a></p>
+          <p>Informations issues d’Open Food Facts.{" "}
+            <a href={snapshot.off_url} target="_blank" rel="noreferrer">Voir chez Open Food Facts ↗</a></p>
           <div className="v2-off-full-sections">{snapshot.sections.map(section =>
             <Section key={`${productId}:${section.id}`} section={section} />)}</div>
         </>}

@@ -132,6 +132,9 @@ for attempt in {1..30}; do
     echo "V2 installed at loopback :$PRICE_CHECKER_V2_PORT. Configure HTTPS proxy before admin bootstrap."
     echo "Bundled PostgreSQL uses a limited application role; migration credentials stay outside the runtime mount."
     echo "Read the setup code locally after first API request: $PRICE_CHECKER_V2_DATA_DIR/state/access-code"
+    if [[ -d /run/systemd/system ]]; then
+      "$repo_dir/deployment/v2/install-host-health.sh" || echo "Host monitoring installation deferred." >&2
+    fi
     exit 0
   fi
   sleep 2

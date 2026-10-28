@@ -63,6 +63,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:basket
+      - run: npm run test:bookmarklet
       - run: npm run build
 
   deployment:
@@ -82,11 +83,23 @@ jobs:
       - name: Check component versions and path rules
         run: |
           python3 scripts/component_versions.py check
+          python3 scripts/check_component_changelog.py
           python3 -m unittest discover -s scripts/tests -v
-      - name: Verify version changes against main
+      - name: Verify component version bumps and public notes
+        env:
+          V2_PUSH_BEFORE: ${{ github.event.before }}
         run: |
           git fetch --no-tags origin main
-          python3 scripts/component_versions.py verify --base "$(git merge-base HEAD origin/main)" --head HEAD
+          verify_base="$(git merge-base HEAD origin/main)"
+          if [[ "$GITHUB_EVENT_NAME" == push && -n "$V2_PUSH_BEFORE" &&
+                "$V2_PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]] &&
+             git cat-file -e "$V2_PUSH_BEFORE^{commit}" 2>/dev/null; then
+            verify_base="$V2_PUSH_BEFORE"
+          elif [[ "$GITHUB_EVENT_NAME" == push ]] && git rev-parse HEAD^ >/dev/null 2>&1; then
+            verify_base="$(git rev-parse HEAD^)"
+          fi
+          python3 scripts/component_versions.py verify --base "$verify_base" --head HEAD
+          python3 scripts/check_component_changelog.py --base "$verify_base"
       - name: Validate Compose configuration
         run: |
           mkdir -p "$RUNNER_TEMP/price-checker-v2/postgres"

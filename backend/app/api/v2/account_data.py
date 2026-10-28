@@ -9,6 +9,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, SecretStr
 
+from app.api.v2.auth_security import account_limit_key, verify_second_factor
+
 from app.api.v2.auth import (
     _COOKIE_NAME,
     _bump_limit,
@@ -16,6 +18,7 @@ from app.api.v2.auth import (
     _current_user,
     _limit_key,
     _secure_write,
+    _session_user,
     _verify_password,
 )
 
@@ -24,6 +27,7 @@ router = APIRouter(prefix="/api/v2/account", tags=["v2-account-data"])
 
 class AccountDeletion(BaseModel):
     password: SecretStr
+    second_factor: str | None = None
 
 _JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload"}
 
@@ -78,16 +82,28 @@ async def export_account_data(request: Request):
                 "WHERE author_id=$1 ORDER BY id", user_id,
             )
             price_drafts = await connection.fetch(
-                "SELECT id, product_id, retailer_id, store_id, entry_kind, "
-                "captured_via, source_url, price, quantity_text, observed_at, "
+                "SELECT id, product_id, product_draft_id, capture_ean, retailer_id, store_id, entry_kind, "
+                "captured_via, source_url, captured_store_name, price, quantity_text, observed_at, "
                 "note, status, revision, created_at, updated_at "
                 "FROM v2_price_drafts WHERE author_id=$1 ORDER BY id", user_id
             )
+            store_alias_proposals = await connection.fetch(
+                "SELECT id,store_id,source,name,status,created_at,reviewed_at "
+                "FROM v2_store_alias_proposals WHERE author_id=$1 ORDER BY id", user_id
+            )
             published_prices = await connection.fetch(
-                "SELECT id, product_id, retailer_id, store_id, price, "
-                "observed_at, note, created_at FROM v2_price_observations "
+                "SELECT id, product_id, retailer_id, store_id, source, source_url, "
+                "capture_ean, price, observed_at, note, created_at FROM v2_price_observations "
                 "WHERE contributor_id=$1 ORDER BY id", user_id
             )
+            api_tokens = await connection.fetch(
+                "SELECT id,label,scope,created_at,expires_at,last_used_at,revoked_at "
+                "FROM v2_api_tokens WHERE user_id=$1 ORDER BY id", user_id
+            )
+            mfa_enabled = bool(await connection.fetchval(
+                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
+                user_id,
+            ))
             reports = await connection.fetch(
                 "SELECT id, kind, content_id, reason, status, created_at, reviewed_at "
                 "FROM v2_content_reports WHERE reporter_id=$1 ORDER BY id", user_id
@@ -101,8 +117,10 @@ async def export_account_data(request: Request):
             "recipe_ingredients": _rows(ingredients),
             "recipe_submissions": _rows(recipe_submissions),
             "price_drafts": _rows(price_drafts),
+            "store_alias_proposals": _rows(store_alias_proposals),
             "published_prices": _rows(published_prices),
             "reports": _rows(reports),
+            "account_security": {"mfa_enabled": mfa_enabled, "api_tokens": _rows(api_tokens)},
         }
         return JSONResponse(
             content=jsonable_encoder(payload),
@@ -125,13 +143,14 @@ async def delete_account(
         raise HTTPException(status_code=422, detail="Mot de passe invalide.")
     connection = await _connect()
     try:
-        user = await _current_user(connection, request)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Connectez-vous pour supprimer votre compte.")
-        if await _bump_limit(
-            connection, _limit_key("account-delete", request, str(user["id"])),
-            3600,
-        ) > 5:
+        user = await _session_user(connection, request)
+        origin_attempts = await _bump_limit(
+            connection, _limit_key("account-delete", request, str(user["id"])), 3600,
+        )
+        account_attempts = await _bump_limit(
+            connection, account_limit_key("account-delete", user["id"]), 3600,
+        )
+        if origin_attempts > 5 or account_attempts > 5:
             raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
         async with connection.transaction():
             account = await connection.fetchrow(
@@ -147,6 +166,8 @@ async def delete_account(
                 )
             if not await _verify_password(account["password_hash"], password):
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect.")
+            if not await verify_second_factor(connection, user["id"], payload.second_factor):
+                raise HTTPException(status_code=401, detail="Code de validation incorrect.")
             user_id = account["id"]
             # Keep published recipes and audit history, without an author link.
             # A revision bump invalidates already cached recipe details in the PWA.
@@ -174,6 +195,9 @@ async def delete_account(
             # Drafts, personal reports, basket and all sessions do not survive.
             await connection.execute(
                 "DELETE FROM v2_content_reports WHERE reporter_id=$1", user_id,
+            )
+            await connection.execute(
+                "DELETE FROM v2_store_alias_proposals WHERE author_id=$1", user_id,
             )
             await connection.execute(
                 "DELETE FROM v2_product_drafts WHERE author_id=$1", user_id,

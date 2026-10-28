@@ -1,0 +1,129 @@
+{
+  "omissions": [
+    {
+      "component": "application",
+      "version": "0.1.56",
+      "reason": "Retouches de formulation sans nouveauté fonctionnelle."
+    },
+    {
+      "component": "application",
+      "version": "0.1.57",
+      "reason": "Clarification éditoriale du journal sans nouveauté à annoncer."
+    },
+    {
+      "component": "application",
+      "version": "0.1.59",
+      "reason": "Lien d’accès sur l’accueil à une documentation déjà annoncée."
+    },
+    {
+      "component": "application",
+      "version": "0.1.60",
+      "reason": "Numéro affiché par la documentation aligné sur le paquet installé."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.19",
+      "reason": "Clarification des textes de connexion et de création de compte."
+    },
+    {
+      "component": "application",
+      "version": "0.1.61",
+      "reason": "Révision du ton des textes publics et de la présentation de l’API, sans nouvelle fonction."
+    },
+    {
+      "component": "bookmarklet",
+      "version": "0.1.6",
+      "reason": "Formulation du guide de capture et de ses messages, sans changement de la capture."
+    },
+    {
+      "component": "database",
+      "version": "0.1.24",
+      "reason": "Clarification des textes de configuration et de transfert."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.18",
+      "reason": "Clarification du texte des mises à jour du serveur."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.20",
+      "reason": "Formulation des messages Open Food Facts sans changement de l’intégration."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.13",
+      "reason": "Libellés de provenance des prix et des magasins rendus plus lisibles."
+    },
+    {
+      "component": "products",
+      "version": "0.1.33",
+      "reason": "Clarification des libellés de produits, magasins et fiches à compléter."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.20",
+      "reason": "Affichage des alertes réservé aux administrateurs, sans changement des comptes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.62",
+      "reason": "Présentation des mesures déjà annoncée dans le composant Installation et mise à jour."
+    },
+    {
+      "component": "database",
+      "version": "0.1.25",
+      "reason": "Lecture d’un état local, sans modification de la base de données."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.14",
+      "reason": "Intégration dans les paramètres, sans changement du fonctionnement hors ligne."
+    },
+    {
+      "component": "application",
+      "version": "0.1.63",
+      "reason": "Correction du lancement de la surveillance sur un hôte sans utilisateur système nommé."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.20",
+      "reason": "Compatibilité du minuteur avec les hôtes où l’UID applicatif n’a pas de compte local."
+    },
+    {
+      "component": "application",
+      "version": "0.1.64",
+      "reason": "Correction de l’accès au répertoire de mesures privé sur l’hôte."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.21",
+      "reason": "Correction du lancement du collecteur avec un répertoire parent protégé."
+    },
+    {
+      "component": "application",
+      "version": "0.1.65",
+      "reason": "Présentation des protections déjà annoncées dans le composant Comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.26",
+      "reason": "Stockage nécessaire aux protections annoncées dans le composant Comptes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.15",
+      "reason": "Adaptation du formulaire de suppression de compte, sans changement du fonctionnement hors ligne."
+    },
+    {
+      "component": "application",
+      "version": "0.1.66",
+      "reason": "Plafond de tentatives global pour les codes de sécurité, sans changement visible dans l’application."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.22",
+      "reason": "Renforcement interne du plafond de tentatives après l’ajout de la double authentification."
+    }
+  ]
+}

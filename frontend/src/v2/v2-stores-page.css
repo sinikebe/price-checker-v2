@@ -1,0 +1,14 @@
+.v2-stores-search { display: grid; gap: .4rem; max-width: 34rem; margin: 1rem 0 2rem; font-weight: 650; }
+.v2-stores-search input { width: 100%; padding: .75rem; border: 1px solid var(--border, #87919c); border-radius: .65rem; background: var(--surface, #fff); color: inherit; }
+.v2-stores-group { margin: 1.2rem 0; }
+.v2-stores-group h2 small { font-size: .65em; font-weight: 500; }
+.v2-stores-group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; }
+.v2-stores-group li { display: flex; flex-wrap: wrap; gap: .4rem 1rem; justify-content: space-between; border-top: 1px solid var(--border, #dde2e6); padding-top: .6rem; }
+
+.v2-stores-source { color: var(--muted, #5a6670); }
+.v2-retailer-groups-admin { margin-top: 2rem; }
+.v2-retailer-groups-admin summary { cursor: pointer; font-weight: 700; }
+.v2-retailer-groups-admin form { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 1rem 0; }
+.v2-retailer-groups-admin input, .v2-retailer-groups-admin select { padding: .45rem; border: 1px solid var(--border, #87919c); border-radius: .4rem; background: var(--surface, #fff); color: inherit; }
+.v2-retailer-groups-admin section { border-top: 1px solid var(--border, #dde2e6); padding: .7rem 0; }
+.v2-retailer-groups-admin section > label { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .3rem 0; }

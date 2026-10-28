@@ -116,6 +116,22 @@
   white-space: nowrap;
 }
 
+.v2-beta-tag {
+  display: inline-block;
+  margin-left: .3em;
+  padding: .12em .48em;
+  border: 1px solid #80b893;
+  border-radius: 999px;
+  color: #215c3e;
+  background: #eaf5e9;
+  font-size: .7em;
+  font-weight: 800;
+  letter-spacing: .02em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  vertical-align: .12em;
+}
+
 .v2-nav a:not(.v2-nav-current):hover,
 .v2-footer a:hover,
 .v2-discover-copy a:hover {

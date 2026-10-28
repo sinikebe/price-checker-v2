@@ -15,8 +15,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.api.v2.auth import _connect, _secure_write
-from app.api.v2.products import ProductData, _validate_publish
+from app.api.v2.products import ProductData
 from app.api.v2.setup import _require_admin
+from app.core.url_validation import validate_clickable_url
 
 router = APIRouter(prefix="/api/v2/transfers", tags=["v2-transfers"])
 MAX_BUNDLE_BYTES = 24 * 1024 * 1024
@@ -49,8 +50,12 @@ class TransferPrice(BaseModel):
     id: int = Field(ge=1, le=MAX_ID)
     product_id: int = Field(ge=1, le=MAX_ID)
     store_id: int = Field(ge=1, le=MAX_ID)
-    source: Literal["manual", "connector", "third_party"]
+    source: Literal["manual", "bookmarklet", "connector", "third_party"]
     source_provider: str | None = Field(default=None, max_length=50)
+    source_url: str | None = Field(default=None, max_length=1000)
+    capture_ean: str | None = Field(
+        default=None, max_length=14, pattern=r"^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$"
+    )
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     quantity_text: str | None = Field(default=None, max_length=100)
     unit_price_amount: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
@@ -59,6 +64,11 @@ class TransferPrice(BaseModel):
     observed_at: datetime
     note: str | None = Field(default=None, max_length=1000)
     sales_channel: Literal["in_store", "drive", "delivery"] = "in_store"
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_source_url(cls, value: str | None) -> str | None:
+        return validate_clickable_url(value.strip(), "source_url") if value else None
 
     @field_validator("observed_at", mode="before")
     @classmethod
@@ -130,8 +140,8 @@ async def export_products_prices(request: Request):
             "SELECT id, predecessor_id, data FROM v2_products ORDER BY id"
         )
         prices = await connection.fetch(
-            "SELECT id, product_id, store_id, source, source_provider, price, "
-            "quantity_text, unit_price_amount, unit_price_unit, available, "
+            "SELECT id, product_id, store_id, source, source_provider, "
+            "source_url,capture_ean,price,quantity_text, unit_price_amount, unit_price_unit, available, "
             "observed_at, note, sales_channel FROM v2_price_observations "
             "WHERE product_id IS NOT NULL AND NOT superseded "
             "AND correction_status IS DISTINCT FROM 'active' ORDER BY id"
@@ -173,9 +183,10 @@ def _validate_import_bundle(bundle: TransferBundle) -> tuple[
     dict[int, TransferProduct], dict[int, TransferRetailer],
     dict[int, TransferStore], dict[int, TransferPrice],
 ]:
+    # A transfer carries already-published history. Legacy incomplete records
+    # stay public and appear on /catalogue/to-complete; new drafts still require
+    # today's publication fields.
     products = _dicts(bundle.products, "produit")
-    for product in bundle.products:
-        _validate_publish(product.data.model_dump(mode="json"))
     retailers = _dicts(bundle.retailers, "enseigne")
     stores = _dicts(bundle.stores, "point de vente")
     prices = _dicts(bundle.prices, "prix")
@@ -322,14 +333,17 @@ async def _import_prices(
             "INSERT INTO v2_price_observations("
             "product_id,retailer_id,store_id,source,source_provider,"
             "source_record_id,price,quantity_text,unit_price_amount,"
-            "unit_price_unit,available,observed_at,note,sales_channel,import_key) "
-            "VALUES($1,$2,$3,'third_party','price-checker-v2',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+            "unit_price_unit,available,observed_at,note,sales_channel,import_key,"
+            "source_url,capture_ean) "
+            "VALUES($1,$2,$3,'third_party',$14,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$15,$16)",
             product_map[price.product_id],
             retailer_map[stores[price.store_id].retailer_id],
             store_map[price.store_id], f"{source}:{source_id}",
             price.price, price.quantity_text, price.unit_price_amount,
             price.unit_price_unit, price.available, price.observed_at,
             price.note, price.sales_channel, key,
+            "price-checker-v2/bookmarklet" if price.source == "bookmarklet" else "price-checker-v2",
+            price.source_url, price.capture_ean,
         )
         inserted_prices += 1
     return inserted_prices

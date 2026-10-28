@@ -7,7 +7,7 @@ from __future__ import annotations
 
 COMPACT_HISTORY_CTE = """
 WITH ordered AS (
-    SELECT o.id,o.product_id,o.retailer_id,o.store_id,o.price,o.observed_at,
+    SELECT o.id,o.product_id,o.retailer_id,o.source_retailer_id,o.store_id,o.price,o.observed_at,
            o.sales_channel,o.source,o.source_provider,o.available,
            o.correction_status,o.note,
            (o.observed_at AT TIME ZONE 'Europe/Paris')::date AS observed_day,
