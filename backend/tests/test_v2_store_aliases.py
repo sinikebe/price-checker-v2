@@ -204,7 +204,7 @@ async def test_capture_store_aliases_and_distinct_review(monkeypatch, isolated_c
                 "osm_brand": "Carrefour", "osm_name": "Carrefour Clos Open Prices",
                 "osm_address_city": "Maisons Laffitte", "osm_address_postcode": "78600",
             })
-            assert identity == (retailer_id, alias_target)
+            assert identity == (retailer_id, alias_target, None)
             assert await connection.fetchval(
                 "SELECT count(*) FROM v2_stores WHERE osm_id=9999"
             ) == 0

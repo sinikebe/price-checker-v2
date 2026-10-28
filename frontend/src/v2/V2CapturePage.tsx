@@ -178,7 +178,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         // capture when the retailer page did not identify a selected store.
         if (exact && payload.store?.city && payload.store.postalCode) {
           setSelectedStore({ candidate: exact, aliasName: null });
-          setStore(current => ({ ...current, retailer: exact.retailer, store_name: exact.name,
+          setStore(current => ({ ...current, store_name: exact.name,
             city: exact.city || "", postal_code: exact.postal_code || "" }));
         }
       }).catch(reason => {
@@ -215,7 +215,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     const aliasName = candidate.match === "near" ? matchQueryName : null;
     storeEditVersion.current += 1;
     setSelectedStore({ candidate, aliasName }); setCreateStore(false);
-    setStore(current => ({ ...current, retailer: candidate.retailer, store_name: candidate.name,
+    setStore(current => ({ ...current, store_name: candidate.name,
       city: candidate.city || "", postal_code: candidate.postal_code || "" }));
   }
   async function searchStores() {

@@ -38,8 +38,9 @@ def _location_compatible(row, city: str, postal_code: str) -> bool:
 
 
 def _store_dict(row) -> dict:
-    return {"id": row["id"], "retailer": row["retailer"], "name": row["name"],
-            "city": row["city"], "postal_code": row["postal_code"]}
+    return {"id": row["id"], "retailer": row["retailer"],
+            "retailer_id": row["retailer_id"], "retailer_group_id": row["retailer_group_id"],
+            "name": row["name"], "city": row["city"], "postal_code": row["postal_code"]}
 
 
 # Pending user-entered stores are visible only to their author; imported OSM
@@ -66,9 +67,11 @@ async def matches(
     try:
         user = await _current_user(connection, request)
         rows = await connection.fetch(
-            "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer "
+            "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
+            "r.id AS retailer_id,r.group_id AS retailer_group_id "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
-            "WHERE lower(r.name)=lower($1) AND " + VISIBLE + " AND NOT EXISTS "
+            "WHERE r.group_id IN (SELECT group_id FROM v2_retailers "
+            "WHERE lower(name)=lower($1)) AND " + VISIBLE + " AND NOT EXISTS "
             "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id) "
             "ORDER BY s.id LIMIT 5000",
             retailer.strip(), user is not None and user["role"] == "admin",
@@ -307,7 +310,8 @@ async def complete_store(store_id: int, payload: StoreCompletion, request: Reque
 
 async def visible_store(connection: asyncpg.Connection, store_id: int, user: dict) -> dict:
     row = await connection.fetchrow(
-        "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer "
+        "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
+        "r.id AS retailer_id,r.group_id AS retailer_group_id "
         "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
         "WHERE s.id=$1 AND " + VISIBLE,
         store_id, user["role"] == "admin", user["id"],

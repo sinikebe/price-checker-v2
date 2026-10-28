@@ -6,12 +6,14 @@ import "./v2-price-history.css";
 
 type Observation = {
   id: number; price: string; observed_at: string; retailer: string; retailer_id: number;
+  source_retailer: string | null;
   store_name: string; store_id: number; city: string | null; postal_code: string | null; sales_channel: Channel;
   source: "manual" | "bookmarklet" | "connector" | "third_party"; source_provider: string | null;
   available: boolean; correction_status: string | null; note: string | null;
 };
 type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" | "store_name" | "city" | "sales_channel" | "note"> & {
   author: string; author_id: number; status: "draft" | "approved" | "rejected";
+  source_retailer: string | null;
   capture_ean: string | null; quantity_text: string | null; captured_store_name: string | null;
 };
 type Channel = "in_store" | "drive" | "delivery";
@@ -347,7 +349,8 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
         <tbody>{observations.map(row => <tr key={row.id}>
           <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
-          <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}</td>
+          <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}
+            {row.source_retailer && row.source_retailer !== row.retailer && ` · source : ${row.source_retailer}`}</td>
           <td>{channels[row.sales_channel]}</td>
           <td>{row.source === "manual" ? "Relevé validé" : row.source === "bookmarklet" ? "Bookmarklet validé" : row.source === "third_party" ? row.source_provider === "open_prices"
             ? <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>
@@ -388,6 +391,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     {user && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
         <ul>{drafts.map(draft => <li key={draft.id}>
           <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
+            {draft.source_retailer && draft.source_retailer !== draft.retailer && ` · source : ${draft.source_retailer}`}
             {draft.note && <small> · {draft.note}</small>}
             {draft.capture_ean && <small> · EAN capturé : {draft.capture_ean}</small>}
             {draft.captured_store_name && <small> · Magasin indiqué par la page : {draft.captured_store_name}</small>}

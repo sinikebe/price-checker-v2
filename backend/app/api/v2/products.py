@@ -688,30 +688,72 @@ def _off_snapshot_response(product_id: int, row) -> dict:
     }
 
 
-@router.get("/{product_id}/off")
-async def get_product_off(product_id: int):
+async def _off_canonical_id(connection, product_id: int) -> int:
+    canonical_id = await connection.fetchval(
+        "SELECT COALESCE(m.to_id,p.id) FROM v2_products p "
+        "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+        "WHERE p.id=$1", product_id,
+    )
+    if canonical_id is None:
+        raise HTTPException(status_code=404, detail="Produit introuvable.")
+    await require_visible(connection, "product", canonical_id)
+    return canonical_id
+
+
+@router.get("/{product_id}/off-sources")
+async def product_off_sources(product_id: int):
+    """Existing OFF sheets from merged GTINs remain attached to the current card."""
     connection = await _connect()
     try:
-        await require_visible(connection, "product", product_id)
-        product = await connection.fetchrow(
-            "SELECT data FROM v2_products WHERE id=$1", product_id
+        canonical_id = await _off_canonical_id(connection, product_id)
+        rows = await connection.fetch(
+            "SELECT * FROM (SELECT DISTINCT ON (lpad(snap.barcode,14,'0')) "
+            "snap.product_id,snap.barcode,snap.fetched_at,"
+            "(snap.product_id=$1) AS primary_source "
+            "FROM v2_product_off_snapshots snap "
+            "JOIN v2_products p ON p.id=snap.product_id "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE COALESCE(m.to_id,p.id)=$1 "
+            "AND lpad(snap.barcode,14,'0')=lpad(p.data->>'ean',14,'0') "
+            "ORDER BY lpad(snap.barcode,14,'0'),primary_source DESC,"
+            "snap.fetched_at DESC,snap.product_id) sources "
+            "ORDER BY primary_source DESC,fetched_at DESC,product_id",
+            canonical_id,
         )
-        if product is None:
-            raise HTTPException(status_code=404, detail="Produit introuvable.")
-        barcode = _decoded(product["data"]).get("ean", "")
-        if not barcode:
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+@router.get("/{product_id}/off")
+async def get_product_off(product_id: int, barcode: str | None = Query(default=None)):
+    connection = await _connect()
+    try:
+        canonical_id = await _off_canonical_id(connection, product_id)
+        default_barcode = await connection.fetchval(
+            "SELECT data->>'ean' FROM v2_products WHERE id=$1", product_id,
+        )
+        requested = normalize_barcode(barcode) if barcode is not None else default_barcode
+        if not requested:
             raise HTTPException(
                 status_code=422, detail="Ce produit n'a pas de code EAN / GTIN."
             )
         row = await connection.fetchrow(
-            "SELECT * FROM v2_product_off_snapshots WHERE product_id=$1",
-            product_id,
+            "SELECT snap.* FROM v2_product_off_snapshots snap "
+            "JOIN v2_products p ON p.id=snap.product_id "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE COALESCE(m.to_id,p.id)=$1 "
+            "AND lpad(p.data->>'ean',14,'0')=lpad($2,14,'0') "
+            "AND lpad(snap.barcode,14,'0')=lpad($2,14,'0') "
+            "ORDER BY (snap.product_id=$1) DESC,snap.fetched_at DESC LIMIT 1",
+            canonical_id, requested,
         )
-        if row is None or row["barcode"] != barcode:
+        if row is None:
             raise HTTPException(
                 status_code=404, detail="Aucune fiche Open Food Facts enregistrée."
             )
-        return _off_snapshot_response(product_id, row)
+        return {**_off_snapshot_response(canonical_id, row),
+                "source_product_id": row["product_id"]}
     finally:
         await connection.close()
 

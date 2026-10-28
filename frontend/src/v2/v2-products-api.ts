@@ -34,7 +34,7 @@ export type Draft = {
     retailer: string; store_name: string }[];
 };
 export type V2OffSnapshot = {
-  product_id: number; barcode: string; fetched_at: string;
+  product_id: number; source_product_id?: number; barcode: string; fetched_at: string;
   off_rev: number | null; off_last_modified: string | null; off_url: string;
   field_count: number; presented_field_count: number; sections: OffSection[];
 };

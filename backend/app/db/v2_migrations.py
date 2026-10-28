@@ -755,6 +755,54 @@ MIGRATIONS = {
             CHECK (from_group_id <> to_group_id)
         );
     """,
+    "0025_merge_source_retailers_and_barcode_sync": """
+        -- Canonical retailer/store IDs remain consistent for existing composite
+        -- foreign keys. Keep the source label independently for audit/display.
+        -- Persist verified families even on a fresh empty installation.
+        INSERT INTO v2_retailer_groups(name,name_key) VALUES
+            ('Auchan','auchan'),('Carrefour','carrefour'),
+            ('Intermarché','intermarché'),('E.Leclerc','e.leclerc')
+        ON CONFLICT(name_key) DO NOTHING;
+        -- Seed verified family labels even if that variant did not exist
+        -- when migration 0024 ran. An explicit admin assignment wins.
+        INSERT INTO v2_retailer_group_names(name_key,group_id)
+        SELECT aliases.name_key,g.id FROM (VALUES
+            ('auchan','auchan'),('auchan supermarché','auchan'),
+            ('carrefour','carrefour'),('carrefour city','carrefour'),
+            ('carrefour contact','carrefour'),('carrefour express','carrefour'),
+            ('carrefour market','carrefour'),
+            ('intermarché','intermarché'),('intermarché contact','intermarché'),
+            ('intermarché hyper','intermarché'),('intermarché super','intermarché'),
+            ('e.leclerc','e.leclerc'),('e. leclerc','e.leclerc'),
+            ('e.leclerc drive','e.leclerc'),('e. leclerc drive','e.leclerc'),
+            ('e.leclerc express','e.leclerc'),
+            ('centre commercial e.leclerc','e.leclerc')
+        ) AS aliases(name_key,group_key)
+        JOIN v2_retailer_groups g ON g.name_key=aliases.group_key
+        ON CONFLICT(name_key) DO NOTHING;
+
+        ALTER TABLE v2_price_drafts ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        ALTER TABLE v2_offers ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        ALTER TABLE v2_price_observations ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        CREATE INDEX v2_open_prices_source_record_idx
+            ON v2_price_observations(product_id,source_record_id)
+            WHERE source_provider='open_prices';
+
+        -- A merged product may own several valid GTINs. Throttle each GTIN
+        -- separately while still attaching imported prices to the canonical ID.
+        ALTER TABLE v2_open_prices_sync_state DROP CONSTRAINT v2_open_prices_sync_state_pkey;
+        ALTER TABLE v2_open_prices_sync_state ADD COLUMN barcode varchar(14);
+        UPDATE v2_open_prices_sync_state s SET barcode=CASE
+            WHEN p.data->>'ean' ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$'
+            THEN p.data->>'ean' ELSE 'legacy:unknown' END
+        FROM v2_products p WHERE p.id=s.product_id;
+        ALTER TABLE v2_open_prices_sync_state ALTER COLUMN barcode SET NOT NULL;
+        ALTER TABLE v2_open_prices_sync_state
+            ADD PRIMARY KEY(product_id,barcode);
+    """,
 
 
 }

@@ -7,9 +7,10 @@ type Kind = "product" | "store";
 type Field = { key: string; origin: unknown; duplicate: unknown; suggested: unknown;
   state: "identical" | "one_sided" | "conflict" };
 type Preview = { kind: Kind; origin_id: number; duplicate_id: number; origin_revision: number;
-  duplicate_revision: number; origin_fingerprint: string; duplicate_fingerprint: string; fields: Field[] };
+  duplicate_revision: number; origin_fingerprint: string; duplicate_fingerprint: string; fields: Field[];
+  origin_retailer: string | null; duplicate_retailer: string | null };
 type Detail = { report: { id: number; kind: Kind; content_id: number; reason: string;
-  duplicate_id: number | null; duplicate_url: string | null }; origin: { id: number; data: Record<string,unknown> } };
+  duplicate_id: number | null; duplicate_url: string | null }; origin: { id: number; data: Record<string,unknown>; retailer: string | null } };
 type Candidate = { id: number; name: string; detail: string; code: string | null };
 const labels: Record<string,string> = {
   name: "Nom", brand: "Marque", commercial_name: "Nom commercial", composition: "Composition",
@@ -104,6 +105,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
     {detail && <><p>{detail.report.reason}</p><div className="v2-duplicate-pair">
       <section className="v2-duplicate-pane"><h3>Fiche signalée · #{detail.origin.id}</h3>
         <p><Link to={sheetUrl(detail.report.kind,detail.origin.id)} target="_blank">Ouvrir la fiche ↗</Link></p>
+        {detail.origin.retailer && <p>Enseigne source : {detail.origin.retailer}</p>}
         <dl>{Object.entries(detail.origin.data).filter(([,v]) => v !== null && v !== "")
           .map(([key,value]) => <div key={key}><dt>{labels[key] ?? key}</dt><dd>{format(value)}</dd></div>)}</dl>
       </section>
@@ -117,7 +119,8 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
           <Link to={sheetUrl(detail.report.kind,item.id)} target="_blank">Fiche ↗</Link>
         </li>)}</ul>
         {candidates.length === 0 && <p>Aucun résultat. Essayez l’ID ou un autre nom.</p>}
-        {preview && <><p><strong>Fiche sélectionnée : #{preview.duplicate_id}</strong></p>
+        {preview && <><p><strong>Fiche sélectionnée : #{preview.duplicate_id}</strong>
+          {preview.duplicate_retailer && <> · Enseigne source : {preview.duplicate_retailer}</>}</p>
           <dl>{preview.fields.filter(field => field.duplicate !== null && field.duplicate !== "")
             .map(field => <div key={field.key}><dt>{labels[field.key] ?? field.key}</dt><dd>{format(field.duplicate)}</dd></div>)}</dl>
           <button type="button" className="v2-button v2-button-primary" onClick={() => setCandidateConfirmed(true)}

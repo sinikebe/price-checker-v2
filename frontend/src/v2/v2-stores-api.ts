@@ -1,5 +1,6 @@
 export type StoreCandidate = {
-  id: number; retailer: string; name: string; city: string | null;
+  id: number; retailer: string; retailer_id: number; retailer_group_id: number;
+  name: string; city: string | null;
   postal_code: string | null; match: "exact" | "near"; matched_name: string;
 };
 export type StoreMatches = { matches: StoreCandidate[]; exact_store_id: number | null };

@@ -5,16 +5,21 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import asyncpg
 import httpx
 import pytest
 import pytest_asyncio
 
-from app.api.v2 import duplicate_merges, moderation, products, stores
+from app.api.v2 import duplicate_merges, moderation, prices, products, stores
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from app.services import v2_open_prices_sync as sync
+from app.services import v2_off_refresh_queue as off_queue
+from app.services.v2_open_prices_sync import _save_items as save_open_prices_items
 from app.services.v2_open_prices_sync import _store as open_prices_store
 
 MANUAL = (
@@ -123,9 +128,9 @@ async def data(monkeypatch):
         async def fake_user(_connection, request):
             return users.get(request.headers.get("x-test-user"))
 
-        for module in (moderation, duplicate_merges, stores, products):
+        for module in (moderation, duplicate_merges, stores, products, prices):
             monkeypatch.setattr(module, "_connect", fake_connect)
-        for module in (moderation, stores):
+        for module in (moderation, stores, prices):
             monkeypatch.setattr(module, "_current_user", fake_user)
         yield config, users, retailer, stores_ids, product_ids, offer
     finally:
@@ -258,13 +263,14 @@ async def test_store_directory_duplicate_report_and_atomic_merge(data):
                 == 1
             )
             location = {
+                "id": 44102,
                 "osm_type": "NODE",
                 "osm_id": 102,
                 "osm_address_city": "Paris",
                 "osm_address_postcode": "75001",
                 "osm_name": "Carrefour Paris",
             }
-            assert await open_prices_store(connection, location) == (retailer, ids[0])
+            assert await open_prices_store(connection, location) == (retailer, ids[0], None)
             observations = await connection.fetch(
                 "SELECT merge_duplicate_of_id FROM v2_price_observations "
                 "WHERE product_id=$1 AND store_id=$2 AND source='manual' ORDER BY id",
@@ -285,12 +291,26 @@ async def test_store_directory_duplicate_report_and_atomic_merge(data):
 
 
 @pytest.mark.asyncio
-async def test_product_merge_preserves_observations_and_barcode_route(data):
+async def test_product_merge_preserves_observations_and_barcode_route(data, monkeypatch):
     config, _, retailer, ids, product_ids, offer = data
     connection = await connect_v2(config)
     try:
         for product_id in product_ids:
             await connection.execute(MANUAL, product_id, retailer, ids[0])
+        assert await save_open_prices_items(
+            connection, product_ids[1], "22222222",
+            [open_price("22222222", 61001, location_id=66101, osm_id=66101)]
+        ) == 1
+        for product_id, barcode in zip(product_ids, ("11111111", "22222222")):
+            await connection.execute(
+                "INSERT INTO v2_product_off_snapshots(product_id,barcode,payload) "
+                "VALUES($1,$2,$3::jsonb)",
+                product_id, barcode, json.dumps({"code": barcode}),
+            )
+        await connection.execute(
+            "INSERT INTO v2_off_refresh_queue(product_id,next_attempt_at) "
+            "VALUES($1,now()-interval '1 minute')", product_ids[1],
+        )
     finally:
         await connection.close()
     async with httpx.AsyncClient(
@@ -327,6 +347,30 @@ async def test_product_merge_preserves_observations_and_barcode_route(data):
         ] == product_ids[0]
         barcode = await client.get("/api/v2/products/by-barcode/22222222")
         assert barcode.status_code == 200 and barcode.json()["id"] == product_ids[0]
+        capture = await client.post(
+            f"/api/v2/prices/products/{product_ids[0]}/capture-drafts",
+            json={"ean": "22222222", "source_url": "https://www.carrefour.fr/p/test",
+                  "price": {"retailer": "Carrefour", "store_id": ids[0],
+                            "store_name": "Carrefour City Paris",
+                            "city": "Paris", "postal_code": "75001",
+                            "sales_channel": "drive", "price": "3.49",
+                            "observed_at": date.today().isoformat()}},
+            headers={"x-test-user": "author"},
+        )
+        assert capture.status_code == 201, capture.text
+        reviewed = await client.post(
+            f"/api/v2/prices/drafts/{capture.json()['id']}/approve",
+            headers={"x-test-user": "admin"},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        sources = await client.get(f"/api/v2/products/{product_ids[0]}/off-sources")
+        assert sources.status_code == 200, sources.text
+        assert {row["barcode"] for row in sources.json()} == {"11111111", "22222222"}
+        old_off = await client.get(
+            f"/api/v2/products/{product_ids[0]}/off", params={"barcode": "22222222"}
+        )
+        assert old_off.status_code == 200, old_off.text
+        assert old_off.json()["source_product_id"] == product_ids[1]
         connection = await connect_v2(config)
         try:
             assert (
@@ -362,6 +406,56 @@ async def test_product_merge_preserves_observations_and_barcode_route(data):
             )
             with pytest.raises(asyncpg.UniqueViolationError):
                 await connection.execute(MANUAL, product_ids[0], retailer, ids[0])
+            before = await connection.fetchval("SELECT count(*) FROM v2_stores")
+            assert await save_open_prices_items(
+                connection, product_ids[0], "22222222",
+                [open_price("22222222", 61001, location_id=66101, osm_id=66101)]
+            ) == 0
+            assert await save_open_prices_items(
+                connection, product_ids[0], "22222222",
+                [open_price("22222222", 61002, location_id=66101, osm_id=66101)]
+            ) == 1
+            assert await connection.fetchval("SELECT count(*) FROM v2_stores") == before
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_price_observations "
+                "WHERE product_id=$1 AND source_provider='open_prices'",
+                product_ids[0],
+            ) == 2
+            async def fake_connect():
+                return await connect_v2(config)
+            monkeypatch.setattr(sync, "_connect", fake_connect)
+            monkeypatch.setattr(sync, "_read_config", lambda: config)
+            monkeypatch.setattr(sync, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
+            monkeypatch.setattr(sync, "MIN_INTERVAL_SECONDS", 0)
+            await connection.execute(
+                "UPDATE v2_open_prices_sync_control SET next_run_at=now()-interval '1 minute'"
+            )
+            requested_codes = []
+            def respond(request):
+                requested_codes.append(request.url.params["product_code"])
+                return httpx.Response(200, json={"items": []})
+            async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as sync_client:
+                cycle = await sync.run_sync_cycle(sync_client)
+            assert cycle["requested"] == 2
+            assert set(requested_codes) == {"11111111", "22222222"}
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_open_prices_sync_state WHERE product_id=$1",
+                product_ids[0],
+            ) == 2
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_off_refresh_queue WHERE product_id=$1",
+                product_ids[1],
+            ) == 1
+            async def fetch_old_off(barcode):
+                assert barcode == "22222222"
+                return {"code": barcode, "rev": 2}
+            monkeypatch.setattr(off_queue, "_connect", fake_connect)
+            monkeypatch.setattr(off_queue, "fetch_full_off_product", fetch_old_off)
+            assert await off_queue.run_due_refresh_once() == "updated"
+            assert await connection.fetchval(
+                "SELECT off_rev FROM v2_product_off_snapshots WHERE product_id=$1",
+                product_ids[1],
+            ) == 2
         finally:
             await connection.close()
 
@@ -430,3 +524,178 @@ async def test_review_is_private_and_rejects_stale_store_comparison(data):
             )
         finally:
             await connection.close()
+
+
+def open_price(barcode: str, price_id: int, *, location_id: int = 55103,
+               osm_id: int = 1103, brand: str = "Carrefour City") -> dict:
+    return {
+        "id": price_id, "type": "PRODUCT", "product_code": barcode,
+        "price": 2.49, "currency": "EUR", "date": date.today().isoformat(),
+        "price_is_discounted": False, "duplicate_of": None,
+        "location": {
+            "id": location_id, "type": "OSM", "osm_type": "NODE",
+            "osm_id": osm_id, "osm_name": "Carrefour City Paris",
+            "osm_brand": brand, "osm_address_city": "Paris",
+            "osm_address_postcode": "75001",
+            "osm_address_country_code": "FR",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_cross_retailer_store_merge_keeps_sources_and_reimports_to_canonical(data):
+    config, users, canonical_retailer, ids, products_ids, _ = data
+    connection = await connect_v2(config)
+    try:
+        variant = await connection.fetchval(
+            "INSERT INTO v2_retailers(code,name) VALUES('city','Carrefour City') RETURNING id"
+        )
+        assert await connection.fetchval(
+            "SELECT a.group_id=b.group_id FROM v2_retailers a "
+            "JOIN v2_retailers b ON b.id=$2 WHERE a.id=$1",
+            canonical_retailer, variant,
+        )
+        donor = await connection.fetchval(
+            "INSERT INTO v2_stores(retailer_id,name,city,postal_code,osm_type,osm_id,import_key) "
+            "VALUES($1,'Carrefour City Paris','Paris','75001','node',1103,"
+            "'open_prices:location:55103') RETURNING id",
+            variant,
+        )
+        await connection.execute(MANUAL, products_ids[0], canonical_retailer, ids[0])
+        await connection.execute(MANUAL, products_ids[0], variant, donor)
+        offer = await connection.fetchval(
+            "INSERT INTO v2_offers(retailer_id,store_id,source_kind,channel,title,price_amount,collected_at) "
+            "VALUES($1,$2,'connector','drive','Lait',2,now()) RETURNING id",
+            variant, donor,
+        )
+        await connection.execute(
+            "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,offer_id,source,price,observed_at) "
+            "VALUES($1,$2,$3,$4,'connector',2,now())",
+            products_ids[1], variant, donor, offer,
+        )
+        draft = await connection.fetchval(
+            "INSERT INTO v2_price_drafts(author_id,product_id,retailer_id,store_id,"
+            "entry_kind,price,observed_at,sales_channel) "
+            "VALUES($1,$2,$3,$4,'manual',2,now(),'drive') RETURNING id",
+            users["author"]["id"], products_ids[1], variant, donor,
+        )
+        assert await save_open_prices_items(
+            connection, products_ids[1], "22222222", [open_price("22222222", 51001)]
+        ) == 1
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://test"
+        ) as client:
+            report = await client.post(
+                "/api/v2/moderation/reports",
+                json={"kind": "store", "content_id": ids[0],
+                      "report_type": "duplicate", "duplicate_url": f"https://test/v2/magasins/{donor}"},
+                headers={"x-test-user": "author"},
+            )
+            assert report.status_code == 201, report.text
+            preview = await client.get(
+                f"/api/v2/moderation/reports/{report.json()['id']}/merge-preview",
+                params={"duplicate_id": donor}, headers={"x-test-user": "admin"},
+            )
+            assert preview.status_code == 200, preview.text
+            assert preview.json()["origin_retailer"] == "Carrefour"
+            assert preview.json()["duplicate_retailer"] == "Carrefour City"
+            merged = await client.post(
+                f"/api/v2/moderation/reports/{report.json()['id']}/merge",
+                json=merge_body(preview.json()), headers={"x-test-user": "admin"},
+            )
+            assert merged.status_code == 200, merged.text
+            directory = (await client.get("/api/v2/stores")).json()
+            assert donor not in {item["id"] for item in directory}
+            matched = (await client.get(
+                "/api/v2/stores/matches",
+                params={"retailer": "Carrefour City", "name": "Carrefour City Paris",
+                        "city": "Paris", "postal_code": "75001"},
+            )).json()
+            assert matched["exact_store_id"] == ids[0]
+            captured = await client.post(
+                f"/api/v2/prices/products/{products_ids[1]}/capture-drafts",
+                json={"ean": "22222222", "source_url": "https://www.carrefour.fr/p/test",
+                      "price": {"retailer": "Carrefour City", "store_id": ids[0],
+                                "store_name": "Carrefour City Paris",
+                                "city": "Paris", "postal_code": "75001",
+                                "sales_channel": "in_store", "price": "3.49",
+                                "observed_at": date.today().isoformat()}},
+                headers={"x-test-user": "author"},
+            )
+            assert captured.status_code == 201, captured.text
+            assert await connection.fetchval(
+                "SELECT source_retailer_id FROM v2_price_drafts WHERE id=$1",
+                captured.json()["id"],
+            ) == variant
+            reviewed = await client.post(
+                f"/api/v2/prices/drafts/{captured.json()['id']}/approve",
+                headers={"x-test-user": "admin"},
+            )
+            assert reviewed.status_code == 200, reviewed.text
+            assert await connection.fetchval(
+                "SELECT source_retailer_id FROM v2_price_observations WHERE id=$1",
+                reviewed.json()["observation_id"],
+            ) == variant
+            history = (await client.get(f"/api/v2/prices/products/{products_ids[1]}")).json()
+            assert any(row["store_id"] == ids[0] and
+                       row["source_retailer"] == "Carrefour City"
+                       for row in history["observations"])
+        for table in ("v2_price_drafts", "v2_offers", "v2_price_observations"):
+            rows = await connection.fetch(
+                f"SELECT retailer_id,store_id,source_retailer_id FROM {table} "
+                "WHERE source_retailer_id=$1", variant,
+            )
+            assert rows and all(row["retailer_id"] == canonical_retailer
+                                and row["store_id"] == ids[0] for row in rows)
+        assert await connection.fetchval(
+            "SELECT store_id FROM v2_price_drafts WHERE id=$1", draft,
+        ) == ids[0]
+        assert await open_prices_store(
+            connection, open_price("22222222", 51002, osm_id=9999)["location"]
+        ) == (canonical_retailer, ids[0], variant)
+        before = await connection.fetchval("SELECT count(*) FROM v2_stores")
+        assert await save_open_prices_items(
+            connection, products_ids[1], "22222222",
+            [open_price("22222222", 51001, osm_id=9999)]
+        ) == 0
+        assert await save_open_prices_items(
+            connection, products_ids[1], "22222222",
+            [open_price("22222222", 51002, osm_id=9999)]
+        ) == 1
+        assert await connection.fetchval("SELECT count(*) FROM v2_stores") == before
+        assert await connection.fetchval(
+            "SELECT store_id FROM v2_price_observations "
+            "WHERE source_provider='open_prices' AND source_record_id='51002'"
+        ) == ids[0]
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_cross_group_store_merge_is_refused(data):
+    config, _, retailer, ids, product_ids, _ = data
+    connection = await connect_v2(config)
+    try:
+        other = await connection.fetchval(
+            "INSERT INTO v2_retailers(code,name) VALUES('other','Unrelated') RETURNING id"
+        )
+        donor = await connection.fetchval(
+            "INSERT INTO v2_stores(retailer_id,name,city,postal_code,osm_type,osm_id) "
+            "VALUES($1,'Unrelated Paris','Paris','75001','node',9999) RETURNING id", other,
+        )
+        await connection.execute(MANUAL, product_ids[0], other, donor)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://test"
+        ) as client:
+            report = await client.post(
+                "/api/v2/moderation/reports",
+                json={"kind": "store", "content_id": ids[0], "report_type": "duplicate"},
+                headers={"x-test-user": "author"},
+            )
+            preview = await client.get(
+                f"/api/v2/moderation/reports/{report.json()['id']}/merge-preview",
+                params={"duplicate_id": donor}, headers={"x-test-user": "admin"},
+            )
+            assert preview.status_code == 422
+    finally:
+        await connection.close()

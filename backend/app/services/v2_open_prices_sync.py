@@ -80,48 +80,72 @@ def _retry_seconds(header: str | None) -> int:
     return max(6 * 3600, min(seconds, 24 * 3600))
 
 
-async def _store(connection, location: dict) -> tuple[int, int] | None:
+async def _source_retailer(connection, brand: str) -> int:
+    existing = await connection.fetchval(
+        "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
+        brand,
+    )
+    if existing is not None:
+        return existing
+    digest = hashlib.sha256(brand.casefold().encode()).hexdigest()[:24]
+    return await connection.fetchval(
+        "INSERT INTO v2_retailers(code,name) VALUES($1,$2) "
+        "ON CONFLICT(code) DO UPDATE SET code=EXCLUDED.code RETURNING id",
+        "open-prices-" + digest, brand,
+    )
+
+
+async def _store(connection, location: dict) -> tuple[int, int, int | None] | None:
+    """Return canonical retailer/store and the external source retailer, if distinct."""
     osm_type = location["osm_type"].lower()
     osm_id = location["osm_id"]
+    import_key = "open_prices:location:" + str(location["id"])
+    source_brand = location.get("osm_brand")
+    source_brand = source_brand.strip()[:200] if isinstance(source_brand, str) else ""
+    # The source's stable location ID also survives a merge. OSM IDs may be
+    # changed upstream, so checking only OSM identity can recreate a donor.
     existing = await connection.fetchrow(
-        "SELECT s.id,s.retailer_id FROM v2_stores s WHERE s.osm_type=$1 AND s.osm_id=$2 "
+        "SELECT c.id,c.retailer_id FROM v2_stores old "
+        "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
+        "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
+        "WHERE old.import_key=$3 "
+        "UNION ALL SELECT s.id,s.retailer_id FROM v2_stores s "
+        "WHERE s.osm_type=$1 AND s.osm_id=$2 "
         "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
         "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
         "LIMIT 1",
-        osm_type, osm_id,
+        osm_type, osm_id, import_key,
     )
     if existing:
+        source_id = await _source_retailer(connection, source_brand) if source_brand else None
         await connection.execute(
             "UPDATE v2_stores SET city=COALESCE(NULLIF(btrim(city),''),$1),"
             "postal_code=COALESCE(NULLIF(btrim(postal_code),''),$2) WHERE id=$3",
             location["osm_address_city"].strip(), location["osm_address_postcode"].strip(), existing["id"],
         )
-        return existing["retailer_id"], existing["id"]
-    brand = (location.get("osm_brand") or location["osm_name"]).strip()[:200]
+        await connection.execute(
+            "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
+            "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+            osm_type, osm_id, existing["id"],
+        )
+        return (existing["retailer_id"], existing["id"],
+                source_id if source_id != existing["retailer_id"] else None)
+    brand = (source_brand or location["osm_name"]).strip()[:200]
     name = (location.get("osm_name") or brand).strip()[:300]
     if not brand or not name:
         return None
-    retailer = await connection.fetchval(
-        "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
-        brand,
-    )
-    if retailer is None:
-        digest = hashlib.sha256(brand.casefold().encode()).hexdigest()[:24]
-        retailer = await connection.fetchval(
-            "INSERT INTO v2_retailers(code,name) VALUES($1,$2) "
-            "ON CONFLICT(code) DO UPDATE SET code=EXCLUDED.code RETURNING id",
-            "open-prices-" + digest, brand,
-        )
-    # An approved external name can associate a new Open Prices location with
-    # an existing store only when retailer and postcode agree uniquely. Names
-    # alone, fuzzy matches and pending alias proposals never merge locations.
+    retailer = await _source_retailer(connection, brand)
+    # Approved external aliases may map across explicitly grouped retailer
+    # labels. An OSM identity still takes precedence over a name match.
     postcode = (location.get("osm_address_postcode") or "").strip()
     if postcode:
         candidates = await connection.fetch(
-            "SELECT s.id,s.city FROM v2_store_aliases a "
+            "SELECT s.id,s.city,s.retailer_id FROM v2_store_aliases a "
             "JOIN v2_stores s ON s.id=a.store_id "
+            "JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE a.source='open_prices' AND a.name_key=$1 "
-            "AND s.retailer_id=$2 AND s.postal_code=$3 AND s.osm_id IS NULL "
+            "AND r.group_id=(SELECT group_id FROM v2_retailers WHERE id=$2) "
+            "AND s.postal_code=$3 AND s.osm_id IS NULL "
             "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
             "WHERE m.kind='store' AND m.from_id=s.id) "
             "AND NULLIF(btrim(s.city),'') IS NOT NULL",
@@ -131,7 +155,13 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
         candidates = [row for row in candidates if not location_city or not row["city"]
                       or name_key(row["city"]) == location_city]
         if len(candidates) == 1:
-            return retailer, candidates[0]["id"]
+            await connection.execute(
+                "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
+                "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+                osm_type, osm_id, candidates[0]["id"],
+            )
+            return (candidates[0]["retailer_id"], candidates[0]["id"],
+                    retailer if retailer != candidates[0]["retailer_id"] else None)
     inserted = await connection.fetchrow(
         """INSERT INTO v2_stores(
             retailer_id,name,city,postal_code,osm_type,osm_id,import_key
@@ -139,18 +169,21 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
         ON CONFLICT DO NOTHING RETURNING id,retailer_id""",
         retailer, name, (location.get("osm_address_city") or None),
         (location.get("osm_address_postcode") or None),
-        osm_type, osm_id, "open_prices:location:" + str(location["id"]),
+        osm_type, osm_id, import_key,
     )
     if inserted:
-        return inserted["retailer_id"], inserted["id"]
+        return inserted["retailer_id"], inserted["id"], None
+    # A concurrent insert or donor import_key: resolve once, never recurse.
     existing = await connection.fetchrow(
-        "SELECT s.id,s.retailer_id FROM v2_stores s WHERE s.osm_type=$1 AND s.osm_id=$2 "
-        "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
-        "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
-        "LIMIT 1",
-        osm_type, osm_id,
+        "SELECT c.id,c.retailer_id FROM v2_stores old "
+        "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
+        "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
+        "WHERE old.import_key=$1 OR (old.osm_type=$2 AND old.osm_id=$3) "
+        "ORDER BY (old.import_key=$1) DESC LIMIT 1",
+        import_key, osm_type, osm_id,
     )
-    return (existing["retailer_id"], existing["id"]) if existing else None
+    return (existing["retailer_id"], existing["id"],
+            retailer if retailer != existing["retailer_id"] else None) if existing else None
 
 
 async def _save_items(connection, product_id: int, barcode: str, items: list) -> int:
@@ -163,21 +196,33 @@ async def _save_items(connection, product_id: int, barcode: str, items: list) ->
             if parsed is None:
                 continue
             location, amount, observed_at = parsed
+            # A price imported before a product merge keeps its old import_key,
+            # but its product_id is moved. Do not create a store while
+            # processing an already-known source record.
+            previous = await connection.fetchval(
+                "SELECT id FROM v2_price_observations WHERE product_id=$1 "
+                "AND source_provider='open_prices' AND source_record_id=$2 LIMIT 1",
+                product_id, str(item["id"]),
+            )
+            if previous:
+                continue
             identity = await _store(connection, location)
             if identity is None:
                 continue
-            retailer_id, store_id = identity
+            retailer_id, store_id, source_retailer_id = identity
             result = await connection.execute(
                 """INSERT INTO v2_price_observations(
                     product_id,retailer_id,store_id,source,source_provider,
-                    source_record_id,price,observed_at,sales_channel,note,import_key
+                    source_record_id,price,observed_at,sales_channel,note,import_key,
+                    source_retailer_id
                 ) VALUES($1,$2,$3,'third_party','open_prices',$4,$5,$6,
-                         'in_store',$7,$8)
+                         'in_store',$7,$8,$9)
                 ON CONFLICT(import_key) DO NOTHING""",
                 product_id, retailer_id, store_id, str(item["id"]), amount,
                 observed_at,
                 "Open Prices / Open Food Facts (ODbL) · relevé tiers non vérifié.",
                 "open_prices:price:" + str(item["id"]) + ":product:" + str(product_id),
+                source_retailer_id,
             )
             imported += result == "INSERT 0 1"
     return imported
@@ -214,22 +259,29 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
         if not claimed:
             return {"status": "not_due", "requested": 0, "imported": 0}
         rows = await connection.fetch(
-            """SELECT p.id,p.data->>'ean' AS barcode
-               FROM v2_products p
-               LEFT JOIN v2_open_prices_sync_state s ON s.product_id=p.id
-               WHERE p.data->>'ean' ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$'
-                 AND (s.checked_at IS NULL OR s.checked_at<=now()-interval '24 hours')
-                 AND NOT EXISTS (
-                   SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id
-                 )
-                 AND NOT EXISTS (
-                   SELECT 1 FROM v2_content_withdrawals w
-                   WHERE w.kind='product' AND w.content_id=p.id
-                 )
-               ORDER BY s.checked_at NULLS FIRST,p.id LIMIT $1""",
+            """WITH aliases AS (
+                SELECT DISTINCT ON (COALESCE(m.to_id,p.id),
+                                    lpad(p.data->>'ean',14,'0'))
+                       COALESCE(m.to_id,p.id) AS id,p.data->>'ean' AS barcode
+                FROM v2_products p
+                LEFT JOIN v2_content_merges m
+                  ON m.kind='product' AND m.from_id=p.id
+                JOIN v2_products canonical ON canonical.id=COALESCE(m.to_id,p.id)
+                WHERE p.data->>'ean' ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$'
+                  AND NOT EXISTS (SELECT 1 FROM v2_products next
+                                  WHERE next.predecessor_id=p.id)
+                  AND NOT EXISTS (SELECT 1 FROM v2_products next
+                                  WHERE next.predecessor_id=canonical.id)
+                  AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w
+                                  WHERE w.kind='product' AND w.content_id=canonical.id)
+                ORDER BY COALESCE(m.to_id,p.id),lpad(p.data->>'ean',14,'0'),
+                         (p.id=COALESCE(m.to_id,p.id)) DESC,p.id
+            )
+            SELECT a.id,a.barcode FROM aliases a
+            LEFT JOIN v2_open_prices_sync_state s
+              ON s.product_id=a.id AND s.barcode=a.barcode
+            WHERE s.checked_at IS NULL OR s.checked_at<=now()-interval '24 hours'
+            ORDER BY s.checked_at NULLS FIRST,a.id,a.barcode LIMIT $1""",
             MAX_PRODUCTS_PER_CYCLE,
         )
         origin = ORIGINS["dev" if get_settings().APP_ENV == "dev" else "prod"]
@@ -256,11 +308,11 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
                 count = await _save_items(connection, row["id"], row["barcode"], payload["items"])
                 imported += count
                 await connection.execute(
-                    """INSERT INTO v2_open_prices_sync_state(product_id,checked_at,imported_count)
-                       VALUES($1,now(),$2) ON CONFLICT(product_id) DO UPDATE SET
+                    """INSERT INTO v2_open_prices_sync_state(product_id,barcode,checked_at,imported_count)
+                       VALUES($1,$2,now(),$3) ON CONFLICT(product_id,barcode) DO UPDATE SET
                        checked_at=excluded.checked_at,
-                       imported_count=v2_open_prices_sync_state.imported_count+$2""",
-                    row["id"], count,
+                       imported_count=v2_open_prices_sync_state.imported_count+$3""",
+                    row["id"], row["barcode"], count,
                 )
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 logger.warning("Open Prices sync paused after %s", type(exc).__name__)
