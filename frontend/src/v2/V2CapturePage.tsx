@@ -73,8 +73,9 @@ function today() {
 function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
   const anchor = useRef<HTMLAnchorElement>(null);
   const [copied, setCopied] = useState(false);
-  const href = useMemo(() => "javascript:" + bookmarkletSource.replace('"__V2_CAPTURE_URL__"',
-    JSON.stringify(window.location.origin + "/v2/capture")), []);
+  // Percent-encoding preserves source newlines and comments when Chrome saves the javascript: URL.
+  const href = useMemo(() => "javascript:" + encodeURIComponent(bookmarkletSource.replace('"__V2_CAPTURE_URL__"',
+    JSON.stringify(window.location.origin + "/v2/capture"))), []);
   useEffect(() => { anchor.current?.setAttribute("href", href); }, [href]);
   async function copy() {
     try { await navigator.clipboard.writeText(href); setCopied(true); }

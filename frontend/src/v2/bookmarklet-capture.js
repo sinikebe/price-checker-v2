@@ -26,6 +26,11 @@
     var amount = Number(value.replace(",", "."));
     return amount > 0 ? amount : null;
   }
+  function offerPrice(value) {
+    if (!value || typeof value !== "object" ||
+        (value.priceCurrency && String(value.priceCurrency).toUpperCase() !== "EUR")) return null;
+    return machinePrice(value.price);
+  }
   function visiblePrice(value) {
     if (typeof value !== "string" || perUnit.test(value)) return null;
     var match = value.replace(/[\u00a0\u202f]/g, " ").match(/(?:€\s*(\d[\d .,]*)|(\d[\d .,]*)\s*€)/);
@@ -95,7 +100,8 @@
   }
 
   var product = findProduct();
-  var offer = product && (Array.isArray(product.offers) ? product.offers[0] : product.offers);
+  var offer = product && (Array.isArray(product.offers)
+    ? (product.offers.length === 1 ? product.offers[0] : null) : product.offers);
   var brand = product && product.brand;
   var name = clean(product && product.name, 180) || headingText;
   var ean = product && (validGtin(product.gtin13) || validGtin(product.gtin14)
@@ -117,20 +123,36 @@
   }
   var price = null, source = null;
   if (/(?:^|\.)auchan\.fr$/.test(host)) {
-    price = shelfNearHeading(['.price__now', '[data-testid="product-price"]']);
+    price = shelfNearHeading(['.offer-selector__price-container .product-price--large',
+      '.price__now', '[data-testid="product-price"]']);
     if (price != null) source = "visible:auchan";
   } else {
-    if (offer && (!offer.priceCurrency || String(offer.priceCurrency).toUpperCase() === "EUR")) {
-      price = machinePrice(offer.price);
-      if (price != null) source = "schema.org";
-    }
+    var selectedOffer = offer && Array.isArray(offer.offers)
+      ? (offer.offers.length === 1 && (!offer.offerCount || Number(offer.offerCount) === 1)
+        ? offer.offers[0] : null) : offer;
+    if (offer && offer.priceCurrency && String(offer.priceCurrency).toUpperCase() !== "EUR")
+      selectedOffer = null;
+    price = offerPrice(selectedOffer);
+    if (price != null) source = "schema.org";
     if (price == null) {
       var amount = first(['meta[itemprop="price"]', 'meta[property="product:price:amount"]'], function (node) { return machinePrice(field(node)); });
       var currency = first(['meta[itemprop="priceCurrency"]', 'meta[property="product:price:currency"]'], field);
       if (amount != null && (!currency || String(currency).toUpperCase() === "EUR")) { price = amount; source = "metadata"; }
     }
     if (price == null && /(?:^|\.)intermarche\.com$/.test(host)) {
-      price = shelfNearHeading(['[data-testid="price"]', '.price-full', '.stime-product--footer__price', '.product-price']);
+      price = first(['.pdpV2-primary-price_e2e [data-testid="is-right-now"]'], function (node) {
+        var amount = visiblePrice(node.textContent || "");
+        if (amount == null) return null;
+        // A crossed-out amount is only usable when the product's own current-price data agrees.
+        if (node.querySelector(".product--price__crossedOutPrice")) {
+          var stated = product && product.price;
+          if (!stated || machinePrice(stated.value) !== amount ||
+              (stated.currency !== "€" && String(stated.currency).toUpperCase() !== "EUR")) return null;
+        }
+        return amount;
+      });
+      if (price == null) price = shelfNearHeading(['[data-testid="price"]', '.price-full',
+        '.stime-product--footer__price', '.product-price']);
       if (price != null) source = "visible:intermarche";
     }
   }
