@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "build:v2": "tsc -b && vite build",
     "lint": "eslint .",
-    "test:basket": "node --test tests/v2-basket-comparison.test.mjs"
+    "test:basket": "node --test tests/v2-basket-comparison.test.mjs",
+    "test:bookmarklet": "node --test tests/v2-bookmarklet*.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
@@ -34,6 +35,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "linkedom": "^0.18.14",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1",

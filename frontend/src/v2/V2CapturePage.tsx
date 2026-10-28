@@ -13,6 +13,15 @@ type Resolution = { status: "loading" | "product" | "draft" | "missing" | "no-ea
   id?: number; product?: Product; message?: string };
 type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: "in_store" | "drive" | "delivery" };
 const pendingKey = "v2:capture:pending";
+// The label is a fingerprint of the embedded script: changing it changes the favorite's version.
+const bookmarkletVersion = (() => {
+  let hash = 2166136261;
+  for (let index = 0; index < bookmarkletSource.length; index++) {
+    hash = Math.imul(hash ^ bookmarkletSource.charCodeAt(index), 16777619);
+  }
+  return "v1-" + (hash >>> 0).toString(16).padStart(8, "0");
+})();
+const bookmarkletLabel = "Capturer ce prix " + bookmarkletVersion;
 const channels: Record<Store["sales_channel"], string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const hosts: { domain: string; name: string }[] = [
   { domain: "intermarche.com", name: "Intermarché" }, { domain: "auchan.fr", name: "Auchan" },
@@ -86,12 +95,12 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
       <h1>Installer le bookmarklet<span>.</span></h1>
       <p>Relevez le prix d’une fiche que vous avez déjà ouverte dans le navigateur.</p></div></div>
     <section className="v2-workspace-card v2-capture">
-      <h2>Capturer ce prix</h2>
+      <h2>{bookmarkletLabel}</h2>
       <p>Glissez ce lien dans la barre des favoris, ou copiez-le et créez un favori dont l’adresse est le texte copié.</p>
-      <p><a ref={anchor} href="#" className="v2-button v2-button-primary" onClick={event => event.preventDefault()}>Capturer ce prix</a>
+      <p><a ref={anchor} href="#" className="v2-button v2-button-primary" onClick={event => event.preventDefault()}>{bookmarkletLabel}</a>
         <button type="button" className="v2-button v2-button-secondary" onClick={() => void copy()}>{copied ? "Copié" : "Copier le lien"}</button></p>
       <ol><li>Choisissez le magasin ou Drive sur le site de l’enseigne, puis ouvrez une fiche produit dont le prix est visible.</li>
-        <li>Utilisez le favori « Capturer ce prix ». Il lit uniquement la page ouverte et ne contacte pas l’enseigne.</li>
+        <li>Utilisez le favori « {bookmarkletLabel} ». Il lit uniquement la page ouverte et ne contacte pas l’enseigne.</li>
         <li>Dans V2, vérifiez la référence, le conditionnement, le prix et le point de vente proche avant d’envoyer le relevé.</li></ol>
       <p>Le point de vente saisi est mémorisé dans ce navigateur pour les prochaines captures de la même enseigne. Aucun prix n’est publié sans validation.</p>
       <p><Link to="/v2/produits">Retour aux produits</Link></p>

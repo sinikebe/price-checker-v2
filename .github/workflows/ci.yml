@@ -63,7 +63,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:basket
-      - run: node --test tests/v2-bookmarklet.test.mjs
+      - run: npm run test:bookmarklet
       - run: npm run build
 
   deployment:
