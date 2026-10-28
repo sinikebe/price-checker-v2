@@ -91,7 +91,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
     catch { setCopied(false); }
   }
   return <Frame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX</span>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Installer le bookmarklet<span>.</span></h1>
       <p>Relevez le prix d’une fiche que vous avez déjà ouverte dans le navigateur.</p></div></div>
     <section className="v2-workspace-card v2-capture">
@@ -164,7 +164,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     finally { busyRef.current = false; setBusy(false); }
   }
   return <Frame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX</span>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Vérifier le relevé<span>.</span></h1><p>La page consultée fournit une proposition, jamais un prix publié automatiquement.</p></div></div>
     <section className="v2-workspace-card v2-capture">
       {sent ? <div role="status"><h2>Relevé proposé</h2><p>Il restera privé jusqu’à validation.</p>

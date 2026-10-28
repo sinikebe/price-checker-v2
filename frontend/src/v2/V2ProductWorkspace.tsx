@@ -48,7 +48,7 @@ export function Frame({ children, user, onLogout }: { children: React.ReactNode;
         <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
       <nav className="v2-nav" aria-label="Navigation principale">
         <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
-        <Link to="/v2/produits/nouveau">Ajouter</Link><Link to="/v2/capture/installer">Capturer un prix</Link>
+        <Link to="/v2/produits/nouveau">Ajouter</Link><Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
         {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
         {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
         {user ? <span className="v2-account-nav"><span>{user.username}</span><button onClick={() => { void onLogout(); }}>Déconnexion</button></span>

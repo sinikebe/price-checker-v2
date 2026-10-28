@@ -17,6 +17,7 @@ html[data-v2-theme="dark"] .v2-account-nav,
 html[data-v2-theme="dark"] .v2-account-nav button,
 html[data-v2-theme="dark"] .v2-footer a { color: #a6d9ad; }
 html[data-v2-theme="dark"] .v2-nav a:hover { color: #c9ed9d; }
+html[data-v2-theme="dark"] .v2-beta-tag { color: #ccefb9; background: #294636; border-color: #77a87c; }
 html[data-v2-theme="dark"] .v2-count,
 html[data-v2-theme="dark"] .v2-eyebrow,
 html[data-v2-theme="dark"] .v2-journey-avatar,
