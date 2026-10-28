@@ -175,10 +175,11 @@ async def candidates(request: Request, kind: Literal["product", "store"],
             )
         else:
             rows = await connection.fetch(
-                "SELECT s.id,s.name,r.name || ' · ' || COALESCE(s.city,'') AS detail,"
+                "SELECT s.id,s.name,g.name || ' · ' || r.name || ' · ' || COALESCE(s.city,'') AS detail,"
                 "s.postal_code AS code FROM v2_stores s "
-                "JOIN v2_retailers r ON r.id=s.retailer_id WHERE "
-                "(lower(s.name) LIKE $1 OR lower(r.name) LIKE $1 OR "
+                "JOIN v2_retailers r ON r.id=s.retailer_id "
+                "JOIN v2_retailer_groups g ON g.id=r.group_id WHERE "
+                "(lower(s.name) LIKE $1 OR lower(r.name) LIKE $1 OR lower(g.name) LIKE $1 OR "
                 "lower(COALESCE(s.city,'')) LIKE $1 OR s.postal_code LIKE $1 OR s.id::text=$2) "
                 "AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
                 "WHERE m.kind='store' AND m.from_id=s.id) "

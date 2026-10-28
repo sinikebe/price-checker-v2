@@ -663,6 +663,99 @@ MIGRATIONS = {
             ON v2_price_observations(merge_duplicate_of_id)
             WHERE merge_duplicate_of_id IS NOT NULL;
     """,
+    "0024_retailer_groups": """
+        -- Source retailer rows and their price references remain unchanged.
+        CREATE TABLE v2_retailer_groups (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            name varchar(200) NOT NULL CHECK (btrim(name) <> ''),
+            name_key varchar(200) NOT NULL UNIQUE
+        );
+        ALTER TABLE v2_retailers
+            ADD COLUMN group_id bigint REFERENCES v2_retailer_groups(id);
+        INSERT INTO v2_retailer_groups(name,name_key)
+        SELECT DISTINCT ON (lower(btrim(name))) btrim(name),lower(btrim(name))
+        FROM v2_retailers ORDER BY lower(btrim(name)),id;
+        INSERT INTO v2_retailer_groups(name,name_key) VALUES
+            ('Auchan','auchan'),('Carrefour','carrefour'),
+            ('Intermarché','intermarché'),('E.Leclerc','e.leclerc')
+        ON CONFLICT(name_key) DO NOTHING;
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g WHERE g.name_key=lower(btrim(r.name));
+
+        -- Explicitly verified families; other chains are never grouped by
+        -- fuzzy similarity or corporate ownership.
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='auchan'
+          AND lower(btrim(r.name)) IN ('auchan','auchan supermarché');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='carrefour'
+          AND lower(btrim(r.name)) IN (
+            'carrefour','carrefour city','carrefour contact',
+            'carrefour express','carrefour market');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='intermarché'
+          AND lower(btrim(r.name)) IN (
+            'intermarché','intermarché contact','intermarché hyper',
+            'intermarché super');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='e.leclerc'
+          AND lower(btrim(r.name)) IN (
+            'e.leclerc','e. leclerc','e.leclerc drive',
+            'e. leclerc drive','e.leclerc express',
+            'centre commercial e.leclerc');
+        DELETE FROM v2_retailer_groups g
+        WHERE NOT EXISTS (SELECT 1 FROM v2_retailers r WHERE r.group_id=g.id);
+        ALTER TABLE v2_retailers ALTER COLUMN group_id SET NOT NULL;
+        CREATE INDEX v2_retailers_group_idx ON v2_retailers(group_id);
+        -- A source-label mapping survives future imports of the same label,
+        -- even after an administrator moves it to another group.
+        CREATE TABLE v2_retailer_group_names (
+            name_key varchar(200) PRIMARY KEY,
+            group_id bigint NOT NULL REFERENCES v2_retailer_groups(id)
+        );
+        INSERT INTO v2_retailer_group_names(name_key,group_id)
+        SELECT DISTINCT ON (lower(btrim(name))) lower(btrim(name)),group_id
+        FROM v2_retailers ORDER BY lower(btrim(name)),id;
+        CREATE FUNCTION v2_retailer_default_group() RETURNS trigger AS $$
+        DECLARE source_key varchar(200);
+        BEGIN
+            IF NEW.group_id IS NULL THEN
+                source_key := lower(btrim(NEW.name));
+                SELECT group_id INTO NEW.group_id FROM v2_retailer_group_names
+                WHERE name_key=source_key FOR UPDATE;
+                IF NEW.group_id IS NULL THEN
+                    INSERT INTO v2_retailer_groups(name,name_key)
+                    VALUES (btrim(NEW.name),source_key)
+                    ON CONFLICT (name_key) DO NOTHING;
+                    SELECT id INTO NEW.group_id FROM v2_retailer_groups
+                    WHERE name_key=source_key;
+                    INSERT INTO v2_retailer_group_names(name_key,group_id)
+                    VALUES (source_key,NEW.group_id) ON CONFLICT DO NOTHING;
+                    SELECT group_id INTO NEW.group_id FROM v2_retailer_group_names
+                    WHERE name_key=source_key;
+                END IF;
+            END IF;
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER v2_retailer_default_group_before_insert
+            BEFORE INSERT ON v2_retailers FOR EACH ROW
+            EXECUTE FUNCTION v2_retailer_default_group();
+        CREATE TABLE v2_retailer_group_events (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            from_group_id bigint NOT NULL REFERENCES v2_retailer_groups(id),
+            to_group_id bigint NOT NULL REFERENCES v2_retailer_groups(id),
+            actor_id bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            changed_at timestamptz NOT NULL DEFAULT now(),
+            CHECK (from_group_id <> to_group_id)
+        );
+    """,
+
 
 }
 

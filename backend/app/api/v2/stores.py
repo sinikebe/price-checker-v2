@@ -112,19 +112,124 @@ async def matches(
         await connection.close()
 
 
+class RetailerGroupCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        result = " ".join(value.split())
+        if not result:
+            raise ValueError("Nom de groupe nécessaire.")
+        return result
+
+
+class RetailerGroupAssignment(BaseModel):
+    group_id: int = Field(gt=0)
+
+
+@router.get("/retailer-groups")
+async def retailer_groups(request: Request):
+    """Admin-only source labels and their explicit directory groups."""
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        groups = await connection.fetch(
+            "SELECT id,name FROM v2_retailer_groups ORDER BY lower(name),id"
+        )
+        retailers = await connection.fetch(
+            "SELECT r.id,r.name,r.group_id,count(s.id) FILTER (WHERE "
+            "(s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
+            "WHERE o.store_id=s.id)) AND NOT EXISTS "
+            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)) "
+            "AS store_count FROM v2_retailers r LEFT JOIN v2_stores s ON s.retailer_id=r.id "
+            "GROUP BY r.id,r.name,r.group_id ORDER BY lower(r.name),r.id"
+        )
+        return [
+            {"id": group["id"], "name": group["name"],
+             "retailers": [dict(row) for row in retailers if row["group_id"] == group["id"]]}
+            for group in groups
+        ]
+    finally:
+        await connection.close()
+
+
+@router.post("/retailer-groups", status_code=201)
+async def create_retailer_group(payload: RetailerGroupCreate, request: Request):
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        group_id = await connection.fetchval(
+            "INSERT INTO v2_retailer_groups(name,name_key) VALUES($1::text,lower($1::text)) "
+            "ON CONFLICT(name_key) DO NOTHING RETURNING id", payload.name,
+        )
+        if group_id is None:
+            raise HTTPException(status_code=409, detail="Ce groupe d’enseignes existe déjà.")
+        return {"id": group_id, "name": payload.name}
+    finally:
+        await connection.close()
+
+
+@router.put("/retailers/{retailer_id}/group")
+async def assign_retailer_group(
+    retailer_id: int, payload: RetailerGroupAssignment, request: Request,
+):
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        admin = await _admin(connection, request)
+        async with connection.transaction():
+            retailers = await connection.fetch(
+                "SELECT id,name,group_id,lower(btrim(name)) AS source_key "
+                "FROM v2_retailers WHERE lower(btrim(name))=(SELECT lower(btrim(name)) FROM v2_retailers WHERE id=$1) "
+                "ORDER BY id FOR UPDATE", retailer_id,
+            )
+            if not retailers:
+                raise HTTPException(status_code=404, detail="Enseigne introuvable.")
+            group = await connection.fetchrow(
+                "SELECT id,name FROM v2_retailer_groups WHERE id=$1", payload.group_id,
+            )
+            if group is None:
+                raise HTTPException(status_code=404, detail="Groupe d’enseignes introuvable.")
+            source_key = retailers[0]["source_key"]
+            await connection.execute(
+                "INSERT INTO v2_retailer_group_names(name_key,group_id) VALUES($1,$2) "
+                "ON CONFLICT(name_key) DO UPDATE SET group_id=EXCLUDED.group_id",
+                source_key, group["id"],
+            )
+            for retailer in retailers:
+                if retailer["group_id"] == group["id"]:
+                    continue
+                await connection.execute(
+                    "UPDATE v2_retailers SET group_id=$1 WHERE id=$2",
+                    group["id"], retailer["id"],
+                )
+                await connection.execute(
+                    "INSERT INTO v2_retailer_group_events("
+                    "retailer_id,from_group_id,to_group_id,actor_id) VALUES($1,$2,$3,$4)",
+                    retailer["id"], retailer["group_id"], group["id"], admin["id"],
+                )
+        return {"retailer_id": retailer_id, "group_id": group["id"], "group_name": group["name"]}
+    finally:
+        await connection.close()
+
+
 @router.get("")
 async def list_stores(request: Request):
-    """Public directory, grouped by retailer in the client. Draft-only stores stay private."""
+    """Public directory, grouped by explicit retailer family in the client."""
     connection = await _connect()
     try:
         rows = await connection.fetch(
             "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,"
-            "r.name AS retailer,r.id AS retailer_id FROM v2_stores s "
+            "r.name AS retailer,r.id AS retailer_id,"
+            "g.id AS retailer_group_id,g.name AS retailer_group FROM v2_stores s "
             "JOIN v2_retailers r ON r.id=s.retailer_id "
+            "JOIN v2_retailer_groups g ON g.id=r.group_id "
             "WHERE (s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
             "WHERE o.store_id=s.id)) AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
             "WHERE m.kind='store' AND m.from_id=s.id) "
-            "ORDER BY lower(r.name),lower(s.city),lower(s.name),s.id",
+            "ORDER BY lower(g.name),lower(s.city),lower(s.name),s.id",
         )
         return [dict(row) for row in rows]
     finally:
@@ -137,8 +242,9 @@ async def get_store(store_id: int, request: Request):
     try:
         user = await _current_user(connection, request)
         row = await connection.fetchrow(
-            "SELECT s.*,r.name AS retailer FROM v2_stores s "
-            "JOIN v2_retailers r ON r.id=s.retailer_id "
+            "SELECT s.*,r.name AS retailer,g.name AS retailer_group,g.id AS retailer_group_id "
+            "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
+            "JOIN v2_retailer_groups g ON g.id=r.group_id "
             "WHERE s.id=$1 AND (" + VISIBLE + " OR EXISTS "
             "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id))",
             store_id, user is not None and user["role"] == "admin",
