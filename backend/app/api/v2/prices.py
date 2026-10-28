@@ -132,7 +132,8 @@ async def _product(connection: asyncpg.Connection, product_id: int, *, current: 
     if not exists:
         raise HTTPException(status_code=404, detail="Produit introuvable.")
     if current and await connection.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1)", product_id
+        "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1 "
+        "UNION ALL SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)", product_id
     ):
         raise HTTPException(
             status_code=409,

@@ -68,7 +68,9 @@ async def matches(
         rows = await connection.fetch(
             "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
-            "WHERE lower(r.name)=lower($1) AND " + VISIBLE + " ORDER BY s.id LIMIT 5000",
+            "WHERE lower(r.name)=lower($1) AND " + VISIBLE + " AND NOT EXISTS "
+            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id) "
+            "ORDER BY s.id LIMIT 5000",
             retailer.strip(), user is not None and user["role"] == "admin",
             user["id"] if user else None,
         )
@@ -106,6 +108,52 @@ async def matches(
                         for exact, _, _, row, label in scored[:6]],
             "exact_store_id": exact_ids[0] if len(exact_ids) == 1 else None,
         }
+    finally:
+        await connection.close()
+
+
+@router.get("")
+async def list_stores(request: Request):
+    """Public directory, grouped by retailer in the client. Draft-only stores stay private."""
+    connection = await _connect()
+    try:
+        rows = await connection.fetch(
+            "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,"
+            "r.name AS retailer,r.id AS retailer_id FROM v2_stores s "
+            "JOIN v2_retailers r ON r.id=s.retailer_id "
+            "WHERE (s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
+            "WHERE o.store_id=s.id)) AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+            "WHERE m.kind='store' AND m.from_id=s.id) "
+            "ORDER BY lower(r.name),lower(s.city),lower(s.name),s.id",
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+@router.get("/{store_id}")
+async def get_store(store_id: int, request: Request):
+    connection = await _connect()
+    try:
+        user = await _current_user(connection, request)
+        row = await connection.fetchrow(
+            "SELECT s.*,r.name AS retailer FROM v2_stores s "
+            "JOIN v2_retailers r ON r.id=s.retailer_id "
+            "WHERE s.id=$1 AND (" + VISIBLE + " OR EXISTS "
+            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id))",
+            store_id, user is not None and user["role"] == "admin",
+            user["id"] if user else None,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="Magasin introuvable.")
+        merged_to_id = await connection.fetchval(
+            "SELECT to_id FROM v2_content_merges WHERE kind='store' AND from_id=$1",store_id)
+        aliases = await connection.fetch(
+            "SELECT source,name FROM v2_store_aliases WHERE store_id=$1 ORDER BY source,name",store_id)
+        result = dict(row)
+        result["aliases"] = [dict(alias) for alias in aliases]
+        result["merged_to_id"] = merged_to_id
+        return result
     finally:
         await connection.close()
 
@@ -158,7 +206,9 @@ async def visible_store(connection: asyncpg.Connection, store_id: int, user: dic
         "WHERE s.id=$1 AND " + VISIBLE,
         store_id, user["role"] == "admin", user["id"],
     )
-    if row is None:
+    if row is None or await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='store' AND from_id=$1)", store_id
+    ):
         raise HTTPException(status_code=404, detail="Magasin introuvable.")
     return _store_dict(row)
 

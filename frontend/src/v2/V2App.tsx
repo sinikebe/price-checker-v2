@@ -35,6 +35,7 @@ function withFooter(page: ReactNode) {
 
 export default function V2App() {
   const path = useLocation().pathname.replace(/\/+$/, "") || "/";
+  const store = path.match(/^\/v2\/magasins\/(\d+)$/);
   const product = path.match(/^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/);
   const isProductRoute = Boolean(product);
   useLayoutEffect(() => { if (isProductRoute) window.scrollTo(0, 0); }, [path, isProductRoute]);
@@ -63,7 +64,7 @@ export default function V2App() {
   if (path === "/v2/versions") return withFooter(<V2VersionsPage />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier") {
+    || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier" || path === "/v2/magasins" || store) {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
       preferencesMode={path === "/v2/parametres"}
@@ -72,6 +73,8 @@ export default function V2App() {
       captureMode={captureMode}
       completionMode={path === "/v2/a-completer"}
       basketMode={path === "/v2/panier"}
+      storesMode={path === "/v2/magasins" || Boolean(store)}
+      storeId={store ? Number(store[1]) : undefined}
       recipeId={recipe ? Number(recipe[1]) : undefined}
       categoryName={categoryName}
       workspaceMode={workspaceMode}

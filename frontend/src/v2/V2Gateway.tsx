@@ -11,6 +11,7 @@ import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
 import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
+import V2StoresPage from "./V2StoresPage";
 import { useV2Basket } from "./V2BasketContext";
 import "./v2-home.css";
 import "./v2-setup.css";
@@ -365,7 +366,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesMode?: boolean;
   authMode?: "login" | "register";
@@ -377,6 +378,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   basketMode?: boolean;
   captureMode?: "install" | "review";
   completionMode?: boolean;
+  storesMode?: boolean;
+  storeId?: number;
 }) {
   const { setUser: activateUserBasket } = useV2Basket();
   const route = useLocation();
@@ -466,6 +469,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
+  if (storesMode) return <V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />;
   if (completionMode) return <V2CompletionPage user={authStatus.user} onLogout={logout} />;
   if (captureMode) return <V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />;
   if (basketMode) return <V2BasketPage user={authStatus.user} onLogout={logout} />;

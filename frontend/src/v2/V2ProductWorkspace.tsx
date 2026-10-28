@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ReportControl from "./V2ReportControl";
+import V2ModerationPanel from "./V2ModerationPanel";
+import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import { useV2Basket } from "./V2BasketContext";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -47,7 +49,7 @@ export function Frame({ children, user, onLogout }: { children: React.ReactNode;
       <Link className="v2-brand" to="/v2"><span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
         <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
       <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/a-completer">À compléter</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
+        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/magasins">Magasins</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/a-completer">À compléter</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
         <Link to="/v2/produits/nouveau">Ajouter</Link><Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
         {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
         {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
@@ -104,6 +106,7 @@ function ListPage({ mode, user, onLogout }: Props) {
       <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
         onClick={() => setPage(value => value + 1)}>Suivant</button>
     </div>}
+    {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
   </Frame>;
 }
 
@@ -355,6 +358,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
+  if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><h1>{d.brand} {d.name}<span>.</span></h1>
@@ -391,7 +395,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
       </div>}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
-    {id && <V2ReportControl kind="product" contentId={id} user={user} />}
+    {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }
 

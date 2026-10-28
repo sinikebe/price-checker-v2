@@ -47,6 +47,8 @@ async def run_due_refresh_once() -> str:
                 JOIN v2_products p ON p.id=q.product_id
                 AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w
                 WHERE w.kind='product' AND w.content_id=p.id)
+                AND NOT EXISTS (SELECT 1 FROM v2_content_merges m
+                WHERE m.kind='product' AND m.from_id=p.id)
                 WHERE q.next_attempt_at <= now()
                 ORDER BY q.next_attempt_at,q.requested_at
                 LIMIT 1 FOR UPDATE OF q SKIP LOCKED

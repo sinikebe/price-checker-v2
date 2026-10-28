@@ -77,7 +77,7 @@ async def test_approved_capture_source_is_backfilled():
             )
         finally:
             await connection.close()
-        assert await migrate_v2(config) == ["0021_bookmarklet_price_source"]
+        assert await migrate_v2(config) == ["0021_bookmarklet_price_source", "0022_duplicate_merges"]
         connection = await connect_v2(config)
         try:
             row = await connection.fetchrow(

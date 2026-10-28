@@ -14,6 +14,7 @@ from app.api.v2.account_data import router as account_data_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
 from app.api.v2.catalogue import router as catalogue_router
+from app.api.v2.duplicate_merges import router as duplicate_merges_router
 from app.api.v2.legal import router as legal_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
@@ -79,6 +80,7 @@ for router in (
     setup_router,
     legal_router,
     moderation_router,
+    duplicate_merges_router,
     auth_router,
     account_data_router,
     products_router,

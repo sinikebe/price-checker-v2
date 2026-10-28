@@ -22,7 +22,7 @@ export type ProductData = {
 export type ChangeKind = "correction" | "new_version";
 export type Product = {
   id: number; data: ProductData; revision: number; predecessor_id: number | null;
-  updated_at: string; successor_id?: number | null;
+  updated_at: string; successor_id?: number | null; merged_to_id?: number | null;
 };
 export type Draft = {
   id: number; product_id: number | null; author_id: number; author?: string | null;

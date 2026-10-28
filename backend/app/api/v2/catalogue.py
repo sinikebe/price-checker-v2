@@ -18,6 +18,8 @@ CURRENT = """NOT EXISTS (
     WHERE w.kind='product' AND w.content_id=p.id
 ) AND NOT EXISTS (
     SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id
+) AND NOT EXISTS (
+    SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id
 )"""
 STORE_MATCH = """EXISTS (
     SELECT 1 FROM v2_price_observations o

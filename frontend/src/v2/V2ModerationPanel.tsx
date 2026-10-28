@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
 import V2StoreAliasReview from "./V2StoreAliasReview";
+import V2DuplicateReview from "./V2DuplicateReview";
 
 type Report = {
-  id: number; kind: "product" | "recipe"; content_id: number;
+  id: number; kind: "product" | "recipe" | "store"; content_id: number; report_type: "general" | "duplicate";
+  duplicate_url: string | null; duplicate_id: number | null;
   reason: string; reporter: string; created_at: string;
 };
 const PAGE_SIZE = 30;
@@ -15,6 +17,7 @@ export default function V2ModerationPanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
+  const [selectedDuplicate, setSelectedDuplicate] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
     moderationRequest<Report[]>("/reports?limit=" + PAGE_SIZE + "&offset=" + (page * PAGE_SIZE))
@@ -37,16 +40,23 @@ export default function V2ModerationPanel() {
     {!reports && !error && <p>Chargement…</p>}
     {reports?.length === 0 && <p>Aucun signalement ouvert.</p>}
     {reports?.map(report => <article key={report.id}>
-      <p><Link to={report.kind === "product" ? "/v2/produits/" + report.content_id : "/v2/recettes/" + report.content_id}>
-        {report.kind === "product" ? "Produit" : "Recette"} #{report.content_id}</Link>
+      <p><Link to={report.kind === "product" ? "/v2/produits/" + report.content_id : report.kind === "store" ? "/v2/magasins/" + report.content_id : "/v2/recettes/" + report.content_id}>
+        {report.kind === "product" ? "Produit" : report.kind === "store" ? "Magasin" : "Recette"} #{report.content_id}</Link>
         {" · "}{report.reporter} · {new Date(report.created_at).toLocaleString("fr-FR")}</p>
-      <p>{report.reason}</p>
-      <div className="v2-settings-actions">
+      <p>{report.report_type === "duplicate" ? "Doublon potentiel · " : ""}{report.reason}</p>
+      {report.report_type === "duplicate" ? <>
+        <button type="button" className="v2-button v2-button-secondary" onClick={() => setSelectedDuplicate(selectedDuplicate === report.id ? null : report.id)}>
+          {selectedDuplicate === report.id ? "Fermer l’examen" : "Examiner le doublon"}</button>
+        {selectedDuplicate === report.id && <V2DuplicateReview key={report.id} reportId={report.id}
+          onClose={() => setSelectedDuplicate(null)} onMerged={() => { setSelectedDuplicate(null); setReload(value => value + 1); }} />}
+        <button type="button" className="v2-button v2-button-secondary" disabled={busy !== null}
+          onClick={() => { void resolve(report, "dismiss"); }}>Classer sans suite</button>
+      </> : <div className="v2-settings-actions">
         <button type="button" className="v2-button v2-button-secondary" disabled={busy !== null}
           onClick={() => { void resolve(report, "dismiss"); }}>Classer sans suite</button>
         <button type="button" className="v2-button v2-button-secondary" disabled={busy !== null}
           onClick={() => { void resolve(report, "withdraw"); }}>Retirer le contenu</button>
-      </div>
+      </div>}
     </article>)}
     {reports && (page > 0 || reports.length === PAGE_SIZE) && <div className="v2-settings-actions">
       <button type="button" disabled={page === 0} onClick={() => setPage(value => value - 1)}>Précédent</button>

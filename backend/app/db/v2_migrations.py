@@ -601,6 +601,54 @@ MIGRATIONS = {
             AND o.source='manual';
     """,
 
+    "0022_duplicate_merges": """
+        ALTER TABLE v2_content_reports ADD COLUMN report_type varchar(16) NOT NULL
+            DEFAULT 'general' CHECK (report_type IN ('general','duplicate'));
+        ALTER TABLE v2_content_reports ADD COLUMN duplicate_url varchar(1000);
+        ALTER TABLE v2_content_reports ADD COLUMN duplicate_id bigint;
+        ALTER TABLE v2_content_reports DROP CONSTRAINT v2_content_reports_kind_check;
+        ALTER TABLE v2_content_reports ADD CONSTRAINT v2_content_reports_kind_check
+            CHECK (kind IN ('product','recipe','store'));
+        ALTER TABLE v2_content_reports DROP CONSTRAINT v2_content_reports_status_check;
+        ALTER TABLE v2_content_reports ADD CONSTRAINT v2_content_reports_status_check
+            CHECK (status IN ('open','dismissed','withdrawn','merged'));
+        DROP INDEX v2_one_open_report_per_user_content;
+        CREATE UNIQUE INDEX v2_one_open_report_per_user_content
+            ON v2_content_reports(kind,content_id,reporter_id,report_type)
+            WHERE status='open';
+        CREATE TABLE v2_content_merges (
+            kind varchar(16) NOT NULL CHECK(kind IN ('product','store')),
+            from_id bigint NOT NULL CHECK(from_id > 0),
+            to_id bigint NOT NULL CHECK(to_id > 0),
+            report_id bigint REFERENCES v2_content_reports(id) ON DELETE SET NULL,
+            from_snapshot jsonb NOT NULL,
+            to_snapshot jsonb NOT NULL,
+            result_snapshot jsonb NOT NULL,
+            merged_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            merged_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY(kind,from_id),
+            CHECK(from_id <> to_id)
+        );
+        CREATE INDEX v2_content_merges_to_idx ON v2_content_merges(kind,to_id);
+        CREATE TABLE v2_store_osm_aliases (
+            osm_type varchar(20) NOT NULL,
+            osm_id bigint NOT NULL,
+            store_id bigint NOT NULL REFERENCES v2_stores(id),
+            PRIMARY KEY(osm_type,osm_id)
+        );
+        CREATE INDEX v2_store_osm_aliases_store_idx ON v2_store_osm_aliases(store_id);
+        -- Offers and observations reference a compound store key; both must move
+        -- in one transaction before that compound FK is checked.
+        DO $$ DECLARE fk record; BEGIN
+            FOR fk IN SELECT conname FROM pg_constraint
+                WHERE conrelid='v2_price_observations'::regclass
+                  AND confrelid='v2_offers'::regclass AND contype='f'
+            LOOP
+                EXECUTE format('ALTER TABLE v2_price_observations ALTER CONSTRAINT %I DEFERRABLE INITIALLY DEFERRED',fk.conname);
+            END LOOP;
+        END $$;
+    """,
+
 }
 
 

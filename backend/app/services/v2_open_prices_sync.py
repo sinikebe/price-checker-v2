@@ -84,7 +84,10 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
     osm_type = location["osm_type"].lower()
     osm_id = location["osm_id"]
     existing = await connection.fetchrow(
-        "SELECT id,retailer_id FROM v2_stores WHERE osm_type=$1 AND osm_id=$2",
+        "SELECT s.id,s.retailer_id FROM v2_stores s WHERE s.osm_type=$1 AND s.osm_id=$2 "
+        "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
+        "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
+        "LIMIT 1",
         osm_type, osm_id,
     )
     if existing:
@@ -119,6 +122,8 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
             "JOIN v2_stores s ON s.id=a.store_id "
             "WHERE a.source='open_prices' AND a.name_key=$1 "
             "AND s.retailer_id=$2 AND s.postal_code=$3 AND s.osm_id IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+            "WHERE m.kind='store' AND m.from_id=s.id) "
             "AND NULLIF(btrim(s.city),'') IS NOT NULL",
             name_key(name), retailer, postcode,
         )
@@ -139,7 +144,10 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
     if inserted:
         return inserted["retailer_id"], inserted["id"]
     existing = await connection.fetchrow(
-        "SELECT id,retailer_id FROM v2_stores WHERE osm_type=$1 AND osm_id=$2",
+        "SELECT s.id,s.retailer_id FROM v2_stores s WHERE s.osm_type=$1 AND s.osm_id=$2 "
+        "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
+        "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
+        "LIMIT 1",
         osm_type, osm_id,
     )
     return (existing["retailer_id"], existing["id"]) if existing else None
@@ -213,6 +221,9 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
                  AND (s.checked_at IS NULL OR s.checked_at<=now()-interval '24 hours')
                  AND NOT EXISTS (
                    SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id
                  )
                  AND NOT EXISTS (
                    SELECT 1 FROM v2_content_withdrawals w
