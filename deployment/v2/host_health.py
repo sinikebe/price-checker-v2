@@ -129,6 +129,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state_dir", type=Path)
     args = parser.parse_args()
+    # A container UID may have no host passwd entry, so systemd cannot use User=1000.
+    if os.geteuid() == 0:
+        os.setgroups([])
+        os.setgid(1000)
+        os.setuid(1000)
+    if os.geteuid() != 1000:
+        raise PermissionError("Host sampling must run as the V2 state owner (UID 1000)")
     collect(args.state_dir)
 
 

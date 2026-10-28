@@ -18,15 +18,14 @@ service="/etc/systemd/system/$unit.service"
 timer="/etc/systemd/system/$unit.timer"
 tmp_service="$(mktemp)"
 tmp_timer="$(mktemp)"
-trap 'rm -f "$tmp_service" "$tmp_timer"' EXIT
+tmp_old_service="$(mktemp)"
+trap 'rm -f "$tmp_service" "$tmp_timer" "$tmp_old_service"' EXIT
 cat > "$tmp_service" <<EOF
 [Unit]
 Description=Sample Price Checker V2 $PRICE_CHECKER_V2_ENV host resources
 
 [Service]
 Type=oneshot
-User=1000
-Group=1000
 UMask=0077
 NoNewPrivileges=true
 ExecStart=/usr/bin/python3 $repo_dir/deployment/v2/host_health.py $PRICE_CHECKER_V2_DATA_DIR/state
@@ -44,12 +43,26 @@ Unit=$unit.service
 [Install]
 WantedBy=timers.target
 EOF
+cat > "$tmp_old_service" <<EOF
+[Unit]
+Description=Sample Price Checker V2 $PRICE_CHECKER_V2_ENV host resources
+
+[Service]
+Type=oneshot
+User=1000
+Group=1000
+UMask=0077
+NoNewPrivileges=true
+ExecStart=/usr/bin/python3 $repo_dir/deployment/v2/host_health.py $PRICE_CHECKER_V2_DATA_DIR/state
+EOF
 for pair in "$tmp_service:$service" "$tmp_timer:$timer"; do
   source_file="${pair%%:*}"
   destination="${pair#*:}"
   if [[ -e "$destination" ]] && ! cmp -s "$source_file" "$destination"; then
-    echo "Existing $destination differs; inspect and merge manually." >&2
-    exit 1
+    if [[ "$destination" != "$service" ]] || ! cmp -s "$tmp_old_service" "$destination"; then
+      echo "Existing $destination differs; inspect and merge manually." >&2
+      exit 1
+    fi
   fi
 done
 install -m 0644 "$tmp_service" "$service"

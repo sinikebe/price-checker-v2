@@ -79,6 +79,16 @@
       "component": "pwa",
       "version": "0.1.14",
       "reason": "Intégration dans les paramètres, sans changement du fonctionnement hors ligne."
+    },
+    {
+      "component": "application",
+      "version": "0.1.63",
+      "reason": "Correction du lancement de la surveillance sur un hôte sans utilisateur système nommé."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.20",
+      "reason": "Compatibilité du minuteur avec les hôtes où l’UID applicatif n’a pas de compte local."
     }
   ]
 }
