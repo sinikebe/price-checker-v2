@@ -76,6 +76,23 @@ def _fields(kind: str, origin: dict, duplicate: dict) -> list[dict]:
     return result
 
 
+async def _mark_manual_duplicates(connection, kind: str, origin_id: int, duplicate_id: int):
+    """Preserve colliding approved readings while retaining future uniqueness."""
+    target = "product_id" if kind == "product" else "store_id"
+    other = "store_id" if kind == "product" else "product_id"
+    await connection.execute(
+        f"UPDATE v2_price_observations donor SET merge_duplicate_of_id=original.id "
+        f"FROM v2_price_observations original WHERE donor.{target}=$2 "
+        f"AND original.{target}=$1 AND donor.{other}=original.{other} "
+        "AND donor.source='manual' AND original.source='manual' "
+        "AND donor.merge_duplicate_of_id IS NULL AND original.merge_duplicate_of_id IS NULL "
+        "AND donor.sales_channel=original.sales_channel "
+        "AND donor.observed_at=original.observed_at AND donor.price=original.price "
+        "AND COALESCE(donor.quantity_text,'')=COALESCE(original.quantity_text,'')",
+        origin_id, duplicate_id,
+    )
+
+
 async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
     kind = report["kind"]
     origin_id = report["content_id"]
@@ -260,6 +277,7 @@ async def merge(report_id: int, payload: MergeInput, request: Request):
                     origin["id"],admin["id"],json.dumps(a),json.dumps(result),
                 )
                 await connection.execute("UPDATE v2_price_drafts SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
+                await _mark_manual_duplicates(connection,"product",origin["id"],duplicate["id"])
                 await connection.execute("UPDATE v2_price_observations SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
                 await connection.execute("UPDATE v2_recipe_ingredients SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
                 await connection.execute("UPDATE v2_transfer_product_map SET target_id=$1 WHERE target_id=$2",origin["id"],duplicate["id"])
@@ -306,6 +324,7 @@ async def merge(report_id: int, payload: MergeInput, request: Request):
                     raise HTTPException(status_code=422, detail="Champ magasin invalide.") from exc
                 await connection.execute("UPDATE v2_price_drafts SET store_id=$1 WHERE store_id=$2",origin["id"],duplicate["id"])
                 await connection.execute("UPDATE v2_offers SET store_id=$1 WHERE store_id=$2",origin["id"],duplicate["id"])
+                await _mark_manual_duplicates(connection,"store",origin["id"],duplicate["id"])
                 await connection.execute("UPDATE v2_price_observations SET store_id=$1 WHERE store_id=$2",origin["id"],duplicate["id"])
                 await connection.execute(
                     "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "

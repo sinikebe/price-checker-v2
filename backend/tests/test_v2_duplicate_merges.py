@@ -7,6 +7,7 @@ import os
 import secrets
 from pathlib import Path
 
+import asyncpg
 import httpx
 import pytest
 import pytest_asyncio
@@ -15,6 +16,11 @@ from app.api.v2 import duplicate_merges, moderation, products, stores
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 from app.services.v2_open_prices_sync import _store as open_prices_store
+
+MANUAL = (
+    "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,price,observed_at,sales_channel) "
+    "VALUES($1,$2,$3,'manual',1.11,'2026-02-03T12:00:00Z'::timestamptz,'drive')"
+)
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required"
@@ -147,7 +153,13 @@ def merge_body(preview):
 
 @pytest.mark.asyncio
 async def test_store_directory_duplicate_report_and_atomic_merge(data):
-    config, _, retailer, ids, _, offer = data
+    config, _, retailer, ids, product_ids, offer = data
+    connection = await connect_v2(config)
+    try:
+        for store_id in ids:
+            await connection.execute(MANUAL, product_ids[0], retailer, store_id)
+    finally:
+        await connection.close()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="https://test"
     ) as client:
@@ -253,13 +265,34 @@ async def test_store_directory_duplicate_report_and_atomic_merge(data):
                 "osm_name": "Carrefour Paris",
             }
             assert await open_prices_store(connection, location) == (retailer, ids[0])
+            observations = await connection.fetch(
+                "SELECT merge_duplicate_of_id FROM v2_price_observations "
+                "WHERE product_id=$1 AND store_id=$2 AND source='manual' ORDER BY id",
+                product_ids[0],
+                ids[0],
+            )
+            assert (
+                len(observations) == 2
+                and sum(
+                    row["merge_duplicate_of_id"] is not None for row in observations
+                )
+                == 1
+            )
+            with pytest.raises(asyncpg.UniqueViolationError):
+                await connection.execute(MANUAL, product_ids[0], retailer, ids[0])
         finally:
             await connection.close()
 
 
 @pytest.mark.asyncio
 async def test_product_merge_preserves_observations_and_barcode_route(data):
-    config, _, _, _, product_ids, offer = data
+    config, _, retailer, ids, product_ids, offer = data
+    connection = await connect_v2(config)
+    try:
+        for product_id in product_ids:
+            await connection.execute(MANUAL, product_id, retailer, ids[0])
+    finally:
+        await connection.close()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="https://test"
     ) as client:
@@ -316,6 +349,19 @@ async def test_product_merge_preserves_observations_and_barcode_route(data):
                 )
                 == product_ids[0]
             )
+            observations = await connection.fetch(
+                "SELECT merge_duplicate_of_id FROM v2_price_observations "
+                "WHERE product_id=$1 AND store_id=$2 AND source='manual' ORDER BY id",
+                product_ids[0],
+                ids[0],
+            )
+            assert len(observations) == 2
+            assert (
+                sum(row["merge_duplicate_of_id"] is not None for row in observations)
+                == 1
+            )
+            with pytest.raises(asyncpg.UniqueViolationError):
+                await connection.execute(MANUAL, product_ids[0], retailer, ids[0])
         finally:
             await connection.close()
 

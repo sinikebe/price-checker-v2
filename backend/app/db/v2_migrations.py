@@ -649,6 +649,21 @@ MIGRATIONS = {
         END $$;
     """,
 
+    "0023_merge_manual_observations": """
+        -- Keep both approved readings when a duplicate-sheet merge makes their
+        -- manual uniqueness keys equal. Ordinary new manual readings remain unique.
+        ALTER TABLE v2_price_observations ADD COLUMN merge_duplicate_of_id bigint
+            REFERENCES v2_price_observations(id);
+        DROP INDEX v2_price_observations_manual_idx;
+        CREATE UNIQUE INDEX v2_price_observations_manual_idx
+            ON v2_price_observations(product_id, store_id, sales_channel,
+                observed_at, price, coalesce(quantity_text, ''))
+            WHERE source='manual' AND merge_duplicate_of_id IS NULL;
+        CREATE INDEX v2_price_observations_merge_duplicate_idx
+            ON v2_price_observations(merge_duplicate_of_id)
+            WHERE merge_duplicate_of_id IS NOT NULL;
+    """,
+
 }
 
 
