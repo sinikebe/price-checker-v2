@@ -17,7 +17,8 @@ from app.api.v2.auth import (
     _token_hash, _verify_password,
 )
 from app.api.v2.auth_security import (
-    decrypt_seed, encrypt_seed, new_recovery_codes, recovery_hash, verify_second_factor,
+    account_limit_key, decrypt_seed, encrypt_seed, new_recovery_codes,
+    recovery_hash, verify_second_factor,
 )
 
 router = APIRouter(prefix="/api/v2/account/security", tags=["v2-account-security"])
@@ -44,6 +45,8 @@ class TokenCreation(SecondFactorProof):
 async def _rate_limit(connection, request: Request, user_id: int) -> None:
     key = _limit_key("account-security", request, str(user_id))
     if await _bump_limit(connection, key, 3600) > 20:
+        raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
+    if await _bump_limit(connection, account_limit_key("security-action", user_id), 3600) > 20:
         raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
 
 

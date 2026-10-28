@@ -253,3 +253,27 @@ async def test_concurrent_totp_logins_consume_one_step_only(isolated_config, mon
             })
         results = await asyncio.gather(attempt(first), attempt(second))
     assert sorted(response.status_code for response in results) == [200, 401]
+
+
+@pytest.mark.asyncio
+async def test_second_factor_limits_apply_across_source_addresses(isolated_config):
+    user_id, username = await _account(isolated_config)
+    connection = await connect_v2(isolated_config)
+    try:
+        await connection.execute(
+            "INSERT INTO v2_mfa_credentials(user_id,secret_ciphertext,enabled_at) "
+            "VALUES($1,$2,now())", user_id,
+            auth_security.encrypt_seed(pyotp.random_base32()),
+        )
+        await connection.execute(
+            "INSERT INTO v2_auth_limits(key,attempts) VALUES($1,20)",
+            auth_security.account_limit_key("mfa-login", user_id),
+        )
+    finally:
+        await connection.close()
+    transport = httpx.ASGITransport(app=app, client=("198.51.100.12", 9876))
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as browser:
+        response = await browser.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123", "second_factor": "000000",
+        })
+        assert response.status_code == 429

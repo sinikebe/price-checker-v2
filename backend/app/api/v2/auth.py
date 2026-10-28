@@ -17,7 +17,9 @@ from fastapi import APIRouter, HTTPException, Request, Response, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, SecretStr
 
-from app.api.v2.auth_security import _TOKEN_PATTERN, verify_second_factor
+from app.api.v2.auth_security import (
+    _TOKEN_PATTERN, account_limit_key, verify_second_factor,
+)
 
 from app.api.v2.setup import (
     _access_code,
@@ -420,6 +422,14 @@ async def login(credentials: Credentials, request: Request, response: Response):
         if not user or not verified:
             await _bump_limit(connection, key, 900)
             raise HTTPException(status_code=401, detail="Identifiants incorrects.")
+        # Bound password-confirmed TOTP guesses across all source addresses.
+        mfa_enabled = await connection.fetchval(
+            "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
+            user["id"],
+        )
+        factor_key = account_limit_key("mfa-login", user["id"])
+        if mfa_enabled and await _bump_limit(connection, factor_key, 3600) > 20:
+            raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
         # Keep the account lock until the second factor is accepted. TOTP
         # steps and recovery codes are consumed under a row lock.
         async with connection.transaction():
@@ -432,7 +442,9 @@ async def login(credentials: Credentials, request: Request, response: Response):
                 status_code=401,
                 detail="Code de validation ou code de secours incorrect.",
             )
-        await connection.execute("DELETE FROM v2_auth_limits WHERE key=$1", key)
+        await connection.execute(
+            "DELETE FROM v2_auth_limits WHERE key=$1 OR key=$2", key, factor_key,
+        )
         if _HASHER.check_needs_rehash(user["password_hash"]):
             await connection.execute(
                 "UPDATE v2_users SET password_hash=$1 WHERE id=$2",

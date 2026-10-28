@@ -31,6 +31,13 @@ def _cipher() -> Fernet:
     return Fernet(base64.urlsafe_b64encode(key))
 
 
+def account_limit_key(kind: str, user_id: int) -> str:
+    return hmac.new(
+        _access_code().encode("utf-8"), f"{kind}:{user_id}".encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def encrypt_seed(seed: str) -> str:
     return _cipher().encrypt(seed.encode("ascii")).decode("ascii")
 

@@ -114,6 +114,16 @@
       "component": "pwa",
       "version": "0.1.15",
       "reason": "Adaptation du formulaire de suppression de compte, sans changement du fonctionnement hors ligne."
+    },
+    {
+      "component": "application",
+      "version": "0.1.66",
+      "reason": "Plafond de tentatives global pour les codes de sécurité, sans changement visible dans l’application."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.22",
+      "reason": "Renforcement interne du plafond de tentatives après l’ajout de la double authentification."
     }
   ]
 }
