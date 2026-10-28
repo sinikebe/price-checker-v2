@@ -51,6 +51,7 @@ html[data-v2-theme="dark"] .v2-recipes-tile,
 html[data-v2-theme="dark"] .v2-recipes-card,
 html[data-v2-theme="dark"] .v2-recipes-empty,
 html[data-v2-theme="dark"] .v2-setup-card,
+html[data-v2-theme="dark"] .v2-changelog-card,
 html[data-v2-theme="dark"] .v2-versions-list,
 html[data-v2-theme="dark"] .v2-settings-card,
 html[data-v2-theme="dark"] .v2-scanner-dialog { background: #1b2d28; border-color: var(--v2-line); color: var(--v2-ink); }

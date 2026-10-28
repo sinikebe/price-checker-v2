@@ -10,11 +10,12 @@ export default function V2VersionsPage() {
       <span className="v2-section-kicker">À PROPOS</span>
       <h1>Versions des composants</h1>
       <p>Versions du code de cette installation. Un composant « prévu » n’est pas encore disponible.</p>
+      <p><Link className="v2-versions-changelog" to="/v2/changelog">Voir le journal des nouveautés →</Link></p>
       <div className="v2-versions-list">
         {Object.entries(versions).map(([id, component]) =>
           <div className="v2-versions-item" key={id}>
             <span>{component.label}</span>
-            <strong>{component.version === null ? "Prévu" : `v${component.version}`}</strong>
+            <span className="v2-versions-actions"><strong>{component.version === null ? "Prévu" : `v${component.version}`}</strong><Link to={`/v2/changelog/${id}`}>Nouveautés</Link></span>
           </div>
         )}
       </div>

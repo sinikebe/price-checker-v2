@@ -124,6 +124,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-dark.css", ("application",)),
     ("frontend/src/v2/v2-settings.css", ("application",)),
     ("frontend/src/v2/V2VersionsPage.tsx", ("application",)),
+    ("frontend/src/v2/V2ChangelogPage.tsx", ("application",)),
+    ("frontend/src/v2/v2-changelog.css", ("application",)),
     ("frontend/src/v2/v2-versions.css", ("application",)),
     ("frontend/src/v2/v2-home.css", ("application",)),
     ("frontend/src/v2/v2-base.css", ("application",)),
@@ -148,6 +150,7 @@ RUNTIME_FILES = {
 }
 VERSION_FILES = {
     "frontend/src/v2/component-versions.json",
+    "frontend/src/v2/component-changelog.json",
 }
 
 

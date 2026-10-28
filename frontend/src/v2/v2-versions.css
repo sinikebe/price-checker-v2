@@ -34,3 +34,7 @@
 .v2-versions-item strong {
   white-space: nowrap;
 }
+
+.v2-versions-changelog { font-weight: 700; text-decoration: underline !important; text-underline-offset: 3px; }
+.v2-versions-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 16px; text-align: right; }
+.v2-versions-actions a { text-decoration: underline; text-underline-offset: 3px; }

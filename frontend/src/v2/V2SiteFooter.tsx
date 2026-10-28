@@ -14,6 +14,7 @@ export default function V2SiteFooter() {
         <Link to="/v2/confidentialite">Confidentialité</Link>
         <Link to="/v2/conditions-utilisation">Conditions d’utilisation</Link>
         <a href="https://github.com/sinikebe/price-checker-v2">Code source sur GitHub ↗</a>
+        <Link to="/v2/changelog">Nouveautés</Link>
         <Link to="/v2/versions">Version {versions.application.version} · Détails</Link>
       </nav>
     </div>

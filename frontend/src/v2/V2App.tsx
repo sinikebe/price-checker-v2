@@ -2,6 +2,7 @@ import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import V2Gateway from "./V2Gateway";
 import V2VersionsPage from "./V2VersionsPage";
+import V2ChangelogPage from "./V2ChangelogPage";
 import V2LegalPage from "./V2LegalPage";
 import V2SiteFooter from "./V2SiteFooter";
 import { V2BasketProvider } from "./V2BasketContext";
@@ -62,6 +63,9 @@ export default function V2App() {
   if (path === "/v2/confidentialite") return withFooter(<V2LegalPage kind="confidentialite" />);
   if (path === "/v2/conditions-utilisation") return withFooter(<V2LegalPage kind="conditions" />);
   if (path === "/v2/versions") return withFooter(<V2VersionsPage />);
+  if (path === "/v2/changelog") return withFooter(<V2ChangelogPage />);
+  const changelogComponent = path.match(/^\/v2\/changelog\/([^/]+)$/);
+  if (changelogComponent) return withFooter(<V2ChangelogPage componentId={changelogComponent[1]} />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
     || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier" || path === "/v2/magasins" || store) {

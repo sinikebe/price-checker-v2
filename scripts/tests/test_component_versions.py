@@ -69,6 +69,7 @@ class ComponentVersionsTests(unittest.TestCase):
             "README.md", "backend/tests/test_v2_off.py",
             ".github/workflows/ci.yml", "scripts/component_versions.py",
             "frontend/src/v2/component-versions.json",
+            "frontend/src/v2/component-changelog.json",
         ]), set())
 
     def test_unmapped_runtime_file_fails_instead_of_silently_skipping(self):
@@ -81,6 +82,12 @@ class ComponentVersionsTests(unittest.TestCase):
             {"application", "open_prices"},
         )
         self.assertEqual(bump_patch("0.1.9"), "0.1.10")
+
+    def test_changelog_view_paths_bump_application(self):
+        self.assertEqual(classify([
+            "frontend/src/v2/V2ChangelogPage.tsx",
+            "frontend/src/v2/v2-changelog.css",
+        ]), {"application"})
 
     def test_manifest_and_existing_source_paths_are_consistent(self):
         versions = validate()
