@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.53",
+    "version": "0.1.54",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.31",
+    "version": "0.1.32",
     "status": "active"
   },
   "recipes": {
@@ -21,12 +21,12 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.22",
+    "version": "0.1.23",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.18",
+    "version": "0.1.19",
     "status": "active"
   },
   "accounts": {
@@ -46,12 +46,12 @@
   },
   "open_prices": {
     "label": "Connecteur Open Prices",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "status": "active"
   },
   "bookmarklet": {
     "label": "Capture de prix / bookmarklet",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "status": "active"
   }
 }
