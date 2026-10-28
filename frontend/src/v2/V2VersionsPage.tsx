@@ -9,7 +9,7 @@ export default function V2VersionsPage() {
       <Link className="v2-versions-back" to="/v2">← Retour à l’accueil</Link>
       <span className="v2-section-kicker">À PROPOS</span>
       <h1>Versions des composants</h1>
-      <p>Versions du code de cette installation. Un composant « prévu » n’est pas encore disponible.</p>
+      <p>Versions du code de cette installation.</p>
       <p><Link className="v2-versions-changelog" to="/v2/changelog">Voir le journal des nouveautés →</Link></p>
       <div className="v2-versions-list">
         {Object.entries(versions).map(([id, component]) =>

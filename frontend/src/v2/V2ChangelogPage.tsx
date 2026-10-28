@@ -46,7 +46,7 @@ export default function V2ChangelogPage({ componentId }: { componentId?: string 
       </section>) : <p className="v2-changelog-empty">Pas encore de note de mise à jour pour ce composant.</p>}
       <section className="v2-changelog-baseline">
         <h2>Déjà en place</h2>
-        <p>Quelques fonctions marquantes d’avant ce journal, sans les attribuer à une ancienne version.</p>
+        <p>Quelques ajouts marquants datant d’avant la mise en place du journal.</p>
         <div className="v2-changelog-cards">
           {(Object.entries(baseline) as [ComponentId, string[]][])
             .filter(([id]) => !selected || id === selected)

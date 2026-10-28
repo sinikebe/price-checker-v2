@@ -58,6 +58,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.56",
+      "components": {
+        "application": {
+          "version": "0.1.56",
+          "notes": [
+            "Les pages des versions et des nouveautés vont un peu plus droit au but."
+          ]
+        }
+      }
     }
   ]
 }
