@@ -167,6 +167,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         <p>{[payload.brand, payload.quantity, payload.ean && "EAN " + payload.ean].filter(Boolean).join(" · ") || "Identité à vérifier"}</p>
         <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : payload.price.toFixed(2) + " €"}</strong>
           {payload.source && <small> · source : {payload.source}</small>}</p>
+        {payload.price == null && <p>Le prix n’a pas pu être relevé. Vérifiez que le produit est disponible et qu’un magasin est sélectionné sur la fiche, puis relancez la capture.</p>}
         <p>Page consultée : <a href={payload.url} target="_blank" rel="noreferrer">{payload.host}</a>. Le prix dépend du magasin et du canal choisis sur cette page.</p>
         {resolution.status === "loading" && <p role="status">Recherche de la référence V2…</p>}
         {resolution.status === "error" && <p role="alert">{resolution.message} Réessayez en rechargeant la page.</p>}
