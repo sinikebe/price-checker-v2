@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Literal
+from urllib.parse import urlsplit
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -16,9 +18,24 @@ router = APIRouter(prefix="/api/v2/moderation", tags=["v2-moderation"])
 
 
 class ReportInput(BaseModel):
-    kind: Literal["product", "recipe"]
+    kind: Literal["product", "recipe", "store"]
     content_id: int = Field(gt=0)
-    reason: str = Field(min_length=10, max_length=1000)
+    reason: str = Field(default="", max_length=1000)
+    report_type: Literal["general", "duplicate"] = "general"
+    duplicate_url: str | None = Field(default=None, max_length=1000)
+
+
+def _duplicate_id(kind: str, raw: str | None) -> int | None:
+    if not raw:
+        return None
+    parts = urlsplit(raw.strip())
+    if parts.scheme and parts.scheme not in ("http", "https"):
+        raise HTTPException(status_code=422, detail="Lien de doublon invalide.")
+    segment = "produits" if kind == "product" else "magasins"
+    match = re.fullmatch(rf"/v2/{segment}/([1-9][0-9]*)/?", parts.path)
+    if not match or kind == "recipe":
+        raise HTTPException(status_code=422, detail="Indiquez l'URL d'une fiche du même type.")
+    return int(match.group(1))
 
 
 class ReportDecision(BaseModel):
@@ -57,17 +74,45 @@ async def create_report(payload: ReportInput, request: Request):
         if user is None:
             raise HTTPException(status_code=401, detail="Connectez-vous pour signaler.")
         reason = payload.reason.strip()
-        if len(reason) < 10:
+        if payload.report_type == "general" and (payload.kind == "store" or len(reason) < 10):
             raise HTTPException(status_code=422, detail="Précisez le motif du signalement.")
+        if payload.report_type == "duplicate" and payload.kind == "recipe":
+            raise HTTPException(status_code=422, detail="Doublon non pris en charge pour les recettes.")
+        duplicate_id = _duplicate_id(payload.kind, payload.duplicate_url)
+        if duplicate_id == payload.content_id:
+            raise HTTPException(status_code=422, detail="La fiche ne peut pas être son propre doublon.")
         async with connection.transaction():
             key = hashlib.sha256(f"report:{user['id']}".encode()).hexdigest()
             if await _bump_limit(connection, key, 3600) > 10:
                 raise HTTPException(status_code=429, detail="Trop de signalements.")
-            await require_visible(connection, payload.kind, payload.content_id)
+            if payload.kind == "store":
+                visible = await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_stores s WHERE s.id=$1 "
+                    "AND (s.osm_id IS NOT NULL OR EXISTS(SELECT 1 FROM v2_price_observations o "
+                    "WHERE o.store_id=s.id)) AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
+                    "WHERE m.kind='store' AND m.from_id=s.id))",payload.content_id)
+                if not visible:
+                    raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            else:
+                await require_visible(connection, payload.kind, payload.content_id)
+                if payload.kind == "product" and await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
+                    "WHERE kind='product' AND from_id=$1)",payload.content_id,
+                ):
+                    raise HTTPException(status_code=404, detail="Produit introuvable.")
+            if duplicate_id is not None:
+                duplicate_id = await connection.fetchval(
+                    "SELECT to_id FROM v2_content_merges WHERE kind=$1 AND from_id=$2",
+                    payload.kind,duplicate_id,
+                ) or duplicate_id
+                if duplicate_id == payload.content_id:
+                    raise HTTPException(status_code=422, detail="La fiche ne peut pas être son propre doublon.")
             report_id = await connection.fetchval(
-                "INSERT INTO v2_content_reports(kind,content_id,reporter_id,reason) "
-                "VALUES($1,$2,$3,$4) RETURNING id",
-                payload.kind, payload.content_id, user["id"], reason,
+                "INSERT INTO v2_content_reports(kind,content_id,reporter_id,reason,report_type,duplicate_url,duplicate_id) "
+                "VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",
+                payload.kind, payload.content_id, user["id"],
+                reason or "Doublon potentiel",payload.report_type,
+                payload.duplicate_url.strip() if payload.duplicate_url else None,duplicate_id,
             )
         return {"id": report_id, "status": "open"}
     except asyncpg.UniqueViolationError as exc:
@@ -109,6 +154,8 @@ async def resolve_report(report_id: int, payload: ReportDecision, request: Reque
             if report is None or report["status"] != "open":
                 raise HTTPException(status_code=409, detail="Signalement déjà traité.")
             if payload.action == "withdraw":
+                if report["kind"] == "store":
+                    raise HTTPException(status_code=422, detail="Retrait de magasin non pris en charge.")
                 await require_visible(connection, report["kind"], report["content_id"])
                 await connection.execute(
                     "INSERT INTO v2_content_withdrawals"

@@ -1,0 +1,8 @@
+.v2-store-alias-review article { border-top: 1px solid var(--v2-line, #cbd9ce); padding: 10px 0; }
+.v2-store-alias-fields { display: grid; gap: 12px; max-width: 650px; margin: 12px 0 18px; }
+.v2-store-alias-fields label { display: grid; gap: 5px; font-weight: 700; }
+.v2-store-alias-fields :is(input, select) { padding: 10px 12px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: #fff; color: #203f30; }
+.v2-store-alias-candidates { list-style: none; padding: 0; }
+.v2-store-alias-candidates li { margin: 5px 0; }
+.v2-store-alias-candidates [aria-pressed="true"] { border-color: #2f8061; box-shadow: 0 0 0 2px #2f806155; }
+html[data-v2-theme="dark"] .v2-store-alias-fields :is(input, select) { background: #172822; border-color: #517164; color: #edf5eb; }

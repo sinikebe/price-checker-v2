@@ -25,14 +25,19 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/products.py", ("products", "open_food_facts")),
     ("backend/app/api/v2/catalogue.py", ("products",)),
     ("backend/app/api/v2/prices.py", ("products",)),
+    ("backend/app/api/v2/stores.py", ("products", "open_prices")),
     ("backend/app/api/v2/transfers.py", ("products", "database")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
     ("backend/app/api/v2/recipe_submissions.py", ("recipes",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
+    ("backend/app/api/v2/auth_security.py", ("accounts",)),
+    ("backend/app/api/v2/account_security.py", ("accounts",)),
     ("backend/app/api/v2/account_data.py", ("accounts",)),
     ("backend/app/api/v2/moderation.py", ("products", "recipes", "accounts", "pwa")),
+    ("backend/app/api/v2/duplicate_merges.py", ("products", "open_prices")),
     ("backend/app/api/v2/setup.py", ("database",)),
     ("backend/app/api/v2/updates.py", ("deployment",)),
+    ("backend/app/api/v2/host_health.py", ("deployment",)),
     ("backend/app/api/v2/sync.py", ("pwa", "products", "recipes", "basket")),
     ("backend/app/api/v2/off.py", ("open_food_facts",)),
     ("backend/app/core/*.py", ("database",)),
@@ -53,6 +58,20 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
     ("frontend/src/v2/V2ProductWorkspace.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2PriceHistory.tsx", ("products", "open_prices")),
+    ("frontend/src/v2/V2CapturePage.tsx", ("products", "bookmarklet")),
+    ("frontend/src/v2/V2CompletionPage.tsx", ("products",)),
+    ("frontend/src/v2/v2-completion.css", ("products",)),
+    ("frontend/src/v2/capture-retailers.json", ("products", "bookmarklet")),
+    ("frontend/src/v2/v2-stores-api.ts", ("products",)),
+    ("frontend/src/v2/V2StoreAliasReview.tsx", ("products",)),
+    ("frontend/src/v2/V2StoresPage.tsx", ("products", "open_prices")),
+    ("frontend/src/v2/V2RetailerGroupsAdmin.tsx", ("products", "open_prices")),
+    ("frontend/src/v2/v2-stores-page.css", ("products",)),
+    ("frontend/src/v2/V2DuplicateReview.tsx", ("products",)),
+    ("frontend/src/v2/v2-duplicate-review.css", ("products",)),
+    ("frontend/src/v2/v2-store-alias.css", ("products",)),
+    ("frontend/src/v2/bookmarklet-capture.js", ("products", "bookmarklet")),
+    ("frontend/src/v2/v2-capture.css", ("products", "bookmarklet")),
     ("frontend/src/v2/V2CataloguePage.tsx", ("products", "open_prices")),
     ("frontend/src/v2/v2-catalogue.css", ("products",)),
     ("frontend/src/v2/V2ReportControl.tsx", ("products", "recipes")),
@@ -76,6 +95,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-basket-*.ts", ("basket",)),
     ("frontend/src/v2/v2-basket.css", ("basket",)),
     ("frontend/src/v2/V2AuthPage.tsx", ("accounts",)),
+    ("frontend/src/v2/V2AccountSecurity.tsx", ("accounts",)),
     ("frontend/src/v2/v2-auth-*.ts", ("accounts",)),
     ("frontend/src/v2/v2-auth.css", ("accounts",)),
     ("frontend/src/v2/V2Gateway.tsx", ("application", "database", "accounts")),
@@ -99,6 +119,9 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2SiteFooter.tsx", ("application",)),
     ("frontend/src/v2/v2-legal.css", ("application",)),
     ("frontend/src/v2/V2ServerUpdateSchedule.tsx", ("deployment",)),
+    ("frontend/src/v2/V2HostHealth.tsx", ("deployment",)),
+    ("frontend/src/v2/V2HostAlertNotice.tsx", ("deployment",)),
+    ("frontend/src/v2/v2-host-health-api.ts", ("deployment",)),
     ("frontend/src/v2/V2TransferPanel.tsx", ("products", "database")),
     ("frontend/src/v2/V2MaintenanceOverlay.tsx", ("deployment",)),
     ("frontend/src/v2/v2-maintenance.css", ("deployment",)),
@@ -108,6 +131,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-dark.css", ("application",)),
     ("frontend/src/v2/v2-settings.css", ("application",)),
     ("frontend/src/v2/V2VersionsPage.tsx", ("application",)),
+    ("frontend/src/v2/V2ChangelogPage.tsx", ("application",)),
+    ("frontend/src/v2/v2-changelog.css", ("application",)),
     ("frontend/src/v2/v2-versions.css", ("application",)),
     ("frontend/src/v2/v2-home.css", ("application",)),
     ("frontend/src/v2/v2-base.css", ("application",)),
@@ -132,6 +157,7 @@ RUNTIME_FILES = {
 }
 VERSION_FILES = {
     "frontend/src/v2/component-versions.json",
+    "frontend/src/v2/component-changelog.json",
 }
 
 
@@ -167,7 +193,7 @@ def validate() -> dict:
     versions = json.loads(MANIFEST.read_text())
     expected = {
         "application", "products", "recipes", "basket", "database",
-        "open_food_facts", "accounts", "pwa", "deployment", "open_prices",
+        "open_food_facts", "accounts", "pwa", "deployment", "open_prices", "bookmarklet",
     }
     if set(versions) != expected:
         raise ValueError("Composants du manifeste manquants ou inconnus")
@@ -195,6 +221,18 @@ def bump_patch(version: str) -> str:
 
 def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+def stale_versions(versions: dict, previous: dict, affected: set[str]) -> list[str]:
+    """Reject a changed active component whose version did not advance."""
+    return [
+        key for key in sorted(affected)
+        if key in previous  # A newly registered component has no prior version.
+        and versions[key]["status"] == "active"
+        and previous[key]["version"] is not None
+        and tuple(map(int, versions[key]["version"].split(".")))
+        <= tuple(map(int, previous[key]["version"].split(".")))
+    ]
 
 
 def bump(versions: dict, affected: set[str]) -> None:
@@ -232,7 +270,7 @@ def main() -> None:
         print("Manifeste, métadonnées et règles de couverture valides")
         return
     if not args.base or not args.head:
-        parser.error("bump/preview nécessitent --base et --head")
+        parser.error("bump/preview/verify nécessitent --base et --head")
     paths = _git("diff", "--diff-filter=ACMRTUXB", "--name-only", "-z", args.base, args.head)
     affected = classify(paths)
     print("Composants concernés : " + (", ".join(sorted(affected)) if affected else "aucun"))
@@ -241,15 +279,9 @@ def main() -> None:
             ["git", "show", f"{args.base}:frontend/src/v2/component-versions.json"],
             cwd=ROOT, check=True, capture_output=True, text=True,
         ).stdout)
-        stale = [
-            key for key in affected
-            if versions[key]["status"] == "active"
-            and previous[key]["version"] is not None
-            and tuple(map(int, versions[key]["version"].split(".")))
-            <= tuple(map(int, previous[key]["version"].split(".")))
-        ]
+        stale = stale_versions(versions, previous, affected)
         if stale:
-            raise ValueError("Versions non augmentées depuis main : " + ", ".join(sorted(stale)))
+            raise ValueError("Versions non augmentées depuis la révision de base : " + ", ".join(sorted(stale)))
     if args.action == "bump" and affected:
         bump(versions, affected)
 

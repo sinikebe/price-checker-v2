@@ -514,6 +514,323 @@ MIGRATIONS = {
         CREATE INDEX v2_open_prices_sync_checked_idx
             ON v2_open_prices_sync_state(checked_at);
     """,
+    "0019_capture_draft_prices": """
+        -- A captured price can wait privately for its product draft to be
+        -- approved. Once published, the price is relinked to that product and
+        -- still needs its own moderation decision.
+        ALTER TABLE v2_price_drafts ALTER COLUMN product_id DROP NOT NULL;
+        ALTER TABLE v2_price_drafts ADD COLUMN product_draft_id bigint
+            REFERENCES v2_product_drafts(id) ON DELETE CASCADE;
+        ALTER TABLE v2_price_drafts ADD COLUMN capture_ean varchar(14)
+            CHECK (capture_ean ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$');
+        ALTER TABLE v2_price_drafts ADD CONSTRAINT v2_price_draft_target
+            CHECK ((product_id IS NOT NULL) <> (product_draft_id IS NOT NULL));
+        CREATE INDEX v2_price_drafts_product_draft_idx
+            ON v2_price_drafts(product_draft_id)
+            WHERE product_draft_id IS NOT NULL;
+    """,
+    "0020_store_aliases": """
+        ALTER TABLE v2_price_drafts ADD COLUMN captured_store_name varchar(300);
+        -- An alternative name is not a store edit until separately approved.
+        -- Source identifies the naming system, not a price source or location.
+        CREATE TABLE v2_store_aliases (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            store_id bigint NOT NULL REFERENCES v2_stores(id) ON DELETE CASCADE,
+            source varchar(24) NOT NULL CHECK
+                (source IN ('retailer','open_food_facts','open_prices')),
+            name varchar(300) NOT NULL,
+            name_key varchar(300) NOT NULL,
+            approved_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (store_id, source, name_key)
+        );
+        CREATE INDEX v2_store_aliases_lookup_idx
+            ON v2_store_aliases(source, name_key);
+        CREATE TABLE v2_store_alias_proposals (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            store_id bigint NOT NULL REFERENCES v2_stores(id) ON DELETE CASCADE,
+            author_id bigint NOT NULL REFERENCES v2_users(id),
+            source varchar(24) NOT NULL CHECK
+                (source IN ('retailer','open_food_facts','open_prices')),
+            name varchar(300) NOT NULL,
+            name_key varchar(300) NOT NULL,
+            status varchar(16) NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','rejected')),
+            reviewed_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            reviewed_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CHECK ((status='pending' AND reviewed_by IS NULL AND reviewed_at IS NULL)
+                OR (status<>'pending' AND reviewed_at IS NOT NULL))
+        );
+        CREATE UNIQUE INDEX v2_store_alias_proposals_pending_idx
+            ON v2_store_alias_proposals(store_id, source, name_key)
+            WHERE status='pending';
+        CREATE INDEX v2_store_alias_proposals_review_idx
+            ON v2_store_alias_proposals(status, created_at, id);
+    """,
+    "0021_bookmarklet_price_source": """
+        -- Older approved captures were labelled manual. Keep their provenance
+        -- on the public observation even after private draft retention expires.
+        ALTER TABLE v2_price_observations
+            ADD COLUMN source_url varchar(1000),
+            ADD COLUMN capture_ean varchar(14)
+                CHECK (capture_ean IS NULL OR capture_ean ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$');
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_source_check;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_source_check
+            CHECK (source IN ('manual','bookmarklet','connector','third_party'));
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_check;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_check
+            CHECK ((source='connector' AND offer_id IS NOT NULL)
+                OR (source IN ('manual','bookmarklet','third_party')
+                    AND offer_id IS NULL));
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_check2;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_check2
+            CHECK (source IN ('manual','bookmarklet') OR
+                (corrected_price IS NULL AND correction_status IS NULL
+                    AND resolved_by_observation_id IS NULL));
+        UPDATE v2_price_observations o
+        SET source='bookmarklet',source_url=d.source_url,capture_ean=d.capture_ean
+        FROM v2_price_drafts d
+        WHERE o.price_draft_id=d.id AND d.captured_via='bookmarklet'
+            AND o.source='manual';
+    """,
+
+    "0022_duplicate_merges": """
+        ALTER TABLE v2_content_reports ADD COLUMN report_type varchar(16) NOT NULL
+            DEFAULT 'general' CHECK (report_type IN ('general','duplicate'));
+        ALTER TABLE v2_content_reports ADD COLUMN duplicate_url varchar(1000);
+        ALTER TABLE v2_content_reports ADD COLUMN duplicate_id bigint;
+        ALTER TABLE v2_content_reports DROP CONSTRAINT v2_content_reports_kind_check;
+        ALTER TABLE v2_content_reports ADD CONSTRAINT v2_content_reports_kind_check
+            CHECK (kind IN ('product','recipe','store'));
+        ALTER TABLE v2_content_reports DROP CONSTRAINT v2_content_reports_status_check;
+        ALTER TABLE v2_content_reports ADD CONSTRAINT v2_content_reports_status_check
+            CHECK (status IN ('open','dismissed','withdrawn','merged'));
+        DROP INDEX v2_one_open_report_per_user_content;
+        CREATE UNIQUE INDEX v2_one_open_report_per_user_content
+            ON v2_content_reports(kind,content_id,reporter_id,report_type)
+            WHERE status='open';
+        CREATE TABLE v2_content_merges (
+            kind varchar(16) NOT NULL CHECK(kind IN ('product','store')),
+            from_id bigint NOT NULL CHECK(from_id > 0),
+            to_id bigint NOT NULL CHECK(to_id > 0),
+            report_id bigint REFERENCES v2_content_reports(id) ON DELETE SET NULL,
+            from_snapshot jsonb NOT NULL,
+            to_snapshot jsonb NOT NULL,
+            result_snapshot jsonb NOT NULL,
+            merged_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            merged_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY(kind,from_id),
+            CHECK(from_id <> to_id)
+        );
+        CREATE INDEX v2_content_merges_to_idx ON v2_content_merges(kind,to_id);
+        CREATE TABLE v2_store_osm_aliases (
+            osm_type varchar(20) NOT NULL,
+            osm_id bigint NOT NULL,
+            store_id bigint NOT NULL REFERENCES v2_stores(id),
+            PRIMARY KEY(osm_type,osm_id)
+        );
+        CREATE INDEX v2_store_osm_aliases_store_idx ON v2_store_osm_aliases(store_id);
+        -- Offers and observations reference a compound store key; both must move
+        -- in one transaction before that compound FK is checked.
+        DO $$ DECLARE fk record; BEGIN
+            FOR fk IN SELECT conname FROM pg_constraint
+                WHERE conrelid='v2_price_observations'::regclass
+                  AND confrelid='v2_offers'::regclass AND contype='f'
+            LOOP
+                EXECUTE format('ALTER TABLE v2_price_observations ALTER CONSTRAINT %I DEFERRABLE INITIALLY DEFERRED',fk.conname);
+            END LOOP;
+        END $$;
+    """,
+
+    "0023_merge_manual_observations": """
+        -- Keep both approved readings when a duplicate-sheet merge makes their
+        -- manual uniqueness keys equal. Ordinary new manual readings remain unique.
+        ALTER TABLE v2_price_observations ADD COLUMN merge_duplicate_of_id bigint
+            REFERENCES v2_price_observations(id);
+        DROP INDEX v2_price_observations_manual_idx;
+        CREATE UNIQUE INDEX v2_price_observations_manual_idx
+            ON v2_price_observations(product_id, store_id, sales_channel,
+                observed_at, price, coalesce(quantity_text, ''))
+            WHERE source='manual' AND merge_duplicate_of_id IS NULL;
+        CREATE INDEX v2_price_observations_merge_duplicate_idx
+            ON v2_price_observations(merge_duplicate_of_id)
+            WHERE merge_duplicate_of_id IS NOT NULL;
+    """,
+    "0024_retailer_groups": """
+        -- Source retailer rows and their price references remain unchanged.
+        CREATE TABLE v2_retailer_groups (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            name varchar(200) NOT NULL CHECK (btrim(name) <> ''),
+            name_key varchar(200) NOT NULL UNIQUE
+        );
+        ALTER TABLE v2_retailers
+            ADD COLUMN group_id bigint REFERENCES v2_retailer_groups(id);
+        INSERT INTO v2_retailer_groups(name,name_key)
+        SELECT DISTINCT ON (lower(btrim(name))) btrim(name),lower(btrim(name))
+        FROM v2_retailers ORDER BY lower(btrim(name)),id;
+        INSERT INTO v2_retailer_groups(name,name_key) VALUES
+            ('Auchan','auchan'),('Carrefour','carrefour'),
+            ('Intermarché','intermarché'),('E.Leclerc','e.leclerc')
+        ON CONFLICT(name_key) DO NOTHING;
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g WHERE g.name_key=lower(btrim(r.name));
+
+        -- Explicitly verified families; other chains are never grouped by
+        -- fuzzy similarity or corporate ownership.
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='auchan'
+          AND lower(btrim(r.name)) IN ('auchan','auchan supermarché');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='carrefour'
+          AND lower(btrim(r.name)) IN (
+            'carrefour','carrefour city','carrefour contact',
+            'carrefour express','carrefour market');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='intermarché'
+          AND lower(btrim(r.name)) IN (
+            'intermarché','intermarché contact','intermarché hyper',
+            'intermarché super');
+        UPDATE v2_retailers r SET group_id=g.id
+        FROM v2_retailer_groups g
+        WHERE g.name_key='e.leclerc'
+          AND lower(btrim(r.name)) IN (
+            'e.leclerc','e. leclerc','e.leclerc drive',
+            'e. leclerc drive','e.leclerc express',
+            'centre commercial e.leclerc');
+        DELETE FROM v2_retailer_groups g
+        WHERE NOT EXISTS (SELECT 1 FROM v2_retailers r WHERE r.group_id=g.id);
+        ALTER TABLE v2_retailers ALTER COLUMN group_id SET NOT NULL;
+        CREATE INDEX v2_retailers_group_idx ON v2_retailers(group_id);
+        -- A source-label mapping survives future imports of the same label,
+        -- even after an administrator moves it to another group.
+        CREATE TABLE v2_retailer_group_names (
+            name_key varchar(200) PRIMARY KEY,
+            group_id bigint NOT NULL REFERENCES v2_retailer_groups(id)
+        );
+        INSERT INTO v2_retailer_group_names(name_key,group_id)
+        SELECT DISTINCT ON (lower(btrim(name))) lower(btrim(name)),group_id
+        FROM v2_retailers ORDER BY lower(btrim(name)),id;
+        CREATE FUNCTION v2_retailer_default_group() RETURNS trigger AS $$
+        DECLARE source_key varchar(200);
+        BEGIN
+            IF NEW.group_id IS NULL THEN
+                source_key := lower(btrim(NEW.name));
+                SELECT group_id INTO NEW.group_id FROM v2_retailer_group_names
+                WHERE name_key=source_key FOR UPDATE;
+                IF NEW.group_id IS NULL THEN
+                    INSERT INTO v2_retailer_groups(name,name_key)
+                    VALUES (btrim(NEW.name),source_key)
+                    ON CONFLICT (name_key) DO NOTHING;
+                    SELECT id INTO NEW.group_id FROM v2_retailer_groups
+                    WHERE name_key=source_key;
+                    INSERT INTO v2_retailer_group_names(name_key,group_id)
+                    VALUES (source_key,NEW.group_id) ON CONFLICT DO NOTHING;
+                    SELECT group_id INTO NEW.group_id FROM v2_retailer_group_names
+                    WHERE name_key=source_key;
+                END IF;
+            END IF;
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TRIGGER v2_retailer_default_group_before_insert
+            BEFORE INSERT ON v2_retailers FOR EACH ROW
+            EXECUTE FUNCTION v2_retailer_default_group();
+        CREATE TABLE v2_retailer_group_events (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            retailer_id bigint NOT NULL REFERENCES v2_retailers(id),
+            from_group_id bigint NOT NULL REFERENCES v2_retailer_groups(id),
+            to_group_id bigint NOT NULL REFERENCES v2_retailer_groups(id),
+            actor_id bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            changed_at timestamptz NOT NULL DEFAULT now(),
+            CHECK (from_group_id <> to_group_id)
+        );
+    """,
+    "0025_merge_source_retailers_and_barcode_sync": """
+        -- Canonical retailer/store IDs remain consistent for existing composite
+        -- foreign keys. Keep the source label independently for audit/display.
+        -- Persist verified families even on a fresh empty installation.
+        INSERT INTO v2_retailer_groups(name,name_key) VALUES
+            ('Auchan','auchan'),('Carrefour','carrefour'),
+            ('Intermarché','intermarché'),('E.Leclerc','e.leclerc')
+        ON CONFLICT(name_key) DO NOTHING;
+        -- Seed verified family labels even if that variant did not exist
+        -- when migration 0024 ran. An explicit admin assignment wins.
+        INSERT INTO v2_retailer_group_names(name_key,group_id)
+        SELECT aliases.name_key,g.id FROM (VALUES
+            ('auchan','auchan'),('auchan supermarché','auchan'),
+            ('carrefour','carrefour'),('carrefour city','carrefour'),
+            ('carrefour contact','carrefour'),('carrefour express','carrefour'),
+            ('carrefour market','carrefour'),
+            ('intermarché','intermarché'),('intermarché contact','intermarché'),
+            ('intermarché hyper','intermarché'),('intermarché super','intermarché'),
+            ('e.leclerc','e.leclerc'),('e. leclerc','e.leclerc'),
+            ('e.leclerc drive','e.leclerc'),('e. leclerc drive','e.leclerc'),
+            ('e.leclerc express','e.leclerc'),
+            ('centre commercial e.leclerc','e.leclerc')
+        ) AS aliases(name_key,group_key)
+        JOIN v2_retailer_groups g ON g.name_key=aliases.group_key
+        ON CONFLICT(name_key) DO NOTHING;
+
+        ALTER TABLE v2_price_drafts ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        ALTER TABLE v2_offers ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        ALTER TABLE v2_price_observations ADD COLUMN source_retailer_id bigint
+            REFERENCES v2_retailers(id);
+        CREATE INDEX v2_open_prices_source_record_idx
+            ON v2_price_observations(product_id,source_record_id)
+            WHERE source_provider='open_prices';
+
+        -- A merged product may own several valid GTINs. Throttle each GTIN
+        -- separately while still attaching imported prices to the canonical ID.
+        ALTER TABLE v2_open_prices_sync_state DROP CONSTRAINT v2_open_prices_sync_state_pkey;
+        ALTER TABLE v2_open_prices_sync_state ADD COLUMN barcode varchar(14);
+        UPDATE v2_open_prices_sync_state s SET barcode=CASE
+            WHEN p.data->>'ean' ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$'
+            THEN p.data->>'ean' ELSE 'legacy:unknown' END
+        FROM v2_products p WHERE p.id=s.product_id;
+        ALTER TABLE v2_open_prices_sync_state ALTER COLUMN barcode SET NOT NULL;
+        ALTER TABLE v2_open_prices_sync_state
+            ADD PRIMARY KEY(product_id,barcode);
+    """,
+
+    "0026_account_security": """
+        CREATE TABLE v2_mfa_credentials (
+            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
+            secret_ciphertext text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            pending_expires_at timestamptz,
+            enabled_at timestamptz,
+            last_step bigint
+        );
+        CREATE TABLE v2_mfa_recovery_codes (
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            code_hash char(64) NOT NULL,
+            PRIMARY KEY(user_id,code_hash)
+        );
+        CREATE TABLE v2_api_tokens (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            label varchar(80) NOT NULL CHECK (btrim(label) <> ''),
+            token_hash char(64) NOT NULL UNIQUE,
+            scope varchar(16) NOT NULL CHECK (scope IN ('read','contribute')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL,
+            last_used_at timestamptz,
+            revoked_at timestamptz
+        );
+        CREATE INDEX v2_api_tokens_user_idx ON v2_api_tokens(user_id,created_at DESC);
+    """,
 
 }
 

@@ -52,7 +52,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   useEffect(() => {
     if (selected && selectedFor !== identity) {
       setSelected(null); setChecked([]);
-      setError("La référence a changé : choisissez à nouveau une fiche OFF.");
+      setError("La référence a changé : choisissez à nouveau une fiche Open Food Facts.");
     }
   }, [identity, selected, selectedFor]);
   useEffect(() => {
@@ -98,9 +98,9 @@ export default function V2OffLookup({ data, onApply, disabled }: {
           const preview = await readOffInBrowser(barcode);
           if (currentEan.current !== barcode) return;
           setTemporary(preview);
-          setError(preview ? "Quota serveur atteint. Lecture directe provisoire : aucune donnée n’est enregistrée." :
-            "Aucune fiche OFF pour ce code. Le rafraîchissement serveur sera possible plus tard.");
-        } catch { setError("Quota serveur atteint et lecture directe indisponible."); }
+          setError(preview ? "Limite de consultation d’Open Food Facts atteinte. Les informations affichées ne sont pas enregistrées." :
+            "La consultation d’Open Food Facts est momentanément limitée. Réessayez plus tard ou poursuivez la saisie manuellement.");
+        } catch { setError("Limite de consultation d’Open Food Facts atteinte. Réessayez plus tard."); }
       } else if (reason instanceof ProductApiError && reason.status === 404) {
         setError("Produit introuvable sur Open Food Facts. Vous pouvez continuer la saisie manuellement.");
       } else {
@@ -137,10 +137,10 @@ export default function V2OffLookup({ data, onApply, disabled }: {
     </div>
     {error && <p className="v2-off-error" role="alert">{error}</p>}
     {temporary && <div className="v2-off-temporary" role="status">
-      <strong>{temporary.name || "Produit OFF"}</strong> · {temporary.brand || "Marque inconnue"} · {temporary.quantity || "Quantité inconnue"}
+      <strong>{temporary.name || "Produit Open Food Facts"}</strong> · {temporary.brand || "Marque inconnue"} · {temporary.quantity || "Quantité inconnue"}
       {temporary.ingredients && <p>Ingrédients : {temporary.ingredients}</p>}
       {temporary.nutriscore && <p>Nutri-Score : {temporary.nutriscore.toUpperCase()}</p>}
-      <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir la fiche complète chez OFF ↗</a>
+      <a href={`https://world.openfoodfacts.org/product/${temporary.code}`} target="_blank" rel="noreferrer">Voir la fiche complète chez Open Food Facts ↗</a>
     </div>}
     {searchLimited && searchTerm.length >= 2 && <p>
       <a href={`https://search.openfoodfacts.org/off-test?q=${encodeURIComponent(searchTerm)}`}
@@ -158,7 +158,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
     {selected && <div className="v2-off-preview">
       <div className="v2-off-selected"><div>{image && <img src={image} alt="" />}
         <div><strong>{selected.product_name || "Produit sans nom"}</strong><small>{selected.brand || "Marque inconnue"} · {selected.quantity || "Quantité inconnue"}</small>
-          <a href={"https://world.openfoodfacts.org/product/" + selected.code} target="_blank" rel="noreferrer">Voir la fiche OFF ↗</a></div></div>
+          <a href={"https://world.openfoodfacts.org/product/" + selected.code} target="_blank" rel="noreferrer">Voir la fiche Open Food Facts ↗</a></div></div>
         <button type="button" onClick={() => { setSelected(null); setChecked([]); }}>Changer</button>
       </div>
       <h3>Champs à importer dans le brouillon</h3>
@@ -169,7 +169,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
         return <label key={item.key} className={same ? "v2-off-same" : ""}>
           <input type="checkbox" disabled={disabled || same} checked={checked.includes(item.key)}
             onChange={event => setChecked(current => event.target.checked ? [...current, item.key] : current.filter(key => key !== item.key))} />
-          <span><strong>{item.label}</strong><small>Actuel : {data[item.key] || "—"}</small><span>OFF : {value}</span>
+          <span><strong>{item.label}</strong><small>Actuel : {data[item.key] || "—"}</small><span>Open Food Facts : {value}</span>
             {item.key === "nutriscore" && selected.nutriscore_version && <small>Version {selected.nutriscore_version}</small>}</span>
         </label>;
       })}</div>

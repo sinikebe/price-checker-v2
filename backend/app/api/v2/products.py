@@ -244,6 +244,7 @@ async def list_products():
             "SELECT 1 FROM v2_content_withdrawals w "
             "WHERE w.kind='product' AND w.content_id=p.id) "
             "AND NOT EXISTS (SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id) "
             "ORDER BY p.updated_at DESC, p.id DESC"
         )
         return [_product(row) for row in rows]
@@ -262,9 +263,11 @@ async def product_by_barcode(barcode: str, request: Request):
     connection = await _connect()
     try:
         product = await connection.fetchrow(
-            "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
+            "SELECT COALESCE(m.to_id,p.id) AS id FROM v2_products p "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE p.data->>'ean' <> '' "
             "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
-            "WHERE w.kind='product' AND w.content_id=p.id) "
+            "WHERE w.kind='product' AND w.content_id=COALESCE(m.to_id,p.id)) "
             "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
             "AND NOT EXISTS (SELECT 1 FROM v2_products next "
             "WHERE next.predecessor_id=p.id) "
@@ -345,7 +348,25 @@ async def get_draft(draft_id: int, request: Request):
         )
         if row is None or (row["author_id"] != user["id"] and user["role"] != "admin"):
             raise HTTPException(status_code=404, detail="Brouillon introuvable.")
-        return _draft(row)
+        result = _draft(row)
+        prices = await connection.fetch(
+            "SELECT d.id,d.price,d.status,d.capture_ean,d.quantity_text,d.captured_store_name,"
+            "r.name AS retailer,s.name AS store_name "
+            "FROM v2_price_drafts d "
+            "JOIN v2_retailers r ON r.id=d.retailer_id "
+            "JOIN v2_stores s ON s.id=d.store_id "
+            "WHERE d.product_draft_id=$1 ORDER BY d.created_at DESC,d.id DESC LIMIT 100",
+            draft_id,
+        )
+        result["linked_prices"] = [
+            {"id": price["id"], "price": str(price["price"]),
+             "status": price["status"], "capture_ean": price["capture_ean"],
+             "quantity_text": price["quantity_text"],
+             "captured_store_name": price["captured_store_name"], "retailer": price["retailer"],
+             "store_name": price["store_name"]}
+            for price in prices
+        ]
+        return result
     finally:
         await connection.close()
 
@@ -377,7 +398,10 @@ async def create_draft(payload: DraftCreate, request: Request):
                     "ORDER BY id DESC LIMIT 1",
                     payload.product_id,
                 )
-                if successor_id is not None:
+                if successor_id is not None or await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
+                    payload.product_id,
+                ):
                     raise HTTPException(
                         status_code=409,
                         detail="Cette référence a été remplacée. Modifiez sa version actuelle.",
@@ -420,7 +444,9 @@ async def update_draft(draft_id: int, payload: DraftUpdate, request: Request):
                 "revision=revision+1, updated_at=now() WHERE id=$3 AND author_id=$4 "
                 "AND status='draft' AND revision=$5 "
                 "AND NOT EXISTS (SELECT 1 FROM v2_products next "
-                "WHERE next.predecessor_id=v2_product_drafts.product_id) RETURNING *",
+                "WHERE next.predecessor_id=v2_product_drafts.product_id) "
+                "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+                "WHERE m.kind='product' AND m.from_id=v2_product_drafts.product_id) RETURNING *",
                 payload.data.model_dump_json(),
                 payload.change_kind,
                 draft_id,
@@ -466,16 +492,23 @@ async def reject_draft(draft_id: int, payload: DraftApproval, request: Request):
         user = await _user(connection, request)
         if user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Rejet réservé à l'administrateur.")
-        row = await connection.fetchrow(
-            "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
-            "rejected_by=$1 WHERE id=$2 AND status='draft' AND revision=$3 "
-            "RETURNING *",
-            user["id"], draft_id, payload.revision,
-        )
-        if row is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
+                "rejected_by=$1 WHERE id=$2 AND status='draft' AND revision=$3 "
+                "RETURNING *",
+                user["id"], draft_id, payload.revision,
+            )
+            if row is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+                )
+            await connection.execute(
+                "UPDATE v2_price_drafts SET status='rejected',reviewed_by=$1,"
+                "reviewed_at=now(),updated_at=now() "
+                "WHERE product_draft_id=$2 AND status='draft'",
+                user["id"], draft_id,
             )
         return _draft(row)
     finally:
@@ -511,6 +544,11 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             before = None
             if draft["product_id"] is not None:
                 await require_visible(connection, "product", draft["product_id"])
+                if await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
+                    draft["product_id"],
+                ):
+                    raise HTTPException(status_code=409, detail="Ce produit a été fusionné.")
                 existing = await connection.fetchrow(
                     "SELECT * FROM v2_products WHERE id=$1 FOR UPDATE",
                     draft["product_id"],
@@ -552,11 +590,15 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     barcode,
                 )
                 collision = await connection.fetchval(
-                    "SELECT p.id FROM v2_products p WHERE p.id IS DISTINCT FROM $2 "
+                    "SELECT p.id FROM v2_products p LEFT JOIN v2_content_merges m "
+                    "ON m.kind='product' AND m.from_id=p.id "
+                    "WHERE COALESCE(m.to_id,p.id) IS DISTINCT FROM $2 "
                     "AND p.data->>'ean' <> '' "
                     "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
                     "AND NOT EXISTS (SELECT 1 FROM v2_products next "
-                    "WHERE next.predecessor_id=p.id) LIMIT 1",
+                    "WHERE next.predecessor_id=p.id) "
+                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+                    "WHERE w.kind='product' AND w.content_id=p.id) LIMIT 1",
                     barcode,
                     draft["product_id"],
                 )
@@ -613,9 +655,14 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             await connection.execute(
                 "UPDATE v2_product_drafts SET status='approved',approved_at=now(),"
                 "approved_by=$1,result_product_id=$2,updated_at=now() WHERE id=$3",
-                user["id"],
-                product["id"],
-                draft_id,
+                user["id"], product["id"], draft_id,
+            )
+            # A linked price remains private and pending after publication of
+            # its product; its own reviewer must still approve it separately.
+            await connection.execute(
+                "UPDATE v2_price_drafts SET product_id=$1,product_draft_id=NULL,"
+                "updated_at=now() WHERE product_draft_id=$2 AND status='draft'",
+                product["id"], draft_id,
             )
             return _product(product)
     finally:
@@ -641,30 +688,72 @@ def _off_snapshot_response(product_id: int, row) -> dict:
     }
 
 
-@router.get("/{product_id}/off")
-async def get_product_off(product_id: int):
+async def _off_canonical_id(connection, product_id: int) -> int:
+    canonical_id = await connection.fetchval(
+        "SELECT COALESCE(m.to_id,p.id) FROM v2_products p "
+        "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+        "WHERE p.id=$1", product_id,
+    )
+    if canonical_id is None:
+        raise HTTPException(status_code=404, detail="Produit introuvable.")
+    await require_visible(connection, "product", canonical_id)
+    return canonical_id
+
+
+@router.get("/{product_id}/off-sources")
+async def product_off_sources(product_id: int):
+    """Existing OFF sheets from merged GTINs remain attached to the current card."""
     connection = await _connect()
     try:
-        await require_visible(connection, "product", product_id)
-        product = await connection.fetchrow(
-            "SELECT data FROM v2_products WHERE id=$1", product_id
+        canonical_id = await _off_canonical_id(connection, product_id)
+        rows = await connection.fetch(
+            "SELECT * FROM (SELECT DISTINCT ON (lpad(snap.barcode,14,'0')) "
+            "snap.product_id,snap.barcode,snap.fetched_at,"
+            "(snap.product_id=$1) AS primary_source "
+            "FROM v2_product_off_snapshots snap "
+            "JOIN v2_products p ON p.id=snap.product_id "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE COALESCE(m.to_id,p.id)=$1 "
+            "AND lpad(snap.barcode,14,'0')=lpad(p.data->>'ean',14,'0') "
+            "ORDER BY lpad(snap.barcode,14,'0'),primary_source DESC,"
+            "snap.fetched_at DESC,snap.product_id) sources "
+            "ORDER BY primary_source DESC,fetched_at DESC,product_id",
+            canonical_id,
         )
-        if product is None:
-            raise HTTPException(status_code=404, detail="Produit introuvable.")
-        barcode = _decoded(product["data"]).get("ean", "")
-        if not barcode:
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+@router.get("/{product_id}/off")
+async def get_product_off(product_id: int, barcode: str | None = Query(default=None)):
+    connection = await _connect()
+    try:
+        canonical_id = await _off_canonical_id(connection, product_id)
+        default_barcode = await connection.fetchval(
+            "SELECT data->>'ean' FROM v2_products WHERE id=$1", product_id,
+        )
+        requested = normalize_barcode(barcode) if barcode is not None else default_barcode
+        if not requested:
             raise HTTPException(
                 status_code=422, detail="Ce produit n'a pas de code EAN / GTIN."
             )
         row = await connection.fetchrow(
-            "SELECT * FROM v2_product_off_snapshots WHERE product_id=$1",
-            product_id,
+            "SELECT snap.* FROM v2_product_off_snapshots snap "
+            "JOIN v2_products p ON p.id=snap.product_id "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE COALESCE(m.to_id,p.id)=$1 "
+            "AND lpad(p.data->>'ean',14,'0')=lpad($2,14,'0') "
+            "AND lpad(snap.barcode,14,'0')=lpad($2,14,'0') "
+            "ORDER BY (snap.product_id=$1) DESC,snap.fetched_at DESC LIMIT 1",
+            canonical_id, requested,
         )
-        if row is None or row["barcode"] != barcode:
+        if row is None:
             raise HTTPException(
                 status_code=404, detail="Aucune fiche Open Food Facts enregistrée."
             )
-        return _off_snapshot_response(product_id, row)
+        return {**_off_snapshot_response(canonical_id, row),
+                "source_product_id": row["product_id"]}
     finally:
         await connection.close()
 
@@ -761,6 +850,8 @@ async def get_product(product_id: int):
         if row is None:
             raise HTTPException(status_code=404, detail="Produit introuvable.")
         product = _product(row)
+        product["merged_to_id"] = await connection.fetchval(
+            "SELECT to_id FROM v2_content_merges WHERE kind='product' AND from_id=$1",product_id)
         product["successor_id"] = await connection.fetchval(
             "SELECT id FROM v2_products WHERE predecessor_id=$1 "
             "ORDER BY id DESC LIMIT 1", product_id

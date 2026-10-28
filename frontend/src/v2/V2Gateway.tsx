@@ -1,14 +1,18 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
 import apiClient from "../api/client";
 import V2SettingsPage from "./V2SettingsPage";
+import V2HostAlertNotice from "./V2HostAlertNotice";
 import V2HomePage from "./V2HomePage";
 import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2CataloguePage from "./V2CataloguePage";
 import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
+import V2CapturePage from "./V2CapturePage";
+import V2CompletionPage from "./V2CompletionPage";
+import V2StoresPage from "./V2StoresPage";
 import { useV2Basket } from "./V2BasketContext";
 import "./v2-home.css";
 import "./v2-setup.css";
@@ -220,10 +224,10 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
     <SetupFrame>
       <div className="v2-setup-intro">
         <span className="v2-section-kicker">{configured ? "PARAMÈTRES · SERVEUR" : "PREMIER DÉMARRAGE"}</span>
-        <h1>{configured ? "Paramètres du serveur." : <>Préparons votre <em>espace.</em></>}</h1>
+        <h1>{configured ? "Paramètres du serveur." : <>Configurer le <em>serveur.</em></>}</h1>
         <p>{configured
-          ? "Le nom d’hôte est modifiable avec votre compte admin. La connexion PostgreSQL reste protégée par le code du serveur."
-          : "Renseignez le nom d’hôte et la base de données de cette instance. Nous vérifierons la connexion et préparerons le schéma des comptes."}</p>
+          ? "Le nom d’hôte peut être modifié avec un compte administrateur. Le code du serveur reste nécessaire pour modifier la connexion à la base de données."
+          : "Renseignez l’adresse de cette installation et les paramètres de sa base de données. La connexion sera vérifiée avant l’activation des comptes."}</p>
       </div>
 
       {configured && <HostnameSettings environment={environment} />}
@@ -350,7 +354,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
           <div className="v2-setup-aside-rule" />
           <div className="v2-setup-aside-point"><span>✓</span><p>Connexion testée avant l’enregistrement ; TLS obligatoire hors du développement local</p></div>
           <div className="v2-setup-aside-point"><span>✓</span><p>Mot de passe conservé côté serveur, jamais dans le navigateur</p></div>
-          <div className="v2-setup-aside-point"><span>✓</span><p>Le schéma est créé seulement après votre confirmation</p></div>
+          <div className="v2-setup-aside-point"><span>✓</span><p>La base est initialisée après confirmation</p></div>
           {form.provider === "supabase" && (
             <a href="https://supabase.com/docs/guides/database/connecting-to-postgres" target="_blank" rel="noreferrer">
               Où trouver ces paramètres ? <span aria-hidden="true">↗</span>
@@ -363,7 +367,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesMode?: boolean;
   authMode?: "login" | "register";
@@ -373,8 +377,14 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   recipeMode?: "list" | "detail" | "new" | "edit";
   recipeId?: number;
   basketMode?: boolean;
+  captureMode?: "install" | "review";
+  completionMode?: boolean;
+  storesMode?: boolean;
+  storeId?: number;
 }) {
   const { setUser: activateUserBasket } = useV2Basket();
+  const route = useLocation();
+  const [loginRedirect, setLoginRedirect] = useState("/v2");
   const [status, setStatus] = useState<Status | null>(null);
   const [authStatus, setAuthStatus] = useState<V2AuthStatus | null>(null);
   const [error, setError] = useState("");
@@ -414,6 +424,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }, []);
 
   function authenticated(user: V2User) {
+    setLoginRedirect(authMode && new URLSearchParams(route.search).get("next") === "capture" ? "/v2/capture" : "/v2");
     setAuthStatus({ admin_initialized: true, user });
   }
 
@@ -449,6 +460,9 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <SetupPage configured environment={status.app_env}
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
+  const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
+  const withHostAlert = (page: ReactNode) => adminId !== null && !preferencesMode
+    ? <><V2HostAlertNotice userId={adminId} />{page}</> : page;
   if (preferencesMode) return <V2SettingsPage user={authStatus.user} onAccountDeleted={() => {
     setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
   }} />;
@@ -456,16 +470,19 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }
   if (authMode) {
-    if (authStatus.user) return <Navigate to="/v2" replace />;
+    if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
-  if (basketMode) return <V2BasketPage user={authStatus.user} onLogout={logout} />;
+  if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
+  if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
+  if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
+  if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} />);
   if (recipeMode) {
-    return <V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />;
+    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />);
   }
-  if (workspaceMode === "catalogue" || categoryName) return <V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />;
+  if (workspaceMode === "catalogue" || categoryName) return withHostAlert(<V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />);
   if (workspaceMode) {
-    return <V2ProductWorkspace key={workspaceMode + ":" + workspaceId} mode={workspaceMode} id={workspaceId} user={authStatus.user} onLogout={logout} />;
+    return withHostAlert(<V2ProductWorkspace key={workspaceMode + ":" + workspaceId} mode={workspaceMode} id={workspaceId} user={authStatus.user} onLogout={logout} />);
   }
-  return <V2HomePage user={authStatus.user} onLogout={logout} />;
+  return withHostAlert(<V2HomePage user={authStatus.user} onLogout={logout} />);
 }

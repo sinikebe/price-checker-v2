@@ -122,7 +122,7 @@ export default function V2ServerUpdateSchedule() {
     <p>Mettez à jour cette instance maintenant ou planifiez les mises à jour quotidiennes. Une sauvegarde et des contrôles de santé précèdent sa remise en ligne.</p>
     {saved && <div className="v2-manual-update">
       <h3>Mise à jour immédiate</h3>
-      <p>Recherche la dernière version validée par la CI et l’installe avec sauvegarde et contrôle de santé. Le site peut être temporairement indisponible.</p>
+      <p>Recherche et installe la dernière version disponible, après sauvegarde et vérification du serveur. Le site peut être temporairement indisponible.</p>
       <button className="v2-button v2-button-secondary" type="button"
         onClick={() => void runNow()}
         disabled={pending || !saved.scheduler_installed || saved.manual_state !== null}>

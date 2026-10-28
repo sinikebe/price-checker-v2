@@ -1,0 +1,26 @@
+.v2-duplicate-review { margin: 1.5rem 0; padding: 1.2rem; border: 1px solid var(--v2-line,#cad6cf); border-radius: 1rem; }
+.v2-duplicate-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
+.v2-duplicate-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.v2-duplicate-pane, .v2-duplicate-result { padding: 1rem; border: 1px solid var(--v2-line,#cad6cf); border-radius: .8rem; min-width: 0; }
+.v2-duplicate-pane dl { display: grid; gap: .5rem; max-height: 28rem; overflow: auto; }
+.v2-duplicate-pane dl div { display: grid; grid-template-columns: minmax(7rem,35%) 1fr; gap: .5rem; border-bottom: 1px solid var(--v2-line,#cad6cf); }
+.v2-duplicate-pane dt { font-weight: 650; }
+.v2-duplicate-pane dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.v2-duplicate-pane input { display: block; width: 100%; margin: .5rem 0; }
+.v2-duplicate-pane code { overflow-wrap: anywhere; }
+.v2-duplicate-candidates { list-style: none; padding: 0; max-height: 14rem; overflow: auto; }
+.v2-duplicate-candidates li { display: flex; justify-content: space-between; gap: .5rem; margin: .4rem 0; }
+.v2-duplicate-candidates button { text-align: left; flex: 1; }
+.v2-duplicate-candidates small { display: block; }
+.v2-duplicate-candidates [aria-pressed="true"] { outline: 2px solid #4e8f73; }
+.v2-duplicate-result { margin-top: 1rem; }
+.v2-duplicate-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .7rem; margin: 1rem 0; }
+.v2-duplicate-field { padding: .8rem; border: 1px solid var(--v2-line,#cad6cf); border-radius: .65rem; overflow-wrap: anywhere; }
+.v2-duplicate-field p { margin: .4rem 0; white-space: pre-wrap; }
+.v2-duplicate-conflict { border: 2px solid #c84b4b; background: #c84b4b1c; }
+.v2-duplicate-one_sided { border: 2px solid #d48b2b; background: #d48b2b1c; }
+.v2-duplicate-state { margin-left: .6rem; font-weight: 700; }
+.v2-duplicate-edit { display: grid; gap: .5rem; }
+.v2-duplicate-edit textarea, .v2-duplicate-edit select { width: 100%; box-sizing: border-box; color: inherit; background: var(--v2-surface,#fff); border: 1px solid var(--v2-line,#cad6cf); border-radius: .4rem; padding: .5rem; }
+.v2-duplicate-edit [aria-pressed="true"] { border-color: #20865c; }
+@media(max-width:750px) { .v2-duplicate-pair,.v2-duplicate-fields { grid-template-columns: 1fr; } }

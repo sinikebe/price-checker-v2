@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -26,7 +26,7 @@ def _price(code: str, *, price_id=41001, currency="EUR", country="FR",
     return {
         "id": price_id, "type": "PRODUCT", "product_code": code,
         "price": 2.49, "currency": currency, "price_is_discounted": discounted,
-        "date": (date.today() - timedelta(days=1)).isoformat(),
+        "date": (datetime.now(sync.PARIS).date() - timedelta(days=1)).isoformat(),
         "duplicate_of": duplicate_of,
         "location": {
             "id": 44001, "type": "OSM", "osm_type": "NODE", "osm_id": 990001,
@@ -45,7 +45,7 @@ def test_open_prices_validation_and_backoff():
         {**valid, "price_is_discounted": True},
         {**valid, "duplicate_of": 1},
         {**valid, "location": {**valid["location"], "osm_address_country_code": "BE"}},
-        {**valid, "date": (date.today() + timedelta(days=1)).isoformat()},
+        {**valid, "date": (datetime.now(sync.PARIS).date() + timedelta(days=1)).isoformat()},
     ):
         assert sync._valid_price(changed, "3017620422003") is None
     assert sync._retry_seconds("10") == 6 * 3600

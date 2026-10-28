@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ReportControl from "./V2ReportControl";
+import V2ModerationPanel from "./V2ModerationPanel";
+import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import { useV2Basket } from "./V2BasketContext";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -47,8 +49,8 @@ export function Frame({ children, user, onLogout }: { children: React.ReactNode;
       <Link className="v2-brand" to="/v2"><span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
         <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
       <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
-        <Link to="/v2/produits/nouveau">Ajouter</Link>
+        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/magasins">Magasins</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/a-completer">À compléter</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
+        <Link to="/v2/produits/nouveau">Ajouter</Link><Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
         {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
         {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
         {user ? <span className="v2-account-nav"><span>{user.username}</span><button onClick={() => { void onLogout(); }}>Déconnexion</button></span>
@@ -104,6 +106,7 @@ function ListPage({ mode, user, onLogout }: Props) {
       <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
         onClick={() => setPage(value => value + 1)}>Suivant</button>
     </div>}
+    {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
   </Frame>;
 }
 
@@ -268,7 +271,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
     <div className="v2-workspace-editor-layout">
       <form className="v2-workspace-card" onSubmit={save}>
-        <h2>{draft ? "Brouillon serveur #" + draft.id : "Informations produit"}</h2>
+        <h2>{draft ? "Brouillon enregistré #" + draft.id : "Informations produit"}</h2>
         <fieldset disabled={busy || readonly}>
           <div className="v2-workspace-fields">{fields.map(field => <label key={field.key}>
             <span>{field.label}</span>
@@ -333,6 +336,13 @@ function Editor({ mode, id, user, onLogout }: Props) {
         <p>{draft ? "Ce brouillon est visible par son auteur et les administrateurs." : "La saisie locale n'est visible que dans ce navigateur."}</p>
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
         <p>Un changement de composition ou de format exige une nouvelle version liée à l'ancienne fiche.</p>
+        {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
+          <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
+            {item.quantity_text && ` · ${item.quantity_text}`}
+            {item.capture_ean && ` · EAN ${item.capture_ean}`}
+            {item.captured_store_name && ` · nom de la page : ${item.captured_store_name}`}
+            {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul>
+          <p>La fiche doit être publiée avant que ces prix puissent être validés séparément.</p></div>}
         {data.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + data.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {data.off_source.code} ↗</a><br />
           Champs repris : {data.off_source.fields.join(", ")}.</p>}
@@ -348,6 +358,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
+  if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><h1>{d.brand} {d.name}<span>.</span></h1>
@@ -368,7 +379,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
             {event.before.nutrition_checked_at !== event.after.nutrition_checked_at &&
               <li><strong>Contrôle nutritionnel :</strong> {event.before.nutrition_checked_at || "—"} → {event.after.nutrition_checked_at || "—"}</li>}
             {JSON.stringify(event.before.off_source) !== JSON.stringify(event.after.off_source) &&
-              <li><strong>Source OFF :</strong> {event.before.off_source?.code || "—"} → {event.after.off_source?.code || "—"}</li>}</ul>}
+              <li><strong>Source Open Food Facts :</strong> {event.before.off_source?.code || "—"} → {event.after.off_source?.code || "—"}</li>}</ul>}
         </article>)}</div> :
       <div className="v2-workspace-card"><h2>Fiche produit</h2><dl className="v2-workspace-facts">
         {fields.filter(field => d[field.key]).map(field => <div key={field.key}><dt>{field.label}</dt><dd>{d[field.key]}</dd></div>)}</dl>
@@ -384,7 +395,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
       </div>}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
-    {id && <V2ReportControl kind="product" contentId={id} user={user} />}
+    {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }
 

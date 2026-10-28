@@ -1,0 +1,13 @@
+.v2-changelog main { max-width: 900px; }
+.v2-changelog-release, .v2-changelog-baseline { margin-top: 40px; }
+.v2-changelog h2 { margin: 0 0 14px; font-size: 1.35rem; letter-spacing: -.025em; }
+.v2-changelog-cards { display: grid; gap: 12px; }
+.v2-changelog-card { padding: 18px 20px; border: 1px solid var(--v2-line); border-radius: 14px; background: #fff; }
+.v2-changelog-card h3 { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 18px; margin: 0; font-size: 1.04rem; }
+.v2-changelog-card h3 span { color: var(--v2-muted); font-size: .88rem; white-space: nowrap; }
+.v2-changelog-card h3 a { text-decoration: underline; text-underline-offset: 3px; }
+.v2-changelog-notes { margin: 9px 0 0; padding-left: 1.3rem; }
+.v2-changelog-notes li + li { margin-top: 5px; }
+.v2-changelog-empty { margin-top: 36px; }
+.v2-changelog-baseline { border-top: 1px solid var(--v2-line); padding-top: 28px; }
+.v2-changelog-baseline p { margin-top: -4px; }

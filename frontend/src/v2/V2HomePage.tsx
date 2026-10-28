@@ -87,9 +87,11 @@ export default function V2HomePage({ user, onLogout }: {
           </Link>
           <nav className="v2-nav" aria-label="Navigation principale">
             <Link className="v2-nav-current" to="/v2" aria-current="page">Accueil</Link>
-            <Link to="/v2/produits">Produits</Link>
+            <Link to="/v2/produits">Produits</Link><Link to="/v2/magasins">Magasins</Link>
             <Link to="/v2/recettes">Recettes</Link>
+            <Link to="/v2/a-completer">À compléter</Link>
             <Link to="/v2/produits/nouveau">Ajouter un produit</Link>
+            <Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
             {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
             {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
             <Link to="/v2/parametres">Paramètres</Link>
@@ -133,6 +135,7 @@ export default function V2HomePage({ user, onLogout }: {
               </div>
               {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
               <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course.</p>
+              <p className="v2-hero-note">Vous développez une intégration ? <a href="/api/v2/docs">Consulter la documentation API</a>.</p>
             </div>
 
             <div className="v2-hero-visual" aria-label="Aperçu du parcours Price Checker">

@@ -17,6 +17,7 @@ export default function V2AuthPage({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [secondFactor, setSecondFactor] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,11 +40,12 @@ export default function V2AuthPage({
       const user = await authRequest<V2User>(
         mode === "admin" ? "admin" : mode === "register" ? "register" : "login",
         "POST",
-        mode === "admin" ? { access_code: accessCode, password } : { username, password },
+        mode === "admin" ? { access_code: accessCode, password } : { username, password, second_factor: mode === "login" ? secondFactor || null : null },
       );
       setPassword("");
       setConfirmation("");
       setAccessCode("");
+      setSecondFactor("");
       onAuthenticated(user);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "L'opération a échoué.");
@@ -70,12 +72,12 @@ export default function V2AuthPage({
       <main id="v2-auth-main" className="v2-wrap v2-auth-main">
         <div className="v2-auth-copy">
           <span className="v2-section-kicker">{isAdmin ? "ÉTAPE 02 · ADMINISTRATEUR" : "BIENVENUE"}</span>
-          <h1>{isAdmin ? <>Sécurisons votre <em>espace.</em></> : isRegister ? <>Un espace à <em>vous.</em></> : <>Content de vous <em>retrouver.</em></>}</h1>
+          <h1>{isAdmin ? <>Créer le compte <em>administrateur.</em></> : isRegister ? <>Créer votre <em>compte.</em></> : <>Bienvenue sur <em>Price Checker.</em></>}</h1>
           <p>{isAdmin
-            ? "La base V2 est prête. Choisissez maintenant le mot de passe du compte administrateur. Le code d'installation reste nécessaire pour cette première opération."
+            ? "La configuration du serveur est terminée. Définissez le mot de passe du compte administrateur à l’aide du code d’installation."
             : isRegister
               ? "Un pseudo et un mot de passe suffisent. Aucun e-mail n'est demandé."
-              : "Connectez-vous avec votre pseudo et votre mot de passe."}</p>
+              : "Connectez-vous avec votre pseudo, votre mot de passe et votre code de validation si la double authentification est activée."}</p>
         </div>
         <div className="v2-auth-layout">
           <form className="v2-setup-card v2-auth-card" onSubmit={submit}>
@@ -107,6 +109,12 @@ export default function V2AuthPage({
                 required value={password} onChange={(event) => setPassword(event.target.value)} />
               {mode !== "login" && <small>{passwordMinimum} caractères minimum.</small>}
             </div>
+            {mode === "login" && <div className="v2-setup-field">
+              <label htmlFor="v2-account-second-factor">Code de validation ou de secours</label>
+              <input id="v2-account-second-factor" type="text" autoComplete="one-time-code" value={secondFactor}
+                onChange={event => setSecondFactor(event.target.value)} />
+              <small>À renseigner si la double authentification est activée.</small>
+            </div>}
             {mode !== "login" && (
               <div className="v2-setup-field">
                 <label htmlFor="v2-account-confirm">Confirmer le mot de passe</label>
@@ -125,10 +133,10 @@ export default function V2AuthPage({
           </form>
           <aside className="v2-setup-aside v2-auth-aside">
             <div className="v2-setup-aside-icon" aria-hidden="true">✦</div>
-            <h2>{isAdmin ? "Une première étape importante." : "Simple et personnel."}</h2>
+            <h2>{isAdmin ? "Sécurité du compte" : "Compte personnel"}</h2>
             <p>{isAdmin
-              ? "Le mot de passe est haché avant son stockage. Il ne sera jamais renvoyé par l'API."
-              : "Votre compte est personnel. Les permissions de contribution viendront après validation."}</p>
+              ? "Le mot de passe est protégé lors de son stockage et n’est jamais affiché."
+              : "Votre compte permet de contribuer. Les contenus proposés restent privés jusqu’à leur validation."}</p>
             <div className="v2-setup-aside-rule" />
             <div className="v2-setup-aside-point"><span>✓</span><p>Aucun e-mail requis</p></div>
             <div className="v2-setup-aside-point"><span>✓</span><p>Session sécurisée côté serveur</p></div>
