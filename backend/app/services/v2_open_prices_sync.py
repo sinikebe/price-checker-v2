@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.api.v2.auth import _connect
+from app.api.v2.stores import name_key
 from app.api.v2.setup import _read_config
 from app.core.config import get_settings
 
@@ -99,6 +100,23 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
             "ON CONFLICT(code) DO UPDATE SET code=EXCLUDED.code RETURNING id",
             "open-prices-" + digest, brand,
         )
+    # An approved external name can associate a new Open Prices location with
+    # an existing store only when retailer and postcode agree uniquely. Names
+    # alone, fuzzy matches and pending alias proposals never merge locations.
+    postcode = (location.get("osm_address_postcode") or "").strip()
+    if postcode:
+        candidates = await connection.fetch(
+            "SELECT s.id,s.city FROM v2_store_aliases a "
+            "JOIN v2_stores s ON s.id=a.store_id "
+            "WHERE a.source='open_prices' AND a.name_key=$1 "
+            "AND s.retailer_id=$2 AND s.postal_code=$3 AND s.osm_id IS NULL",
+            name_key(name), retailer, postcode,
+        )
+        location_city = name_key(location.get("osm_address_city") or "")
+        candidates = [row for row in candidates if not location_city or not row["city"]
+                      or name_key(row["city"]) == location_city]
+        if len(candidates) == 1:
+            return retailer, candidates[0]["id"]
     inserted = await connection.fetchrow(
         """INSERT INTO v2_stores(
             retailer_id,name,city,postal_code,osm_type,osm_id,import_key

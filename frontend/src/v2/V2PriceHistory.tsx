@@ -12,7 +12,7 @@ type Observation = {
 };
 type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" | "store_name" | "city" | "sales_channel" | "note"> & {
   author: string; author_id: number; status: "draft" | "approved" | "rejected";
-  capture_ean: string | null; quantity_text: string | null;
+  capture_ean: string | null; quantity_text: string | null; captured_store_name: string | null;
 };
 type Channel = "in_store" | "drive" | "delivery";
 type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string;
@@ -390,6 +390,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
             {draft.note && <small> · {draft.note}</small>}
             {draft.capture_ean && <small> · EAN capturé : {draft.capture_ean}</small>}
+            {draft.captured_store_name && <small> · Magasin indiqué par la page : {draft.captured_store_name}</small>}
             {draft.quantity_text && <small> · Conditionnement capturé : {draft.quantity_text}</small>}
             <small> · {draft.status === "draft" ? "En attente" : draft.status === "approved" ? "Publié" : "Refusé"}{user.role === "admin" && draft.author_id !== user.id && ` · ${draft.author}`}</small></span>
           {user.role === "admin" && draft.status === "draft" && <span className="v2-price-review">

@@ -347,7 +347,7 @@ async def get_draft(draft_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Brouillon introuvable.")
         result = _draft(row)
         prices = await connection.fetch(
-            "SELECT d.id,d.price,d.status,d.capture_ean,d.quantity_text,"
+            "SELECT d.id,d.price,d.status,d.capture_ean,d.quantity_text,d.captured_store_name,"
             "r.name AS retailer,s.name AS store_name "
             "FROM v2_price_drafts d "
             "JOIN v2_retailers r ON r.id=d.retailer_id "
@@ -358,7 +358,8 @@ async def get_draft(draft_id: int, request: Request):
         result["linked_prices"] = [
             {"id": price["id"], "price": str(price["price"]),
              "status": price["status"], "capture_ean": price["capture_ean"],
-             "quantity_text": price["quantity_text"], "retailer": price["retailer"],
+             "quantity_text": price["quantity_text"],
+             "captured_store_name": price["captured_store_name"], "retailer": price["retailer"],
              "store_name": price["store_name"]}
             for price in prices
         ]

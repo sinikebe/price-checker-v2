@@ -59,6 +59,17 @@ async def purge_private_data(connection: asyncpg.Connection) -> dict[str, int]:
             )
         removed["price_drafts"] = len(price_ids)
 
+        alias_ids = await _expired_ids(
+            connection, "v2_store_alias_proposals",
+            "status IN ('approved','rejected') AND "
+            "reviewed_at < now() - interval '6 months'",
+        )
+        if alias_ids:
+            await connection.execute(
+                "DELETE FROM v2_store_alias_proposals WHERE id=ANY($1::bigint[])", alias_ids,
+            )
+        removed["store_alias_proposals"] = len(alias_ids)
+
         recipe_ids = await _expired_ids(
             connection, "v2_recipe_submissions",
             "status IN ('approved','rejected') AND "

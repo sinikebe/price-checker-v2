@@ -337,6 +337,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
           <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}
             {item.capture_ean && ` · EAN ${item.capture_ean}`}
+            {item.captured_store_name && ` · nom de la page : ${item.captured_store_name}`}
             {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul>
           <p>La fiche doit être publiée avant que ces prix puissent être validés séparément.</p></div>}
         {data.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + data.off_source.code}

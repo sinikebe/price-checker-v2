@@ -21,6 +21,7 @@ from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
 from app.api.v2.setup import router as setup_router
+from app.api.v2.stores import router as stores_router
 from app.api.v2.sync import router as sync_router
 from app.api.v2.transfers import router as transfers_router
 from app.api.v2.updates import router as updates_router
@@ -83,6 +84,7 @@ for router in (
     products_router,
     catalogue_router,
     prices_router,
+    stores_router,
     transfers_router,
     recipes_router,
     recipe_submissions_router,

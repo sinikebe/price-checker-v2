@@ -1,0 +1,8 @@
+[
+  { "domain": "auchan.fr", "name": "Auchan", "verifiedFixture": "auchan.html" },
+  { "domain": "carrefour.fr", "name": "Carrefour", "verifiedFixture": "carrefour.html" },
+  { "domain": "intermarche.com", "name": "Intermarché", "verifiedFixture": "intermarche-priced.html" },
+  { "domain": "coursesu.com", "name": "Courses U", "verifiedFixture": "coursesu.html" },
+  { "domain": "leclercdrive.fr", "name": "E.Leclerc", "verifiedFixture": null },
+  { "domain": "picard.fr", "name": "Picard", "verifiedFixture": null }
+]

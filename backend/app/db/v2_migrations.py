@@ -529,6 +529,45 @@ MIGRATIONS = {
             ON v2_price_drafts(product_draft_id)
             WHERE product_draft_id IS NOT NULL;
     """,
+    "0020_store_aliases": """
+        ALTER TABLE v2_price_drafts ADD COLUMN captured_store_name varchar(300);
+        -- An alternative name is not a store edit until separately approved.
+        -- Source identifies the naming system, not a price source or location.
+        CREATE TABLE v2_store_aliases (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            store_id bigint NOT NULL REFERENCES v2_stores(id) ON DELETE CASCADE,
+            source varchar(24) NOT NULL CHECK
+                (source IN ('retailer','open_food_facts','open_prices')),
+            name varchar(300) NOT NULL,
+            name_key varchar(300) NOT NULL,
+            approved_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (store_id, source, name_key)
+        );
+        CREATE INDEX v2_store_aliases_lookup_idx
+            ON v2_store_aliases(source, name_key);
+        CREATE TABLE v2_store_alias_proposals (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            store_id bigint NOT NULL REFERENCES v2_stores(id) ON DELETE CASCADE,
+            author_id bigint NOT NULL REFERENCES v2_users(id),
+            source varchar(24) NOT NULL CHECK
+                (source IN ('retailer','open_food_facts','open_prices')),
+            name varchar(300) NOT NULL,
+            name_key varchar(300) NOT NULL,
+            status varchar(16) NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','rejected')),
+            reviewed_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            reviewed_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            CHECK ((status='pending' AND reviewed_by IS NULL AND reviewed_at IS NULL)
+                OR (status<>'pending' AND reviewed_at IS NOT NULL))
+        );
+        CREATE UNIQUE INDEX v2_store_alias_proposals_pending_idx
+            ON v2_store_alias_proposals(store_id, source, name_key)
+            WHERE status='pending';
+        CREATE INDEX v2_store_alias_proposals_review_idx
+            ON v2_store_alias_proposals(status, created_at, id);
+    """,
 
 }
 

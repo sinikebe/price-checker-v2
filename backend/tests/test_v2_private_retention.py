@@ -70,6 +70,24 @@ async def test_closed_private_records_expire_without_losing_publication():
                 "INSERT INTO v2_stores(retailer_id,name) VALUES($1,'Store') RETURNING id",
                 retailer,
             )
+            old_alias = await connection.fetchval(
+                "INSERT INTO v2_store_alias_proposals"
+                "(store_id,author_id,source,name,name_key,status,reviewed_by,reviewed_at) "
+                "VALUES($1,$2,'retailer','Old Store','old store','approved',$3,"
+                "now()-interval '7 months') RETURNING id",
+                store, author, reviewer,
+            )
+            pending_alias = await connection.fetchval(
+                "INSERT INTO v2_store_alias_proposals"
+                "(store_id,author_id,source,name,name_key,created_at) "
+                "VALUES($1,$2,'open_prices','Pending Store','pending store',"
+                "now()-interval '7 months') RETURNING id",
+                store, author,
+            )
+            await connection.execute(
+                "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "
+                "VALUES($1,'retailer','Old Store','old store',$2)", store, reviewer,
+            )
             old_price = await connection.fetchval(
                 "INSERT INTO v2_price_drafts"
                 "(author_id,product_id,retailer_id,store_id,entry_kind,price,observed_at,"
@@ -123,6 +141,7 @@ async def test_closed_private_records_expire_without_losing_publication():
             assert result == {
                 "product_drafts": 1, "price_drafts": 1,
                 "recipe_submissions": 1, "reports": 1,
+                "store_alias_proposals": 1,
             }
             assert await connection.fetchval(
                 "SELECT count(*) FROM v2_products WHERE id=$1", product,
@@ -154,11 +173,21 @@ async def test_closed_private_records_expire_without_losing_publication():
                 "SELECT count(*) FROM v2_content_reports WHERE id=$1", old_report,
             ) == 0
             assert await connection.fetchval(
+                "SELECT count(*) FROM v2_store_alias_proposals WHERE id=$1", old_alias,
+            ) == 0
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_store_alias_proposals WHERE id=$1", pending_alias,
+            ) == 1
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_store_aliases WHERE store_id=$1", store,
+            ) == 1
+            assert await connection.fetchval(
                 "SELECT count(*) FROM v2_recipe_submissions WHERE id=$1", old_submission,
             ) == 0
             assert await purge_private_data(connection) == {
                 "product_drafts": 0, "price_drafts": 0,
                 "recipe_submissions": 0, "reports": 0,
+                "store_alias_proposals": 0,
             }
         finally:
             await connection.close()

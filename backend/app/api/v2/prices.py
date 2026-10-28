@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.api.v2.off import normalize_barcode
 from app.api.v2.products import ProductData
+from app.api.v2.stores import AliasSource, propose_alias, visible_store
 from app.core.url_validation import validate_clickable_url
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_visibility import require_visible
@@ -37,24 +38,36 @@ def _day(value: datetime) -> str:
 class PriceDraftCreate(BaseModel):
     retailer: str = Field(min_length=1, max_length=200)
     store_name: str = Field(min_length=1, max_length=300)
-    city: str = Field(min_length=1, max_length=200)
+    city: str = Field(default="", max_length=200)
     postal_code: str = Field(default="", max_length=20)
     sales_channel: Literal["in_store", "drive", "delivery"] = "in_store"
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     observed_at: datetime
     note: str = Field(default="", max_length=1000)
+    store_id: int | None = Field(default=None, ge=1)
+    captured_store_name: str | None = Field(default=None, max_length=300)
+    propose_store_alias: bool = False
+    alias_source: AliasSource = "retailer"
 
     @field_validator("retailer", "store_name", "city", "postal_code", "note")
     @classmethod
     def strip_text(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("retailer", "store_name", "city")
+    @field_validator("retailer", "store_name")
     @classmethod
     def require_name(cls, value: str) -> str:
         if not value:
             raise ValueError("L’enseigne, le point de vente et la ville ou zone sont nécessaires.")
         return value
+
+    @model_validator(mode="after")
+    def alias_requires_store(self):
+        if self.store_id is None and not self.city:
+            raise ValueError("Indiquez la ville ou la zone du nouveau magasin.")
+        if self.propose_store_alias and (self.store_id is None or not self.captured_store_name):
+            raise ValueError("Choisissez un magasin existant et indiquez son nom capturé.")
+        return self
 
     @field_validator("observed_at", mode="before")
     @classmethod
@@ -121,12 +134,29 @@ def _hash(value: str) -> str:
 
 
 async def _retailer_store(
-    connection: asyncpg.Connection, payload: PriceDraftCreate
-) -> tuple[int, int]:
+    connection: asyncpg.Connection, payload: PriceDraftCreate, user: dict,
+) -> tuple[int, int, int | None]:
     retailer_id = await connection.fetchval(
         "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
         payload.retailer,
     )
+    if payload.store_id is not None:
+        store = await visible_store(connection, payload.store_id, user)
+        if store["retailer"].casefold() != payload.retailer.casefold():
+            raise HTTPException(status_code=422, detail="Le magasin ne correspond pas à l’enseigne.")
+        if (store["name"] != payload.store_name or
+                (store["city"] or "") != payload.city or
+                (store["postal_code"] or "") != payload.postal_code):
+            raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
+        alias_id = None
+        if payload.propose_store_alias:
+            alias_id = await propose_alias(
+                connection, store_id=payload.store_id, author_id=user["id"],
+                source=payload.alias_source, name=payload.captured_store_name or "",
+            )
+        return retailer_id, payload.store_id, alias_id
+    if payload.propose_store_alias:
+        raise HTTPException(status_code=422, detail="Sélectionnez un magasin existant pour proposer un alias.")
     if retailer_id is None:
         code = "manual-" + _hash(payload.retailer)[:24]
         retailer_id = await connection.fetchval(
@@ -145,7 +175,7 @@ async def _retailer_store(
         retailer_id, payload.store_name, payload.city or None,
         payload.postal_code or None, import_key,
     )
-    return retailer_id, store_id
+    return retailer_id, store_id, None
 
 
 def _observation(row: asyncpg.Record) -> dict:
@@ -183,6 +213,7 @@ def _draft(row: asyncpg.Record) -> dict:
         "note": row["note"],
         "capture_ean": row["capture_ean"],
         "quantity_text": row["quantity_text"],
+        "captured_store_name": row["captured_store_name"],
     }
 
 
@@ -244,6 +275,7 @@ async def product_price_drafts(product_id: int, request: Request):
             """
             SELECT d.id,d.author_id,u.username AS author,d.price,d.observed_at,
                    d.sales_channel,d.status,d.note,d.capture_ean,d.quantity_text,
+                   d.captured_store_name,
                    r.name AS retailer,
                    s.name AS store_name,s.city
             FROM v2_price_drafts d
@@ -330,19 +362,22 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
                 raise HTTPException(
                     status_code=409, detail="L’EAN du brouillon a changé. Rechargez la capture.",
                 )
-            retailer_id, store_id = await _retailer_store(connection, payload.price)
+            retailer_id, store_id, alias_id = await _retailer_store(connection, payload.price, user)
             price_draft_id = await connection.fetchval(
                 "INSERT INTO v2_price_drafts("
                 "author_id,product_draft_id,retailer_id,store_id,entry_kind,captured_via,"
-                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel) "
-                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11) RETURNING id",
+                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel,"
+                "captured_store_name) "
+                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
                 user["id"], draft["id"], retailer_id, store_id,
                 payload.source_url, barcode, payload.price.price,
                 data.get("quantity") or None, payload.price.observed_at,
                 payload.price.note or None, payload.price.sales_channel,
+                payload.price.captured_store_name,
             )
         return {"product_draft_id": draft["id"], "price_draft_id": price_draft_id,
-                "created_product_draft": created, "status": "draft"}
+                "created_product_draft": created, "alias_proposal_id": alias_id,
+                "status": "draft"}
     finally:
         await connection.close()
 
@@ -360,7 +395,7 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
                 maximum=MAX_PRICE_DRAFTS,
             )
             await _product(connection, product_id, current=True)
-            retailer_id, store_id = await _retailer_store(connection, payload)
+            retailer_id, store_id, alias_id = await _retailer_store(connection, payload, user)
             quantity = await connection.fetchval(
                 "SELECT NULLIF(data->>'quantity','') FROM v2_products WHERE id=$1",
                 product_id,
@@ -369,14 +404,14 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
                 """
                 INSERT INTO v2_price_drafts(
                     author_id,product_id,retailer_id,store_id,entry_kind,
-                    price,quantity_text,observed_at,note,sales_channel)
-                VALUES($1,$2,$3,$4,'manual',$5,$6,$7,$8,$9) RETURNING id
+                    price,quantity_text,observed_at,note,sales_channel,captured_store_name)
+                VALUES($1,$2,$3,$4,'manual',$5,$6,$7,$8,$9,$10) RETURNING id
                 """,
                 user["id"], product_id, retailer_id, store_id, payload.price,
                 quantity, payload.observed_at, payload.note or None,
-                payload.sales_channel,
+                payload.sales_channel, payload.captured_store_name,
             )
-        return {"id": draft_id, "status": "draft"}
+        return {"id": draft_id, "status": "draft", "alias_proposal_id": alias_id}
     finally:
         await connection.close()
 

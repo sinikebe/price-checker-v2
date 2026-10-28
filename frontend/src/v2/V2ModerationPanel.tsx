@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
+import V2StoreAliasReview from "./V2StoreAliasReview";
 
 type Report = {
   id: number; kind: "product" | "recipe"; content_id: number;
@@ -30,7 +31,7 @@ export default function V2ModerationPanel() {
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(null); }
   }
-  return <section className="v2-settings-card" aria-labelledby="v2-reports-heading">
+  return <><section className="v2-settings-card" aria-labelledby="v2-reports-heading">
     <h2 id="v2-reports-heading">Signalements à examiner</h2>
     {error && <p role="alert">{error}</p>}
     {!reports && !error && <p>Chargement…</p>}
@@ -52,5 +53,5 @@ export default function V2ModerationPanel() {
       <span>Page {page + 1}</span>
       <button type="button" disabled={reports.length < PAGE_SIZE} onClick={() => setPage(value => value + 1)}>Suivant</button>
     </div>}
-  </section>;
+  </section><V2StoreAliasReview /></>;
 }

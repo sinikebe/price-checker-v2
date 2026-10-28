@@ -1,17 +1,17 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.47",
+    "version": "0.1.48",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.25",
+    "version": "0.1.26",
     "status": "active"
   },
   "recipes": {
     "label": "Recettes",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "status": "active"
   },
   "basket": {
@@ -21,17 +21,17 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.17",
+    "version": "0.1.18",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "status": "active"
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "status": "active"
   },
   "pwa": {
@@ -46,12 +46,12 @@
   },
   "open_prices": {
     "label": "Connecteur Open Prices",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "status": "active"
   },
   "bookmarklet": {
     "label": "Capture de prix / bookmarklet",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "status": "active"
   }
 }

@@ -165,6 +165,42 @@
       if (price != null) source = "visible:intermarche";
     }
   }
+  // Store details come only from the selected-store header or a bounded,
+  // retailer-specific page variable. Nearby-store lists are not a selection.
+  function selectedStore() {
+    var name = null, city = null, postalCode = null, channel = null;
+    if (/(?:^|\.)auchan\.fr$/.test(host)) {
+      name = clean(first(['.context-header__pos'], function (node) { return node.textContent; }), 300);
+      var type = first(['.context-header__pos-type'], function (node) { return node.textContent; });
+      if (name && /retrait/i.test(type || '')) channel = 'drive';
+    } else if (/(?:^|\.)carrefour\.fr$/.test(host)) {
+      var labels = Array.prototype.map.call(document.querySelectorAll('.delivery-choice__title-content'),
+        function (node) { return clean(node.textContent, 300); }).filter(Boolean);
+      if (labels.length && labels.every(function (label) { return label === labels[0]; })) name = labels[0];
+    } else if (/(?:^|\.)intermarche\.com$/.test(host)) {
+      var visible = clean(first(['#headerStoreName'], function (node) { return node.textContent; }), 200);
+      if (visible && !/(?:courses en ligne|choisir un magasin|sélectionner un magasin)/i.test(visible)) {
+        name = visible;
+        var analytics = window.ANALYTICS_PDV;
+        var known = clean(analytics && analytics.store_name, 300);
+        if (known && known.toLocaleLowerCase().indexOf(visible.toLocaleLowerCase()) >= 0) name = known;
+        var address = window.pdvInfo && window.pdvInfo.address;
+        if (address && known && name === known) {
+          city = clean(address.city || address.cityName, 200);
+          postalCode = clean(address.zipCode, 20);
+        }
+      }
+    } else if (/(?:^|\.)coursesu\.com$/.test(host)) {
+      if (document.querySelector('.store-selected')) {
+        var vars = window.tc_vars;
+        name = clean(vars && vars.store_name, 300);
+        city = clean(vars && vars.store_city, 200);
+        postalCode = clean(vars && (vars.store_zipcode || vars.store_postal_code), 20);
+      }
+    }
+    return name ? { name: name, city: city, postalCode: postalCode, channel: channel } : null;
+  }
+  var store = selectedStore();
   // Do not turn a retailer challenge/error page into a product suggestion.
   var title = clean(document.title, 180) || "";
   var blocked = /(?:captcha|un instant|just a moment|access denied|acc[eè]s refus[eé])/i.test(title)
@@ -178,7 +214,7 @@
     v: 2, url: (location.origin + location.pathname).slice(0, 600), host: host.slice(0, 120),
     name: name, brand: clean(typeof brand === "string" ? brand : brand && brand.name, 100),
     ean: ean || null, quantity: quantity, price: price, source: source,
-    capturedAt: new Date().toISOString()
+    store: store, capturedAt: new Date().toISOString()
   };
   if (window.__PRICE_CHECKER_V2_EXTRACT_ONLY__ === true) return payload;
   var target = destination + "#p=" + encodeURIComponent(JSON.stringify(payload));

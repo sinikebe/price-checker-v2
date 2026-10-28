@@ -78,10 +78,14 @@ async def export_account_data(request: Request):
                 "WHERE author_id=$1 ORDER BY id", user_id,
             )
             price_drafts = await connection.fetch(
-                "SELECT id, product_id, retailer_id, store_id, entry_kind, "
-                "captured_via, source_url, price, quantity_text, observed_at, "
+                "SELECT id, product_id, product_draft_id, capture_ean, retailer_id, store_id, entry_kind, "
+                "captured_via, source_url, captured_store_name, price, quantity_text, observed_at, "
                 "note, status, revision, created_at, updated_at "
                 "FROM v2_price_drafts WHERE author_id=$1 ORDER BY id", user_id
+            )
+            store_alias_proposals = await connection.fetch(
+                "SELECT id,store_id,source,name,status,created_at,reviewed_at "
+                "FROM v2_store_alias_proposals WHERE author_id=$1 ORDER BY id", user_id
             )
             published_prices = await connection.fetch(
                 "SELECT id, product_id, retailer_id, store_id, price, "
@@ -101,6 +105,7 @@ async def export_account_data(request: Request):
             "recipe_ingredients": _rows(ingredients),
             "recipe_submissions": _rows(recipe_submissions),
             "price_drafts": _rows(price_drafts),
+            "store_alias_proposals": _rows(store_alias_proposals),
             "published_prices": _rows(published_prices),
             "reports": _rows(reports),
         }
@@ -174,6 +179,9 @@ async def delete_account(
             # Drafts, personal reports, basket and all sessions do not survive.
             await connection.execute(
                 "DELETE FROM v2_content_reports WHERE reporter_id=$1", user_id,
+            )
+            await connection.execute(
+                "DELETE FROM v2_store_alias_proposals WHERE author_id=$1", user_id,
             )
             await connection.execute(
                 "DELETE FROM v2_product_drafts WHERE author_id=$1", user_id,
