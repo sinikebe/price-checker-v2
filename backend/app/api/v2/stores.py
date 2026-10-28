@@ -29,11 +29,12 @@ def name_key(value: str) -> str:
 
 
 def _location_compatible(row, city: str, postal_code: str) -> bool:
+    # Legacy incomplete stores stay public for completion, never automatic capture targets.
+    if not (row["city"] or "").strip() or not (row["postal_code"] or "").strip():
+        return False
     if postal_code and row["postal_code"] and postal_code.strip() != row["postal_code"].strip():
         return False
-    if city and row["city"] and name_key(city) != name_key(row["city"]):
-        return False
-    return True
+    return not (city and row["city"] and name_key(city) != name_key(row["city"]))
 
 
 def _store_dict(row) -> dict:
@@ -105,6 +106,47 @@ async def matches(
                         for exact, _, _, row, label in scored[:6]],
             "exact_store_id": exact_ids[0] if len(exact_ids) == 1 else None,
         }
+    finally:
+        await connection.close()
+
+
+class StoreCompletion(BaseModel):
+    city: str = Field(min_length=1, max_length=200)
+    postal_code: str = Field(min_length=1, max_length=20)
+
+    @field_validator("city", "postal_code")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Ville et code postal nécessaires.")
+        return value
+
+
+@router.put("/{store_id}/completion")
+async def complete_store(store_id: int, payload: StoreCompletion, request: Request):
+    """An administrator can complete a previously published store in place."""
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                "SELECT id,city,postal_code FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            if (row["city"] or "").strip() and (row["postal_code"] or "").strip():
+                raise HTTPException(status_code=409, detail="Ce magasin est déjà complet.")
+            if ((row["city"] or "").strip() and row["city"].strip() != payload.city
+                    or (row["postal_code"] or "").strip()
+                    and row["postal_code"].strip() != payload.postal_code):
+                raise HTTPException(status_code=409, detail="Les données existantes du magasin ont changé.")
+            await connection.execute(
+                "UPDATE v2_stores SET city=$1,postal_code=$2 WHERE id=$3",
+                payload.city, payload.postal_code, store_id,
+            )
+        return {"id": store_id, "city": payload.city, "postal_code": payload.postal_code}
     finally:
         await connection.close()
 

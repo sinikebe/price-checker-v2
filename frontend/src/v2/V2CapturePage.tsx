@@ -88,10 +88,9 @@ function initialStore(payload: Payload | null): Store {
   const saved = storedStore(retailer);
   // A remembered channel is never evidence for the newly opened retailer page.
   if (!payload?.store) return { ...saved, sales_channel: "" };
-  const sameName = saved.store_name.toLocaleLowerCase() === payload.store.name.toLocaleLowerCase();
   return { retailer, store_name: payload.store.name,
-    city: payload.store.city || (sameName ? saved.city : ""),
-    postal_code: payload.store.postalCode || (sameName ? saved.postal_code : ""),
+    city: payload.store.city || "",
+    postal_code: payload.store.postalCode || "",
     sales_channel: payload.store.channel || "" };
 }
 
@@ -177,7 +176,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         const exact = matches.matches.find(item => item.id === matches.exact_store_id);
         // A remembered store is only a hint: do not silently attach a new
         // capture when the retailer page did not identify a selected store.
-        if (exact && payload.store) {
+        if (exact && payload.store?.city && payload.store.postalCode) {
           setSelectedStore({ candidate: exact, aliasName: null });
           setStore(current => ({ ...current, retailer: exact.retailer, store_name: exact.name,
             city: exact.city || "", postal_code: exact.postal_code || "" }));
@@ -257,9 +256,9 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
           propose_store_alias: Boolean(selectedStore.aliasName), alias_source: "retailer" } : {}) };
       let next: Submitted;
       if (resolution.status === "product" && resolution.id) {
-        const response = await fetch("/api/v2/prices/products/" + resolution.id + "/drafts", {
+        const response = await fetch("/api/v2/prices/products/" + resolution.id + "/capture-drafts", {
           method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(pricePayload),
+          body: JSON.stringify({ ean: payload.ean, source_url: payload.url, price: pricePayload }),
         });
         if (!response.ok) throw await submissionError(response);
         const result = await response.json() as { alias_proposal_id: number | null };
@@ -337,7 +336,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               </>}
               {selectedStore && <p>Magasin existant choisi : <strong>{selectedStore.candidate.name}</strong>.
                 {selectedStore.aliasName && <> Le nom « {selectedStore.aliasName} » sera proposé comme nom supplémentaire ; un administrateur le validera séparément.</>}</p>}
-              {createStore && <p>Nouveau magasin : vérifiez son nom et sa ville avant l’envoi.</p>}
+              {createStore && <p>Nouveau magasin : vérifiez son nom, sa ville et son code postal avant l’envoi.</p>}
               {!selectedStore && !createStore && <button type="button" className="v2-button v2-button-secondary"
                 disabled={storeSearch === "loading" || !store.retailer || !store.store_name}
                 onClick={() => void searchStores()}>Rechercher un magasin existant</button>}
@@ -349,7 +348,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               <label>Enseigne<input required readOnly={Boolean(selectedStore)} maxLength={200} value={store.retailer} onChange={event => editStore({ ...store, retailer: event.target.value })} /></label>
               <label>Point de vente ou service<input required readOnly={Boolean(selectedStore)} maxLength={300} value={store.store_name} onChange={event => editStore({ ...store, store_name: event.target.value })} /></label>
               <label>Ville ou zone desservie<input required={!selectedStore} readOnly={Boolean(selectedStore)} maxLength={200} value={store.city} onChange={event => editStore({ ...store, city: event.target.value })} /></label>
-              <label>Code postal<input readOnly={Boolean(selectedStore)} maxLength={20} value={store.postal_code} onChange={event => editStore({ ...store, postal_code: event.target.value })} /></label>
+              <label>Code postal<input required={!selectedStore} readOnly={Boolean(selectedStore)} maxLength={20} value={store.postal_code} onChange={event => editStore({ ...store, postal_code: event.target.value })} /></label>
               <label>Canal<select required value={store.sales_channel} onChange={event => setStore({ ...store, sales_channel: event.target.value as Store["sales_channel"] })}>
                 <option value="">Choisir le canal</option>
                 {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}

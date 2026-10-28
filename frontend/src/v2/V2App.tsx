@@ -63,13 +63,14 @@ export default function V2App() {
   if (path === "/v2/versions") return withFooter(<V2VersionsPage />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || workspaceMode || category || recipeMode || captureMode || path === "/v2/panier") {
+    || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier") {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
       preferencesMode={path === "/v2/parametres"}
       authMode={path === "/v2/connexion" ? "login" : path === "/v2/inscription" ? "register" : undefined}
       recipeMode={recipeMode}
       captureMode={captureMode}
+      completionMode={path === "/v2/a-completer"}
       basketMode={path === "/v2/panier"}
       recipeId={recipe ? Number(recipe[1]) : undefined}
       categoryName={categoryName}

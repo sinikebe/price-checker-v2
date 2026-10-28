@@ -158,7 +158,90 @@ async def test_capture_submits_product_and_price_once_with_independent_review(
             assert approved_price.status_code == 200, approved_price.text
             observations = (await client.get(f"/api/v2/prices/products/{product_id}")).json()["observations"]
             assert len(observations) == 1 and observations[0]["price"] == "5.40"
+            assert observations[0]["source"] == "bookmarklet"
+            assert await connection.fetchval(
+                "SELECT source_url FROM v2_price_observations WHERE id=$1",
+                observations[0]["id"],
+            ) == body["source_url"]
             assert (await client.post(endpoint, json=body, headers=headers)).status_code == 409
+
+            published_endpoint = f"/api/v2/prices/products/{product_id}/capture-drafts"
+            mismatch = await client.post(
+                published_endpoint,
+                json={"ean": "12345678", "source_url": body["source_url"], "price": price},
+                headers=headers,
+            )
+            assert mismatch.status_code == 409
+            missing_postcode = await client.post(
+                published_endpoint,
+                json={"ean": barcode, "source_url": body["source_url"],
+                      "price": {**price, "postal_code": ""}},
+                headers=headers,
+            )
+            assert missing_postcode.status_code == 422
+            published_capture = await client.post(
+                published_endpoint,
+                json={"ean": barcode, "source_url": body["source_url"],
+                      "price": {**price, "price": "5.60"}},
+                headers=headers,
+            )
+            assert published_capture.status_code == 201, published_capture.text
+            published_capture_id = published_capture.json()["id"]
+            retained = await connection.fetchrow(
+                "SELECT entry_kind,captured_via,source_url,capture_ean "
+                "FROM v2_price_drafts WHERE id=$1", published_capture_id,
+            )
+            assert dict(retained) == {
+                "entry_kind": "capture", "captured_via": "bookmarklet",
+                "source_url": body["source_url"], "capture_ean": barcode,
+            }
+            approved_capture = await client.post(
+                f"/api/v2/prices/drafts/{published_capture_id}/approve",
+                headers={"x-test-user": "admin"},
+            )
+            assert approved_capture.status_code == 200, approved_capture.text
+            retained_observation = await connection.fetchrow(
+                "SELECT source,source_url,capture_ean FROM v2_price_observations "
+                "WHERE id=$1", approved_capture.json()["observation_id"],
+            )
+            assert dict(retained_observation) == {
+                "source": "bookmarklet", "source_url": body["source_url"],
+                "capture_ean": barcode,
+            }
+            # Private draft expiry/account deletion may sever this link; the
+            # published provenance must remain on the observation itself.
+            await connection.execute(
+                "UPDATE v2_price_observations SET price_draft_id=NULL WHERE id=$1",
+                approved_capture.json()["observation_id"],
+            )
+            await connection.execute(
+                "DELETE FROM v2_price_drafts WHERE id=$1", published_capture_id,
+            )
+            assert dict(await connection.fetchrow(
+                "SELECT source,source_url,capture_ean FROM v2_price_observations "
+                "WHERE id=$1", approved_capture.json()["observation_id"],
+            )) == dict(retained_observation)
+
+            await connection.execute(
+                "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
+                "VALUES('product',$1,'Test retrait',$2)", product_id, users["admin"]["id"],
+            )
+            republished = await client.post(endpoint, json=body, headers=headers)
+            assert republished.status_code == 201, republished.text
+            republished_draft_id = republished.json()["product_draft_id"]
+            republished_product = await client.post(
+                f"/api/v2/products/drafts/{republished_draft_id}/approve",
+                json={"revision": 1}, headers={"x-test-user": "admin"},
+            )
+            assert republished_product.status_code == 200, republished_product.text
+            assert republished_product.json()["id"] != product_id
+            assert (await client.get(lookup, headers=headers)).json() == {
+                "kind": "product", "id": republished_product.json()["id"],
+            }
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_content_withdrawals "
+                "WHERE kind='product' AND content_id=$1", product_id,
+            ) == 1
 
             rejected_barcode = "3073781178006"
             rejected_body = {**body, "ean": rejected_barcode,
@@ -175,7 +258,7 @@ async def test_capture_submits_product_and_price_once_with_independent_review(
             assert await connection.fetchval(
                 "SELECT status FROM v2_price_drafts WHERE id=$1", rejected_price_id,
             ) == "rejected"
-            assert await connection.fetchval("SELECT count(*) FROM v2_price_observations") == 1
+            assert await connection.fetchval("SELECT count(*) FROM v2_price_observations") == 2
 
             changed_barcode = "3073781178007"
             changed_body = {**body, "ean": changed_barcode,
@@ -203,6 +286,96 @@ async def test_capture_submits_product_and_price_once_with_independent_review(
                 f"/api/v2/prices/drafts/{changed_price_id}/reject",
                 headers={"x-test-user": "admin"},
             )).status_code == 200
-            assert await connection.fetchval("SELECT count(*) FROM v2_price_observations") == 1
+            assert await connection.fetchval("SELECT count(*) FROM v2_price_observations") == 2
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_capture_and_approval_do_not_deadlock(monkeypatch, isolated_config):
+    """Approval holding a draft row must not wait behind capture's GTIN lock."""
+    import asyncio
+
+    config = isolated_config
+    connection = await connect_v2(config)
+    try:
+        users = {}
+        for key, role in (("author", "confirmed"), ("admin", "admin")):
+            identifier = await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES($1,$1,'test',$2) RETURNING id", "race_" + key, role,
+            )
+            users[key] = {"id": identifier, "role": role}
+        approval_locked = asyncio.Event()
+        capture_waiting = asyncio.Event()
+        intercept = False
+
+        class ConnectionProxy:
+            def __init__(self, inner):
+                self.inner = inner
+                self.role = ""
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            async def fetchrow(self, query, *args):
+                if intercept and "FROM v2_product_drafts" in query and "FOR UPDATE" in query:
+                    if self.role == "admin" and query.startswith("SELECT *"):
+                        result = await self.inner.fetchrow(query, *args)
+                        approval_locked.set()
+                        await asyncio.wait_for(capture_waiting.wait(), 3)
+                        return result
+                    if self.role == "confirmed":
+                        capture_waiting.set()
+                return await self.inner.fetchrow(query, *args)
+
+        async def fake_connect():
+            return ConnectionProxy(await connect_v2(config))
+
+        async def fake_user(proxy, request):
+            user = users.get(request.headers.get("x-test-user"))
+            if user:
+                proxy.role = user["role"]
+            return user
+
+        for module in (prices, products):
+            monkeypatch.setattr(module, "_connect", fake_connect)
+            monkeypatch.setattr(module, "_current_user", fake_user)
+
+        barcode = "3073781178021"
+        day = datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
+        body = {
+            "ean": barcode, "source_url": "https://example.org/race",
+            "product_data": {"ean": barcode, "name": "Produit concurrent",
+                             "brand": "Test", "package": "sachet", "quantity": "250 g"},
+            "price": {"retailer": "Race Shop", "store_name": "Centre",
+                      "city": "Paris", "postal_code": "75001",
+                      "sales_channel": "in_store", "price": "3.20", "observed_at": day},
+        }
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://test"
+        ) as client:
+            created = await client.post(
+                "/api/v2/prices/capture-drafts", json=body, headers={"x-test-user": "author"},
+            )
+            assert created.status_code == 201, created.text
+            draft_id = created.json()["product_draft_id"]
+            intercept = True
+            approve = asyncio.create_task(client.post(
+                f"/api/v2/products/drafts/{draft_id}/approve",
+                json={"revision": 1}, headers={"x-test-user": "admin"},
+            ))
+            await asyncio.wait_for(approval_locked.wait(), 3)
+            attach = asyncio.create_task(client.post(
+                "/api/v2/prices/capture-drafts",
+                json={"ean": barcode, "product_draft_id": draft_id,
+                      "source_url": body["source_url"], "price": body["price"]},
+                headers={"x-test-user": "author"},
+            ))
+            approved, attached = await asyncio.wait_for(
+                asyncio.gather(approve, attach), 5,
+            )
+            assert approved.status_code == 200, approved.text
+            assert attached.status_code in (404, 409), attached.text
     finally:
         await connection.close()

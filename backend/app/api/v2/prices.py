@@ -63,8 +63,8 @@ class PriceDraftCreate(BaseModel):
 
     @model_validator(mode="after")
     def alias_requires_store(self):
-        if self.store_id is None and not self.city:
-            raise ValueError("Indiquez la ville ou la zone du nouveau magasin.")
+        if self.store_id is None and (not self.city or not self.postal_code):
+            raise ValueError("Indiquez la ville et le code postal du nouveau magasin.")
         if self.propose_store_alias and (self.store_id is None or not self.captured_store_name):
             raise ValueError("Choisissez un magasin existant et indiquez son nom capturé.")
         return self
@@ -106,6 +106,17 @@ class CaptureDraftCreate(BaseModel):
         return self
 
 
+class PublishedCaptureCreate(BaseModel):
+    ean: str = Field(max_length=14)
+    source_url: str = Field(max_length=1000)
+    price: PriceDraftCreate
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_source_url(cls, value: str) -> str:
+        return validate_clickable_url(value.strip(), "source_url")
+
+
 async def _user(connection: asyncpg.Connection, request: Request) -> dict:
     user = await _current_user(connection, request)
     if user is None:
@@ -144,6 +155,8 @@ async def _retailer_store(
         store = await visible_store(connection, payload.store_id, user)
         if store["retailer"].casefold() != payload.retailer.casefold():
             raise HTTPException(status_code=422, detail="Le magasin ne correspond pas à l’enseigne.")
+        if not (store["city"] or "").strip() or not (store["postal_code"] or "").strip():
+            raise HTTPException(status_code=422, detail="Ce magasin doit être complété avant un nouveau relevé.")
         if (store["name"] != payload.store_name or
                 (store["city"] or "") != payload.city or
                 (store["postal_code"] or "") != payload.postal_code):
@@ -308,6 +321,24 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
             await check_open_limit(
                 connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
             )
+            if payload.product_draft_id is not None:
+                draft = await connection.fetchrow(
+                    "SELECT id,data FROM v2_product_drafts WHERE id=$1 "
+                    "AND author_id=$2 AND product_id IS NULL AND status='draft' FOR UPDATE",
+                    payload.product_draft_id, user["id"],
+                )
+                if draft is None:
+                    raise HTTPException(status_code=404, detail="Brouillon privé introuvable.")
+            else:
+                draft = await connection.fetchrow(
+                    "SELECT id,data FROM v2_product_drafts WHERE author_id=$1 "
+                    "AND product_id IS NULL AND status='draft' AND data->>'ean' <> '' "
+                    "AND lpad(data->>'ean',14,'0')=lpad($2,14,'0') "
+                    "ORDER BY updated_at DESC,id DESC LIMIT 1 FOR UPDATE",
+                    user["id"], barcode,
+                )
+            # Lock an existing draft before its GTIN advisory lock: approval
+            # already takes these locks in that order. A new draft has no row.
             # Share the approval lock: a product published between lookup and
             # submission must not receive a second, competing initial draft.
             await connection.execute(
@@ -327,22 +358,6 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
                 raise HTTPException(
                     status_code=409,
                     detail="Ce produit est maintenant publié. Rechargez la capture pour lui proposer le prix.",
-                )
-            if payload.product_draft_id is not None:
-                draft = await connection.fetchrow(
-                    "SELECT id,data FROM v2_product_drafts WHERE id=$1 "
-                    "AND author_id=$2 AND product_id IS NULL AND status='draft' FOR UPDATE",
-                    payload.product_draft_id, user["id"],
-                )
-                if draft is None:
-                    raise HTTPException(status_code=404, detail="Brouillon privé introuvable.")
-            else:
-                draft = await connection.fetchrow(
-                    "SELECT id,data FROM v2_product_drafts WHERE author_id=$1 "
-                    "AND product_id IS NULL AND status='draft' AND data->>'ean' <> '' "
-                    "AND lpad(data->>'ean',14,'0')=lpad($2,14,'0') "
-                    "ORDER BY updated_at DESC,id DESC LIMIT 1 FOR UPDATE",
-                    user["id"], barcode,
                 )
             created = False
             if draft is None:
@@ -416,6 +431,46 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
         await connection.close()
 
 
+@router.post("/products/{product_id}/capture-drafts", status_code=201)
+async def create_published_capture_draft(
+    product_id: int, payload: PublishedCaptureCreate, request: Request,
+):
+    """Keep bookmarklet provenance when the catalogue product already exists."""
+    _secure_write(request)
+    barcode = normalize_barcode(payload.ean)
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        async with connection.transaction():
+            await check_write_limit(connection, user)
+            await check_open_limit(
+                connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
+            )
+            await _product(connection, product_id, current=True)
+            product = await connection.fetchrow(
+                "SELECT data->>'ean' AS ean,data->>'quantity' AS quantity "
+                "FROM v2_products WHERE id=$1", product_id,
+            )
+            if not product["ean"] or product["ean"].zfill(14) != barcode.zfill(14):
+                raise HTTPException(status_code=409, detail="L’EAN du produit a changé. Rechargez la capture.")
+            retailer_id, store_id, alias_id = await _retailer_store(connection, payload.price, user)
+            draft_id = await connection.fetchval(
+                "INSERT INTO v2_price_drafts("
+                "author_id,product_id,retailer_id,store_id,entry_kind,captured_via,"
+                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel,"
+                "captured_store_name) "
+                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
+                user["id"], product_id, retailer_id, store_id,
+                payload.source_url, barcode, payload.price.price,
+                product["quantity"] or None, payload.price.observed_at,
+                payload.price.note or None, payload.price.sales_channel,
+                payload.price.captured_store_name,
+            )
+        return {"id": draft_id, "status": "draft", "alias_proposal_id": alias_id}
+    finally:
+        await connection.close()
+
+
 async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
     _secure_write(request)
     connection = await _connect()
@@ -452,14 +507,17 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                     INSERT INTO v2_price_observations(
                         product_id,retailer_id,store_id,source,contributor_id,
                         price_draft_id,approved_by,approved_at,price,quantity_text,
-                        observed_at,note,sales_channel)
-                    VALUES($1,$2,$3,'manual',$4,$5,$6,now(),$7,$8,$9,$10,$11)
+                        observed_at,note,sales_channel,source_url,capture_ean)
+                    VALUES($1,$2,$3,$12,$4,$5,$6,now(),$7,$8,$9,$10,$11,$13,$14)
                     RETURNING id
                     """,
                     draft["product_id"], draft["retailer_id"], draft["store_id"],
                     draft["author_id"], draft_id, user["id"], draft["price"],
                     draft["quantity_text"], draft["observed_at"], draft["note"],
                     draft["sales_channel"],
+                    "bookmarklet" if draft["captured_via"] == "bookmarklet" else "manual",
+                    draft["source_url"] if draft["captured_via"] == "bookmarklet" else None,
+                    draft["capture_ean"] if draft["captured_via"] == "bookmarklet" else None,
                 )
             await connection.execute(
                 "UPDATE v2_price_drafts SET status=$1,reviewed_by=$2,"

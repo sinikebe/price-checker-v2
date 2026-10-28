@@ -47,7 +47,7 @@ export function Frame({ children, user, onLogout }: { children: React.ReactNode;
       <Link className="v2-brand" to="/v2"><span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
         <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
       <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
+        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link to="/v2/a-completer">À compléter</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
         <Link to="/v2/produits/nouveau">Ajouter</Link><Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
         {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
         {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}

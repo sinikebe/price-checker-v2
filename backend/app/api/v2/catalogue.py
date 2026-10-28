@@ -43,6 +43,66 @@ async def list_categories():
         await connection.close()
 
 
+# Published records may predate the current publication rules. Optional
+# fields are enrichment opportunities, not blockers for public visibility.
+PRODUCT_REQUIRED = {"name": "nom", "brand": "marque",
+                    "package": "conditionnement", "quantity": "quantité"}
+PRODUCT_OPTIONAL = {"ean": "code-barres", "composition": "composition"}
+
+
+@router.get("/to-complete")
+async def to_complete(
+    priority: str = Query("required", pattern="^(required|optional)$"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    connection = await _connect()
+    try:
+        products = await connection.fetch(
+            f"SELECT p.* FROM v2_products p WHERE {CURRENT} ORDER BY p.id"
+        )
+        # A store enters this public list only after a public observation exists.
+        # Private drafts must never expose their store names here.
+        stores = await connection.fetch(
+            f"""SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer
+                FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
+                WHERE EXISTS (
+                    SELECT 1 FROM v2_price_observations o
+                    JOIN v2_products p ON p.id=o.product_id
+                    WHERE o.store_id=s.id AND NOT o.superseded AND {CURRENT})
+                ORDER BY s.id"""
+        )
+        required = []
+        optional = []
+        for row in products:
+            item = _product(row)
+            data = item["data"]
+            missing_required = [label for key, label in PRODUCT_REQUIRED.items()
+                                if not (data.get(key) or "").strip()]
+            missing_optional = [label for key, label in PRODUCT_OPTIONAL.items()
+                                if not (data.get(key) or "").strip()]
+            summary = {"kind": "product", "id": item["id"], "name": data.get("name") or "",
+                       "brand": data.get("brand") or "",
+                       "missing": missing_required or missing_optional}
+            if missing_required:
+                required.append(summary)
+            elif missing_optional:
+                optional.append(summary)
+        for row in stores:
+            missing = [label for key, label in (("city", "ville"), ("postal_code", "code postal"))
+                       if not (row[key] or "").strip()]
+            if missing:
+                required.append({"kind": "store", "id": row["id"], "name": row["name"],
+                                 "retailer": row["retailer"], "city": row["city"] or "",
+                                 "postal_code": row["postal_code"] or "", "missing": missing})
+        selected = required if priority == "required" else optional
+        return {"items": selected[offset:offset + limit], "total": len(selected),
+                "required_total": len(required), "optional_total": len(optional),
+                "limit": limit, "offset": offset}
+    finally:
+        await connection.close()
+
+
 @router.get("/stores")
 async def find_stores(q: str = Query("", max_length=80)):
     if len(q.strip()) < 2:

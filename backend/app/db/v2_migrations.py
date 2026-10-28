@@ -568,6 +568,38 @@ MIGRATIONS = {
         CREATE INDEX v2_store_alias_proposals_review_idx
             ON v2_store_alias_proposals(status, created_at, id);
     """,
+    "0021_bookmarklet_price_source": """
+        -- Older approved captures were labelled manual. Keep their provenance
+        -- on the public observation even after private draft retention expires.
+        ALTER TABLE v2_price_observations
+            ADD COLUMN source_url varchar(1000),
+            ADD COLUMN capture_ean varchar(14)
+                CHECK (capture_ean IS NULL OR capture_ean ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$');
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_source_check;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_source_check
+            CHECK (source IN ('manual','bookmarklet','connector','third_party'));
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_check;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_check
+            CHECK ((source='connector' AND offer_id IS NOT NULL)
+                OR (source IN ('manual','bookmarklet','third_party')
+                    AND offer_id IS NULL));
+        ALTER TABLE v2_price_observations
+            DROP CONSTRAINT v2_price_observations_check2;
+        ALTER TABLE v2_price_observations
+            ADD CONSTRAINT v2_price_observations_check2
+            CHECK (source IN ('manual','bookmarklet') OR
+                (corrected_price IS NULL AND correction_status IS NULL
+                    AND resolved_by_observation_id IS NULL));
+        UPDATE v2_price_observations o
+        SET source='bookmarklet',source_url=d.source_url,capture_ean=d.capture_ean
+        FROM v2_price_drafts d
+        WHERE o.price_draft_id=d.id AND d.captured_via='bookmarklet'
+            AND o.source='manual';
+    """,
 
 }
 

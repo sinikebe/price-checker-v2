@@ -7,7 +7,7 @@ import "./v2-price-history.css";
 type Observation = {
   id: number; price: string; observed_at: string; retailer: string; retailer_id: number;
   store_name: string; store_id: number; city: string | null; postal_code: string | null; sales_channel: Channel;
-  source: "manual" | "connector" | "third_party"; source_provider: string | null;
+  source: "manual" | "bookmarklet" | "connector" | "third_party"; source_provider: string | null;
   available: boolean; correction_status: string | null; note: string | null;
 };
 type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" | "store_name" | "city" | "sales_channel" | "note"> & {
@@ -349,7 +349,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
           <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}</td>
           <td>{channels[row.sales_channel]}</td>
-          <td>{row.source === "manual" ? "Relevé validé" : row.source === "third_party" ? row.source_provider === "open_prices"
+          <td>{row.source === "manual" ? "Relevé validé" : row.source === "bookmarklet" ? "Bookmarklet validé" : row.source === "third_party" ? row.source_provider === "open_prices"
             ? <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>
             : row.source_provider || "Source externe" : "Connecteur"}</td>
         </tr>)}</tbody>
@@ -367,7 +367,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
             onChange={event => setForm({ ...form, store_name: event.target.value })} /></label>
           <label>Ville ou zone desservie<input required maxLength={200} value={form.city} disabled={busy}
             onChange={event => setForm({ ...form, city: event.target.value })} /></label>
-          <label>Code postal<input maxLength={20} value={form.postal_code} disabled={busy}
+          <label>Code postal<input required maxLength={20} value={form.postal_code} disabled={busy}
             onChange={event => setForm({ ...form, postal_code: event.target.value })} /></label>
           <label>Canal<select value={form.sales_channel} disabled={busy}
             onChange={event => setForm({ ...form, sales_channel: event.target.value as Channel })}>

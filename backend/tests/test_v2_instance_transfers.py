@@ -8,11 +8,10 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from fastapi import HTTPException
-
 from app.api.v2 import transfers
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
@@ -54,9 +53,13 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
             for channel in ("in_store", "drive"):
                 await source.execute(
                     "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,"
-                    "price,observed_at,note,sales_channel) "
-                    "VALUES($1,$2,$3,'manual',2.50,$4,'Shelf label',$5)",
-                    current, retailer, store, datetime.now(UTC), channel,
+                    "source_url,capture_ean,price,observed_at,note,sales_channel) "
+                    "VALUES($1,$2,$3,$4,$5,$6,2.50,$7,'Shelf label',$8)",
+                    current, retailer, store,
+                    "bookmarklet" if channel == "drive" else "manual",
+                    "https://example.org/captured" if channel == "drive" else None,
+                    "3017620422003" if channel == "drive" else None,
+                    datetime.now(UTC), channel,
                 )
         finally:
             await source.close()
@@ -115,14 +118,19 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
             target = await connect_v2(target_config)
             try:
                 rows = await target.fetch(
-                    "SELECT p.name, o.price,o.sales_channel,o.source,o.source_provider "
+                    "SELECT p.name, o.price,o.sales_channel,o.source,o.source_provider,"
+                    "o.source_url,o.capture_ean "
                     "FROM v2_price_observations o JOIN v2_products v ON v.id=o.product_id "
                     "CROSS JOIN LATERAL (SELECT v.data->>'name' AS name) p ORDER BY o.id"
                 )
                 assert len(rows) == 2
                 assert {row["sales_channel"] for row in rows} == {"in_store", "drive"}
-                assert all(row["source"] == "third_party" and
-                           row["source_provider"] == "price-checker-v2" for row in rows)
+                assert all(row["source"] == "third_party" for row in rows)
+                by_channel = {row["sales_channel"]: row for row in rows}
+                assert by_channel["in_store"]["source_provider"] == "price-checker-v2"
+                assert by_channel["drive"]["source_provider"] == "price-checker-v2/bookmarklet"
+                assert by_channel["drive"]["source_url"] == "https://example.org/captured"
+                assert by_channel["drive"]["capture_ean"] == "3017620422003"
                 assert all(row["name"] == "Sample coffee" for row in rows)
             finally:
                 await target.close()
@@ -258,3 +266,16 @@ async def test_identical_product_adoption_preserves_visibility_and_idempotence(m
     finally:
         await admin.execute(f'DROP DATABASE "{database}" WITH (FORCE)')
         await admin.close()
+
+
+
+def test_transfer_accepts_already_published_incomplete_product():
+    bundle = transfers.TransferBundle.model_validate({
+        "format": "price-checker-v2-transfer", "schema_version": 1,
+        "source_instance": str(uuid4()),
+        "products": [{"id": 1, "data": {"name": "Produit historique"}}],
+        "retailers": [], "stores": [], "prices": [],
+    })
+    products, _, _, _ = transfers._validate_import_bundle(bundle)
+    assert products[1].data.name == "Produit historique"
+    assert products[1].data.brand == ""

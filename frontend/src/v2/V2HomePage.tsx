@@ -89,6 +89,7 @@ export default function V2HomePage({ user, onLogout }: {
             <Link className="v2-nav-current" to="/v2" aria-current="page">Accueil</Link>
             <Link to="/v2/produits">Produits</Link>
             <Link to="/v2/recettes">Recettes</Link>
+            <Link to="/v2/a-completer">À compléter</Link>
             <Link to="/v2/produits/nouveau">Ajouter un produit</Link>
             <Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
             {user && <Link to="/v2/brouillons">Mes brouillons</Link>}

@@ -16,8 +16,8 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from app.api.v2.auth import _connect
-from app.api.v2.stores import name_key
 from app.api.v2.setup import _read_config
+from app.api.v2.stores import name_key
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,12 @@ def _valid_price(item: dict, barcode: str) -> tuple[dict, Decimal, datetime] | N
             or not isinstance(location.get("id"), int)
             or not isinstance(item.get("id"), int)):
         return None
-    name = (location.get("osm_name") or location.get("osm_brand") or "").strip()
-    if not name:
+    name = location.get("osm_name") or location.get("osm_brand") or ""
+    city = location.get("osm_address_city")
+    postcode = location.get("osm_address_postcode")
+    if (not isinstance(name, str) or not name.strip()
+            or not isinstance(city, str) or not city.strip()
+            or not isinstance(postcode, str) or not postcode.strip()):
         return None
     try:
         value = Decimal(str(item["price"]))
@@ -84,6 +88,11 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
         osm_type, osm_id,
     )
     if existing:
+        await connection.execute(
+            "UPDATE v2_stores SET city=COALESCE(NULLIF(btrim(city),''),$1),"
+            "postal_code=COALESCE(NULLIF(btrim(postal_code),''),$2) WHERE id=$3",
+            location["osm_address_city"].strip(), location["osm_address_postcode"].strip(), existing["id"],
+        )
         return existing["retailer_id"], existing["id"]
     brand = (location.get("osm_brand") or location["osm_name"]).strip()[:200]
     name = (location.get("osm_name") or brand).strip()[:300]
@@ -109,7 +118,8 @@ async def _store(connection, location: dict) -> tuple[int, int] | None:
             "SELECT s.id,s.city FROM v2_store_aliases a "
             "JOIN v2_stores s ON s.id=a.store_id "
             "WHERE a.source='open_prices' AND a.name_key=$1 "
-            "AND s.retailer_id=$2 AND s.postal_code=$3 AND s.osm_id IS NULL",
+            "AND s.retailer_id=$2 AND s.postal_code=$3 AND s.osm_id IS NULL "
+            "AND NULLIF(btrim(s.city),'') IS NOT NULL",
             name_key(name), retailer, postcode,
         )
         location_city = name_key(location.get("osm_address_city") or "")

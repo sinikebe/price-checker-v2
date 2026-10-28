@@ -1,0 +1,12 @@
+.v2-completion-section { margin-bottom: 1.5rem; }
+.v2-completion-section h2 span { color: var(--v2-muted, #666); font-weight: 400; }
+.v2-completion-list { list-style: none; margin: 1.5rem 0 0; padding: 0; }
+.v2-completion-list li { border-top: 1px solid rgba(80, 80, 80, .18); padding: 1rem 0;
+  display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 1rem; }
+.v2-completion-list strong, .v2-completion-list small { display: block; }
+.v2-completion-list small { margin-top: .25rem; }
+.v2-completion-store-form { display: flex; align-items: end; flex-wrap: wrap; gap: .6rem; }
+.v2-completion-store-form label { display: grid; gap: .3rem; font-size: .9rem; }
+.v2-completion-store-form input { max-width: 12rem; }
+.v2-completion-store-form p { width: 100%; margin: 0; color: #ac3030; }
+.v2-completion-pages { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1rem; }

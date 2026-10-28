@@ -581,7 +581,9 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     "AND p.data->>'ean' <> '' "
                     "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
                     "AND NOT EXISTS (SELECT 1 FROM v2_products next "
-                    "WHERE next.predecessor_id=p.id) LIMIT 1",
+                    "WHERE next.predecessor_id=p.id) "
+                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+                    "WHERE w.kind='product' AND w.content_id=p.id) LIMIT 1",
                     barcode,
                     draft["product_id"],
                 )

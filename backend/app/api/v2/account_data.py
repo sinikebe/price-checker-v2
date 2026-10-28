@@ -88,8 +88,8 @@ async def export_account_data(request: Request):
                 "FROM v2_store_alias_proposals WHERE author_id=$1 ORDER BY id", user_id
             )
             published_prices = await connection.fetch(
-                "SELECT id, product_id, retailer_id, store_id, price, "
-                "observed_at, note, created_at FROM v2_price_observations "
+                "SELECT id, product_id, retailer_id, store_id, source, source_url, "
+                "capture_ean, price, observed_at, note, created_at FROM v2_price_observations "
                 "WHERE contributor_id=$1 ORDER BY id", user_id
             )
             reports = await connection.fetch(
