@@ -66,7 +66,20 @@ async def lifespan(_: FastAPI):
         await close_v2_pool()
 
 
-app = FastAPI(title="Price Checker V2 API", lifespan=lifespan)
+app = FastAPI(
+    title="Price Checker V2 API",
+    description=(
+        "Description OpenAPI générée à partir des routes et des schémas réellement servis. "
+        "Certaines opérations nécessitent une session utilisateur ou un rôle de modération ; "
+        "l'authentification actuelle repose sur un cookie de session et n'est pas un accès "
+        "API autonome pour les clients IA."
+    ),
+    openapi_url="/api/v2/openapi.json",
+    docs_url="/api/v2/docs",
+    redoc_url=None,
+    swagger_ui_oauth2_redirect_url=None,
+    lifespan=lifespan,
+)
 app.add_middleware(TrustedWebProxyMiddleware)
 settings = get_settings()
 app.add_middleware(
@@ -96,6 +109,6 @@ for router in (
     app.include_router(router)
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 async def health():
     return {"status": "ok"}

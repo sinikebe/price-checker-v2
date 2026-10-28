@@ -58,6 +58,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.58",
+      "components": {
+        "application": {
+          "version": "0.1.58",
+          "notes": [
+            "La documentation de l’API est maintenant consultable depuis le site."
+          ]
+        }
+      }
     }
   ]
 }
