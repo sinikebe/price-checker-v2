@@ -48,3 +48,26 @@ html[data-v2-theme="dark"] .v2-settings-success { color: #a9d989; }
 .v2-manual-update { margin: 20px 0 28px; padding-bottom: 24px; border-bottom: 1px solid var(--v2-line); }
 .v2-manual-update h3 { margin: 0 0 9px; font-size: 1.05rem; }
 .v2-manual-update .v2-settings-note { margin: 10px 0 0; }
+
+.v2-host-health { grid-column: 1 / -1; }
+.v2-health-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
+.v2-health-metric { display: grid; gap: 7px; padding: 16px; border: 1px solid var(--v2-line); border-radius: 12px; }
+.v2-health-metric b { font-size: 1.45rem; }
+.v2-health-metric span { color: var(--v2-muted); font-size: .88rem; }
+.v2-health-high { color: #a82b37; }
+.v2-health-alerts { margin: 20px 0; padding: 16px; border: 1px solid #cd8f8f; border-radius: 12px; }
+.v2-health-alerts h3 { margin: 0 0 10px; font-size: 1.05rem; }
+.v2-health-alerts ul { margin: 0 0 12px; padding-left: 20px; }
+.v2-health-alerts li { margin-bottom: 5px; }
+.v2-health-details { margin-top: 18px; }
+.v2-health-details summary { cursor: pointer; font-weight: 700; }
+.v2-health-table-scroll { overflow-x: auto; margin-top: 14px; }
+.v2-health-table-scroll table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.v2-health-table-scroll :is(th,td) { padding: 7px 10px; border-bottom: 1px solid var(--v2-line); text-align: left; }
+@media (max-width: 700px) { .v2-health-summary { grid-template-columns: 1fr; } }
+html[data-v2-theme="dark"] .v2-health-high { color: #ffacb2; }
+
+.v2-host-alert-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px max(18px, calc((100vw - 1100px) / 2)); background: #fbe9e8; color: #74252d; }
+.v2-host-alert-notice a { color: inherit; font-weight: 700; text-decoration: underline; }
+.v2-host-alert-notice button { margin-left: auto; border: 1px solid currentColor; border-radius: 8px; padding: 6px 10px; background: transparent; color: inherit; cursor: pointer; }
+html[data-v2-theme="dark"] .v2-host-alert-notice { background: #47272e; color: #ffd5d5; }

@@ -69,6 +69,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.62",
+      "components": {
+        "deployment": {
+          "version": "0.1.19",
+          "notes": [
+            "Les paramètres administrateur affichent l’état du serveur et préviennent quand ses ressources sont trop sollicitées."
+          ]
+        }
+      }
     }
   ]
 }

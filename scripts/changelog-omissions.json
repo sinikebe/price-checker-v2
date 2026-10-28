@@ -59,6 +59,26 @@
       "component": "products",
       "version": "0.1.33",
       "reason": "Clarification des libellés de produits, magasins et fiches à compléter."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.20",
+      "reason": "Affichage des alertes réservé aux administrateurs, sans changement des comptes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.62",
+      "reason": "Présentation des mesures déjà annoncée dans le composant Installation et mise à jour."
+    },
+    {
+      "component": "database",
+      "version": "0.1.25",
+      "reason": "Lecture d’un état local, sans modification de la base de données."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.14",
+      "reason": "Intégration dans les paramètres, sans changement du fonctionnement hors ligne."
     }
   ]
 }

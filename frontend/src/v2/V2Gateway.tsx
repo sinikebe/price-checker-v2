@@ -4,6 +4,7 @@ import V2AuthPage from "./V2AuthPage";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
 import apiClient from "../api/client";
 import V2SettingsPage from "./V2SettingsPage";
+import V2HostAlertNotice from "./V2HostAlertNotice";
 import V2HomePage from "./V2HomePage";
 import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2CataloguePage from "./V2CataloguePage";
@@ -459,6 +460,9 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     return <SetupPage configured environment={status.app_env}
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
+  const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
+  const withHostAlert = (page: ReactNode) => adminId !== null && !preferencesMode
+    ? <><V2HostAlertNotice userId={adminId} />{page}</> : page;
   if (preferencesMode) return <V2SettingsPage user={authStatus.user} onAccountDeleted={() => {
     setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
   }} />;
@@ -469,16 +473,16 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
-  if (storesMode) return <V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />;
-  if (completionMode) return <V2CompletionPage user={authStatus.user} onLogout={logout} />;
-  if (captureMode) return <V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />;
-  if (basketMode) return <V2BasketPage user={authStatus.user} onLogout={logout} />;
+  if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
+  if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
+  if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
+  if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} />);
   if (recipeMode) {
-    return <V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />;
+    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />);
   }
-  if (workspaceMode === "catalogue" || categoryName) return <V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />;
+  if (workspaceMode === "catalogue" || categoryName) return withHostAlert(<V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />);
   if (workspaceMode) {
-    return <V2ProductWorkspace key={workspaceMode + ":" + workspaceId} mode={workspaceMode} id={workspaceId} user={authStatus.user} onLogout={logout} />;
+    return withHostAlert(<V2ProductWorkspace key={workspaceMode + ":" + workspaceId} mode={workspaceMode} id={workspaceId} user={authStatus.user} onLogout={logout} />);
   }
-  return <V2HomePage user={authStatus.user} onLogout={logout} />;
+  return withHostAlert(<V2HomePage user={authStatus.user} onLogout={logout} />);
 }

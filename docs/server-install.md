@@ -107,3 +107,9 @@ sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 Même en développement, le port 8080 reste lié à la boucle locale. Configurer séparément un accès HTTPS privé pour l'initialisation dans le navigateur. Le champ « Nom d'hôte » est facultatif en développement et accepte un nom local (`localhost`, `machine.local`) ou une adresse IP ; il ne configure ni la résolution du nom ni HTTPS.
 
 Pour les transferts JSON inter-instances (24 Mio maximum), régler aussi `client_max_body_size 25m;` sur le proxy HTTPS hôte, en plus du Nginx du conteneur web. La procédure, les données incluses et les conflits sont détaillés dans [v2-transfers.md](v2-transfers.md).
+
+## Surveillance légère de l'hôte
+
+Sur un serveur avec systemd, `install.sh` et `update.sh` installent le minuteur `price-checker-v2-<env>-host-health.timer`. Il relève chaque minute l'utilisation du processeur et de la mémoire de l'hôte, ainsi que l'espace du système de fichiers racine. La collecte est exécutée par l'utilisateur non privilégié `1000`, hors des conteneurs : leurs compteurs peuvent décrire une autre machine ou ignorer les limites de l'hôte. Si l'installation du minuteur a été différée, relancer `deployment/v2/install-host-health.sh` depuis le checkout installé.
+
+Le fichier `state/host-health.json` ne conserve qu'un point par heure sur 24 heures, le dernier relevé et les alertes des dernières 24 heures. Le seuil est strictement supérieur à 80 %, avec au plus une nouvelle alerte par ressource et par heure. Les alertes non vues apparaissent dans l'application aux administrateurs ; la page Paramètres affiche le détail et signale les relevés périmés. Les mesures ne sont pas envoyées à un service tiers. L'API `/api/v2/host-health` est réservée aux administrateurs et ne met pas sa réponse en cache. Pour un diagnostic détaillé, utiliser les outils de l'hébergeur.

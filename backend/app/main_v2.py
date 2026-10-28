@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from importlib.metadata import version as package_version
 from contextlib import asynccontextmanager, suppress
+from importlib.metadata import version as package_version
 
 import asyncpg
 from fastapi import FastAPI, HTTPException
@@ -16,6 +16,7 @@ from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
 from app.api.v2.catalogue import router as catalogue_router
 from app.api.v2.duplicate_merges import router as duplicate_merges_router
+from app.api.v2.host_health import router as host_health_router
 from app.api.v2.legal import router as legal_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
@@ -106,6 +107,7 @@ for router in (
     recipe_submissions_router,
     sync_router,
     updates_router,
+    host_health_router,
 ):
     app.include_router(router)
 
