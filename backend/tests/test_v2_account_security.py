@@ -277,3 +277,127 @@ async def test_second_factor_limits_apply_across_source_addresses(isolated_confi
             "username": username, "password": "test-password-123", "second_factor": "000000",
         })
         assert response.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_login_started_before_enrollment_must_recheck_factor(isolated_config, monkeypatch):
+    import asyncio
+
+    user_id, username = await _account(isolated_config)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as enrolled, \
+               httpx.AsyncClient(transport=transport, base_url="https://test") as racing:
+        assert (await enrolled.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123",
+        })).status_code == 200
+        setup = await enrolled.post("/api/v2/account/security/mfa/setup", json={
+            "password": "test-password-123",
+        })
+        assert setup.status_code == 200
+        checked = asyncio.Event()
+        resume = asyncio.Event()
+        original = auth._verify_password
+
+        async def pause_after_password(encoded, password):
+            result = await original(encoded, password)
+            checked.set()
+            await asyncio.wait_for(resume.wait(), 5)
+            return result
+
+        monkeypatch.setattr(auth, "_verify_password", pause_after_password)
+        pending = asyncio.create_task(racing.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123",
+        }))
+        try:
+            await asyncio.wait_for(checked.wait(), 5)
+            confirmed = await enrolled.post("/api/v2/account/security/mfa/confirm", json={
+                "code": pyotp.TOTP(setup.json()["secret"]).now(),
+            })
+            assert confirmed.status_code == 200
+        finally:
+            resume.set()
+        assert (await asyncio.wait_for(pending, 5)).status_code == 401
+        connection = await connect_v2(isolated_config)
+        try:
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_sessions WHERE user_id=$1", user_id,
+            ) == 1
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_account_deletion_attempts_are_limited_across_addresses(isolated_config):
+    user_id, username = await _account(isolated_config)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as browser:
+        assert (await browser.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123",
+        })).status_code == 200
+        connection = await connect_v2(isolated_config)
+        try:
+            await connection.execute(
+                "INSERT INTO v2_auth_limits(key,attempts) VALUES($1,5)",
+                auth_security.account_limit_key("account-delete", user_id),
+            )
+        finally:
+            await connection.close()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, client=("203.0.113.9", 1234)),
+            base_url="https://test", cookies=browser.cookies,
+        ) as alternate:
+            denied = await alternate.request("DELETE", "/api/v2/account", json={
+                "password": "test-password-123",
+            })
+            assert denied.status_code == 429
+        connection = await connect_v2(isolated_config)
+        try:
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_users WHERE id=$1", user_id,
+            ) == 1
+        finally:
+            await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_enrollment_revokes_login_issued_while_it_waited(isolated_config, monkeypatch):
+    import asyncio
+
+    _, username = await _account(isolated_config)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="https://test") as enrolled, \
+               httpx.AsyncClient(transport=transport, base_url="https://test") as racing:
+        assert (await enrolled.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123",
+        })).status_code == 200
+        setup = await enrolled.post("/api/v2/account/security/mfa/setup", json={
+            "password": "test-password-123",
+        })
+        assert setup.status_code == 200
+        issuing = asyncio.Event()
+        resume = asyncio.Event()
+        original = auth._issue_session
+
+        async def pause_before_session(connection, response, user_id):
+            issuing.set()
+            await asyncio.wait_for(resume.wait(), 5)
+            await original(connection, response, user_id)
+
+        monkeypatch.setattr(auth, "_issue_session", pause_before_session)
+        login_task = asyncio.create_task(racing.post("/api/v2/auth/login", json={
+            "username": username, "password": "test-password-123",
+        }))
+        await asyncio.wait_for(issuing.wait(), 5)
+        confirm_task = asyncio.create_task(enrolled.post(
+            "/api/v2/account/security/mfa/confirm", json={
+                "code": pyotp.TOTP(setup.json()["secret"]).now(),
+            },
+        ))
+        try:
+            await asyncio.sleep(0.05)
+            assert not confirm_task.done()
+        finally:
+            resume.set()
+        assert (await asyncio.wait_for(login_task, 5)).status_code == 200
+        assert (await asyncio.wait_for(confirm_task, 5)).status_code == 200
+        assert (await racing.get("/api/v2/auth/status")).json()["user"] is None

@@ -129,6 +129,9 @@ async def mfa_confirm(payload: MfaConfirmation, request: Request, response: Resp
         user = await _session_user(connection, request)
         await _rate_limit(connection, request, user["id"])
         async with connection.transaction():
+            await connection.fetchval(
+                "SELECT id FROM v2_users WHERE id=$1 FOR UPDATE", user["id"],
+            )
             row = await connection.fetchrow(
                 "SELECT secret_ciphertext,enabled_at,pending_expires_at "
                 "FROM v2_mfa_credentials WHERE user_id=$1 FOR UPDATE", user["id"],

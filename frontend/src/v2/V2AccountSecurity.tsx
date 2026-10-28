@@ -143,6 +143,10 @@ export default function V2AccountSecurity() {
             <label>Code à six chiffres<input type="text" inputMode="numeric" autoComplete="one-time-code" minLength={6} maxLength={6} pattern="[0-9]{6}" required value={confirmCode} onChange={event => setConfirmCode(event.target.value)} /></label>
             <button className="v2-button v2-button-primary" disabled={busy}>Activer</button>
           </form>
+          <button type="button" className="v2-button v2-button-secondary" disabled={busy}
+            onClick={() => { setSetup(null); setConfirmCode(""); setError(""); setNotice(""); }}>
+            Recommencer la configuration
+          </button>
         </>}
       </>}
       {codes.length > 0 && <div className="v2-security-once" role="status">
@@ -158,7 +162,7 @@ export default function V2AccountSecurity() {
       <form onSubmit={createToken} className="v2-security-form">
         <label>Nom du jeton<input type="text" maxLength={80} required value={label} onChange={event => setLabel(event.target.value)} placeholder="Mon application" /></label>
         <label>Accès<select value={scope} onChange={event => setScope(event.target.value as "read" | "contribute")}>
-          <option value="read">Lecture seule</option><option value="contribute">Lecture et contribution</option>
+          <option value="read">Lecture seule (inclut l’export de votre compte)</option><option value="contribute">Lecture et contribution</option>
         </select></label>
         <label>Expiration<select value={expiry} onChange={event => setExpiry(Number(event.target.value))}>
           <option value={30}>30 jours</option><option value={90}>90 jours</option><option value={365}>1 an</option>

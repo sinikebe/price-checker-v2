@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi.routing import APIRoute
 
-from app.main_v2 import app
+from app.main_v2 import BEARER_OPERATIONS, OPTIONAL_BEARER_OPERATIONS, app
 
 
 @pytest.mark.asyncio
@@ -23,6 +23,13 @@ async def test_openapi_docs_match_served_routes():
         assert schema["paths"]["/api/v2/auth/token"]["get"]["security"] == [
             {"PersonalApiToken": []}
         ]
+        for method, path in BEARER_OPERATIONS:
+            expected = ([{}, {"PersonalApiToken": []}]
+                        if (method, path) in OPTIONAL_BEARER_OPERATIONS
+                        else [{"PersonalApiToken": []}])
+            assert schema["paths"][path][method.lower()]["security"] == expected
+        assert "security" not in schema["paths"]["/api/v2/account/security/tokens"]["get"]
+        assert "security" not in schema["paths"]["/api/v2/setup/hostname"]["get"]
         docs = await client.get("/api/v2/docs")
         assert docs.status_code == 200
         assert '/api/v2/openapi.json' in docs.text

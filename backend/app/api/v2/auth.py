@@ -422,20 +422,37 @@ async def login(credentials: Credentials, request: Request, response: Response):
         if not user or not verified:
             await _bump_limit(connection, key, 900)
             raise HTTPException(status_code=401, detail="Identifiants incorrects.")
-        # Bound password-confirmed TOTP guesses across all source addresses.
-        mfa_enabled = await connection.fetchval(
-            "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
-            user["id"],
-        )
+        # Count password-confirmed factor guesses across source addresses. The
+        # counter is outside the login transaction so rejected attempts persist.
         factor_key = account_limit_key("mfa-login", user["id"])
-        if mfa_enabled and await _bump_limit(connection, factor_key, 3600) > 20:
-            raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
-        # Keep the account lock until the second factor is accepted. TOTP
-        # steps and recovery codes are consumed under a row lock.
+        factor_attempts = await _bump_limit(connection, factor_key, 3600)
+        factor_ok = False
+        factor_limited = False
+        # Enrollment locks the same user row before enabling MFA and revoking
+        # sessions. Either this login finishes first and is revoked, or it
+        # observes the newly enabled factor before issuing a session.
         async with connection.transaction():
-            factor_ok = await verify_second_factor(
-                connection, user["id"], credentials.second_factor,
+            await connection.fetchval(
+                "SELECT id FROM v2_users WHERE id=$1 FOR UPDATE", user["id"],
             )
+            mfa_enabled = await connection.fetchval(
+                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
+                user["id"],
+            )
+            factor_limited = bool(mfa_enabled and factor_attempts > 20)
+            if not factor_limited:
+                factor_ok = await verify_second_factor(
+                    connection, user["id"], credentials.second_factor,
+                )
+            if factor_ok:
+                if _HASHER.check_needs_rehash(user["password_hash"]):
+                    await connection.execute(
+                        "UPDATE v2_users SET password_hash=$1 WHERE id=$2",
+                        await _hash_password(password), user["id"],
+                    )
+                await _issue_session(connection, response, user["id"])
+        if factor_limited:
+            raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
         if not factor_ok:
             await _bump_limit(connection, key, 900)
             raise HTTPException(
@@ -445,13 +462,6 @@ async def login(credentials: Credentials, request: Request, response: Response):
         await connection.execute(
             "DELETE FROM v2_auth_limits WHERE key=$1 OR key=$2", key, factor_key,
         )
-        if _HASHER.check_needs_rehash(user["password_hash"]):
-            await connection.execute(
-                "UPDATE v2_users SET password_hash=$1 WHERE id=$2",
-                await _hash_password(password),
-                user["id"],
-            )
-        await _issue_session(connection, response, user["id"])
         return _public_user(user)
     finally:
         await connection.close()

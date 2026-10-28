@@ -9,7 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, SecretStr
 
-from app.api.v2.auth_security import verify_second_factor
+from app.api.v2.auth_security import account_limit_key, verify_second_factor
 
 from app.api.v2.auth import (
     _COOKIE_NAME,
@@ -144,10 +144,13 @@ async def delete_account(
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
-        if await _bump_limit(
-            connection, _limit_key("account-delete", request, str(user["id"])),
-            3600,
-        ) > 5:
+        origin_attempts = await _bump_limit(
+            connection, _limit_key("account-delete", request, str(user["id"])), 3600,
+        )
+        account_attempts = await _bump_limit(
+            connection, account_limit_key("account-delete", user["id"]), 3600,
+        )
+        if origin_attempts > 5 or account_attempts > 5:
             raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
         async with connection.transaction():
             account = await connection.fetchrow(
