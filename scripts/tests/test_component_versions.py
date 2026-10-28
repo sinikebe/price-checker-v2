@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from component_versions import bump_patch, classify, validate
+from component_versions import bump_patch, classify, stale_versions, validate
 
 
 class ComponentVersionsTests(unittest.TestCase):
@@ -20,6 +20,19 @@ class ComponentVersionsTests(unittest.TestCase):
             classify(["backend/app/api/v2/setup.py"]),
             {"database", "application"},
         )
+
+    def test_bookmarklet_files_require_their_own_version(self):
+        self.assertEqual(classify([
+            "frontend/src/v2/bookmarklet-capture.js",
+            "frontend/src/v2/V2CapturePage.tsx",
+            "frontend/src/v2/v2-capture.css",
+        ]), {"application", "products", "bookmarklet"})
+        previous = {"bookmarklet": {"status": "active", "version": "0.1.0"}}
+        current = {"bookmarklet": {"status": "active", "version": "0.1.0"}}
+        self.assertEqual(stale_versions(current, previous, {"bookmarklet"}), ["bookmarklet"])
+        current["bookmarklet"]["version"] = "0.1.1"
+        self.assertEqual(stale_versions(current, previous, {"bookmarklet"}), [])
+        self.assertEqual(stale_versions(current, {}, {"bookmarklet"}), [])
 
     def test_price_history_files_bump_products_and_open_prices(self):
         self.assertEqual(classify([
@@ -73,6 +86,7 @@ class ComponentVersionsTests(unittest.TestCase):
         versions = validate()
         self.assertRegex(versions["open_prices"]["version"], r"^\d+\.\d+\.\d+$")
         self.assertEqual(versions["open_prices"]["status"], "active")
+        self.assertRegex(versions["bookmarklet"]["version"], r"^\d+\.\d+\.\d+$")
 
 
 if __name__ == "__main__":

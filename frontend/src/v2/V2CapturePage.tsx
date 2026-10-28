@@ -4,6 +4,7 @@ import type { V2User } from "./v2-auth-api";
 import { Frame } from "./V2ProductWorkspace";
 import { ProductApiError, productRequest, type Product } from "./v2-products-api";
 import bookmarkletSource from "./bookmarklet-capture.js?raw";
+import versions from "./component-versions.json";
 import "./v2-capture.css";
 
 type Payload = { v: 2; url: string; host: string; name: string | null; brand: string | null;
@@ -13,15 +14,7 @@ type Resolution = { status: "loading" | "product" | "draft" | "missing" | "no-ea
   id?: number; product?: Product; message?: string };
 type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: "in_store" | "drive" | "delivery" };
 const pendingKey = "v2:capture:pending";
-// The label is a fingerprint of the embedded script: changing it changes the favorite's version.
-const bookmarkletVersion = (() => {
-  let hash = 2166136261;
-  for (let index = 0; index < bookmarkletSource.length; index++) {
-    hash = Math.imul(hash ^ bookmarkletSource.charCodeAt(index), 16777619);
-  }
-  return "v1-" + (hash >>> 0).toString(16).padStart(8, "0");
-})();
-const bookmarkletLabel = "Capturer ce prix " + bookmarkletVersion;
+const bookmarkletLabel = "Capturer ce prix v" + versions.bookmarklet.version;
 const channels: Record<Store["sales_channel"], string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const hosts: { domain: string; name: string }[] = [
   { domain: "intermarche.com", name: "Intermarché" }, { domain: "auchan.fr", name: "Auchan" },
