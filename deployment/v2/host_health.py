@@ -6,7 +6,7 @@ import argparse
 import fcntl
 import json
 import os
-import tempfile
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -113,7 +113,8 @@ def collect(state_dir: Path, *, at: datetime | None = None,
         memory = memory_usage(proc_meminfo if proc_meminfo is not None else Path("/proc/meminfo").read_text())
         disk = disk_usage(filesystem if filesystem is not None else os.statvfs("/"))
         result = updated_state(previous, at or datetime.now(UTC), cpu, memory, disk)
-        descriptor, name = tempfile.mkstemp(prefix=".host-health-", dir=state_dir)
+        name = f".host-health-{os.getpid()}-{secrets.token_hex(8)}"
+        descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 json.dump(result, stream, separators=(",", ":"))
@@ -129,6 +130,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state_dir", type=Path)
     args = parser.parse_args()
+    # The parent data directory is root-only; enter the app-owned state first.
+    os.chdir(args.state_dir)
     # A container UID may have no host passwd entry, so systemd cannot use User=1000.
     if os.geteuid() == 0:
         os.setgroups([])
@@ -136,7 +139,7 @@ def main() -> None:
         os.setuid(1000)
     if os.geteuid() != 1000:
         raise PermissionError("Host sampling must run as the V2 state owner (UID 1000)")
-    collect(args.state_dir)
+    collect(Path("."))
 
 
 if __name__ == "__main__":

@@ -89,6 +89,16 @@
       "component": "deployment",
       "version": "0.1.20",
       "reason": "Compatibilité du minuteur avec les hôtes où l’UID applicatif n’a pas de compte local."
+    },
+    {
+      "component": "application",
+      "version": "0.1.64",
+      "reason": "Correction de l’accès au répertoire de mesures privé sur l’hôte."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.21",
+      "reason": "Correction du lancement du collecteur avec un répertoire parent protégé."
     }
   ]
 }

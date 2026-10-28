@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
@@ -58,6 +60,19 @@ def test_host_sample_first_cpu_interval_and_threshold():
                                    _resource(81), _resource(79))
     assert second["current"]["cpu_pct"] == 90
     assert {item["metric"] for item in second["alerts"]} == {"cpu", "memory"}
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="Requires a root-owned parent directory")
+def test_host_sampler_can_write_with_root_only_parent(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    os.chown(state, 1000, 1000)
+    result = subprocess.run(["/usr/bin/python3", str(SCRIPT), str(state)],
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    target = state / "host-health.json"
+    assert target.stat().st_uid == 1000
+    assert json.loads(target.read_text())["current"]["memory"]["total_bytes"] > 0
 
 
 @pytest.mark.asyncio
