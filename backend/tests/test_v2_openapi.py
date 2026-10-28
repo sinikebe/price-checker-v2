@@ -1,5 +1,7 @@
 """The published API reference is generated from the served FastAPI routes."""
 
+from importlib.metadata import version as package_version
+
 import httpx
 import pytest
 from fastapi.routing import APIRoute
@@ -16,6 +18,7 @@ async def test_openapi_docs_match_served_routes():
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("application/json")
         schema = response.json()
+        assert schema["info"]["version"] == package_version("price-checker-v2-backend")
         docs = await client.get("/api/v2/docs")
         assert docs.status_code == 200
         assert '/api/v2/openapi.json' in docs.text

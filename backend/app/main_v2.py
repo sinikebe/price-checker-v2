@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from importlib.metadata import version as package_version
 from contextlib import asynccontextmanager, suppress
 
 import asyncpg
@@ -68,6 +69,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Price Checker V2 API",
+    version=package_version("price-checker-v2-backend"),
     description=(
         "Description OpenAPI générée à partir des routes et des schémas réellement servis. "
         "Certaines opérations nécessitent une session utilisateur ou un rôle de modération ; "

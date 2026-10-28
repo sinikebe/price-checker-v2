@@ -14,6 +14,11 @@
       "component": "application",
       "version": "0.1.59",
       "reason": "Lien d’accès sur l’accueil à une documentation déjà annoncée."
+    },
+    {
+      "component": "application",
+      "version": "0.1.60",
+      "reason": "Numéro affiché par la documentation aligné sur le paquet installé."
     }
   ]
 }
