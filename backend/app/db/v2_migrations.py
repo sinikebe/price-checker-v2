@@ -514,6 +514,21 @@ MIGRATIONS = {
         CREATE INDEX v2_open_prices_sync_checked_idx
             ON v2_open_prices_sync_state(checked_at);
     """,
+    "0019_capture_draft_prices": """
+        -- A captured price can wait privately for its product draft to be
+        -- approved. Once published, the price is relinked to that product and
+        -- still needs its own moderation decision.
+        ALTER TABLE v2_price_drafts ALTER COLUMN product_id DROP NOT NULL;
+        ALTER TABLE v2_price_drafts ADD COLUMN product_draft_id bigint
+            REFERENCES v2_product_drafts(id) ON DELETE CASCADE;
+        ALTER TABLE v2_price_drafts ADD COLUMN capture_ean varchar(14)
+            CHECK (capture_ean ~ '^([0-9]{8}|[0-9]{12}|[0-9]{13}|[0-9]{14})$');
+        ALTER TABLE v2_price_drafts ADD CONSTRAINT v2_price_draft_target
+            CHECK ((product_id IS NOT NULL) <> (product_draft_id IS NOT NULL));
+        CREATE INDEX v2_price_drafts_product_draft_idx
+            ON v2_price_drafts(product_draft_id)
+            WHERE product_draft_id IS NOT NULL;
+    """,
 
 }
 

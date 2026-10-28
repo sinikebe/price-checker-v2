@@ -1,4 +1,5 @@
 .v2-capture { max-width: 850px; }
+.v2-capture fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .v2-capture h2 { margin-top: 0; }
 .v2-capture p { line-height: 1.55; }
 .v2-capture ol { padding-left: 1.4rem; line-height: 1.7; }

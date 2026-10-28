@@ -345,7 +345,24 @@ async def get_draft(draft_id: int, request: Request):
         )
         if row is None or (row["author_id"] != user["id"] and user["role"] != "admin"):
             raise HTTPException(status_code=404, detail="Brouillon introuvable.")
-        return _draft(row)
+        result = _draft(row)
+        prices = await connection.fetch(
+            "SELECT d.id,d.price,d.status,d.capture_ean,d.quantity_text,"
+            "r.name AS retailer,s.name AS store_name "
+            "FROM v2_price_drafts d "
+            "JOIN v2_retailers r ON r.id=d.retailer_id "
+            "JOIN v2_stores s ON s.id=d.store_id "
+            "WHERE d.product_draft_id=$1 ORDER BY d.created_at DESC,d.id DESC LIMIT 100",
+            draft_id,
+        )
+        result["linked_prices"] = [
+            {"id": price["id"], "price": str(price["price"]),
+             "status": price["status"], "capture_ean": price["capture_ean"],
+             "quantity_text": price["quantity_text"], "retailer": price["retailer"],
+             "store_name": price["store_name"]}
+            for price in prices
+        ]
+        return result
     finally:
         await connection.close()
 
@@ -466,16 +483,23 @@ async def reject_draft(draft_id: int, payload: DraftApproval, request: Request):
         user = await _user(connection, request)
         if user["role"] != "admin":
             raise HTTPException(status_code=403, detail="Rejet réservé à l'administrateur.")
-        row = await connection.fetchrow(
-            "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
-            "rejected_by=$1 WHERE id=$2 AND status='draft' AND revision=$3 "
-            "RETURNING *",
-            user["id"], draft_id, payload.revision,
-        )
-        if row is None:
-            raise HTTPException(
-                status_code=409,
-                detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
+                "rejected_by=$1 WHERE id=$2 AND status='draft' AND revision=$3 "
+                "RETURNING *",
+                user["id"], draft_id, payload.revision,
+            )
+            if row is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
+                )
+            await connection.execute(
+                "UPDATE v2_price_drafts SET status='rejected',reviewed_by=$1,"
+                "reviewed_at=now(),updated_at=now() "
+                "WHERE product_draft_id=$2 AND status='draft'",
+                user["id"], draft_id,
             )
         return _draft(row)
     finally:
@@ -613,9 +637,14 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             await connection.execute(
                 "UPDATE v2_product_drafts SET status='approved',approved_at=now(),"
                 "approved_by=$1,result_product_id=$2,updated_at=now() WHERE id=$3",
-                user["id"],
-                product["id"],
-                draft_id,
+                user["id"], product["id"], draft_id,
+            )
+            # A linked price remains private and pending after publication of
+            # its product; its own reviewer must still approve it separately.
+            await connection.execute(
+                "UPDATE v2_price_drafts SET product_id=$1,product_draft_id=NULL,"
+                "updated_at=now() WHERE product_draft_id=$2 AND status='draft'",
+                product["id"], draft_id,
             )
             return _product(product)
     finally:

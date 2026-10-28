@@ -29,6 +29,8 @@ export type Draft = {
   data: ProductData; base_revision: number | null; revision: number;
   status: "draft" | "approved" | "rejected"; change_kind: ChangeKind;
   updated_at: string; result_product_id: number | null; successor_id?: number | null;
+  linked_prices?: { id: number; price: string; status: "draft" | "approved" | "rejected";
+    capture_ean: string | null; quantity_text: string | null; retailer: string; store_name: string }[];
 };
 export type V2OffSnapshot = {
   product_id: number; barcode: string; fetched_at: string;

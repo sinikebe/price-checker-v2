@@ -12,6 +12,7 @@ type Observation = {
 };
 type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" | "store_name" | "city" | "sales_channel" | "note"> & {
   author: string; author_id: number; status: "draft" | "approved" | "rejected";
+  capture_ean: string | null; quantity_text: string | null;
 };
 type Channel = "in_store" | "drive" | "delivery";
 type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string;
@@ -388,6 +389,8 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         <ul>{drafts.map(draft => <li key={draft.id}>
           <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
             {draft.note && <small> · {draft.note}</small>}
+            {draft.capture_ean && <small> · EAN capturé : {draft.capture_ean}</small>}
+            {draft.quantity_text && <small> · Conditionnement capturé : {draft.quantity_text}</small>}
             <small> · {draft.status === "draft" ? "En attente" : draft.status === "approved" ? "Publié" : "Refusé"}{user.role === "admin" && draft.author_id !== user.id && ` · ${draft.author}`}</small></span>
           {user.role === "admin" && draft.status === "draft" && <span className="v2-price-review">
             <button type="button" disabled={busy} onClick={() => void review(draft.id, "approve")}>Publier</button>

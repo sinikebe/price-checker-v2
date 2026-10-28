@@ -18,7 +18,7 @@ Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitat
 
 ## Relever un prix depuis une fiche d’enseigne
 
-Le bookmarklet V2 (`/v2/capture/installer`) lit la fiche produit déjà ouverte dans votre navigateur, sans nouvelle requête à l’enseigne. Après l’avoir ajouté aux favoris, choisissez d’abord le magasin ou Drive sur le site de l’enseigne, ouvrez une fiche, puis lancez « Capturer ce prix ». V2 propose le produit par EAN lorsqu’il le trouve ; vérifiez ensuite le conditionnement, le prix et le point de vente proche avant d’envoyer un relevé privé à valider.
+Le bookmarklet V2 (`/v2/capture/installer`) lit la fiche produit déjà ouverte dans votre navigateur, sans nouvelle requête à l’enseigne. Après l’avoir ajouté aux favoris, choisissez d’abord le magasin ou Drive sur le site de l’enseigne, ouvrez une fiche, puis lancez « Capturer ce prix ». V2 recherche le produit par EAN. S’il est absent, la même action envoie un brouillon produit privé et une proposition de prix liée, sans attendre la publication de la fiche. Si vous possédez déjà un brouillon pour cet EAN, le prix peut lui être joint directement. Vérifiez le conditionnement, le prix et le point de vente avant l’envoi ; la fiche et son prix sont validés séparément.
 
 Si le prix affiché ou l’EAN ne sont pas lisibles, la capture ne les invente pas : la recherche du catalogue et le formulaire de prix restent disponibles. Les sites peuvent changer leur présentation ; la capture doit toujours être vérifiée par une personne.
 

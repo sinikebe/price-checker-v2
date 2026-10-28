@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
@@ -10,13 +11,17 @@ from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.off import normalize_barcode
+from app.api.v2.products import ProductData
+from app.core.url_validation import validate_clickable_url
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_PRICE_DRAFTS,
+    MAX_PRODUCT_DRAFTS,
     check_open_limit,
     check_write_limit,
 )
@@ -67,6 +72,25 @@ class PriceDraftCreate(BaseModel):
         if day > datetime.now(_PARIS).date():
             raise ValueError("Un prix ne peut pas être relevé dans le futur.")
         return datetime.combine(day, time(12), tzinfo=_PARIS)
+
+
+class CaptureDraftCreate(BaseModel):
+    ean: str = Field(max_length=14)
+    product_draft_id: int | None = Field(default=None, ge=1)
+    product_data: ProductData | None = None
+    source_url: str = Field(max_length=1000)
+    price: PriceDraftCreate
+
+    @field_validator("source_url")
+    @classmethod
+    def valid_source_url(cls, value: str) -> str:
+        return validate_clickable_url(value.strip(), "source_url")
+
+    @model_validator(mode="after")
+    def one_product_target(self):
+        if (self.product_draft_id is None) == (self.product_data is None):
+            raise ValueError("Indiquez une fiche existante ou les données du nouveau brouillon.")
+        return self
 
 
 async def _user(connection: asyncpg.Connection, request: Request) -> dict:
@@ -157,6 +181,8 @@ def _draft(row: asyncpg.Record) -> dict:
         "sales_channel": row["sales_channel"],
         "status": row["status"],
         "note": row["note"],
+        "capture_ean": row["capture_ean"],
+        "quantity_text": row["quantity_text"],
     }
 
 
@@ -217,7 +243,8 @@ async def product_price_drafts(product_id: int, request: Request):
         rows = await connection.fetch(
             """
             SELECT d.id,d.author_id,u.username AS author,d.price,d.observed_at,
-                   d.sales_channel,d.status,d.note,r.name AS retailer,
+                   d.sales_channel,d.status,d.note,d.capture_ean,d.quantity_text,
+                   r.name AS retailer,
                    s.name AS store_name,s.city
             FROM v2_price_drafts d
             JOIN v2_users u ON u.id=d.author_id
@@ -230,6 +257,92 @@ async def product_price_drafts(product_id: int, request: Request):
             product_id, user["id"], user["role"],
         )
         return [_draft(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+@router.post("/capture-drafts", status_code=201)
+async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
+    """Atomically submit a private product draft and its separately reviewed price."""
+    _secure_write(request)
+    barcode = normalize_barcode(payload.ean)
+    if payload.product_data is not None and normalize_barcode(payload.product_data.ean) != barcode:
+        raise HTTPException(status_code=422, detail="L’EAN de la fiche ne correspond pas à la capture.")
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        async with connection.transaction():
+            await check_write_limit(connection, user)
+            await check_open_limit(
+                connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
+            )
+            # Share the approval lock: a product published between lookup and
+            # submission must not receive a second, competing initial draft.
+            await connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(lpad($1,14,'0'),0))",
+                barcode,
+            )
+            published = await connection.fetchval(
+                "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
+                "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
+                "AND NOT EXISTS (SELECT 1 FROM v2_products next "
+                "WHERE next.predecessor_id=p.id) "
+                "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+                "WHERE w.kind='product' AND w.content_id=p.id) LIMIT 1",
+                barcode,
+            )
+            if published is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ce produit est maintenant publié. Rechargez la capture pour lui proposer le prix.",
+                )
+            if payload.product_draft_id is not None:
+                draft = await connection.fetchrow(
+                    "SELECT id,data FROM v2_product_drafts WHERE id=$1 "
+                    "AND author_id=$2 AND product_id IS NULL AND status='draft' FOR UPDATE",
+                    payload.product_draft_id, user["id"],
+                )
+                if draft is None:
+                    raise HTTPException(status_code=404, detail="Brouillon privé introuvable.")
+            else:
+                draft = await connection.fetchrow(
+                    "SELECT id,data FROM v2_product_drafts WHERE author_id=$1 "
+                    "AND product_id IS NULL AND status='draft' AND data->>'ean' <> '' "
+                    "AND lpad(data->>'ean',14,'0')=lpad($2,14,'0') "
+                    "ORDER BY updated_at DESC,id DESC LIMIT 1 FOR UPDATE",
+                    user["id"], barcode,
+                )
+            created = False
+            if draft is None:
+                await check_open_limit(
+                    connection, user, table="v2_product_drafts", maximum=MAX_PRODUCT_DRAFTS,
+                )
+                draft = await connection.fetchrow(
+                    "INSERT INTO v2_product_drafts(author_id,data) "
+                    "VALUES($1,$2::jsonb) RETURNING id,data",
+                    user["id"], payload.product_data.model_dump_json(),
+                )
+                created = True
+            data = draft["data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            if not data.get("ean") or data["ean"].zfill(14) != barcode.zfill(14):
+                raise HTTPException(
+                    status_code=409, detail="L’EAN du brouillon a changé. Rechargez la capture.",
+                )
+            retailer_id, store_id = await _retailer_store(connection, payload.price)
+            price_draft_id = await connection.fetchval(
+                "INSERT INTO v2_price_drafts("
+                "author_id,product_draft_id,retailer_id,store_id,entry_kind,captured_via,"
+                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel) "
+                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11) RETURNING id",
+                user["id"], draft["id"], retailer_id, store_id,
+                payload.source_url, barcode, payload.price.price,
+                data.get("quantity") or None, payload.price.observed_at,
+                payload.price.note or None, payload.price.sales_channel,
+            )
+        return {"product_draft_id": draft["id"], "price_draft_id": price_draft_id,
+                "created_product_draft": created, "status": "draft"}
     finally:
         await connection.close()
 
@@ -283,6 +396,22 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                 raise HTTPException(status_code=404, detail="Relevé à valider introuvable.")
             observation_id = None
             if approve:
+                if draft["product_id"] is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Validez d’abord la fiche produit, puis examinez son prix séparément.",
+                    )
+                await _product(connection, draft["product_id"], current=True)
+                if draft["capture_ean"] is not None:
+                    current_ean = await connection.fetchval(
+                        "SELECT data->>'ean' FROM v2_products WHERE id=$1",
+                        draft["product_id"],
+                    )
+                    if not current_ean or current_ean.zfill(14) != draft["capture_ean"].zfill(14):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="L’EAN du produit a changé depuis la capture. Refusez ce prix.",
+                        )
                 observation_id = await connection.fetchval(
                     """
                     INSERT INTO v2_price_observations(

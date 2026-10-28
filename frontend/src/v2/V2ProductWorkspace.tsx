@@ -333,6 +333,12 @@ function Editor({ mode, id, user, onLogout }: Props) {
         <p>{draft ? "Ce brouillon est visible par son auteur et les administrateurs." : "La saisie locale n'est visible que dans ce navigateur."}</p>
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
         <p>Un changement de composition ou de format exige une nouvelle version liée à l'ancienne fiche.</p>
+        {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
+          <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
+            {item.quantity_text && ` · ${item.quantity_text}`}
+            {item.capture_ean && ` · EAN ${item.capture_ean}`}
+            {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul>
+          <p>La fiche doit être publiée avant que ces prix puissent être validés séparément.</p></div>}
         {data.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + data.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {data.off_source.code} ↗</a><br />
           Champs repris : {data.off_source.fields.join(", ")}.</p>}
