@@ -1,0 +1,14 @@
+{
+  "omissions": [
+    {
+      "component": "application",
+      "version": "0.1.56",
+      "reason": "Retouches de formulation sans nouveauté fonctionnelle."
+    },
+    {
+      "component": "application",
+      "version": "0.1.57",
+      "reason": "Clarification éditoriale du journal sans nouveauté à annoncer."
+    }
+  ]
+}

@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = "frontend/src/v2/component-versions.json"
 CHANGELOG_PATH = "frontend/src/v2/component-changelog.json"
+OMISSIONS_PATH = "scripts/changelog-omissions.json"
 SEMVER = re.compile(r"\d+\.\d+\.\d+\Z")
 MAX_NOTE_LENGTH = 160
 MAX_NOTES_PER_ENTRY = 3
@@ -32,8 +33,8 @@ def notes(value: object, place: str) -> None:
 
 
 def validate(manifest: dict, changelog: dict, previous: dict | None = None,
-             previous_changelog: dict | None = None) -> None:
-    """Validate format, then require a note for each bumped version."""
+             previous_changelog: dict | None = None, omissions: dict | None = None) -> None:
+    """Require a public note or an explicit non-public editorial decision per bump."""
     if not isinstance(changelog, dict) or set(changelog) != {"start_versions", "baseline", "releases"}:
         raise ValueError("Le changelog doit contenir start_versions, baseline et releases")
     components = set(manifest)
@@ -45,6 +46,26 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
     for component, starting_version in start_versions.items():
         if version_number(starting_version) > version_number(manifest[component]["version"]):
             raise ValueError(f"{component} : version antérieure au point de départ")
+    omissions = omissions if omissions is not None else {"omissions": []}
+    if not isinstance(omissions, dict) or set(omissions) != {"omissions"} or not isinstance(omissions["omissions"], list):
+        raise ValueError("Format des omissions invalide")
+    omitted_versions: dict[str, set[str]] = {component: set() for component in components}
+    for omission in omissions["omissions"]:
+        if not isinstance(omission, dict) or set(omission) != {"component", "version", "reason"}:
+            raise ValueError("Omission de changelog invalide")
+        component = omission["component"]
+        if component not in components:
+            raise ValueError(f"Omission pour un composant inconnu : {component}")
+        version = omission["version"]
+        if not version_number(start_versions[component]) < version_number(version) <= version_number(manifest[component]["version"]):
+            raise ValueError(f"{component} : version d’omission hors du journal")
+        reason = omission["reason"]
+        if (not isinstance(reason, str) or not reason.strip() or reason != reason.strip()
+                or "\n" in reason or len(reason) > MAX_NOTE_LENGTH):
+            raise ValueError(f"{component} v{version} : justification d’omission invalide")
+        if version in omitted_versions[component]:
+            raise ValueError(f"{component} v{version} : omission en double")
+        omitted_versions[component].add(version)
     baseline = changelog["baseline"]
     if not isinstance(baseline, dict) or set(baseline) != components:
         raise ValueError("Résumé initial absent ou composant inconnu")
@@ -70,8 +91,8 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
         if parsed <= version_number(start_versions["application"]):
             raise ValueError("Une mise à jour ne peut pas précéder le début du journal")
         entries = release["components"]
-        if not isinstance(entries, dict) or not entries or "application" not in entries or set(entries) - components:
-            raise ValueError(f"{group_version} : composant application manquant ou composant inconnu")
+        if not isinstance(entries, dict) or not entries or set(entries) - components:
+            raise ValueError(f"{group_version} : composants absents ou inconnus")
         for component, entry in entries.items():
             if not isinstance(entry, dict) or set(entry) != {"version", "notes"}:
                 raise ValueError(f"{group_version}/{component} : entrée invalide")
@@ -81,10 +102,12 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
             notes(entry["notes"], f"{group_version}/{component}")
             if version_number(entry["version"]) <= version_number(start_versions[component]):
                 raise ValueError(f"{group_version}/{component} : note attribuée à une ancienne version")
+            if entry["version"] in omitted_versions[component]:
+                raise ValueError(f"{component} v{entry['version']} : note publique et omission contradictoires")
             if entry["version"] in noted_versions[component]:
                 raise ValueError(f"{component} v{entry['version']} : note en double")
             noted_versions[component].add(entry["version"])
-        if entries["application"]["version"] != group_version:
+        if "application" in entries and entries["application"]["version"] != group_version:
             raise ValueError(f"{group_version} : version application incohérente")
 
     if previous is not None:
@@ -104,6 +127,8 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
             for component in sorted(bumped):
                 if version_number(manifest[component]["version"]) <= version_number(start_versions[component]):
                     continue  # A PR may span the pre-journal period.
+                if manifest[component]["version"] in omitted_versions[component]:
+                    continue
                 if not any(
                     release["application_version"] not in old_groups
                     and release["components"].get(component, {}).get("version") == manifest[component]["version"]
@@ -119,8 +144,8 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
         required = ([f"{current[0]}.{current[1]}.{patch}" for patch in range(starting[2] + 1, current[2] + 1)]
                     if starting[:2] == current[:2] else [manifest[component]["version"]])
         for version in required:
-            if version not in noted_versions[component]:
-                raise ValueError(f"Note manquante pour {component} v{version}")
+            if version not in noted_versions[component] and version not in omitted_versions[component]:
+                raise ValueError(f"Note ou omission manquante pour {component} v{version}")
 
 
 
@@ -142,10 +167,11 @@ def main() -> None:
     args = parser.parse_args()
     manifest = json.loads((ROOT / MANIFEST_PATH).read_text())
     changelog = json.loads((ROOT / CHANGELOG_PATH).read_text())
+    omissions = json.loads((ROOT / OMISSIONS_PATH).read_text())
     previous = git_json(args.base, MANIFEST_PATH) if args.base else None
     previous_changelog = git_json(args.base, CHANGELOG_PATH, missing_ok=True) if args.base else None
-    validate(manifest, changelog, previous, previous_changelog)
-    print("Changelog public valide ; chaque composant incrémenté a sa note")
+    validate(manifest, changelog, previous, previous_changelog, omissions)
+    print("Journal public valide ; chaque version a une note ou une omission explicite")
 
 
 if __name__ == "__main__":

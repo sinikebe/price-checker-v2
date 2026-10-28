@@ -32,7 +32,7 @@ export default function V2ChangelogPage({ componentId }: { componentId?: string 
       <h1>{selected ? versions[selected].label : "Journal des nouveautés"}</h1>
       <p>{selected
         ? `Version actuelle : v${versions[selected].version}. Les changements de ce composant, mise à jour après mise à jour.`
-        : "Un petit mot par composant, à chaque mise à jour. Le détail qui compte, sans le mode d’emploi."}</p>
+        : "Les changements qui comptent, composant par composant. Le détail utile, sans le mode d’emploi."}</p>
       {relevant.length ? relevant.map(release => <section className="v2-changelog-release" key={release.application_version}>
         <h2>Mise à jour v{release.application_version}</h2>
         <div className="v2-changelog-cards">

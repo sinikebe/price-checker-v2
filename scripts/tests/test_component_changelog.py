@@ -31,7 +31,7 @@ class ComponentChangelogTests(unittest.TestCase):
         validate(self.current, self.changelog, self.previous)
         entry = self.changelog["releases"][0]["components"]
         del entry["products"]
-        with self.assertRaisesRegex(ValueError, "Note manquante pour products"):
+        with self.assertRaisesRegex(ValueError, "Note ou omission manquante pour products"):
             validate(self.current, self.changelog, self.previous)
         entry["products"] = {"version": "0.1.32", "notes": ["Ancienne note."]}
         with self.assertRaisesRegex(ValueError, "ancienne version"):
@@ -97,10 +97,30 @@ class ComponentChangelogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "notes requises"):
             validate(self.current, self.changelog, self.previous)
 
-    def test_release_group_requires_application_note(self):
+    def test_release_group_can_omit_application_note_with_an_explicit_decision(self):
         del self.changelog["releases"][0]["components"]["application"]
-        with self.assertRaisesRegex(ValueError, "application manquant"):
+        with self.assertRaisesRegex(ValueError, "Note ou omission manquante pour application"):
             validate(self.current, self.changelog, self.previous)
+        omissions = {"omissions": [{"component": "application", "version": "0.1.55", "reason": "Aucun changement visible pour l’application."}]}
+        validate(self.current, self.changelog, self.previous, omissions=omissions)
+
+    def test_copy_only_bump_has_no_public_release_group(self):
+        current = copy.deepcopy(self.previous)
+        current["application"]["version"] = "0.1.55"
+        changelog = copy.deepcopy(self.changelog)
+        changelog["releases"] = []
+        omissions = {"omissions": [{"component": "application", "version": "0.1.55", "reason": "Retouche de texte."}]}
+        validate(current, changelog, self.previous, omissions=omissions)
+
+    def test_note_and_omission_cannot_coexist(self):
+        omissions = {"omissions": [{"component": "products", "version": "0.1.33", "reason": "Sans annonce."}]}
+        with self.assertRaisesRegex(ValueError, "contradictoires"):
+            validate(self.current, self.changelog, self.previous, omissions=omissions)
+
+    def test_omission_requires_a_short_reason(self):
+        omissions = {"omissions": [{"component": "products", "version": "0.1.33", "reason": ""}]}
+        with self.assertRaisesRegex(ValueError, "justification"):
+            validate(self.current, self.changelog, self.previous, omissions=omissions)
 
 
 if __name__ == "__main__":
