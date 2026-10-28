@@ -19,6 +19,10 @@ async def test_openapi_docs_match_served_routes():
         assert response.headers["content-type"].startswith("application/json")
         schema = response.json()
         assert schema["info"]["version"] == package_version("price-checker-v2-backend")
+        assert schema["components"]["securitySchemes"]["PersonalApiToken"]["scheme"] == "bearer"
+        assert schema["paths"]["/api/v2/auth/token"]["get"]["security"] == [
+            {"PersonalApiToken": []}
+        ]
         docs = await client.get("/api/v2/docs")
         assert docs.status_code == 200
         assert '/api/v2/openapi.json' in docs.text

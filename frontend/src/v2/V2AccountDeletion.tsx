@@ -43,6 +43,7 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
 }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [secondFactor, setSecondFactor] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +56,7 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
       const response = await fetch("/api/v2/account", {
         method: "DELETE", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, second_factor: secondFactor || null }),
       });
       if (!response.ok) {
         const data: unknown = await response.json().catch(() => null);
@@ -63,7 +64,7 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
           ? (data as { detail: unknown }).detail : null;
         throw new Error(typeof detail === "string" ? detail : "La suppression a échoué.");
       }
-      setPassword("");
+      setPassword(""); setSecondFactor("");
       const cleared = await clearDeletedAccountData(userId);
       onDeleted(cleared);
     } catch (reason) {
@@ -80,12 +81,16 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
           <input id="v2-delete-password" type="password" autoComplete="current-password" required value={password}
             onChange={event => setPassword(event.target.value)} disabled={busy} />
         </label>
+        <label className="v2-settings-delete-field" htmlFor="v2-delete-factor">Code de validation ou de secours, si activé
+          <input id="v2-delete-factor" type="text" autoComplete="one-time-code" value={secondFactor}
+            onChange={event => setSecondFactor(event.target.value)} disabled={busy} />
+        </label>
         <label className="v2-settings-delete-confirm"><input type="checkbox" checked={confirmed}
           onChange={event => setConfirmed(event.target.checked)} disabled={busy} /> Je comprends que cette suppression est définitive.</label>
         {error && <p className="v2-schedule-error" role="alert">{error}</p>}
         <div className="v2-settings-actions">
           <button type="submit" className="v2-button v2-button-secondary v2-settings-delete-button" disabled={busy || !confirmed || !password}>{busy ? "Suppression…" : "Supprimer définitivement mon compte"}</button>
-          <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => { setOpen(false); setPassword(""); setConfirmed(false); setError(""); }}>Annuler</button>
+          <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => { setOpen(false); setPassword(""); setSecondFactor(""); setConfirmed(false); setError(""); }}>Annuler</button>
         </div>
       </form>}
   </section>;

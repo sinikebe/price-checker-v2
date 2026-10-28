@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v2.account_data import router as account_data_router
+from app.api.v2.account_security import router as account_security_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
 from app.api.v2.catalogue import router as catalogue_router
@@ -74,7 +75,7 @@ app = FastAPI(
     description=(
         "API HTTP de Price Checker pour consulter les produits, magasins, prix et recettes, et soumettre des contributions. "
         "Certaines opérations nécessitent une connexion ou des droits d’administration. "
-        "L’authentification utilise un cookie de session."
+        "Pour les routes protégées, utilisez une session de navigateur ou un jeton personnel dans l’en-tête `Authorization: Bearer <jeton>`. Les jetons se créent dans Paramètres → Jetons API, avec une portée `read` (lecture) ou `contribute` (lecture et contribution). Ils expirent et peuvent être révoqués. Les opérations administrateur et la gestion des identifiants exigent une session de navigateur."
     ),
     openapi_url="/api/v2/openapi.json",
     docs_url="/api/v2/docs",
@@ -98,6 +99,7 @@ for router in (
     duplicate_merges_router,
     auth_router,
     account_data_router,
+    account_security_router,
     products_router,
     catalogue_router,
     prices_router,

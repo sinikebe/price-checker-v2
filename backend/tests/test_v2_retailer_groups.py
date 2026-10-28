@@ -76,7 +76,8 @@ async def test_retailer_group_backfill_management_and_directory(monkeypatch):
             await connection.close()
 
         assert await migrate_v2(config) == [
-                "0024_retailer_groups", "0025_merge_source_retailers_and_barcode_sync"
+                "0024_retailer_groups", "0025_merge_source_retailers_and_barcode_sync",
+                "0026_account_security"
             ]
         connection = await connect_v2(config)
         try:

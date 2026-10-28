@@ -804,6 +804,33 @@ MIGRATIONS = {
             ADD PRIMARY KEY(product_id,barcode);
     """,
 
+    "0026_account_security": """
+        CREATE TABLE v2_mfa_credentials (
+            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
+            secret_ciphertext text NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            pending_expires_at timestamptz,
+            enabled_at timestamptz,
+            last_step bigint
+        );
+        CREATE TABLE v2_mfa_recovery_codes (
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            code_hash char(64) NOT NULL,
+            PRIMARY KEY(user_id,code_hash)
+        );
+        CREATE TABLE v2_api_tokens (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            label varchar(80) NOT NULL CHECK (btrim(label) <> ''),
+            token_hash char(64) NOT NULL UNIQUE,
+            scope varchar(16) NOT NULL CHECK (scope IN ('read','contribute')),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL,
+            last_used_at timestamptz,
+            revoked_at timestamptz
+        );
+        CREATE INDEX v2_api_tokens_user_idx ON v2_api_tokens(user_id,created_at DESC);
+    """,
 
 }
 

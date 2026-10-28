@@ -80,6 +80,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.65",
+      "components": {
+        "accounts": {
+          "version": "0.1.21",
+          "notes": [
+            "La double authentification et les jetons API personnels sécurisent les connexions et les accès automatisés."
+          ]
+        }
+      }
     }
   ]
 }

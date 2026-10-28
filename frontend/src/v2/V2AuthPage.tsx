@@ -17,6 +17,7 @@ export default function V2AuthPage({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [secondFactor, setSecondFactor] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,11 +40,12 @@ export default function V2AuthPage({
       const user = await authRequest<V2User>(
         mode === "admin" ? "admin" : mode === "register" ? "register" : "login",
         "POST",
-        mode === "admin" ? { access_code: accessCode, password } : { username, password },
+        mode === "admin" ? { access_code: accessCode, password } : { username, password, second_factor: mode === "login" ? secondFactor || null : null },
       );
       setPassword("");
       setConfirmation("");
       setAccessCode("");
+      setSecondFactor("");
       onAuthenticated(user);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "L'opération a échoué.");
@@ -75,7 +77,7 @@ export default function V2AuthPage({
             ? "La configuration du serveur est terminée. Définissez le mot de passe du compte administrateur à l’aide du code d’installation."
             : isRegister
               ? "Un pseudo et un mot de passe suffisent. Aucun e-mail n'est demandé."
-              : "Connectez-vous avec votre pseudo et votre mot de passe."}</p>
+              : "Connectez-vous avec votre pseudo, votre mot de passe et votre code de validation si la double authentification est activée."}</p>
         </div>
         <div className="v2-auth-layout">
           <form className="v2-setup-card v2-auth-card" onSubmit={submit}>
@@ -107,6 +109,12 @@ export default function V2AuthPage({
                 required value={password} onChange={(event) => setPassword(event.target.value)} />
               {mode !== "login" && <small>{passwordMinimum} caractères minimum.</small>}
             </div>
+            {mode === "login" && <div className="v2-setup-field">
+              <label htmlFor="v2-account-second-factor">Code de validation ou de secours</label>
+              <input id="v2-account-second-factor" type="text" autoComplete="one-time-code" value={secondFactor}
+                onChange={event => setSecondFactor(event.target.value)} />
+              <small>À renseigner si la double authentification est activée.</small>
+            </div>}
             {mode !== "login" && (
               <div className="v2-setup-field">
                 <label htmlFor="v2-account-confirm">Confirmer le mot de passe</label>

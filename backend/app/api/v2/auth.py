@@ -1,4 +1,4 @@
-"""Account bootstrap and cookie sessions for the public API."""
+"""Account bootstrap, browser sessions and scoped API authentication."""
 
 from __future__ import annotations
 
@@ -7,14 +7,17 @@ import hashlib
 import hmac
 import re
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 import asyncpg
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, SecretStr
+
+from app.api.v2.auth_security import _TOKEN_PATTERN, verify_second_factor
 
 from app.api.v2.setup import (
     _access_code,
@@ -26,6 +29,10 @@ from app.core.config import get_settings
 from app.services.v2_db_pool import acquire_v2
 
 router = APIRouter(prefix="/api/v2/auth", tags=["v2-auth"])
+_bearer_scheme = HTTPBearer(
+    scheme_name="PersonalApiToken",
+    description="Jeton personnel créé dans Paramètres → Jetons API. En-tête Authorization: Bearer <jeton>.",
+)
 
 _COOKIE_NAME = "pc_v2_session"
 _SESSION_SECONDS = 7 * 24 * 60 * 60
@@ -39,6 +46,7 @@ _DUMMY_HASH = _HASHER.hash("not-a-real-account-password")
 class Credentials(BaseModel):
     username: str
     password: SecretStr
+    second_factor: str | None = None
 
 
 class AdminCredentials(BaseModel):
@@ -150,6 +158,14 @@ async def purge_ephemeral_auth_data(connection: asyncpg.Connection) -> None:
     """Bound retention even when nobody signs in again."""
     await _purge_expired_limits(connection)
     await connection.execute("DELETE FROM v2_sessions WHERE expires_at <= now()")
+    await connection.execute(
+        "DELETE FROM v2_api_tokens WHERE revoked_at < now()-interval '90 days' "
+        "OR expires_at < now()-interval '90 days'"
+    )
+    await connection.execute(
+        "DELETE FROM v2_mfa_credentials WHERE enabled_at IS NULL "
+        "AND pending_expires_at < now()"
+    )
 
 
 async def _connect():
@@ -165,6 +181,34 @@ async def _connect():
 async def _current_user(
     connection: asyncpg.Connection, request: Request
 ) -> dict | None:
+    authorization = request.headers.get("authorization")
+    if authorization is not None:
+        _require_secure_transport(request)
+        scheme, _, bearer = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not _TOKEN_PATTERN.fullmatch(bearer):
+            raise HTTPException(status_code=401, detail="Jeton API invalide.")
+        row = await connection.fetchrow(
+            "SELECT t.id, t.scope, t.last_used_at, u.id AS user_id, u.username, u.role FROM v2_api_tokens t "
+            "JOIN v2_users u ON u.id=t.user_id WHERE t.token_hash=$1 "
+            "AND t.revoked_at IS NULL AND t.expires_at>now()",
+            _token_hash(bearer),
+        )
+        if row is None:
+            raise HTTPException(status_code=401, detail="Jeton API invalide ou expiré.")
+        if request.method not in ("GET", "HEAD", "OPTIONS") and row["scope"] != "contribute":
+            raise HTTPException(status_code=403, detail="Ce jeton est limité à la lecture.")
+        if row["last_used_at"] is None or (
+            datetime.now(UTC) - row["last_used_at"] > timedelta(hours=1)
+        ):
+            await connection.execute(
+                "UPDATE v2_api_tokens SET last_used_at=now() WHERE id=$1 "
+                "AND (last_used_at IS NULL OR last_used_at<now()-interval '1 hour')",
+                row["id"],
+            )
+        # Personal tokens cannot carry moderator/admin privileges. Those
+        # actions require a browser session, as do credential-management routes.
+        return {"id": row["user_id"], "username": row["username"],
+                "role": "confirmed" if row["role"] == "confirmed" else "visitor"}
     token = request.cookies.get(_COOKIE_NAME)
     if not token or not _SESSION_TOKEN.fullmatch(token):
         return None
@@ -177,6 +221,15 @@ async def _current_user(
         _token_hash(token),
     )
     return _public_user(row)
+
+
+async def _session_user(connection: asyncpg.Connection, request: Request) -> dict:
+    if request.headers.get("authorization") is not None:
+        raise HTTPException(status_code=403, detail="Session du navigateur requise.")
+    user = await _current_user(connection, request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Connectez-vous.")
+    return user
 
 
 async def _issue_session(
@@ -230,6 +283,25 @@ async def status(request: Request):
         }
     except asyncpg.UndefinedTableError as exc:
         raise HTTPException(status_code=503, detail="Migrez la base V2.") from exc
+    finally:
+        await connection.close()
+
+
+@router.get("/token", summary="Vérifier un jeton API personnel")
+async def token_status(
+    request: Request,
+    response: Response,
+    credentials: HTTPAuthorizationCredentials = Security(_bearer_scheme),
+):
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        user = await _current_user(connection, request)
+        scope = await connection.fetchval(
+            "SELECT scope FROM v2_api_tokens WHERE token_hash=$1 AND revoked_at IS NULL "
+            "AND expires_at>now()", _token_hash(credentials.credentials),
+        )
+        return {"user": user, "scope": scope}
     finally:
         await connection.close()
 
@@ -348,6 +420,18 @@ async def login(credentials: Credentials, request: Request, response: Response):
         if not user or not verified:
             await _bump_limit(connection, key, 900)
             raise HTTPException(status_code=401, detail="Identifiants incorrects.")
+        # Keep the account lock until the second factor is accepted. TOTP
+        # steps and recovery codes are consumed under a row lock.
+        async with connection.transaction():
+            factor_ok = await verify_second_factor(
+                connection, user["id"], credentials.second_factor,
+            )
+        if not factor_ok:
+            await _bump_limit(connection, key, 900)
+            raise HTTPException(
+                status_code=401,
+                detail="Code de validation ou code de secours incorrect.",
+            )
         await connection.execute("DELETE FROM v2_auth_limits WHERE key=$1", key)
         if _HASHER.check_needs_rehash(user["password_hash"]):
             await connection.execute(

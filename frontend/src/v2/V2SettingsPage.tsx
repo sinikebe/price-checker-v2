@@ -8,6 +8,7 @@ import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2HostHealth from "./V2HostHealth";
 import V2TransferPanel from "./V2TransferPanel";
 import V2AccountDeletion from "./V2AccountDeletion";
+import V2AccountSecurity from "./V2AccountSecurity";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -99,6 +100,7 @@ export default function V2SettingsPage({ user, onAccountDeleted }: {
             onClick={() => { void exportAccount(); }}>{exporting ? "Préparation…" : "Exporter mes données"}</button>
           {exportError && <p role="alert">{exportError}</p>}
         </section>}
+        {user && <V2AccountSecurity key={user.id} />}
         {user && user.role !== "admin" && <V2AccountDeletion userId={user.id} onDeleted={cleared => {
           setDeleteNotice(cleared
             ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."

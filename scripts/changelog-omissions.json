@@ -99,6 +99,21 @@
       "component": "deployment",
       "version": "0.1.21",
       "reason": "Correction du lancement du collecteur avec un répertoire parent protégé."
+    },
+    {
+      "component": "application",
+      "version": "0.1.65",
+      "reason": "Présentation des protections déjà annoncées dans le composant Comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.26",
+      "reason": "Stockage nécessaire aux protections annoncées dans le composant Comptes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.15",
+      "reason": "Adaptation du formulaire de suppression de compte, sans changement du fonctionnement hors ligne."
     }
   ]
 }
