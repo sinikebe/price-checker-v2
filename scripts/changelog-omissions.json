@@ -9,6 +9,11 @@
       "component": "application",
       "version": "0.1.57",
       "reason": "Clarification éditoriale du journal sans nouveauté à annoncer."
+    },
+    {
+      "component": "application",
+      "version": "0.1.59",
+      "reason": "Lien d’accès sur l’accueil à une documentation déjà annoncée."
     }
   ]
 }

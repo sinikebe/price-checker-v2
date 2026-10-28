@@ -135,6 +135,7 @@ export default function V2HomePage({ user, onLogout }: {
               </div>
               {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
               <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course.</p>
+              <p className="v2-hero-note">Vous développez une intégration ? <a href="/api/v2/docs">Consulter la documentation API</a>.</p>
             </div>
 
             <div className="v2-hero-visual" aria-label="Aperçu du parcours Price Checker">
