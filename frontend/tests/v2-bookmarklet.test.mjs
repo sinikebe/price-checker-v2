@@ -11,19 +11,21 @@ function node(text, extra = {}) {
   return { textContent: text, parentElement: null, tagName: "SPAN", getAttribute: () => null,
     getClientRects: () => [1], querySelectorAll: () => [], ...extra };
 }
-function run({ host, path = "/p", jsonLd = [], selectors = {}, body = "", heading = "Produit" }) {
+function run({ host, path = "/p", jsonLd = [], selectors = {}, body = "", heading = "Produit", title = "" }) {
   const root = node("", { tagName: "DIV", querySelectorAll: selector => selectors[selector] || [] });
   const h1 = node(heading, { tagName: "H1", parentElement: root });
   const document = {
-    body: { innerText: body }, querySelector: selector => selector === "h1" ? h1 : null,
+    title, body: { innerText: body }, querySelector: selector => selector === "h1" ? h1 : null,
     querySelectorAll: selector => selector === 'script[type="application/ld+json"]'
       ? jsonLd.map(value => node(JSON.stringify(value))) : selectors[selector] || [],
   };
   const location = { hostname: host, pathname: path, origin: "https://" + host, href: "https://" + host + path };
   let opened = "";
-  const window = { open: target => { opened = target; return {}; } };
+  const alerts = [];
+  const window = { open: target => { opened = target; return {}; }, alert: message => alerts.push(message) };
   vm.runInNewContext(source, { document, location, window, URL, Date, JSON, Number, String, Array,
     Math, RegExp, encodeURIComponent, isFinite });
+  if (!opened) return { blocked: true, alerts };
   assert.match(opened, /^https:\/\/price\.example\/v2\/capture#p=/);
   return JSON.parse(decodeURIComponent(opened.slice(opened.indexOf("#p=") + 3)));
 }
@@ -52,4 +54,16 @@ test("invalid URL barcode and non-euro offer are not accepted", () => {
     jsonLd: [{ "@type": "Product", name: "Farine T45", offers: { price: "3.00", priceCurrency: "USD" } }] });
   assert.equal(item.ean, null);
   assert.equal(item.price, null);
+});
+
+test("retailer verification and empty error pages cannot become product captures", () => {
+  const challenge = run({ host: "www.carrefour.fr", path: "/p/farine-3068110702235",
+    title: "Un instant…", heading: "C’est une formalité… si vous êtes un humain !" });
+  assert.equal(challenge.blocked, true);
+  assert.match(challenge.alerts[0], /Aucune fiche produit lisible/);
+
+  const forbidden = run({ host: "www.intermarche.com", path: "/produit/farine/3068110702235",
+    heading: null });
+  assert.equal(forbidden.blocked, true);
+  assert.match(forbidden.alerts[0], /Aucune fiche produit lisible/);
 });

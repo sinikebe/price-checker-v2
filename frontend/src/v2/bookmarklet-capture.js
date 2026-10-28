@@ -134,6 +134,15 @@
       if (price != null) source = "visible:intermarche";
     }
   }
+  // Do not turn a retailer challenge/error page into a product suggestion.
+  var title = clean(document.title, 180) || "";
+  var blocked = /(?:captcha|un instant|just a moment|access denied|acc[eè]s refus[eé])/i.test(title)
+    || /(?:v[eé]rifions ensemble|si vous [eê]tes un humain|access denied|acc[eè]s refus[eé])/i.test(headingText || "");
+  if (!name || blocked) {
+    if (window.__PRICE_CHECKER_V2_EXTRACT_ONLY__ === true) return null;
+    window.alert("Aucune fiche produit lisible sur cette page. Ouvrez la fiche produit dans votre navigateur, puis réessayez.");
+    return;
+  }
   var payload = {
     v: 2, url: (location.origin + location.pathname).slice(0, 600), host: host.slice(0, 120),
     name: name, brand: clean(typeof brand === "string" ? brand : brand && brand.name, 100),
