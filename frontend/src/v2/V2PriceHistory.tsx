@@ -350,11 +350,11 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         <tbody>{observations.map(row => <tr key={row.id}>
           <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
           <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}
-            {row.source_retailer && row.source_retailer !== row.retailer && ` · source : ${row.source_retailer}`}</td>
+            {row.source_retailer && row.source_retailer !== row.retailer && ` · enseigne d’origine : ${row.source_retailer}`}</td>
           <td>{channels[row.sales_channel]}</td>
-          <td>{row.source === "manual" ? "Relevé validé" : row.source === "bookmarklet" ? "Bookmarklet validé" : row.source === "third_party" ? row.source_provider === "open_prices"
+          <td>{row.source === "manual" ? "Relevé validé" : row.source === "bookmarklet" ? "Capture validée" : row.source === "third_party" ? row.source_provider === "open_prices"
             ? <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>
-            : row.source_provider || "Source externe" : "Connecteur"}</td>
+            : row.source_provider || "Source externe" : "Import automatique"}</td>
         </tr>)}</tbody>
       </table></div>
       {prices.truncated && <p className="v2-price-note">Seuls les 200 relevés les plus récents sont affichés.</p>}
@@ -391,7 +391,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     {user && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
         <ul>{drafts.map(draft => <li key={draft.id}>
           <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
-            {draft.source_retailer && draft.source_retailer !== draft.retailer && ` · source : ${draft.source_retailer}`}
+            {draft.source_retailer && draft.source_retailer !== draft.retailer && ` · enseigne d’origine : ${draft.source_retailer}`}
             {draft.note && <small> · {draft.note}</small>}
             {draft.capture_ean && <small> · EAN capturé : {draft.capture_ean}</small>}
             {draft.captured_store_name && <small> · Magasin indiqué par la page : {draft.captured_store_name}</small>}

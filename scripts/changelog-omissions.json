@@ -19,6 +19,46 @@
       "component": "application",
       "version": "0.1.60",
       "reason": "Numéro affiché par la documentation aligné sur le paquet installé."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.19",
+      "reason": "Clarification des textes de connexion et de création de compte."
+    },
+    {
+      "component": "application",
+      "version": "0.1.61",
+      "reason": "Révision du ton des textes publics et de la présentation de l’API, sans nouvelle fonction."
+    },
+    {
+      "component": "bookmarklet",
+      "version": "0.1.6",
+      "reason": "Formulation du guide de capture et de ses messages, sans changement de la capture."
+    },
+    {
+      "component": "database",
+      "version": "0.1.24",
+      "reason": "Clarification des textes de configuration et de transfert."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.18",
+      "reason": "Clarification du texte des mises à jour du serveur."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.20",
+      "reason": "Formulation des messages Open Food Facts sans changement de l’intégration."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.13",
+      "reason": "Libellés de provenance des prix et des magasins rendus plus lisibles."
+    },
+    {
+      "component": "products",
+      "version": "0.1.33",
+      "reason": "Clarification des libellés de produits, magasins et fiches à compléter."
     }
   ]
 }

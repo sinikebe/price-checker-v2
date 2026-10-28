@@ -119,7 +119,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
   }
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
-      <h1>Installer le bookmarklet<span>.</span></h1>
+      <h1>Installer le favori de capture<span>.</span></h1>
       <p>Relevez le prix d’une fiche que vous avez déjà ouverte dans le navigateur.</p></div></div>
     <section className="v2-workspace-card v2-capture">
       <h2>{bookmarkletLabel}</h2>
@@ -128,10 +128,10 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
         <button type="button" className="v2-button v2-button-secondary" onClick={() => void copy()}>{copied ? "Copié" : "Copier le lien"}</button></p>
       <ol><li>Choisissez le magasin ou Drive sur le site de l’enseigne, puis ouvrez une fiche produit dont le prix est visible.</li>
         <li>Utilisez le favori « {bookmarkletLabel} ». Il lit uniquement la page ouverte et ne contacte pas l’enseigne.</li>
-        <li>Dans V2, vérifiez la référence, le conditionnement, le prix et le point de vente avant de proposer la fiche et son prix en une seule action si l’EAN est nouveau.</li></ol>
+        <li>Dans Price Checker, vérifiez la référence, le conditionnement, le prix et le point de vente avant de proposer la fiche et son prix en une seule action si l’EAN est nouveau.</li></ol>
       <h3>Enseignes compatibles vérifiées</h3>
       <ul>{captureRetailers.filter(item => item.verifiedFixture).map(item => <li key={item.domain}>{item.name}</li>)}</ul>
-      <p>Cette liste correspond aux enseignes contrôlées avec des captures de fiches produit. Elle suit le registre testé en CI ; la lecture d’autres sites peut être incomplète.</p>
+      <p>Les enseignes de cette liste ont été vérifiées pour la capture de prix. Sur d’autres sites, certaines informations peuvent manquer.</p>
       <p>Le point de vente saisi est mémorisé dans ce navigateur pour les prochaines captures de la même enseigne. Aucun prix n’est publié sans validation.</p>
       <p><Link to="/v2/produits">Retour aux produits</Link></p>
     </section>
@@ -289,26 +289,26 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   const canContribute = resolution.status === "product" || resolution.status === "draft" || resolution.status === "missing";
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
-      <h1>Vérifier le relevé<span>.</span></h1><p>La page consultée fournit une proposition, jamais un prix publié automatiquement.</p></div></div>
+      <h1>Vérifier le relevé<span>.</span></h1><p>Les informations relevées doivent être vérifiées. Aucun prix n’est publié automatiquement.</p></div></div>
     <section className="v2-workspace-card v2-capture">
       {sent ? <div role="status"><h2>{sent.productDraftId ? sent.createdProductDraft ? "Fiche et prix proposés" : "Prix joint au brouillon" : "Relevé proposé"}</h2>
         <p>{sent.productDraftId ? "La fiche reste privée jusqu’à validation. Son prix sera examiné séparément après publication de la fiche." : "Le prix restera privé jusqu’à validation."}</p>
         {sent.aliasProposed && <p>Le nom supplémentaire du magasin a été proposé. Sa validation est distincte de celles du produit et du prix.</p>}
         <p>{sent.productDraftId ? <Link to={"/v2/brouillons/" + sent.productDraftId}>Voir et compléter le brouillon</Link>
           : <Link to={"/v2/produits/" + sent.productId}>Voir le produit</Link>} · <Link to="/v2/capture/installer">Capturer une autre fiche</Link></p></div>
-      : !payload ? <div role="alert"><p>Aucune capture lisible. Installez le bookmarklet puis utilisez-le sur une fiche produit.</p>
-        <Link to="/v2/capture/installer">Installer le bookmarklet</Link></div>
+      : !payload ? <div role="alert"><p>Aucune capture lisible. Installez le favori de capture, puis utilisez-le sur une fiche produit.</p>
+        <Link to="/v2/capture/installer">Installer le favori de capture</Link></div>
       : <>
-        <h2>{payload.name || "Produit sans nom extrait"}</h2>
+        <h2>{payload.name || "Produit sans nom"}</h2>
         <p>{[payload.brand, payload.quantity, payload.ean && "EAN " + payload.ean].filter(Boolean).join(" · ") || "Identité à vérifier"}</p>
         <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : payload.price.toFixed(2) + " €"}</strong>
-          {payload.source && <small> · source : {payload.source}</small>}</p>
+          {payload.source && <small> · {payload.source.startsWith("visible:") ? "prix affiché sur la page" : "montant indiqué dans les données de la page"}</small>}</p>
         {payload.price == null && <p>Le prix n’a pas pu être relevé. Vérifiez que le produit est disponible et qu’un magasin est sélectionné sur la fiche, puis relancez la capture.</p>}
         <p>Page consultée : <a href={payload.url} target="_blank" rel="noreferrer">{payload.host}</a>. Le prix dépend du magasin et du canal choisis sur cette page.</p>
-        {resolution.status === "loading" && <p role="status">Recherche de la référence V2…</p>}
+        {resolution.status === "loading" && <p role="status">Recherche du produit…</p>}
         {resolution.status === "error" && <p role="alert">{resolution.message} Réessayez en rechargeant la page.</p>}
         {resolution.status === "no-ean" && <p role="alert">Aucun EAN vérifiable sur cette page. Recherchez le produit dans le <Link to="/v2/produits">catalogue</Link>, puis proposez son prix sur sa fiche.</p>}
-        {resolution.status === "product" && resolution.product && <div className="v2-capture-match"><strong>Produit V2 trouvé :</strong> <Link to={"/v2/produits/" + resolution.id}>{[resolution.product.data.brand, resolution.product.data.name, resolution.product.data.quantity].filter(Boolean).join(" · ")}</Link></div>}
+        {resolution.status === "product" && resolution.product && <div className="v2-capture-match"><strong>Produit trouvé :</strong> <Link to={"/v2/produits/" + resolution.id}>{[resolution.product.data.brand, resolution.product.data.name, resolution.product.data.quantity].filter(Boolean).join(" · ")}</Link></div>}
         {resolution.status === "draft" && resolution.draft && <div className="v2-capture-match"><strong>Votre brouillon pour cet EAN :</strong> <Link to={"/v2/brouillons/" + resolution.id}>{[resolution.draft.data.brand, resolution.draft.data.name, resolution.draft.data.quantity].filter(Boolean).join(" · ") || payload.ean}</Link><p>Le prix peut y être joint maintenant ; il sera examiné séparément après la publication de la fiche.</p></div>}
         {resolution.status === "missing" && <p>Ce produit n’est pas encore dans le catalogue. Cette action créera un brouillon privé avec l’EAN {payload.ean} et y joindra le prix en une seule soumission. Complétez la fiche avant sa validation si des informations manquent.</p>}
         {canContribute && (user ? <form onSubmit={event => void submit(event)}>
@@ -324,7 +324,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
             {payload.store ? <p>Magasin lu sur la page : <strong>{payload.store.name}</strong>{payload.store.city && ` · ${payload.store.city}`}{payload.store.postalCode && ` · ${payload.store.postalCode}`}</p>
               : <p>Aucun magasin sélectionné n’a été identifié dans la page. Saisissez-le avant le relevé.</p>}
             <div className="v2-capture-store-choice">
-              {storeSearch === "loading" && <p role="status">Recherche des magasins V2…</p>}
+              {storeSearch === "loading" && <p role="status">Recherche des magasins…</p>}
               {storeError && <p role="alert">{storeError} Vous pouvez confirmer un nouveau magasin après vérification.</p>}
               {storeMatches && <>
                 {storeMatches.matches.length ? <div><strong>{storeMatches.exact_store_id ? "Correspondance trouvée" : "Magasins proches proposés"}</strong>

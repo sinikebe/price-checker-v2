@@ -87,7 +87,7 @@ export default function V2BarcodeScanner({ onClose, onDetected }: {
       </div>
       {state === "requesting" && <p>Ouverture de la caméra…</p>}
       {state === "scanning" && <p>Placez le code-barres dans le cadre.</p>}
-      {state === "insecure" && <p role="alert">La caméra nécessite une connexion HTTPS ou localhost. Vous pouvez saisir le code manuellement ci-dessous.</p>}
+      {state === "insecure" && <p role="alert">La caméra nécessite une connexion sécurisée (HTTPS). Vous pouvez aussi saisir le code manuellement ci-dessous.</p>}
       {state === "denied" && <p role="alert">Accès à la caméra refusé. Autorisez-le dans le navigateur, puis rouvrez le scanner.</p>}
       {state === "no-camera" && <p role="alert">Aucune caméra disponible sur cet appareil.</p>}
       {state === "camera-error" && <p role="alert">Impossible de démarrer la caméra. Fermez le scanner puis réessayez.</p>}

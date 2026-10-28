@@ -55,7 +55,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
           <section className="v2-workspace-card"><h2>Informations</h2>
             <dl className="v2-workspace-facts">
               <div><dt>Groupe d’enseignes</dt><dd>{store.retailer_group}</dd></div>
-              <div><dt>Enseigne source</dt><dd>{store.retailer}</dd></div>
+              <div><dt>Enseigne d’origine</dt><dd>{store.retailer}</dd></div>
               <div><dt>Ville</dt><dd>{store.city || "À compléter"}</dd></div>
               <div><dt>Code postal</dt><dd>{store.postal_code || "À compléter"}</dd></div>
               <div><dt>Services</dt><dd>{[store.supports_drive && "Drive",store.supports_delivery && "Livraison"].filter(Boolean).join(" · ") || "Non précisés"}</dd></div>
@@ -64,8 +64,8 @@ export default function V2StoresPage({ id, user, onLogout }: {
           <V2ReportControl kind="store" contentId={store.id} user={user} />
         </>}
       </>}
-    </> : <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">ANNUAIRE PUBLIC · V2</span>
-      <h1>Magasins<span>.</span></h1><p>Points de vente regroupés par famille d’enseignes ; leur enseigne source reste visible.</p></div></div>
+    </> : <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">POINTS DE VENTE</span>
+      <h1>Magasins<span>.</span></h1><p>Les magasins sont regroupés par enseigne. Le nom d’enseigne relevé à l’origine reste indiqué lorsqu’il diffère.</p></div></div>
       <label className="v2-stores-search" htmlFor="v2-store-search">Rechercher un magasin
         <input id="v2-store-search" type="search" value={query} onChange={event => setQuery(event.target.value)}
           placeholder="Enseigne, magasin, ville ou code postal" /></label>

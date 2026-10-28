@@ -223,10 +223,10 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
     <SetupFrame>
       <div className="v2-setup-intro">
         <span className="v2-section-kicker">{configured ? "PARAMÈTRES · SERVEUR" : "PREMIER DÉMARRAGE"}</span>
-        <h1>{configured ? "Paramètres du serveur." : <>Préparons votre <em>espace.</em></>}</h1>
+        <h1>{configured ? "Paramètres du serveur." : <>Configurer le <em>serveur.</em></>}</h1>
         <p>{configured
-          ? "Le nom d’hôte est modifiable avec votre compte admin. La connexion PostgreSQL reste protégée par le code du serveur."
-          : "Renseignez le nom d’hôte et la base de données de cette instance. Nous vérifierons la connexion et préparerons le schéma des comptes."}</p>
+          ? "Le nom d’hôte peut être modifié avec un compte administrateur. Le code du serveur reste nécessaire pour modifier la connexion à la base de données."
+          : "Renseignez l’adresse de cette installation et les paramètres de sa base de données. La connexion sera vérifiée avant l’activation des comptes."}</p>
       </div>
 
       {configured && <HostnameSettings environment={environment} />}
@@ -353,7 +353,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
           <div className="v2-setup-aside-rule" />
           <div className="v2-setup-aside-point"><span>✓</span><p>Connexion testée avant l’enregistrement ; TLS obligatoire hors du développement local</p></div>
           <div className="v2-setup-aside-point"><span>✓</span><p>Mot de passe conservé côté serveur, jamais dans le navigateur</p></div>
-          <div className="v2-setup-aside-point"><span>✓</span><p>Le schéma est créé seulement après votre confirmation</p></div>
+          <div className="v2-setup-aside-point"><span>✓</span><p>La base est initialisée après confirmation</p></div>
           {form.provider === "supabase" && (
             <a href="https://supabase.com/docs/guides/database/connecting-to-postgres" target="_blank" rel="noreferrer">
               Où trouver ces paramètres ? <span aria-hidden="true">↗</span>

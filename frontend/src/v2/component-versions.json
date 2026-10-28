@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.60",
+    "version": "0.1.61",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.32",
+    "version": "0.1.33",
     "status": "active"
   },
   "recipes": {
@@ -21,17 +21,17 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.23",
+    "version": "0.1.24",
     "status": "active"
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.19",
+    "version": "0.1.20",
     "status": "active"
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.18",
+    "version": "0.1.19",
     "status": "active"
   },
   "pwa": {
@@ -41,17 +41,17 @@
   },
   "deployment": {
     "label": "Installation et mise à jour",
-    "version": "0.1.17",
+    "version": "0.1.18",
     "status": "active"
   },
   "open_prices": {
     "label": "Connecteur Open Prices",
-    "version": "0.1.12",
+    "version": "0.1.13",
     "status": "active"
   },
   "bookmarklet": {
-    "label": "Capture de prix / bookmarklet",
-    "version": "0.1.5",
+    "label": "Favori de capture de prix",
+    "version": "0.1.6",
     "status": "active"
   }
 }

@@ -31,8 +31,8 @@ export default function V2ChangelogPage({ componentId }: { componentId?: string 
       <span className="v2-section-kicker">NOUVEAUTÉS</span>
       <h1>{selected ? versions[selected].label : "Journal des nouveautés"}</h1>
       <p>{selected
-        ? `Version actuelle : v${versions[selected].version}. Les changements de ce composant, mise à jour après mise à jour.`
-        : "Les changements qui comptent, composant par composant. Le détail utile, sans le mode d’emploi."}</p>
+        ? `Version actuelle : v${versions[selected].version}. Principales évolutions de ce composant.`
+        : "Principales évolutions de Price Checker, classées par mise à jour et par composant."}</p>
       {relevant.length ? relevant.map(release => <section className="v2-changelog-release" key={release.application_version}>
         <h2>Mise à jour v{release.application_version}</h2>
         <div className="v2-changelog-cards">

@@ -66,7 +66,7 @@ function CompletionList({ priority, user, refresh, onSaved }: {
   return <section className="v2-workspace-card v2-completion-section">
     <h2>{title}{result && <span> · {result.total}</span>}</h2>
     <p>{priority === "required"
-      ? "Ces fiches ont déjà été publiées, mais ne respectent pas les règles actuelles. Elles restent visibles dans le catalogue."
+      ? "Il manque des informations indispensables à ces fiches déjà publiées. Elles restent consultables."
       : "Ces fiches sont publiables en l’état ; ces informations peuvent améliorer leur description."}</p>
     {error ? <p role="alert">{error}</p> : !result ? <p role="status">Chargement…</p>
       : !result.items.length ? <p>Aucune fiche dans cette section.</p>
@@ -93,7 +93,7 @@ export default function V2CompletionPage({ user, onLogout }: { user: V2User | nu
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE PUBLIC</span>
       <h1>À compléter<span>.</span></h1>
-      <p>Retrouver les fiches publiées avant ou malgré des informations manquantes.</p>
+      <p>Fiches publiées auxquelles il manque encore des informations.</p>
     </div></div>
     <CompletionList priority="required" user={user} refresh={refresh} onSaved={() => setRefresh(value => value + 1)} />
     <CompletionList priority="optional" user={user} refresh={refresh} onSaved={() => setRefresh(value => value + 1)} />

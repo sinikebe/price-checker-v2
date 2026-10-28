@@ -71,10 +71,9 @@ app = FastAPI(
     title="Price Checker V2 API",
     version=package_version("price-checker-v2-backend"),
     description=(
-        "Description OpenAPI générée à partir des routes et des schémas réellement servis. "
-        "Certaines opérations nécessitent une session utilisateur ou un rôle de modération ; "
-        "l'authentification actuelle repose sur un cookie de session et n'est pas un accès "
-        "API autonome pour les clients IA."
+        "API HTTP de Price Checker pour consulter les produits, magasins, prix et recettes, et soumettre des contributions. "
+        "Certaines opérations nécessitent une connexion ou des droits d’administration. "
+        "L’authentification utilise un cookie de session."
     ),
     openapi_url="/api/v2/openapi.json",
     docs_url="/api/v2/docs",

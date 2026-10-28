@@ -271,7 +271,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
     {loading ? <p>Chargement…</p> : error && !draft && !baseProduct && mode !== "new" ? <p role="alert">{error}</p> :
     <div className="v2-workspace-editor-layout">
       <form className="v2-workspace-card" onSubmit={save}>
-        <h2>{draft ? "Brouillon serveur #" + draft.id : "Informations produit"}</h2>
+        <h2>{draft ? "Brouillon enregistré #" + draft.id : "Informations produit"}</h2>
         <fieldset disabled={busy || readonly}>
           <div className="v2-workspace-fields">{fields.map(field => <label key={field.key}>
             <span>{field.label}</span>
@@ -379,7 +379,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
             {event.before.nutrition_checked_at !== event.after.nutrition_checked_at &&
               <li><strong>Contrôle nutritionnel :</strong> {event.before.nutrition_checked_at || "—"} → {event.after.nutrition_checked_at || "—"}</li>}
             {JSON.stringify(event.before.off_source) !== JSON.stringify(event.after.off_source) &&
-              <li><strong>Source OFF :</strong> {event.before.off_source?.code || "—"} → {event.after.off_source?.code || "—"}</li>}</ul>}
+              <li><strong>Source Open Food Facts :</strong> {event.before.off_source?.code || "—"} → {event.after.off_source?.code || "—"}</li>}</ul>}
         </article>)}</div> :
       <div className="v2-workspace-card"><h2>Fiche produit</h2><dl className="v2-workspace-facts">
         {fields.filter(field => d[field.key]).map(field => <div key={field.key}><dt>{field.label}</dt><dd>{d[field.key]}</dd></div>)}</dl>
