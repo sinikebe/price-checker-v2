@@ -106,6 +106,7 @@
   var name = clean(product && product.name, 180) || headingText;
   var ean = product && (validGtin(product.gtin13) || validGtin(product.gtin14)
     || validGtin(product.gtin12) || validGtin(product.gtin8) || validGtin(product.gtin));
+  if (!ean && /(?:^|\.)coursesu\.com$/.test(host) && product) ean = validGtin(product.sku);
   if (!ean) ean = first(['[itemprop="gtin13"]', '[itemprop="gtin"]', '[itemprop="gtin8"]'], function (node) { return validGtin(field(node)); });
   if (!ean && /(?:^|\.)intermarche\.com$/.test(host)) {
     var pathCode = location.pathname.match(/(?:^|\/)(\d{8}|\d{13})(?:\/|$)/);
@@ -126,6 +127,14 @@
     price = shelfNearHeading(['.offer-selector__price-container .product-price--large',
       '.price__now', '[data-testid="product-price"]']);
     if (price != null) source = "visible:auchan";
+  } else if (/(?:^|\.)coursesu\.com$/.test(host)) {
+    // Only the selected store's product offer: sticky headers and recommendations may carry other prices.
+    price = first(['.actions-container-price.store-selected .price-sales [data-sup-product-price][data-item-price]'], function (node) {
+      var displayed = visiblePrice(node.textContent || "");
+      var stated = machinePrice(node.getAttribute("data-item-price"));
+      return displayed != null && displayed === stated ? displayed : null;
+    });
+    if (price != null) source = "visible:coursesu";
   } else {
     var selectedOffer = offer && Array.isArray(offer.offers)
       ? (offer.offers.length === 1 && (!offer.offerCount || Number(offer.offerCount) === 1)

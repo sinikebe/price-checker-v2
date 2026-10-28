@@ -117,3 +117,26 @@ test("Intermarché uses a product-area price only when crossed-out price agrees 
     selectors: { [selector]: [shown], ".product-price": [node("7,59 €/kg")] } });
   assert.equal(mismatch.price, null);
 });
+
+test("Courses U accepts a checked product SKU and selected-store price only", () => {
+  const selector = ".actions-container-price.store-selected .price-sales [data-sup-product-price][data-item-price]";
+  const product = { "@type": "Product", name: "Filet de poulet blanc", sku: "3660992018536" };
+  const selected = node("10,29 €", { getAttribute: name => name === "data-item-price" ? "10.29" : null });
+  const item = run({ host: "www.coursesu.com", heading: product.name, jsonLd: [product],
+    selectors: { [selector]: [selected] } });
+  assert.equal(item.ean, "3660992018536");
+  assert.equal(item.price, 10.29);
+  assert.equal(item.source, "visible:coursesu");
+
+  const mismatch = run({ host: "www.coursesu.com", heading: product.name, jsonLd: [product],
+    selectors: { [selector]: [node("10,29 €", { getAttribute: () => "11.29" })] } });
+  assert.equal(mismatch.price, null);
+
+  const unselected = run({ host: "www.coursesu.com", heading: product.name, jsonLd: [product],
+    selectors: { ".pdp-mobile-sticky-left [data-item-price]": [selected] } });
+  assert.equal(unselected.price, null);
+
+  const invalid = run({ host: "www.coursesu.com", heading: product.name,
+    jsonLd: [{ ...product, sku: "3660992018537" }] });
+  assert.equal(invalid.ean, null);
+});
