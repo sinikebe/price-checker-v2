@@ -17,7 +17,8 @@ type Payload = { v: 2; url: string; host: string; name: string | null; brand: st
 type Match = { kind: "product" | "draft"; id: number };
 type Resolution = { status: "loading" | "product" | "draft" | "missing" | "no-ean" | "error";
   id?: number; product?: Product; draft?: Draft; message?: string };
-type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: "in_store" | "drive" | "delivery" };
+type SalesChannel = "in_store" | "drive" | "delivery";
+type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: SalesChannel | "" };
 type ProductFields = Pick<ProductData, "name" | "brand" | "package" | "quantity">;
 type Submitted = { productId?: number; productDraftId?: number; createdProductDraft?: boolean; aliasProposed?: boolean };
 type StoreSelection = { candidate: StoreCandidate; aliasName: string | null };
@@ -27,8 +28,8 @@ function capturedProductFields(payload: Payload | null): ProductFields {
 }
 const pendingKey = "v2:capture:pending";
 const bookmarkletLabel = "Capturer ce prix v" + versions.bookmarklet.version;
-const channels: Record<Store["sales_channel"], string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
-const fallbackStore: Store = { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "drive" };
+const channels: Record<SalesChannel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
+const fallbackStore: Store = { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "" };
 
 function retailerFor(host: string) {
   return captureRetailers.find(item => host === item.domain || host.endsWith("." + item.domain))?.name || "";
@@ -85,12 +86,13 @@ function storedStore(retailer: string): Store {
 function initialStore(payload: Payload | null): Store {
   const retailer = retailerFor(payload?.host || "");
   const saved = storedStore(retailer);
-  if (!payload?.store) return saved;
+  // A remembered channel is never evidence for the newly opened retailer page.
+  if (!payload?.store) return { ...saved, sales_channel: "" };
   const sameName = saved.store_name.toLocaleLowerCase() === payload.store.name.toLocaleLowerCase();
   return { retailer, store_name: payload.store.name,
     city: payload.store.city || (sameName ? saved.city : ""),
     postal_code: payload.store.postalCode || (sameName ? saved.postal_code : ""),
-    sales_channel: payload.store.channel || (sameName ? saved.sales_channel : "drive") };
+    sales_channel: payload.store.channel || "" };
 }
 
 async function findStoreMatches(input: Store): Promise<StoreMatches> {
@@ -242,6 +244,10 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       setError("Choisissez un magasin existant ou confirmez la création d’un nouveau magasin.");
       return;
     }
+    if (!store.sales_channel) {
+      setError("Choisissez le canal du prix avant d’envoyer le relevé.");
+      return;
+    }
     busyRef.current = true;
     setBusy(true); setError("");
     try {
@@ -344,9 +350,10 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               <label>Point de vente ou service<input required readOnly={Boolean(selectedStore)} maxLength={300} value={store.store_name} onChange={event => editStore({ ...store, store_name: event.target.value })} /></label>
               <label>Ville ou zone desservie<input required={!selectedStore} readOnly={Boolean(selectedStore)} maxLength={200} value={store.city} onChange={event => editStore({ ...store, city: event.target.value })} /></label>
               <label>Code postal<input readOnly={Boolean(selectedStore)} maxLength={20} value={store.postal_code} onChange={event => editStore({ ...store, postal_code: event.target.value })} /></label>
-              <label>Canal<select value={store.sales_channel} onChange={event => setStore({ ...store, sales_channel: event.target.value as Store["sales_channel"] })}>
+              <label>Canal<select required value={store.sales_channel} onChange={event => setStore({ ...store, sales_channel: event.target.value as Store["sales_channel"] })}>
+                <option value="">Choisir le canal</option>
                 {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select></label>
+              </select>{!payload.store?.channel && <small>La page n’a pas indiqué le canal. Choisissez celui du prix affiché.</small>}</label>
               <label>Prix du conditionnement, en €<input required type="number" min="0.01" max="99999999.99" step="0.01" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} /></label>
               <label>Date du relevé<input required type="date" max={today()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
               <label>Précision facultative<input maxLength={1000} value={note} onChange={event => setNote(event.target.value)} />
