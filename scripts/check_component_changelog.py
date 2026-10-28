@@ -38,13 +38,15 @@ def validate(manifest: dict, changelog: dict, previous: dict | None = None,
         raise ValueError("Le changelog doit contenir start_versions, baseline et releases")
     components = set(manifest)
     start_versions = changelog["start_versions"]
+    if previous_changelog is not None and start_versions != previous_changelog["start_versions"]:
+        raise ValueError("Le point de départ du journal ne peut pas être modifié")
     if not isinstance(start_versions, dict) or set(start_versions) != components:
         raise ValueError("Versions de départ incomplètes")
     for component, starting_version in start_versions.items():
         if version_number(starting_version) > version_number(manifest[component]["version"]):
             raise ValueError(f"{component} : version antérieure au point de départ")
     baseline = changelog["baseline"]
-    if not isinstance(baseline, dict) or not baseline or set(baseline) - components:
+    if not isinstance(baseline, dict) or set(baseline) != components:
         raise ValueError("Résumé initial absent ou composant inconnu")
     for component, summary in baseline.items():
         notes(summary, f"Résumé initial {component}")

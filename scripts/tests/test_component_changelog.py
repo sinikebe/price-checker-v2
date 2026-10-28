@@ -20,7 +20,7 @@ class ComponentChangelogTests(unittest.TestCase):
         self.current["products"]["version"] = "0.1.33"
         self.changelog = {
             "start_versions": {key: item["version"] for key, item in self.previous.items()},
-            "baseline": {"products": ["Les prix se suivent magasin par magasin."]},
+            "baseline": {key: ["Résumé initial."] for key in self.previous},
             "releases": [{"application_version": "0.1.55", "components": {
                 "application": {"version": "0.1.55", "notes": ["Des nouveautés à retrouver sur le site."]},
                 "products": {"version": "0.1.33", "notes": ["La recherche est plus claire."]},
@@ -76,6 +76,17 @@ class ComponentChangelogTests(unittest.TestCase):
             validate(self.current, self.changelog, self.previous, prior_journal)
         self.changelog["releases"][1]["components"]["products"] = self.changelog["releases"][0]["components"].pop("products")
         validate(self.current, self.changelog, self.previous, prior_journal)
+
+    def test_starting_versions_cannot_be_moved_to_avoid_a_note(self):
+        prior_journal = copy.deepcopy(self.changelog)
+        self.changelog["start_versions"]["products"] = "0.1.33"
+        with self.assertRaisesRegex(ValueError, "point de départ"):
+            validate(self.current, self.changelog, self.previous, prior_journal)
+
+    def test_bootstrap_summary_covers_each_component(self):
+        del self.changelog["baseline"]["basket"]
+        with self.assertRaisesRegex(ValueError, "Résumé initial"):
+            validate(self.current, self.changelog, self.previous)
 
     def test_short_single_line_public_notes(self):
         entry = self.changelog["releases"][0]["components"]["products"]

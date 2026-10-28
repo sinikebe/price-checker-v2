@@ -2,7 +2,7 @@
 
 Le journal est dans `frontend/src/v2/component-changelog.json`. Il est visible sur `/v2/changelog` (toutes les mises à jour) et `/v2/changelog/<composant>` ; `/v2/versions` donne accès à chaque composant.
 
-- `start_versions` fixe le point de départ du contrôle : les anciennes versions ne sont pas à documenter. Les phrases de `baseline` résument quelques fonctions déjà présentes, **sans numéro de version**.
+- `start_versions` fixe le point de départ du contrôle : les anciennes versions ne sont pas à documenter et ce point de départ ne doit plus changer. Les phrases de `baseline` résument quelques fonctions déjà présentes, **sans numéro de version**.
 - À chaque incrément, ajouter un groupe `releases` dont `application_version` est la nouvelle version de l’application. Y ajouter une entrée `application`, puis une entrée pour chaque autre composant incrémenté avec sa version exacte et une à trois phrases courtes.
 - Les groupes sont conservés dans l’ordre des mises à jour ; le site les affiche du plus récent au plus ancien. La version de l’application change à chaque mise à jour d’un composant : c’est la clé du journal global.
 - Écrire pour les visiteurs : une fonctionnalité ou un bénéfice par phrase, 160 caractères maximum, sans détail technique. Une touche d’humour est bienvenue, pas obligatoire.
