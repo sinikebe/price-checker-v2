@@ -110,19 +110,21 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
     # The source's stable location ID also survives a merge. OSM IDs may be
     # changed upstream, so checking only OSM identity can recreate a donor.
     existing = await connection.fetchrow(
-        "SELECT c.id,c.retailer_id,c.active FROM v2_stores old "
+        "SELECT c.id,c.retailer_id FROM v2_stores old "
         "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
         "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
         "WHERE old.import_key=$3 "
-        "UNION ALL SELECT s.id,s.retailer_id,s.active FROM v2_stores s "
+        "UNION ALL SELECT s.id,s.retailer_id FROM v2_stores s "
         "WHERE s.osm_type=$1 AND s.osm_id=$2 "
-        "UNION ALL SELECT s.id,s.retailer_id,s.active FROM v2_store_osm_aliases a "
+        "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
         "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
         "LIMIT 1",
         osm_type, osm_id, import_key,
     )
     if existing:
-        if not existing["active"]:
+        if not await connection.fetchval(
+            "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
+        ):
             return None
         source_id = await _source_retailer(connection, source_brand) if source_brand else None
         await connection.execute(
@@ -163,6 +165,10 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         candidates = [row for row in candidates if not location_city or not row["city"]
                       or name_key(row["city"]) == location_city]
         if len(candidates) == 1:
+            if not await connection.fetchval(
+                "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", candidates[0]["id"]
+            ):
+                return None
             await connection.execute(
                 "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
                 "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -183,15 +189,19 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         return inserted["retailer_id"], inserted["id"], None
     # A concurrent insert or donor import_key: resolve once, never recurse.
     existing = await connection.fetchrow(
-        "SELECT c.id,c.retailer_id,c.active FROM v2_stores old "
+        "SELECT c.id,c.retailer_id FROM v2_stores old "
         "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
         "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
         "WHERE old.import_key=$1 OR (old.osm_type=$2 AND old.osm_id=$3) "
         "ORDER BY (old.import_key=$1) DESC LIMIT 1",
         import_key, osm_type, osm_id,
     )
-    return (existing["retailer_id"], existing["id"],
-            retailer if retailer != existing["retailer_id"] else None) if existing and existing["active"] else None
+    if existing and await connection.fetchval(
+        "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
+    ):
+        return (existing["retailer_id"], existing["id"],
+                retailer if retailer != existing["retailer_id"] else None)
+    return None
 
 
 async def _save_items(connection, product_id: int, barcode: str, items: list) -> int:

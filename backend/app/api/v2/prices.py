@@ -538,7 +538,7 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
             observation_id = None
             if approve:
                 if not await connection.fetchval(
-                    "SELECT active FROM v2_stores WHERE id=$1", draft["store_id"]
+                    "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", draft["store_id"]
                 ):
                     raise HTTPException(status_code=409, detail="Ce magasin est désactivé.")
                 if draft["product_id"] is None:

@@ -454,7 +454,7 @@ async def visible_store(connection: asyncpg.Connection, store_id: int, user: dic
         "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
         "r.id AS retailer_id,r.group_id AS retailer_group_id "
         "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
-        "WHERE s.id=$1 AND s.active AND " + VISIBLE,
+        "WHERE s.id=$1 AND s.active AND " + VISIBLE + " FOR SHARE OF s",
         store_id, user["role"] == "admin", user["id"],
     )
     if row is None or await connection.fetchval(
