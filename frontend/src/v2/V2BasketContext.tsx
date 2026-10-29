@@ -49,6 +49,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
         if (!quantity) { conflicts++; continue; }
         next[index] = { ...next[index], quantity, disabled: false }; merged++;
       }
+      if (conflicts) return { added: 0, merged: 0, conflicts };
       if (added || merged) update(next);
       return { added, merged, conflicts };
     },

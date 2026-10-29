@@ -139,6 +139,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
         return { id: product.id, revision: product.revision, data: product.data, disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
       }));
       const added = merge(incoming);
+      if (incoming.some(item => item.quantity)) toggleAdvanced(true);
       setImportNotice(added ? added + " article" + (added > 1 ? "s" : "") + " ajouté" + (added > 1 ? "s" : "") + " au panier." : "Tous ces articles sont déjà dans votre panier.");
       closeSharedLink();
     } catch {
