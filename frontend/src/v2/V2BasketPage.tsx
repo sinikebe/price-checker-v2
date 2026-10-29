@@ -285,7 +285,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             {comparison.truncated.length > 0 && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de 200 par produit. Le minimum affiché peut être incomplet.</p>}
             <div className="v2-basket-split-total" aria-live="polite"><span>{comparison.missing.length ? "Sous-total réparti des articles avec prix" : "Total le moins cher en répartissant les courses"}</span>
               <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
-              {advanced && comparison.split.length > 0 && <span>Part utilisée au prorata : <strong>{money(comparison.splitUsedCents)}</strong></span>}
+              {advanced && comparison.split.length > 0 && <span>{comparison.missing.length ? "Sous-total de la part utilisée" : "Part utilisée au prorata"} : <strong>{money(comparison.splitUsedCents)}</strong></span>}
               <small>{comparison.split.length}/{activeItems.length} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente</small></div>
             {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>
               <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
@@ -310,7 +310,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             {visibleStores.length ? <ul className="v2-basket-store-list">{visibleStores.map(store => {
               const complete = store.coverage === activeItems.length;
               return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
-                <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{advanced && <span>Part utilisée : {money(store.choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
+                <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{advanced && <span>{complete ? "Part utilisée" : "Sous-total de la part utilisée"} : {money(store.choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
                 <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>
                   <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} advanced={advanced} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                   {!complete && <p className="v2-basket-missing">Sans prix ici : {activeItems.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
