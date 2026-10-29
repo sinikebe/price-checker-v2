@@ -8,7 +8,7 @@ import ssl
 
 import asyncpg
 
-from app.services.v2_catalogue_hierarchy import default_classification
+from app.services.v2_catalogue_hierarchy import default_classification, default_comparison_scope
 
 MIGRATIONS = {
     "0001_accounts": """
@@ -847,6 +847,11 @@ MIGRATIONS = {
             CHECK (btrim(group_name) <> '' AND btrim(department) <> '' AND btrim(family) <> '')
         );
     """,
+    "0028_catalogue_comparison_scopes": """
+        ALTER TABLE v2_catalogue_classifications
+        ADD COLUMN comparison_scope varchar(80)
+        CHECK (comparison_scope IS NULL OR btrim(comparison_scope) <> '');
+    """,
 
 }
 
@@ -932,6 +937,20 @@ async def migrate_v2(config: dict) -> list[str]:
                                 "VALUES($1,$2,$3,$4,$5)",
                                 key, group, department, family, source,
                             )
+                    if version == "0028_catalogue_comparison_scopes":
+                        # Curated local names only. Existing manually edited
+                        # department/family labels remain authoritative.
+                        rows = await connection.fetch(
+                            "SELECT group_key,group_name,family FROM v2_catalogue_classifications"
+                        )
+                        for row in rows:
+                            scope = default_comparison_scope(row["group_name"], row["family"])
+                            if scope:
+                                await connection.execute(
+                                    "UPDATE v2_catalogue_classifications "
+                                    "SET comparison_scope=$2 WHERE group_key=$1",
+                                    row["group_key"], scope,
+                                )
                     await connection.execute(
                         "INSERT INTO v2_schema_migrations(version) VALUES($1)", version
                     )

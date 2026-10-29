@@ -139,6 +139,21 @@
       "component": "open_prices",
       "version": "0.1.14",
       "reason": "Adaptation de la page du catalogue sans changement des relevés Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.69",
+      "reason": "Navigation et comparaison déjà annoncées dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.28",
+      "reason": "Stockage des ensembles facultatifs déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.15",
+      "reason": "Réutilisation des relevés existants dans une comparaison élargie, sans changement du connecteur Open Prices."
     }
   ]
 }

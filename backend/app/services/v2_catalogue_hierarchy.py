@@ -87,3 +87,23 @@ def default_classification(group: str, tags: list[str]) -> tuple[str, str, str]:
     if location:
         return *location, "group_name"
     return UNCATEGORIZED, UNCATEGORIZED, "unclassified"
+
+
+# Optional broader price-comparison sets. Keep this deliberately curated:
+# a family is a browsing shelf, not necessarily a meaningful price comparison.
+COMPARISON_HINTS: dict[tuple[str, str], str] = {
+    ("Jus de fruits", "pur jus d'orange"): "Jus d'orange",
+    ("Jus de fruits", "pur jus d'orange avec pulpe"): "Jus d'orange",
+    ("Jus de fruits", "pur jus d'orange sans pulpe"): "Jus d'orange",
+    ("Jus de fruits", "pur jus de pomme"): "Jus de pomme",
+    ("Jus de fruits", "pur jus de pomme bio"): "Jus de pomme",
+    ("Moutardes", "moutard de dijon"): "Moutarde de Dijon",
+    ("Moutardes", "moutarde de dijon forte en bocal"): "Moutarde de Dijon",
+    ("Riz", "riz basmati"): "Riz basmati",
+    ("Riz", "riz basmati prêt en 11 min"): "Riz basmati",
+}
+
+
+def default_comparison_scope(group: str, family: str) -> str | None:
+    """Seed only clear optional sets; an admin can add or remove one later."""
+    return COMPARISON_HINTS.get((family, group.strip().casefold()))

@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.68",
+    "version": "0.1.69",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.34",
+    "version": "0.1.35",
     "status": "active"
   },
   "recipes": {
@@ -21,7 +21,7 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.27",
+    "version": "0.1.28",
     "status": "active"
   },
   "open_food_facts": {
@@ -46,7 +46,7 @@
   },
   "open_prices": {
     "label": "Connecteur Open Prices",
-    "version": "0.1.14",
+    "version": "0.1.15",
     "status": "active"
   },
   "bookmarklet": {

@@ -119,6 +119,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.69",
+      "components": {
+        "products": {
+          "version": "0.1.35",
+          "notes": [
+            "Les ensembles facultatifs réunissent plusieurs groupes pour comparer leurs prix ; des icônes distinguent chaque niveau du catalogue."
+          ]
+        }
+      }
     }
   ]
 }

@@ -39,3 +39,17 @@
 .v2-catalogue-classification fieldset { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; padding: 0; border: 0; }
 .v2-catalogue-classification label { display: grid; gap: .35rem; min-width: min(100%, 14rem); font-weight: 650; }
 .v2-catalogue-classification input { width: 100%; padding: .65rem; border: 1px solid #9da9ad; border-radius: .5rem; background: #fff; color: #14252b; }
+
+.v2-catalogue-level { display: inline-flex; align-items: center; gap: .3rem; width: fit-content;
+  padding: .12rem .42rem; border: 1px solid currentColor; border-radius: 999px;
+  font-size: .72rem; line-height: 1.35; font-weight: 700; vertical-align: middle; }
+.v2-catalogue-level svg { width: .95rem; height: .95rem; flex: none; }
+.v2-catalogue-level-department { color: #315c93; }
+.v2-catalogue-level-family { color: #73569a; }
+.v2-catalogue-level-scope { color: #9b5a16; }
+.v2-catalogue-level-group { color: #19745f; }
+.v2-catalogue-level-product { color: #5a6470; }
+.v2-catalogue-crumbs { align-items: center; gap: .35rem .7rem; }
+.v2-catalogue-crumbs a, .v2-catalogue-crumbs > span { display: inline-flex; align-items: center; gap: .3rem; }
+.v2-workspace-list-item .v2-catalogue-level { display: flex; margin-bottom: .3rem; }
+.v2-catalogue-classification small { display: block; max-width: 19rem; color: var(--v2-muted); font-weight: 400; }
