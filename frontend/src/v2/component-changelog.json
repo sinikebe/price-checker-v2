@@ -158,6 +158,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.74",
+      "components": {
+        "products": {
+          "version": "0.1.40",
+          "notes": [
+            "Lors d’un transfert, les magasins déjà supprimés sont signalés et ne reviennent qu’après validation de l’administrateur."
+          ]
+        }
+      }
     }
   ]
 }

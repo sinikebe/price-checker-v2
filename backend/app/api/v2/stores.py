@@ -6,8 +6,8 @@ administrator approves them; fuzzy names are never silently attached.
 
 from __future__ import annotations
 
-import re
 import hashlib
+import re
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Literal
@@ -337,6 +337,8 @@ async def set_store_activity(store_id: int, payload: StoreActivity, request: Req
     try:
         await _admin(connection, request)
         async with connection.transaction():
+            # Serialize lifecycle changes with portable V2 imports.
+            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
             row = await connection.fetchrow(
                 "SELECT id,active FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
@@ -367,6 +369,8 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
     try:
         await _admin(connection, request)
         async with connection.transaction():
+            # Serialize lifecycle changes with portable V2 imports.
+            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
             store = await connection.fetchrow(
                 "SELECT id,name FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
