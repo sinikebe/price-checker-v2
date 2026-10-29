@@ -224,6 +224,21 @@
       "component": "open_food_facts",
       "version": "0.1.21",
       "reason": "Le masquage des brouillons de prix liés à un magasin désactivé ne change pas les données Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.73",
+      "reason": "Verrouillage technique des écritures de prix pendant la désactivation, sans nouvelle fonction visible."
+    },
+    {
+      "component": "products",
+      "version": "0.1.39",
+      "reason": "Synchronisation technique du statut magasin avec les propositions de prix, déjà annoncée."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.18",
+      "reason": "Synchronisation technique du statut magasin avec l’import Open Prices, déjà annoncée."
     }
   ]
 }
