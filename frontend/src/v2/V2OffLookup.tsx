@@ -28,10 +28,11 @@ function safeImage(url: string | null): string | undefined {
   } catch { return undefined; }
 }
 
-export default function V2OffLookup({ data, onApply, disabled }: {
+export default function V2OffLookup({ data, onApply, disabled, autoFillMissingComposition }: {
   data: ProductData;
   onApply: (next: ProductData) => void;
   disabled: boolean;
+  autoFillMissingComposition: boolean;
 }) {
   const [query, setQuery] = useState(data.name);
   const [searchTerm, setSearchTerm] = useState("");
@@ -41,6 +42,9 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   const [checked, setChecked] = useState<OffField[]>([]);
   const currentEan = useRef(data.ean);
   currentEan.current = data.ean;
+  const latest = useRef({ data, onApply });
+  latest.current = { data, onApply };
+  const attemptedDefaultCode = useRef<string | null>(null);
   const identity = [data.name, data.brand, data.quantity, data.ean].join("\u0000");
   const [searching, setSearching] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
@@ -49,6 +53,28 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   const [temporary, setTemporary] = useState<OffBrowserPreview | null>(null);
 
   useEffect(() => { setQuery(data.name); }, [data.name]);
+  useEffect(() => {
+    const barcode = data.ean.trim();
+    if (!autoFillMissingComposition || disabled || selected || !validCode(barcode)
+      || data.composition.trim() || attemptedDefaultCode.current === barcode) return;
+    attemptedDefaultCode.current = barcode;
+    const startingData = data;
+    let active = true;
+    productRequest<OffSuggestion>("/off/product/" + encodeURIComponent(barcode))
+      .then(suggestion => {
+        const current = latest.current.data;
+        const ingredients = suggestion.ingredients_text?.trim() ?? "";
+        if (!active || !ingredients || ingredients.length > 4000 || current !== startingData
+          || current.ean.trim() !== barcode || current.composition.trim()
+          || !validCode(suggestion.code) || suggestion.code !== barcode) return;
+        const source = current.off_source;
+        const fields = source?.code === barcode ? [...new Set([...source.fields, "composition" as const])] : ["composition" as const];
+        latest.current.onApply({ ...current, composition: ingredients,
+          off_source: { code: barcode, checked_at: new Date().toISOString(), fields } });
+      })
+      .catch(() => { /* Keep manual entry available when OFF is missing or unavailable. */ });
+    return () => { active = false; };
+  }, [autoFillMissingComposition, disabled, data, data.ean, data.composition, selected]);
   useEffect(() => {
     if (selected && selectedFor !== identity) {
       setSelected(null); setChecked([]);
@@ -128,7 +154,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   return <section className="v2-workspace-card v2-off-card" aria-labelledby="v2-off-heading">
     <div className="v2-off-heading"><div><span className="v2-section-kicker">SOURCE EXTERNE</span>
       <h2 id="v2-off-heading">Open Food Facts</h2></div><span className="v2-off-mark">OFF ↗</span></div>
-    <p>Recherchez une fiche par nom ou par code exact, puis choisissez les champs à reprendre. Rien n'est appliqué automatiquement.</p>
+    <p>Une composition vide est préremplie depuis OFF lorsque le code-barres exact est trouvé. Vérifiez-la avant d’enregistrer ; les autres champs restent à choisir.</p>
     <div className="v2-off-search">
       <label><span>Recherche par nom</span><input value={query} disabled={disabled}
         onChange={event => search(event.target.value)} placeholder="Nom du produit…" /></label>

@@ -3,9 +3,9 @@ import type { Product } from "./v2-products-api";
 export const V2_BASKET_EVENT = "v2-basket-updated";
 const ACTIVE_USER_KEY = "v2:basket:active-user";
 const ANON_KEY = "v2:basket:anonymous";
-export type BasketProduct = Pick<Product, "id" | "data" | "revision">;
-export type BasketGroup = { kind: "group"; name: string };
-export type BasketScope = { kind: "scope"; name: string; department: string; family: string };
+export type BasketProduct = Pick<Product, "id" | "data" | "revision"> & { disabled?: boolean };
+export type BasketGroup = { kind: "group"; name: string; disabled?: boolean };
+export type BasketScope = { kind: "scope"; name: string; department: string; family: string; disabled?: boolean };
 export type BasketItem = BasketProduct | BasketGroup | BasketScope;
 export function isBasketProduct(item: BasketItem): item is BasketProduct { return !("kind" in item); }
 export const basketItemKey = (item: BasketItem): string => "kind" in item

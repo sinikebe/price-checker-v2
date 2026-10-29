@@ -169,6 +169,73 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.76",
+      "components": {
+        "products": {
+          "version": "0.1.42",
+          "notes": [
+            "La composition manquante peut être ajoutée comme correction, sans créer une nouvelle référence."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.22",
+          "notes": [
+            "Une composition vide est préremplie depuis la fiche Open Food Facts correspondant au code-barres exact, avant validation."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.77",
+      "components": {
+        "products": {
+          "version": "0.1.43",
+          "notes": [
+            "Les propositions de prix sont visibles dans Mes brouillons et À valider, avec publication ou refus depuis la liste."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.78",
+      "components": {
+        "basket": {
+          "version": "0.1.9",
+          "notes": [
+            "Le panier affiche d’emblée le meilleur total réparti et cinq magasins, avec ajustement des articles et chargement progressif des résultats."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.79",
+      "components": {
+        "basket": {
+          "version": "0.1.10",
+          "notes": [
+            "Le panier distingue les prix bas et hauts, signale les magasins incomplets et rend la fraîcheur des relevés plus discrète."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.80",
+      "components": {
+        "basket": {
+          "version": "0.1.11",
+          "notes": [
+            "Un lien permet de partager les articles du panier et leurs choix, sans remplacer le panier de la personne qui le reçoit."
+          ]
+        },
+        "products": {
+          "version": "0.1.44",
+          "notes": [
+            "Les fiches produit, groupe comparable et ensemble disposent d’un bouton de partage près du titre."
+          ]
+        }
+      }
     }
   ]
 }
