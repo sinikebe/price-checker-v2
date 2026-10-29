@@ -208,6 +208,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.79",
+      "components": {
+        "basket": {
+          "version": "0.1.10",
+          "notes": [
+            "Le panier distingue les prix bas et hauts, signale les magasins incomplets et rend la fraîcheur des relevés plus discrète."
+          ]
+        }
+      }
     }
   ]
 }

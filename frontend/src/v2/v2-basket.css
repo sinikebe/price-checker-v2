@@ -15,32 +15,49 @@
 .v2-basket-choice { display: grid; gap: 2px; min-width: 0; }
 .v2-basket-choice small { color: var(--v2-muted, #617467); }
 .v2-basket-store-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.v2-basket-store { min-width: 0; padding: 16px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
+.v2-basket-store { min-width: 0; padding: 16px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); overflow: hidden; }
+.v2-basket-store-heading { margin: -16px -16px 0; padding: 16px; background: #f3f8f2; border-bottom: 1px solid var(--v2-line, #dce8db); }
+.v2-basket-store[data-complete="false"] { border-color: #d99733; }
+.v2-basket-store[data-complete="false"] > .v2-basket-store-heading { background: #fff2da; border-bottom-color: #e5b463; }
+.v2-basket-store[data-complete="false"] > .v2-basket-store-heading h4 { color: #8b5705; }
 .v2-basket-store h3 { color: #244b36; }
 .v2-basket-total { display: grid; gap: 3px; flex: none; text-align: right; }
 .v2-basket-total strong, .v2-basket-split-total strong { color: #214d36; font-size: 1.35rem; }
+.v2-basket-reading[data-price-position="low"] strong, .v2-basket-total[data-price-position="low"] strong { color: #1b7045; }
+.v2-basket-reading[data-price-position="middle"] strong, .v2-basket-total[data-price-position="middle"] strong { color: #925800; }
+.v2-basket-reading[data-price-position="high"] strong, .v2-basket-total[data-price-position="high"] strong { color: #a23b31; }
+.v2-basket-total[data-price-position="partial"] strong { color: #925800; }
 .v2-basket-total span, .v2-basket-split-total small { color: var(--v2-muted, #617467); font-size: .82rem; }
 .v2-basket-lines { margin: 10px 0 0; padding: 0; list-style: none; }
 .v2-basket-lines li { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--v2-line, #e8eee8); }
 .v2-basket-lines a { min-width: 0; color: #317c54; font-weight: 650; }
-.v2-basket-reading { display: flex; flex: none; align-items: center; justify-content: end; flex-wrap: wrap; gap: 5px 8px; text-align: right; }
-.v2-basket-reading small { color: var(--v2-muted, #617467); }
-.v2-basket-age { padding: 3px 7px; border-radius: 99px; font-size: .72rem; font-weight: 700; }
-.v2-basket-age[data-age="recent"] { background: #d8f1e3; color: #175f3d; }
-.v2-basket-age[data-age="aging"] { background: #fff0c8; color: #775000; }
-.v2-basket-age[data-age="old"] { background: #e7ecef; color: #485665; }
+.v2-basket-reading { display: grid; flex: none; justify-items: end; gap: 2px; min-width: 86px; text-align: right; }
+.v2-basket-reading small { color: var(--v2-muted, #617467); font-size: .75rem; }
+.v2-basket-age { display: block; width: 34px; height: 4px; border-radius: 4px; background: #7c8992; }
+.v2-basket-age[data-age="recent"] { background: #288357; }
+.v2-basket-age[data-age="aging"] { background: #d59022; }
+.v2-basket-age[data-age="old"] { background: #7c8992; }
+.v2-basket-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .v2-basket-split-total { display: grid; gap: 3px; margin-bottom: 15px; padding: 16px; border-radius: 11px; background: #edf5eb; }
 .v2-basket-missing { margin: 12px 0 0; color: #775000 !important; font-size: .87rem; }
 .v2-basket-freshness-help { margin: 15px 0 0; font-size: .82rem; }
 
 
 html[data-v2-theme="dark"] .v2-basket-store { background: #1b3028; }
+html[data-v2-theme="dark"] .v2-basket-store-heading { background: #253b2f; border-bottom-color: #405b49; }
+html[data-v2-theme="dark"] .v2-basket-store[data-complete="false"] { border-color: #b98436; }
+html[data-v2-theme="dark"] .v2-basket-store[data-complete="false"] > .v2-basket-store-heading { background: #47351f; border-bottom-color: #896334; }
+html[data-v2-theme="dark"] .v2-basket-store[data-complete="false"] > .v2-basket-store-heading h4 { color: #ffd392; }
 html[data-v2-theme="dark"] .v2-basket-store h3, html[data-v2-theme="dark"] .v2-basket-total strong, html[data-v2-theme="dark"] .v2-basket-split-total strong { color: #d4f5c1; }
 html[data-v2-theme="dark"] .v2-basket-lines a { color: #a9d989; }
 html[data-v2-theme="dark"] .v2-basket-split-total { background: #294032; }
-html[data-v2-theme="dark"] .v2-basket-age[data-age="recent"] { background: #244c39; color: #c9f3d5; }
-html[data-v2-theme="dark"] .v2-basket-age[data-age="aging"] { background: #574322; color: #ffe5ac; }
-html[data-v2-theme="dark"] .v2-basket-age[data-age="old"] { background: #34414b; color: #d8e0e7; }
+html[data-v2-theme="dark"] .v2-basket-reading[data-price-position="low"] strong, html[data-v2-theme="dark"] .v2-basket-total[data-price-position="low"] strong { color: #9fe2b5; }
+html[data-v2-theme="dark"] .v2-basket-reading[data-price-position="middle"] strong, html[data-v2-theme="dark"] .v2-basket-total[data-price-position="middle"] strong { color: #ffd18a; }
+html[data-v2-theme="dark"] .v2-basket-reading[data-price-position="high"] strong, html[data-v2-theme="dark"] .v2-basket-total[data-price-position="high"] strong { color: #ffaaa1; }
+html[data-v2-theme="dark"] .v2-basket-total[data-price-position="partial"] strong { color: #ffd18a; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="recent"] { background: #70c897; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="aging"] { background: #f5bb5b; }
+html[data-v2-theme="dark"] .v2-basket-age[data-age="old"] { background: #a5b2bc; }
 html[data-v2-theme="dark"] .v2-basket-missing { color: #ffe5ac !important; }
 @media (max-width: 600px) {
   .v2-basket-filter-grid { grid-template-columns: 1fr; }
@@ -48,7 +65,7 @@ html[data-v2-theme="dark"] .v2-basket-missing { color: #ffe5ac !important; }
   .v2-basket-store-heading { flex-direction: column; }
   .v2-basket-total { text-align: left; }
   .v2-basket-lines li { flex-direction: column; gap: 5px; }
-  .v2-basket-reading { justify-content: start; text-align: left; }
+  .v2-basket-reading { justify-items: start; text-align: left; }
 }
 
 .v2-basket-editor { margin-bottom: 14px; padding: 0 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
@@ -90,6 +107,7 @@ html[data-v2-theme="dark"] .v2-basket-remove { color: #ffb7ac; }
   .v2-basket-editor-controls { align-items: stretch; }
   .v2-basket-editor-controls label { min-width: 0; }
   .v2-basket-store { padding: 13px; }
+  .v2-basket-store-heading { margin: -13px -13px 0; padding: 13px; }
   .v2-basket-split-total { padding: 14px; }
 }
 

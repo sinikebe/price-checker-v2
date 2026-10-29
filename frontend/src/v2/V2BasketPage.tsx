@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
 import { basketItemKey, type BasketGroup, type BasketItem, type BasketProduct, type BasketScope } from "./v2-basket-storage";
 import { buildBasketComparison, emptyBasketFilters, postalDepartment,
-  type BasketFilters, type BasketLine, type BasketPrice, type BasketPriceResponse, type PriceChoice } from "./v2-basket-comparison";
+  pricePosition, type BasketFilters, type BasketLine, type BasketPrice, type BasketPriceResponse, type PriceChoice } from "./v2-basket-comparison";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
@@ -56,12 +56,14 @@ function freshness(value: string) {
 function storeName(row: BasketPrice) {
   return [row.store_name, row.city, row.postal_code, channelNames[row.sales_channel]].filter(Boolean).join(" · ");
 }
-function DatedPrice({ choice }: { choice: PriceChoice }) {
+function DatedPrice({ choice, range }: { choice: PriceChoice; range: { min: number; max: number } }) {
   const age = freshness(choice.reading.observed_at);
-  return <span className="v2-basket-reading">
-    <strong>{money(choice.cents)}</strong>
+  const position = pricePosition(choice.cents, range.min, range.max);
+  const positionLabel = { low: "prix bas", middle: "prix intermédiaire", high: "prix haut", neutral: "prix identique ou seul" }[position];
+  return <span className="v2-basket-reading" data-price-position={position}>
+    <strong title={positionLabel} aria-label={money(choice.cents) + " · " + positionLabel}>{money(choice.cents)}</strong>
+    <span className="v2-basket-age" data-age={age.code} title={age.label}><span className="v2-basket-visually-hidden">Fraîcheur : {age.label}</span></span>
     <small>Relevé du {date(choice.reading.observed_at)}</small>
-    <span className="v2-basket-age" data-age={age.code}>{age.label}</span>
   </span>;
 }
 function ChoiceLabel({ choice }: { choice: PriceChoice }) {
@@ -161,6 +163,18 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const listKey = key + ":" + JSON.stringify(filters);
   const shownCount = shown.key === listKey ? shown.count : PAGE_SIZE;
   const visibleStores = comparison?.stores.slice(0, shownCount) ?? [];
+  const itemRanges = new Map<string, { min: number; max: number }>();
+  const totalRanges = new Map<number, { min: number; max: number }>();
+  for (const store of comparison?.stores ?? []) {
+    const total = totalRanges.get(store.coverage);
+    totalRanges.set(store.coverage, { min: Math.min(total?.min ?? store.cents, store.cents), max: Math.max(total?.max ?? store.cents, store.cents) });
+    for (const choice of store.choices) {
+      const itemKey = basketItemKey(choice.item);
+      const range = itemRanges.get(itemKey);
+      itemRanges.set(itemKey, { min: Math.min(range?.min ?? choice.cents, choice.cents), max: Math.max(range?.max ?? choice.cents, choice.cents) });
+    }
+  }
+  const rangeFor = (choice: PriceChoice) => itemRanges.get(basketItemKey(choice.item)) ?? { min: choice.cents, max: choice.cents };
 
   return <div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
@@ -204,7 +218,16 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             <div className="v2-basket-split-total" aria-live="polite"><span>{comparison.missing.length ? "Sous-total réparti des articles avec prix" : "Total le moins cher en répartissant les courses"}</span>
               <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
               <small>{comparison.split.length}/{activeItems.length} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente</small></div>
-          {ready && <details className="v2-basket-filters" aria-label="Filtrer les magasins comparés">
+            {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>
+              <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
+                const reading = choices[0].reading;
+                return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
+                  <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong><span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
+                  <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
+                </li>;
+              })}</ul></details>}
+            {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix comparable : {comparison.missing.map(itemName).join(", ")}. Aucun total complet n’est calculé.</p>}
+            {ready && <details className="v2-basket-filters" aria-label="Filtrer les magasins comparés">
             <summary>Filtres des magasins <span>{anyFilter ? "· actifs" : "· tous"}</span></summary>
             <p>Plusieurs choix possibles par filtre ; les filtres se cumulent.</p>
             <div className="v2-basket-filter-grid">
@@ -214,29 +237,20 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             </div>
             {anyFilter && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters(emptyBasketFilters)}>Effacer les filtres</button>}
           </details>}
-            {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>
-              <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
-                const reading = choices[0].reading;
-                return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
-                  <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong><span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
-                  <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} /></li>)}</ul>
-                </li>;
-              })}</ul></details>}
-            {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix comparable : {comparison.missing.map(itemName).join(", ")}. Aucun total complet n’est calculé.</p>}
             <div className="v2-basket-results-heading"><h3>Magasins les moins chers</h3><p>Paniers complets classés par prix ; sous-totaux partiels ensuite.</p></div>
             {visibleStores.length ? <ul className="v2-basket-store-list">{visibleStores.map(store => {
               const complete = store.coverage === activeItems.length;
-              return <li key={store.key} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
-                <div className="v2-basket-total"><strong>{money(store.cents)}</strong><span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
+              return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
+                <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong><span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
                 <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>
-                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} /></li>)}</ul>
+                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                   {!complete && <p className="v2-basket-missing">Sans prix ici : {activeItems.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
                 </details>
               </li>;
             })}</ul> : <p>Aucun prix comparable ne correspond à ce panier et à ces filtres.</p>}
             {comparison.stores.length > shownCount && <button type="button" className="v2-button v2-button-secondary v2-basket-load-more" onClick={() => setShown({ key: listKey, count: shownCount + PAGE_SIZE })}>Afficher 5 magasins de plus</button>}
             {hasOpenPrices && <p className="v2-basket-freshness-help">Certains relevés proviennent de <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>.</p>}
-            <p className="v2-basket-freshness-help">Fraîcheur des relevés : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Les relevés indisponibles ou contestés sont exclus.</p>
+            <p className="v2-basket-freshness-help">Montants : vert = bas, orange = intermédiaire, rouge = haut parmi les résultats comparables. Trait sous le prix : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Les relevés indisponibles ou contestés sont exclus.</p>
           </>}
         </section> : <div className="v2-recipes-card"><p>Activez au moins un article pour comparer les prix.</p></div>}
       </> : <div className="v2-recipes-card"><p>Votre panier est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue.</p></div>}
