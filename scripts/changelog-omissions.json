@@ -154,6 +154,16 @@
       "component": "open_prices",
       "version": "0.1.15",
       "reason": "Réutilisation des relevés existants dans une comparaison élargie, sans changement du connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.70",
+      "reason": "Ajustement de contraste des repères du catalogue déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "products",
+      "version": "0.1.36",
+      "reason": "Ajustement mineur du contraste des icônes en mode sombre, déjà annoncées pour le catalogue."
     }
   ]
 }

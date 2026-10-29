@@ -53,3 +53,8 @@
 .v2-catalogue-crumbs a, .v2-catalogue-crumbs > span { display: inline-flex; align-items: center; gap: .3rem; }
 .v2-workspace-list-item .v2-catalogue-level { display: flex; margin-bottom: .3rem; }
 .v2-catalogue-classification small { display: block; max-width: 19rem; color: var(--v2-muted); font-weight: 400; }
+html[data-v2-theme="dark"] .v2-catalogue-level-department { color: #a9cafa; }
+html[data-v2-theme="dark"] .v2-catalogue-level-family { color: #d3b7f2; }
+html[data-v2-theme="dark"] .v2-catalogue-level-scope { color: #f3c68b; }
+html[data-v2-theme="dark"] .v2-catalogue-level-group { color: #8edbc7; }
+html[data-v2-theme="dark"] .v2-catalogue-level-product { color: #c5ced8; }
