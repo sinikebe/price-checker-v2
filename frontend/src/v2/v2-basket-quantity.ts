@@ -33,7 +33,7 @@ export function pricedQuantity(item: BasketItem, product: BasketProduct, package
   if (!requested) return { packages: 1, cents: packageCents, usedCents: packageCents, used: false };
   if (requested.unit === "package") {
     const packages = Math.ceil(Number(requested.amount));
-    return { packages, cents: packageCents * packages, usedCents: packageCents * packages, used: false };
+    return { packages, cents: packageCents * packages, usedCents: packageCents * Number(requested.amount), used: packages !== Number(requested.amount) };
   }
   const need = baseQuantity(requested);
   const amount = Number(product.data.quantity_amount);

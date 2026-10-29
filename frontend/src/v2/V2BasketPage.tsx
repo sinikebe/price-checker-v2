@@ -81,10 +81,11 @@ function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value
     if (!validBasketQuantity(value)) { setError(true); return; }
     setError(false); onChange(value);
   }
-  return <div className="v2-basket-quantity"><label>Quantité demandée<input aria-label={`Quantité demandée pour ${itemName(item)}`} type="number" min="0.000001" max="999999" step="any" value={amount} onChange={event => { setAmount(event.target.value); setError(false); }} onBlur={() => save(amount, unit)} /></label>
-    <label>Unité<select aria-label={`Unité pour ${itemName(item)}`} value={unit} onChange={event => { const next = event.target.value as BasketQuantity["unit"]; setUnit(next); save(amount, next); }}>
+  return <div className="v2-basket-quantity"><label>Quantité demandée<input aria-label={`Quantité demandée pour ${itemName(item)}`} type="number" min="0.000001" max="999999" step="any" value={amount} onChange={event => { setAmount(event.target.value); setError(false); }} /></label>
+    <label>Unité<select aria-label={`Unité pour ${itemName(item)}`} value={unit} onChange={event => setUnit(event.target.value as BasketQuantity["unit"])}>
       <option value="package">paquet(s)</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="cl">cl</option><option value="l">l</option><option value="piece">pièce(s)</option>
-    </select></label>{error && <small role="alert">Quantité positive requise (6 décimales maximum).</small>}</div>;
+    </select></label><button type="button" className="v2-button v2-button-secondary" onClick={() => save(amount, unit)}>Appliquer</button>
+    {error && <small role="alert">Quantité positive requise (6 décimales maximum).</small>}</div>;
 }
 function ChoiceLabel({ choice }: { choice: PriceChoice }) {
   return <span className="v2-basket-choice"><Link to={itemHref(choice.item)}>{itemName(choice.item)}</Link>

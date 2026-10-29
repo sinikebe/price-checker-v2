@@ -137,12 +137,14 @@ function Detail({ id, user, onLogout }: Props) {
       entries.push({ item, quantity });
     }
     const result = basket.addQuantities(entries);
+    if (result.added || result.merged) {
+      try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
+    }
     if (unavailable.length || result.conflicts) {
       setBasketError(`${unavailable.length ? "Ingrédients sans produit disponible : " + unavailable.join(", ") + ". " : ""}${result.conflicts ? result.conflicts + " quantité(s) incompatibles avec le panier actuel. " : ""}Les autres ingrédients ont été ajoutés.`);
       return;
     }
     if (!entries.length) { setBasketError("Aucun ingrédient sélectionné."); return; }
-    try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
     navigate("/v2/panier");
   }
   return <Frame user={user} onLogout={onLogout}>
