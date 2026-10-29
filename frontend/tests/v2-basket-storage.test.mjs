@@ -35,3 +35,10 @@ test("login merges offline entries without duplicating an existing group", () =>
   assert.deepEqual(readV2Basket(42), [group, product, scope]);
   assert.deepEqual(readV2Basket(null), []);
 });
+
+
+test("disabled articles remain in the local basket without changing identity", () => {
+  storage.clear();
+  writeV2Basket([{ ...group, disabled: true }, product], null);
+  assert.deepEqual(readV2Basket(null), [{ ...group, disabled: true }, product]);
+});

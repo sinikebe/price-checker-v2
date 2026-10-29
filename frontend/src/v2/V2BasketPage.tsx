@@ -1,15 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
-import { basketItemKey, type BasketItem, type BasketProduct } from "./v2-basket-storage";
+import { basketItemKey, type BasketGroup, type BasketItem, type BasketProduct, type BasketScope } from "./v2-basket-storage";
 import { buildBasketComparison, emptyBasketFilters, postalDepartment,
   type BasketFilters, type BasketLine, type BasketPrice, type BasketPriceResponse, type PriceChoice } from "./v2-basket-comparison";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
 
-type ComparisonView = "stores" | "split" | null;
 type PriceSnapshot = { key: string; lines: BasketLine[]; responses: Map<number, BasketPriceResponse | null> };
+type Category = { name: string; department: string; family: string; comparison_scope: string | null };
+const PAGE_SIZE = 5;
 const channelNames: Record<BasketPrice["sales_channel"], string> = {
   in_store: "En magasin", drive: "Drive", delivery: "Livraison",
 };
@@ -17,10 +18,27 @@ const money = (cents: number) => new Intl.NumberFormat("fr-FR", { style: "curren
 const productName = (product: BasketProduct) => [product.data.brand, product.data.name].filter(Boolean).join(" ");
 const itemName = (item: BasketItem) => "kind" in item ? item.name : productName(item);
 const itemKind = (item: BasketItem) => "kind" in item ? item.kind === "group" ? "Groupe comparable" : "Ensemble" : "Produit";
+const fold = (value: string) => value.toLocaleLowerCase("fr");
 function itemHref(item: BasketItem) {
   if (!("kind" in item)) return "/v2/produits/" + item.id;
   if (item.kind === "group") return "/v2/categories/" + encodeURIComponent(item.name);
   return "/v2/produits?" + new URLSearchParams({ rayon: item.department, famille: item.family, ensemble: item.name });
+}
+function alternatives(item: BasketItem, categories: Category[]): (BasketGroup | BasketScope)[] {
+  if (!("kind" in item)) return [];
+  const group = item.kind === "group" ? categories.find(category => fold(category.name) === fold(item.name)) : null;
+  if (item.kind === "group" && !group?.comparison_scope) return [];
+  const location = item.kind === "scope" ? item : group!;
+  const scope = item.kind === "scope" ? item.name : group!.comparison_scope!;
+  const members = categories.filter(category => fold(category.department) === fold(location!.department)
+    && fold(category.family) === fold(location!.family)
+    && fold(category.comparison_scope ?? "") === fold(scope));
+  if (!members.length) return [];
+  const choices: (BasketGroup | BasketScope)[] = [
+    { kind: "scope", name: scope, department: location!.department, family: location!.family },
+    ...members.map(category => ({ kind: "group" as const, name: category.name })),
+  ];
+  return choices;
 }
 const date = (value: string) => new Date(value + "T12:00:00").toLocaleDateString("fr-FR", {
   day: "numeric", month: "short", year: "numeric",
@@ -71,20 +89,33 @@ function MultiFilter<T extends string | number>({ title, options, selected, onCh
 }
 
 export default function V2BasketPage({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
-  const { items, remove, clear } = useV2Basket();
-  const [view, setView] = useState<ComparisonView>(null);
+  const { items, remove, clear, setEnabled, replace } = useV2Basket();
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState<PriceSnapshot | null>(null);
   const [filters, setFilters] = useState<BasketFilters>(emptyBasketFilters);
-  const active = view !== null;
-  const key = items.map(basketItemKey).join("|") + ":" + refresh;
+  const [categories, setCategories] = useState<Category[] | null>(null);
+  const [categoryError, setCategoryError] = useState(false);
+  const [shown, setShown] = useState({ key: "", count: PAGE_SIZE });
+  const activeItems = useMemo(() => items.filter(item => !item.disabled), [items]);
+  const key = activeItems.map(basketItemKey).join("|") + ":" + refresh;
   const ready = snapshot?.key === key;
+  const hasComparable = items.some(item => "kind" in item);
 
   useEffect(() => {
-    if (!active || items.length === 0) return;
+    if (!hasComparable) return;
+    const controller = new AbortController();
+    fetch("/api/v2/catalogue/categories", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
+      .then(response => { if (!response.ok) throw new Error("Catalogue indisponible"); return response.json() as Promise<Category[]>; })
+      .then(value => { if (!controller.signal.aborted) { setCategories(value); setCategoryError(false); } })
+      .catch(() => { if (!controller.signal.aborted) setCategoryError(true); });
+    return () => controller.abort();
+  }, [hasComparable]);
+
+  useEffect(() => {
+    if (activeItems.length === 0) return;
     const controller = new AbortController();
     async function load() {
-      const lines = await Promise.all(items.map(async item => {
+      const lines = await Promise.all(activeItems.map(async item => {
         try { return { item, candidates: await fetchCandidates(item, controller.signal) }; }
         catch { return { item, candidates: [] }; }
       }));
@@ -108,9 +139,9 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     }
     void load();
     return () => controller.abort();
-  }, [active, key, items]);
+  }, [key, activeItems]);
 
-  const comparison = ready && snapshot ? buildBasketComparison(snapshot.lines, snapshot.responses, filters) : null;
+  const comparison = activeItems.length && ready && snapshot ? buildBasketComparison(snapshot.lines, snapshot.responses, filters) : null;
   const availableRows = ready && snapshot ? [...snapshot.responses.values()].flatMap(response => response?.latest_by_store ?? []) : [];
   const storeNames = new Map<number, string>();
   for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
@@ -127,6 +158,9 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     splitStores.set(storeKey, current);
   }
   const anyFilter = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
+  const listKey = key + ":" + JSON.stringify(filters);
+  const shownCount = shown.key === listKey ? shown.count : PAGE_SIZE;
+  const visibleStores = comparison?.stores.slice(0, shownCount) ?? [];
 
   return <div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
@@ -135,68 +169,76 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link><Link to="/v2/parametres">Paramètres</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
     </div></header>
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      <div className="v2-recipes-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Enregistré sur cet appareil et disponible hors ligne. Chaque article représente un exemplaire : produit précis, ou choix parmi les produits d’un groupe ou d’un ensemble.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter depuis le catalogue →</Link></div>
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
       {items.length ? <>
-        <div className="v2-basket-actions" aria-label="Comparer le panier">
-          <button type="button" className="v2-button v2-button-secondary" aria-pressed={view === "stores"}
-            onClick={() => setView(view === "stores" ? null : "stores")}>Prix par magasin</button>
-          <button type="button" className="v2-button v2-button-secondary" aria-pressed={view === "split"}
-            onClick={() => setView(view === "split" ? null : "split")}>Panier réparti au prix le plus bas</button>
-        </div>
-        {active && <section className="v2-basket-comparison v2-recipes-card" aria-live="polite">
-          <div className="v2-basket-comparison-heading">
-            <div><h2>{view === "stores" ? "Comparer les magasins" : "Répartir au prix le plus bas"}</h2>
-              <p>Derniers prix publiés par produit, point de vente et canal. Pour un groupe ou ensemble, le produit au prix total le plus bas est choisi ; sa quantité est indiquée. Les prix peuvent avoir changé ; déplacement et livraison non inclus.</p></div>
-            <button type="button" className="v2-button v2-button-secondary" onClick={() => setRefresh(value => value + 1)}>Actualiser les prix</button>
-          </div>
-          {!ready && <p>Chargement des prix…</p>}
-          {ready && <div className="v2-basket-filters" aria-label="Filtrer les magasins comparés">
-            <h3>Filtrer les résultats</h3><p>Plusieurs choix possibles dans chaque filtre. Les types de filtres se cumulent.</p>
+        <details className="v2-basket-editor" aria-label="Articles du panier">
+          <summary>Ajuster les articles <span>{activeItems.length}/{items.length} actifs</span></summary>
+          <p>Un groupe ou un ensemble compte pour un article.</p>
+          <ul className="v2-basket-editor-list">{items.map(item => {
+            const itemKey = basketItemKey(item);
+            const choices = alternatives(item, categories ?? []);
+            return <li className="v2-basket-editor-item" data-disabled={item.disabled ? "true" : "false"} key={itemKey}>
+              <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span><Link to={itemHref(item)}>{itemName(item)}</Link>
+                {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}</div>
+                <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} onChange={event => setEnabled(item, event.target.checked)} />Inclure</label></div>
+              <div className="v2-basket-editor-controls">
+                {choices.length > 1 && <label>Choix de comparaison
+                  <select value={itemKey} onChange={event => { const selected = choices.find(choice => basketItemKey(choice) === event.target.value); if (selected) replace(item, selected); }}>
+                    {choices.map(choice => <option key={basketItemKey(choice)} value={basketItemKey(choice)} disabled={basketItemKey(choice) !== itemKey && items.some(saved => basketItemKey(saved) === basketItemKey(choice))}>{itemKind(choice)} · {choice.name}</option>)}
+                  </select></label>}
+                {"kind" in item && categoryError && <small>Autres choix indisponibles hors ligne.</small>}
+                <button type="button" className="v2-basket-remove" onClick={() => remove(item)}>Retirer</button>
+              </div>
+            </li>;
+          })}</ul>
+          <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm("Vider le panier ?")) clear(); }}>Vider le panier</button>
+        </details>
+        {activeItems.length ? <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
+          <div className="v2-basket-comparison-heading"><div><h2>Meilleur prix</h2>
+            <p>Derniers prix publiés dans les magasins filtrés. Déplacement et livraison exclus.</p></div>
+            <button type="button" className="v2-button v2-button-secondary" onClick={() => setRefresh(value => value + 1)}>Actualiser les prix</button></div>
+          {!ready && <p role="status">Chargement des prix…</p>}
+          {comparison && <>
+            {comparison.failed.length > 0 && <p className="v2-recipes-error">Prix impossibles à charger pour {comparison.failed.length} article{comparison.failed.length > 1 ? "s" : ""}. Réessayez d’actualiser.</p>}
+            {comparison.truncated.length > 0 && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de 200 par produit. Le minimum affiché peut être incomplet.</p>}
+            <div className="v2-basket-split-total" aria-live="polite"><span>{comparison.missing.length ? "Sous-total réparti des articles avec prix" : "Total le moins cher en répartissant les courses"}</span>
+              <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
+              <small>{comparison.split.length}/{activeItems.length} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente</small></div>
+          {ready && <details className="v2-basket-filters" aria-label="Filtrer les magasins comparés">
+            <summary>Filtres des magasins <span>{anyFilter ? "· actifs" : "· tous"}</span></summary>
+            <p>Plusieurs choix possibles par filtre ; les filtres se cumulent.</p>
             <div className="v2-basket-filter-grid">
               <MultiFilter title="Magasins" options={storeOptions} selected={filters.storeIds} onChange={storeIds => setFilters({ ...filters, storeIds })} label={id => storeNames.get(id) ?? String(id)} />
               <MultiFilter title="Communes" options={cityOptions} selected={filters.cities} onChange={cities => setFilters({ ...filters, cities })} label={city => city} />
               <MultiFilter title="Départements" options={departmentOptions} selected={filters.departments} onChange={departments => setFilters({ ...filters, departments })} label={department => department} />
             </div>
             {anyFilter && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters(emptyBasketFilters)}>Effacer les filtres</button>}
-          </div>}
-          {comparison && <>
-            {comparison.failed.length > 0 && <p className="v2-recipes-error">Prix impossibles à charger pour {comparison.failed.length} article{comparison.failed.length > 1 ? "s" : ""}. Réessayez d’actualiser.</p>}
-            {comparison.truncated.length > 0 && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de 200 par produit. Le minimum affiché peut être incomplet.</p>}
-            {view === "stores" && (comparison.stores.length
-              ? <ul className="v2-basket-store-list">{comparison.stores.map(store => {
-                const complete = store.coverage === items.length;
-                return <li key={store.key} className="v2-basket-store">
-                  <div className="v2-basket-store-heading"><div><h3>{store.reading.retailer}</h3><p>{storeName(store.reading)}</p></div>
-                    <div className="v2-basket-total"><strong>{money(store.cents)}</strong><span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{items.length} articles</span></div></div>
-                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}>
-                    <ChoiceLabel choice={choice} /><DatedPrice choice={choice} />
-                  </li>)}</ul>
-                  {!complete && <p className="v2-basket-missing">Sans prix dans ce point de vente : {items.filter(item =>
-                    !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
-                </li>;
-              })}</ul>
-              : <p>Aucun prix comparable ne correspond à ce panier et à ces filtres.</p>)}
-            {view === "split" && <>
-              <div className="v2-basket-split-total"><span>{comparison.missing.length ? "Sous-total des articles avec prix" : "Total du panier réparti"}</span>
-                <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
-                <small>{comparison.split.length}/{items.length} articles avec un prix</small></div>
-              {splitStores.size > 0 && <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
+          </details>}
+            {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>
+              <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
                 const reading = choices[0].reading;
-                return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading">
-                  <div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
-                  <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong><span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div>
-                </div><ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}>
-                  <ChoiceLabel choice={choice} /><DatedPrice choice={choice} />
-                </li>)}</ul></li>;
-              })}</ul>}
-              {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix comparable : {comparison.missing.map(itemName).join(", ")}. Aucun total complet n’est calculé.</p>}
-            </>}
+                return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
+                  <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong><span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
+                  <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} /></li>)}</ul>
+                </li>;
+              })}</ul></details>}
+            {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix comparable : {comparison.missing.map(itemName).join(", ")}. Aucun total complet n’est calculé.</p>}
+            <div className="v2-basket-results-heading"><h3>Magasins les moins chers</h3><p>Paniers complets classés par prix ; sous-totaux partiels ensuite.</p></div>
+            {visibleStores.length ? <ul className="v2-basket-store-list">{visibleStores.map(store => {
+              const complete = store.coverage === activeItems.length;
+              return <li key={store.key} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
+                <div className="v2-basket-total"><strong>{money(store.cents)}</strong><span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
+                <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>
+                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} /></li>)}</ul>
+                  {!complete && <p className="v2-basket-missing">Sans prix ici : {activeItems.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
+                </details>
+              </li>;
+            })}</ul> : <p>Aucun prix comparable ne correspond à ce panier et à ces filtres.</p>}
+            {comparison.stores.length > shownCount && <button type="button" className="v2-button v2-button-secondary v2-basket-load-more" onClick={() => setShown({ key: listKey, count: shownCount + PAGE_SIZE })}>Afficher 5 magasins de plus</button>}
             {hasOpenPrices && <p className="v2-basket-freshness-help">Certains relevés proviennent de <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>.</p>}
             <p className="v2-basket-freshness-help">Fraîcheur des relevés : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Les relevés indisponibles ou contestés sont exclus.</p>
           </>}
-        </section>}
-        <ul className="v2-recipes-list">{items.map(item => <li className="v2-recipes-tile" key={basketItemKey(item)}><Link to={itemHref(item)}><strong>{itemName(item)}</strong></Link><span>{itemKind(item)}{"kind" in item ? item.kind === "scope" ? ` · ${item.department} / ${item.family}` : " · Choix parmi ce groupe" : ` · ${item.data.quantity || "Quantité non précisée"}`}</span><button type="button" className="v2-button v2-button-secondary" onClick={() => remove(item)}>Retirer</button></li>)}</ul>
-        <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm("Vider le panier ?")) clear(); }}>Vider le panier</button>
+        </section> : <div className="v2-recipes-card"><p>Activez au moins un article pour comparer les prix.</p></div>}
       </> : <div className="v2-recipes-card"><p>Votre panier est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue.</p></div>}
     </main>
   </div>;

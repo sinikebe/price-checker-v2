@@ -197,6 +197,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.78",
+      "components": {
+        "basket": {
+          "version": "0.1.9",
+          "notes": [
+            "Le panier affiche d’emblée le meilleur total réparti et cinq magasins, avec ajustement des articles et chargement progressif des résultats."
+          ]
+        }
+      }
     }
   ]
 }

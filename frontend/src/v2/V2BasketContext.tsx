@@ -6,6 +6,8 @@ type BasketValue = {
   items: BasketItem[];
   add: (item: BasketItem) => void;
   remove: (item: BasketItem | number) => void;
+  setEnabled: (item: BasketItem, enabled: boolean) => void;
+  replace: (item: BasketItem, next: BasketItem) => void;
   has: (item: BasketItem | number) => boolean;
   clear: () => void;
   setUser: (userId: number | null, preserveOffline?: boolean) => void;
@@ -26,6 +28,12 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
     add: item => { if (!items.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...items, item]); },
     remove: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
       update(items.filter(saved => basketItemKey(saved) !== key)); },
+    setEnabled: (item, enabled) => { const key = basketItemKey(item);
+      update(items.map(saved => basketItemKey(saved) === key ? { ...saved, disabled: !enabled } : saved)); },
+    replace: (item, next) => { const key = basketItemKey(item), nextKey = basketItemKey(next);
+      if (key !== nextKey && items.some(saved => basketItemKey(saved) === nextKey)) return;
+      update(items.map(saved => basketItemKey(saved) === key
+        ? { ...next, disabled: saved.disabled } : saved)); },
     has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
       return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },

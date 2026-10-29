@@ -284,6 +284,11 @@
       "component": "open_food_facts",
       "version": "0.1.23",
       "reason": "La page commune aux brouillons de produits et de prix change sans modifier les données Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.78",
+      "reason": "La nouvelle expérience du panier est annoncée dans le composant Panier."
     }
   ]
 }
