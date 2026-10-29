@@ -169,6 +169,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.76",
+      "components": {
+        "products": {
+          "version": "0.1.42",
+          "notes": [
+            "La composition manquante peut être ajoutée comme correction, sans créer une nouvelle référence."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.22",
+          "notes": [
+            "Une composition vide est préremplie depuis la fiche Open Food Facts correspondant au code-barres exact, avant validation."
+          ]
+        }
+      }
     }
   ]
 }

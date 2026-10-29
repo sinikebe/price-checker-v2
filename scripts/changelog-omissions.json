@@ -269,6 +269,11 @@
       "component": "open_prices",
       "version": "0.1.20",
       "reason": "Verrouillage des nouveaux magasins Open Prices pendant leur suppression définitive."
+    },
+    {
+      "component": "application",
+      "version": "0.1.76",
+      "reason": "Le préremplissage OFF et la correction de composition sont annoncés dans les composants concernés."
     }
   ]
 }

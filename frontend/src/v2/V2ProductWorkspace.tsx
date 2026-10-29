@@ -21,7 +21,7 @@ const fields: { key: "brand" | "name" | "commercial_name" | "composition" | "pac
   { key: "brand", label: "Marque" },
   { key: "name", label: "Nom du produit" },
   { key: "commercial_name", label: "Nom commercial complet" },
-  { key: "composition", label: "Composition", hint: "Si elle change, une nouvelle version du produit sera créée." },
+  { key: "composition", label: "Composition", hint: "Modifier une composition déjà renseignée exige une nouvelle version." },
   { key: "package", label: "Conditionnement", hint: "Ex. flacon souple" },
   { key: "quantity", label: "Quantité", hint: "Ex. 415 g ou 1 L" },
   { key: "ean", label: "Code EAN / GTIN", hint: "8, 12, 13 ou 14 chiffres, facultatif." },
@@ -138,6 +138,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [localError, setLocalError] = useState("");
   const localVersion = useRef(0);
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
+  const [allowOffDefault] = useState(() => !localRead(localKey));
   const [tagInput, setTagInput] = useState("");
   const [retailerInput, setRetailerInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -300,7 +301,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
           </fieldset>}
         </fieldset>
-        <V2OffLookup data={data} disabled={busy || readonly}
+        <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
           onApply={next => persist(next, changeKind, true)} />
         {conflict && draft && <div className="v2-workspace-conflict" role="alert">
           <strong>Conflit de brouillon.</strong> Votre saisie locale repose sur une version différente de celle du serveur.
@@ -335,7 +336,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
       <aside className="v2-workspace-card v2-workspace-aside"><h2>Visibilité</h2>
         <p>{draft ? "Ce brouillon est visible par son auteur et les administrateurs." : "La saisie locale n'est visible que dans ce navigateur."}</p>
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
-        <p>Un changement de composition ou de format exige une nouvelle version liée à l'ancienne fiche.</p>
+        <p>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</p>
         {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
           <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}

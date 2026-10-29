@@ -356,3 +356,48 @@ async def test_api_pool_bounds_concurrent_connections(isolated_db, monkeypatch):
         await first.close()
         await second.close()
         await v2_db_pool.close_v2_pool()
+
+
+@pytest.mark.asyncio
+async def test_first_composition_is_correction_but_recipe_change_is_version(isolated_db):
+    config = isolated_db
+    admin_id, token = await _admin_session(config)
+    connection = await connect_v2(config)
+    try:
+        base = {"name": "Barquitas", "brand": "Old El Paso", "package": "boîte",
+                "quantity": "8 pièces", "ean": "8410076472113", "composition": ""}
+        existing = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id", json.dumps(base),
+        )
+        with_ingredients = {**base, "composition": "Farine de blé, eau"}
+        first_draft = await connection.fetchval(
+            "INSERT INTO v2_product_drafts(product_id,author_id,data,base_revision,change_kind) "
+            "VALUES($1,$2,$3::jsonb,1,'correction') RETURNING id",
+            existing, admin_id, json.dumps(with_ingredients),
+        )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.7", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            client.cookies.set("pc_v2_session", token, path="/api/v2")
+            filled = await client.post(
+                f"/api/v2/products/drafts/{first_draft}/approve", json={"revision": 1},
+            )
+            assert filled.status_code == 200, filled.text
+            assert filled.json()["id"] == existing
+            assert filled.json()["data"]["composition"] == "Farine de blé, eau"
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_products WHERE predecessor_id=$1", existing,
+            ) == 0
+
+            changed = {**with_ingredients, "composition": "Farine de blé, huile"}
+            second_draft = await connection.fetchval(
+                "INSERT INTO v2_product_drafts(product_id,author_id,data,base_revision,change_kind) "
+                "VALUES($1,$2,$3::jsonb,2,'correction') RETURNING id",
+                existing, admin_id, json.dumps(changed),
+            )
+            rejected = await client.post(
+                f"/api/v2/products/drafts/{second_draft}/approve", json={"revision": 1},
+            )
+            assert rejected.status_code == 422, rejected.text
+            assert "Nouvelle version" in rejected.json()["detail"]
+    finally:
+        await connection.close()
