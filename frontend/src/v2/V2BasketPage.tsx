@@ -76,7 +76,6 @@ function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value
   const [amount, setAmount] = useState(initial.amount);
   const [unit, setUnit] = useState<BasketQuantity["unit"]>(initial.unit);
   const [error, setError] = useState(false);
-  useEffect(() => { setAmount(initial.amount); setUnit(initial.unit); setError(false); }, [initial.amount, initial.unit]);
   function save(nextAmount: string, nextUnit: BasketQuantity["unit"]) {
     const value = { amount: nextAmount, unit: nextUnit };
     if (!validBasketQuantity(value)) { setError(true); return; }
@@ -269,7 +268,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                 {"kind" in item && categoryError && <small>Autres choix indisponibles hors ligne.</small>}
                 <button type="button" className="v2-basket-remove" onClick={() => remove(item)}>Retirer</button>
               </div>
-              {advanced && <QuantityEditor item={item} onChange={quantity => setQuantity(item, quantity)} />}
+              {advanced && <QuantityEditor key={`${itemKey}:${item.quantity?.amount}:${item.quantity?.unit}`} item={item} onChange={quantity => setQuantity(item, quantity)} />}
             </li>;
           })}</ul>
           <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm("Vider le panier ?")) clear(); }}>Vider le panier</button>
