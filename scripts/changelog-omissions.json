@@ -294,6 +294,21 @@
       "component": "application",
       "version": "0.1.79",
       "reason": "La clarification visuelle du panier est annoncée dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.80",
+      "reason": "Le partage est annoncé dans les composants Panier et Produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.24",
+      "reason": "Le bouton de partage est ajouté à la fiche produit sans changer les données Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.21",
+      "reason": "Le bouton de partage est ajouté au catalogue sans changer le connecteur Open Prices."
     }
   ]
 }

@@ -95,6 +95,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-recipes.css", ("recipes",)),
     ("frontend/src/recipes/*.ts", ("recipes",)),
     ("frontend/src/v2/V2Basket*.tsx", ("basket",)),
+    ("frontend/src/v2/V2ShareButton.tsx", ("basket", "products")),
+    ("frontend/src/v2/v2-share.css", ("basket", "products")),
     ("frontend/src/v2/v2-basket-*.ts", ("basket",)),
     ("frontend/src/v2/v2-basket.css", ("basket",)),
     ("frontend/src/v2/V2AuthPage.tsx", ("accounts",)),

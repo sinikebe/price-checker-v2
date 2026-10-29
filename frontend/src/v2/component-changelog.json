@@ -219,6 +219,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.80",
+      "components": {
+        "basket": {
+          "version": "0.1.11",
+          "notes": [
+            "Un lien permet de partager les articles du panier et leurs choix, sans remplacer le panier de la personne qui le reçoit."
+          ]
+        },
+        "products": {
+          "version": "0.1.44",
+          "notes": [
+            "Les fiches produit, groupe comparable et ensemble disposent d’un bouton de partage près du titre."
+          ]
+        }
+      }
     }
   ]
 }

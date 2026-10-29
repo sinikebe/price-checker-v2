@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
+import V2ShareButton from "./V2ShareButton";
+import { decodeBasketShare, encodeBasketShare, sharedEntryName } from "./v2-basket-share";
+import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketGroup, type BasketItem, type BasketProduct, type BasketScope } from "./v2-basket-storage";
 import { buildBasketComparison, emptyBasketFilters, postalDepartment,
   pricePosition, type BasketFilters, type BasketLine, type BasketPrice, type BasketPriceResponse, type PriceChoice } from "./v2-basket-comparison";
@@ -91,7 +94,36 @@ function MultiFilter<T extends string | number>({ title, options, selected, onCh
 }
 
 export default function V2BasketPage({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
-  const { items, remove, clear, setEnabled, replace } = useV2Basket();
+  const { items, remove, clear, setEnabled, replace, merge } = useV2Basket();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const sharedLink = location.hash.startsWith("#panier=");
+  const sharedEntries = useMemo(() => decodeBasketShare(location.hash), [location.hash]);
+  const shareHash = encodeBasketShare(items);
+  const shareUrl = shareHash ? window.location.origin + "/v2/panier" + shareHash : null;
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importNotice, setImportNotice] = useState("");
+  const closeSharedLink = () => navigate({ pathname: location.pathname, search: location.search }, { replace: true });
+  async function importSharedBasket() {
+    if (!sharedEntries || importing) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const incoming = await Promise.all(sharedEntries.map(async (entry): Promise<BasketItem> => {
+        if (entry[0] === "g") return { kind: "group", name: entry[1], disabled: Boolean(entry[2]) };
+        if (entry[0] === "s") return { kind: "scope", department: entry[1], family: entry[2], name: entry[3], disabled: Boolean(entry[4]) };
+        let product = await productRequest<Product>("/" + entry[1]);
+        if (product.merged_to_id || product.successor_id) product = await productRequest<Product>("/" + (product.merged_to_id || product.successor_id));
+        return { id: product.id, revision: product.revision, data: product.data, disabled: Boolean(entry[3]) };
+      }));
+      const added = merge(incoming);
+      setImportNotice(added ? added + " article" + (added > 1 ? "s" : "") + " ajouté" + (added > 1 ? "s" : "") + " au panier." : "Tous ces articles sont déjà dans votre panier.");
+      closeSharedLink();
+    } catch {
+      setImportError("Impossible de récupérer tous les produits de ce panier. Aucun article n’a été ajouté.");
+    } finally { setImporting(false); }
+  }
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState<PriceSnapshot | null>(null);
   const [filters, setFilters] = useState<BasketFilters>(emptyBasketFilters);
@@ -183,7 +215,18 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link><Link to="/v2/parametres">Paramètres</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
     </div></header>
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><div className="v2-share-title-row"><h1>Mon panier<span>.</span></h1><V2ShareButton title="Mon panier Price Checker" url={shareUrl} disabled={!items.length} /></div><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
+      {sharedLink && <section className="v2-shared-basket" aria-label="Panier partagé">
+        {sharedEntries ? <>
+          <h2>Panier partagé</h2>
+          <p>{sharedEntries.length} article{sharedEntries.length > 1 ? "s" : ""} dans ce lien. Les prix seront recalculés selon les magasins disponibles ; votre panier actuel est conservé.</p>
+          <ul>{sharedEntries.map((entry, index) => <li key={index}>{sharedEntryName(entry)}{entry[entry.length - 1] === 1 && <span> · exclu du calcul</span>}</li>)}</ul>
+          <div className="v2-shared-basket-actions"><button type="button" className="v2-button v2-button-primary" disabled={importing} onClick={() => void importSharedBasket()}>{importing ? "Importation…" : "Ajouter à mon panier"}</button>
+            <button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Ignorer</button></div>
+          {importError && <p role="alert">{importError}</p>}
+        </> : <><h2>Lien de panier invalide</h2><p>Ce lien ne peut pas être ouvert.</p><button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Fermer</button></>}
+      </section>}
+      {importNotice && <p role="status">{importNotice}</p>}
       {items.length ? <>
         <details className="v2-basket-editor" aria-label="Articles du panier">
           <summary>Ajuster les articles <span>{activeItems.length}/{items.length} actifs</span></summary>
