@@ -124,6 +124,151 @@
       "component": "accounts",
       "version": "0.1.22",
       "reason": "Renforcement interne du plafond de tentatives après l’ajout de la double authentification."
+    },
+    {
+      "component": "application",
+      "version": "0.1.68",
+      "reason": "Navigation du catalogue déjà annoncée dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.27",
+      "reason": "Stockage des classements préremplis déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.14",
+      "reason": "Adaptation de la page du catalogue sans changement des relevés Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.69",
+      "reason": "Navigation et comparaison déjà annoncées dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.28",
+      "reason": "Stockage des ensembles facultatifs déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.15",
+      "reason": "Réutilisation des relevés existants dans une comparaison élargie, sans changement du connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.70",
+      "reason": "Ajustement de contraste des repères du catalogue déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "products",
+      "version": "0.1.36",
+      "reason": "Ajustement mineur du contraste des icônes en mode sombre, déjà annoncées pour le catalogue."
+    },
+    {
+      "component": "application",
+      "version": "0.1.71",
+      "reason": "Fonctions du panier annoncées dans le composant Panier."
+    },
+    {
+      "component": "products",
+      "version": "0.1.37",
+      "reason": "Boutons d’ajout au panier sur les pages de groupe et d’ensemble, annoncés dans le composant Panier."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.16",
+      "reason": "Réutilisation des prix publiés dans les filtres du panier, sans changement du connecteur Open Prices."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.16",
+      "reason": "Synchronisation hors ligne adaptée aux groupes et ensembles du panier, déjà annoncés dans le composant Panier."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.12",
+      "reason": "Adaptation technique de la synchronisation partagée au panier mixte, sans changement des recettes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.72",
+      "reason": "Les actions sur les magasins et leur effet sur le panier sont annoncés dans les composants Produits et Panier."
+    },
+    {
+      "component": "database",
+      "version": "0.1.29",
+      "reason": "Ajout technique du statut et des identifiants sources bloqués après suppression, déjà couvert par les annonces fonctionnelles."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.17",
+      "reason": "Le connecteur ignore les magasins désactivés ou supprimés, conformément aux actions déjà annoncées."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.24",
+      "reason": "Le contrôle de signalement respecte le statut des magasins ; aucun changement des comptes."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.13",
+      "reason": "Le contrôle de signalement partagé respecte le statut des magasins ; aucune modification des recettes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.17",
+      "reason": "Le contrôle de signalement partagé respecte le statut des magasins ; aucun changement du mode hors ligne."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.21",
+      "reason": "Le masquage des brouillons de prix liés à un magasin désactivé ne change pas les données Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.73",
+      "reason": "Verrouillage technique des écritures de prix pendant la désactivation, sans nouvelle fonction visible."
+    },
+    {
+      "component": "products",
+      "version": "0.1.39",
+      "reason": "Synchronisation technique du statut magasin avec les propositions de prix, déjà annoncée."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.18",
+      "reason": "Synchronisation technique du statut magasin avec l’import Open Prices, déjà annoncée."
+    },
+    {
+      "component": "application",
+      "version": "0.1.74",
+      "reason": "Le contrôle de réimportation est annoncé dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.30",
+      "reason": "Contrôle des identifiants supprimés pendant le transfert, sans évolution du stockage."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.19",
+      "reason": "Le verrouillage du cycle de vie évite une réimportation concurrente, sans modifier le connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.75",
+      "reason": "Correction technique des courses entre suppression de magasin et création de prix, sans nouvelle fonction visible."
+    },
+    {
+      "component": "products",
+      "version": "0.1.41",
+      "reason": "Verrouillage des nouveaux magasins proposés avec un prix pendant leur suppression définitive."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.20",
+      "reason": "Verrouillage des nouveaux magasins Open Prices pendant leur suppression définitive."
     }
   ]
 }

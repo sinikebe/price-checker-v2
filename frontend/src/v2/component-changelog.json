@@ -108,6 +108,67 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.68",
+      "components": {
+        "products": {
+          "version": "0.1.34",
+          "notes": [
+            "Le catalogue se parcourt par rayon, famille puis groupe comparable ; les classements préremplis peuvent être corrigés."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.69",
+      "components": {
+        "products": {
+          "version": "0.1.35",
+          "notes": [
+            "Les ensembles facultatifs réunissent plusieurs groupes pour comparer leurs prix ; des icônes distinguent chaque niveau du catalogue."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.71",
+      "components": {
+        "basket": {
+          "version": "0.1.7",
+          "notes": [
+            "Le panier accepte un produit, un groupe ou un ensemble et compare les prix selon plusieurs magasins, communes ou départements."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.72",
+      "components": {
+        "products": {
+          "version": "0.1.38",
+          "notes": [
+            "Les administrateurs peuvent désactiver temporairement un magasin ou le supprimer définitivement avec ses prix."
+          ]
+        },
+        "basket": {
+          "version": "0.1.8",
+          "notes": [
+            "Les magasins désactivés ne figurent plus dans les comparaisons du panier."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.74",
+      "components": {
+        "products": {
+          "version": "0.1.40",
+          "notes": [
+            "Lors d’un transfert, les magasins déjà supprimés sont signalés et ne reviennent qu’après validation de l’administrateur."
+          ]
+        }
+      }
     }
   ]
 }

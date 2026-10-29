@@ -6,7 +6,9 @@ Plateforme développée avec l’aide d’outils d’IA.
 
 Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
-Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent une courbe de prix par magasin et canal, ainsi que le dernier relevé de chacun classé par prix et signalé selon sa fraîcheur, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Les groupes comparables servent de catégories dans le catalogue : recherche par référence, groupe ou magasin, pagination 10/20/50, et fiche de groupe avec graphique et liens vers ses produits.
+Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent une courbe de prix par magasin et canal, ainsi que le dernier relevé de chacun classé par prix et signalé selon sa fraîcheur, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Le catalogue se parcourt par rayon, famille, ensemble facultatif, groupe comparable puis produit. La recherche couvre les références, les groupes et les magasins ; les fiches de groupe et d’ensemble comparent les produits qu’elles réunissent.
+
+Sur chaque fiche magasin, l’administrateur peut le désactiver temporairement (fiche et prix masqués des résultats publics, données conservées) ou le supprimer définitivement avec ses prix, brouillons et offres associés. La suppression demande de saisir le nom du magasin.
 
 Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
 
@@ -14,7 +16,7 @@ Un compte peut exporter ses données puis demander sa suppression ; les contribu
 
 ## Installer l’application sur un appareil
 
-Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne. Depuis le panier, deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque produit au prix relevé le plus bas. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti.
+Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne. Il accepte un produit précis, un groupe comparable ou un ensemble. Deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque article au prix relevé le plus bas. Un groupe ou ensemble compte pour un article et retient un produit au prix total le plus bas, dont le conditionnement est affiché. Les résultats peuvent être filtrés par plusieurs magasins, communes et départements. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti.
 
 ## Relever un prix depuis une fiche d’enseigne
 
@@ -36,15 +38,15 @@ sudo git clone --branch main --single-branch https://github.com/sinikebe/price-c
 sudo /opt/price-checker-v2/source/deployment/v2/install.sh
 ```
 
-Le web écoute seulement sur `127.0.0.1:8080`. Après configuration du reverse proxy HTTPS, ouvrir `/v2` pour initialiser l'application. Le script indique où lire le code d'installation et le mot de passe PostgreSQL générés localement ; aucun compte administrateur n'est créé automatiquement. Conserver ces informations hors du dépôt.
+Le web écoute par défaut seulement sur `127.0.0.1:8080` (port configurable à l’installation). Après configuration du reverse proxy HTTPS, ouvrir `/v2` pour initialiser l'application. Le script indique où lire le code d'installation et le mot de passe PostgreSQL générés localement ; aucun compte administrateur n'est créé automatiquement. Conserver ces informations hors du dépôt.
 
-La procédure complète, les sauvegardes et la mise à jour depuis `main` sont décrites dans [la documentation d'installation](docs/server-install.md). Une mise à jour se lance sur le serveur avec :
+La procédure complète, les sauvegardes et la mise à jour depuis `main` sont décrites dans [la documentation d'installation](docs/server-install.md). Lorsque le programmateur serveur est installé, un administrateur peut demander la mise à jour depuis **Paramètres → Mises à jour du serveur**. La commande manuelle reste disponible :
 
 ```sh
 sudo /opt/price-checker-v2/source/deployment/v2/update.sh
 ```
 
-Elle n'est pas déclenchée automatiquement par un push.
+Un push ne déclenche pas directement la mise à jour du serveur ; le programmateur ne la lance automatiquement que si les mises à jour planifiées ont été activées.
 
 ## Versions des composants
 
@@ -54,7 +56,7 @@ Les versions sont incrémentées dans les commits de développement, avant la PR
 
 Le travail V2 passe par la branche `dev`, puis par une PR vers `main`. La protection de `main` exige une PR à jour et les contrôles backend, frontend, déploiement et **mise à jour d'une installation existante**. Ce dernier installe une révision antérieure, crée des données, lance le véritable `update.sh`, vérifie le démarrage, la conservation des données et la restauration de la sauvegarde ; il teste aussi une installation neuve. Les pushs sur `dev` exercent également ce parcours depuis le SHA précédant le push. L'instance privée de développement suit `dev` ; une publication sur `main` ou en production est une opération distincte.
 
-Les incréments automatiques sont des correctifs ; les changements de version majeure/mineure restent des décisions de publication explicites. Une version affichée sur une installation ne change qu'après mise à jour de cette installation.
+Le script de versionnement incrémente par défaut la partie correctif ; les changements de version majeure/mineure restent des décisions de publication explicites. Une version affichée sur une installation ne change qu'après mise à jour de cette installation.
 
 ## Développement local
 
@@ -67,11 +69,14 @@ Les commandes de vérification locales sont :
 ```sh
 python -m ruff check backend
 python -m pytest -q backend/tests
-cd frontend && npm ci && npm run lint && npm run build
+python3 scripts/component_versions.py check
+python3 scripts/check_component_changelog.py
+python3 -m unittest discover -s scripts/tests
+cd frontend && npm ci && npm run lint && npm run test:basket && npm run test:bookmarklet && npm run build
 bash -n deployment/v2/install.sh deployment/v2/update.sh
 ```
 
-Le test du schéma des prix utilise une base PostgreSQL jetable lorsque `V2_AUTH_TEST_CONFIG` désigne un fichier JSON de configuration de test ; sinon il est ignoré. La [CI GitHub Actions](.github/workflows/ci.yml) lance les vérifications avec sa propre base de test. Ne jamais utiliser une base contenant des données à conserver pour ce test.
+Les tests d’intégration PostgreSQL utilisent une base jetable lorsque `V2_AUTH_TEST_CONFIG` désigne un fichier JSON de configuration de test ; sinon ils sont ignorés. La [CI GitHub Actions](.github/workflows/ci.yml) lance les vérifications avec sa propre base de test. Ne jamais utiliser une base contenant des données à conserver pour ces tests.
 
 ## Structure
 
@@ -80,4 +85,4 @@ Le test du schéma des prix utilise une base PostgreSQL jetable lorsque `V2_AUTH
 - `deployment/v2/` : images Docker, installation et mise à jour.
 - `docs/price-history.md` : modèle et provenance des prix.
 
-Les contributions sont bienvenues via issues et pull requests. Licence : [AGPL-3.0](LICENSE).
+Pour contribuer, ouvrez une [issue publique](https://github.com/sinikebe/price-checker-v2/issues) afin de signaler un problème ou de proposer une amélioration. Licence : [AGPL-3.0](LICENSE).

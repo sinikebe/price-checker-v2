@@ -109,6 +109,8 @@ async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
         raise HTTPException(status_code=404, detail="Une des deux fiches est introuvable.")
     origin, duplicate = by_id[origin_id], by_id[duplicate_id]
     for item in (origin, duplicate):
+        if kind == "store" and not item["active"]:
+            raise HTTPException(status_code=409, detail="Réactivez le magasin avant de le fusionner.")
         if await connection.fetchval(
             "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind=$1 AND from_id=$2)",
             kind, item["id"],

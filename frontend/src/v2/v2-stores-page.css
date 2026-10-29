@@ -6,6 +6,11 @@
 .v2-stores-group li { display: flex; flex-wrap: wrap; gap: .4rem 1rem; justify-content: space-between; border-top: 1px solid var(--border, #dde2e6); padding-top: .6rem; }
 
 .v2-stores-source { color: var(--muted, #5a6670); }
+.v2-stores-inactive { color: var(--muted, #5a6670); font-weight: 700; }
+.v2-store-management form { display: grid; gap: .7rem; margin-top: 1.4rem; border-top: 1px solid var(--border, #dde2e6); padding-top: 1rem; }
+.v2-store-management form label { display: grid; gap: .4rem; max-width: 30rem; }
+.v2-store-management form input { width: 100%; padding: .65rem; border: 1px solid var(--border, #87919c); border-radius: .5rem; background: var(--surface, #fff); color: inherit; }
+.v2-store-management button { justify-self: start; }
 .v2-retailer-groups-admin { margin-top: 2rem; }
 .v2-retailer-groups-admin summary { cursor: pointer; font-weight: 700; }
 .v2-retailer-groups-admin form { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 1rem 0; }

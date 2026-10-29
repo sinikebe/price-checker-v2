@@ -158,6 +158,82 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
             broken["stores"] = []
             assert (await client.post("/api/v2/transfers/import", json=broken,
                                       headers={"x-test-admin": "yes"})).status_code == 422
+
+            # A previously imported location can return only after an explicit,
+            # archive-bound admin approval. A normal retry must not revive it.
+            target = await connect_v2(target_config)
+            try:
+                await target.execute("DELETE FROM v2_price_observations")
+                await target.execute("DELETE FROM v2_stores")
+                key = transfers._key(UUID(archive["source_instance"]), "s", store)
+                await target.execute(
+                    "INSERT INTO v2_deleted_store_sources(source_key) VALUES($1)",
+                    "import:" + key,
+                )
+            finally:
+                await target.close()
+            preview_path = "/api/v2/transfers/import/preview"
+            assert (await client.post(preview_path, json=archive)).status_code == 403
+            preview = await client.post(preview_path, json=archive,
+                                        headers={"x-test-admin": "yes"})
+            assert preview.status_code == 200, preview.text
+            assert len(preview.json()["stores"]) == 1
+            assert preview.json()["stores"][0]["status"] == "deleted"
+            assert preview.json()["stores"][0]["name"] == "Centre"
+            token = preview.json()["approval_token"]
+            assert token
+            denied = await client.post("/api/v2/transfers/import", json=archive,
+                                       headers={"x-test-admin": "yes"})
+            assert denied.status_code == 409, denied.text
+            wrong = await client.post("/api/v2/transfers/import", json=archive,
+                                      headers={"x-test-admin": "yes",
+                                               "X-V2-Deleted-Store-Approval": "wrong"})
+            assert wrong.status_code == 409
+            altered = json.loads(json.dumps(archive))
+            altered["prices"][0]["note"] = "Different archive"
+            assert (await client.post(
+                "/api/v2/transfers/import", json=altered,
+                headers={"x-test-admin": "yes",
+                         "X-V2-Deleted-Store-Approval": token},
+            )).status_code == 409
+            target = await connect_v2(target_config)
+            try:
+                assert await target.fetchval("SELECT count(*) FROM v2_stores") == 0
+                assert await target.fetchval("SELECT count(*) FROM v2_price_observations") == 0
+            finally:
+                await target.close()
+            restored = await client.post("/api/v2/transfers/import", json=archive,
+                                         headers={"x-test-admin": "yes",
+                                                  "X-V2-Deleted-Store-Approval": token})
+            assert restored.status_code == 200, restored.text
+            assert restored.json()["prices_imported"] == 2
+            target = await connect_v2(target_config)
+            try:
+                assert await target.fetchval(
+                    "SELECT count(*) FROM v2_deleted_store_sources WHERE source_key=$1",
+                    "import:" + key,
+                ) == 0
+                assert await target.fetchval("SELECT count(*) FROM v2_stores") == 1
+                assert await target.fetchval("SELECT count(*) FROM v2_price_observations") == 2
+                await target.execute("UPDATE v2_stores SET active=false WHERE import_key=$1", key)
+            finally:
+                await target.close()
+            inactive = await client.post(preview_path, json=archive,
+                                         headers={"x-test-admin": "yes"})
+            assert inactive.status_code == 200
+            assert inactive.json()["stores"][0]["status"] == "inactive"
+            assert inactive.json()["approval_token"] is None
+            assert (await client.post("/api/v2/transfers/import", json=archive,
+                                      headers={"x-test-admin": "yes"})).status_code == 409
+            target = await connect_v2(target_config)
+            try:
+                await target.execute("UPDATE v2_stores SET active=true WHERE import_key=$1", key)
+            finally:
+                await target.close()
+            normal = await client.post("/api/v2/transfers/import", json=archive,
+                                       headers={"x-test-admin": "yes"})
+            assert normal.status_code == 200
+            assert normal.json()["prices_already_present"] == 2
     finally:
         await admin.execute(f'DROP DATABASE "{source_name}" WITH (FORCE)')
         await admin.execute(f'DROP DATABASE "{target_name}" WITH (FORCE)')

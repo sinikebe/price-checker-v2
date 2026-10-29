@@ -100,6 +100,11 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
     osm_type = location["osm_type"].lower()
     osm_id = location["osm_id"]
     import_key = "open_prices:location:" + str(location["id"])
+    if await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_deleted_store_sources WHERE source_key=ANY($1::text[]))",
+        ["import:" + import_key, "osm:" + osm_type + ":" + str(osm_id)],
+    ):
+        return None
     source_brand = location.get("osm_brand")
     source_brand = source_brand.strip()[:200] if isinstance(source_brand, str) else ""
     # The source's stable location ID also survives a merge. OSM IDs may be
@@ -117,6 +122,10 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         osm_type, osm_id, import_key,
     )
     if existing:
+        if not await connection.fetchval(
+            "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
+        ):
+            return None
         source_id = await _source_retailer(connection, source_brand) if source_brand else None
         await connection.execute(
             "UPDATE v2_stores SET city=COALESCE(NULLIF(btrim(city),''),$1),"
@@ -144,6 +153,7 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
             "JOIN v2_stores s ON s.id=a.store_id "
             "JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE a.source='open_prices' AND a.name_key=$1 "
+            "AND s.active "
             "AND r.group_id=(SELECT group_id FROM v2_retailers WHERE id=$2) "
             "AND s.postal_code=$3 AND s.osm_id IS NULL "
             "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
@@ -155,6 +165,10 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         candidates = [row for row in candidates if not location_city or not row["city"]
                       or name_key(row["city"]) == location_city]
         if len(candidates) == 1:
+            if not await connection.fetchval(
+                "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", candidates[0]["id"]
+            ):
+                return None
             await connection.execute(
                 "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
                 "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
@@ -182,13 +196,19 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         "ORDER BY (old.import_key=$1) DESC LIMIT 1",
         import_key, osm_type, osm_id,
     )
-    return (existing["retailer_id"], existing["id"],
-            retailer if retailer != existing["retailer_id"] else None) if existing else None
+    if existing and await connection.fetchval(
+        "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
+    ):
+        return (existing["retailer_id"], existing["id"],
+                retailer if retailer != existing["retailer_id"] else None)
+    return None
 
 
 async def _save_items(connection, product_id: int, barcode: str, items: list) -> int:
     imported = 0
     async with connection.transaction():
+        # Share the lifecycle lock before any tombstone or store lookup.
+        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
         for item in items:
             if not isinstance(item, dict):
                 continue
