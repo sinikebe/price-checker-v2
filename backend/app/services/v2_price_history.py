@@ -16,6 +16,7 @@ WITH ordered AS (
            lag(o.available) OVER series AS previous_available,
            lag(o.correction_status) OVER series AS previous_correction
     FROM v2_price_observations o
+    JOIN v2_stores active_store ON active_store.id=o.store_id AND active_store.active
     WHERE o.product_id=ANY($1::bigint[]) AND NOT o.superseded
     WINDOW series AS (
         PARTITION BY o.product_id,o.store_id,o.sales_channel

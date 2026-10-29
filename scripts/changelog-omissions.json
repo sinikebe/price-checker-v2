@@ -189,6 +189,36 @@
       "component": "recipes",
       "version": "0.1.12",
       "reason": "Adaptation technique de la synchronisation partagée au panier mixte, sans changement des recettes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.72",
+      "reason": "Les actions sur les magasins et leur effet sur le panier sont annoncés dans les composants Produits et Panier."
+    },
+    {
+      "component": "database",
+      "version": "0.1.29",
+      "reason": "Ajout technique du statut et des identifiants sources bloqués après suppression, déjà couvert par les annonces fonctionnelles."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.17",
+      "reason": "Le connecteur ignore les magasins désactivés ou supprimés, conformément aux actions déjà annoncées."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.24",
+      "reason": "Le contrôle de signalement respecte le statut des magasins ; aucun changement des comptes."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.13",
+      "reason": "Le contrôle de signalement partagé respecte le statut des magasins ; aucune modification des recettes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.17",
+      "reason": "Le contrôle de signalement partagé respecte le statut des magasins ; aucun changement du mode hors ligne."
     }
   ]
 }

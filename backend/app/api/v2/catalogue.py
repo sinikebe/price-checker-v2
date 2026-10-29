@@ -26,6 +26,7 @@ CURRENT = """NOT EXISTS (
 STORE_MATCH = """EXISTS (
     SELECT 1 FROM v2_price_observations o
     WHERE o.product_id=p.id AND o.store_id=$3
+      AND EXISTS (SELECT 1 FROM v2_stores s WHERE s.id=o.store_id AND s.active)
       AND NOT o.superseded
       AND o.correction_status IS DISTINCT FROM 'active'
 )"""
@@ -105,7 +106,7 @@ async def to_complete(
         stores = await connection.fetch(
             f"""SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer
                 FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
-                WHERE EXISTS (
+                WHERE s.active AND EXISTS (
                     SELECT 1 FROM v2_price_observations o
                     JOIN v2_products p ON p.id=o.product_id
                     WHERE o.store_id=s.id AND NOT o.superseded AND {CURRENT})
@@ -153,6 +154,7 @@ async def find_stores(q: str = Query("", max_length=80)):
                 FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
                 WHERE strpos(lower(concat_ws(' ', r.name, s.name, s.city,
                                              s.postal_code)), lower($1)) > 0
+                  AND s.active
                   AND EXISTS (
                       SELECT 1 FROM v2_price_observations o
                       JOIN v2_products p ON p.id=o.product_id

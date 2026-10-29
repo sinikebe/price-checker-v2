@@ -100,23 +100,30 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
     osm_type = location["osm_type"].lower()
     osm_id = location["osm_id"]
     import_key = "open_prices:location:" + str(location["id"])
+    if await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_deleted_store_sources WHERE source_key=ANY($1::text[]))",
+        ["import:" + import_key, "osm:" + osm_type + ":" + str(osm_id)],
+    ):
+        return None
     source_brand = location.get("osm_brand")
     source_brand = source_brand.strip()[:200] if isinstance(source_brand, str) else ""
     # The source's stable location ID also survives a merge. OSM IDs may be
     # changed upstream, so checking only OSM identity can recreate a donor.
     existing = await connection.fetchrow(
-        "SELECT c.id,c.retailer_id FROM v2_stores old "
+        "SELECT c.id,c.retailer_id,c.active FROM v2_stores old "
         "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
         "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
         "WHERE old.import_key=$3 "
-        "UNION ALL SELECT s.id,s.retailer_id FROM v2_stores s "
+        "UNION ALL SELECT s.id,s.retailer_id,s.active FROM v2_stores s "
         "WHERE s.osm_type=$1 AND s.osm_id=$2 "
-        "UNION ALL SELECT s.id,s.retailer_id FROM v2_store_osm_aliases a "
+        "UNION ALL SELECT s.id,s.retailer_id,s.active FROM v2_store_osm_aliases a "
         "JOIN v2_stores s ON s.id=a.store_id WHERE a.osm_type=$1 AND a.osm_id=$2 "
         "LIMIT 1",
         osm_type, osm_id, import_key,
     )
     if existing:
+        if not existing["active"]:
+            return None
         source_id = await _source_retailer(connection, source_brand) if source_brand else None
         await connection.execute(
             "UPDATE v2_stores SET city=COALESCE(NULLIF(btrim(city),''),$1),"
@@ -144,6 +151,7 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
             "JOIN v2_stores s ON s.id=a.store_id "
             "JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE a.source='open_prices' AND a.name_key=$1 "
+            "AND s.active "
             "AND r.group_id=(SELECT group_id FROM v2_retailers WHERE id=$2) "
             "AND s.postal_code=$3 AND s.osm_id IS NULL "
             "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
@@ -175,7 +183,7 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         return inserted["retailer_id"], inserted["id"], None
     # A concurrent insert or donor import_key: resolve once, never recurse.
     existing = await connection.fetchrow(
-        "SELECT c.id,c.retailer_id FROM v2_stores old "
+        "SELECT c.id,c.retailer_id,c.active FROM v2_stores old "
         "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=old.id "
         "JOIN v2_stores c ON c.id=COALESCE(m.to_id,old.id) "
         "WHERE old.import_key=$1 OR (old.osm_type=$2 AND old.osm_id=$3) "
@@ -183,7 +191,7 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         import_key, osm_type, osm_id,
     )
     return (existing["retailer_id"], existing["id"],
-            retailer if retailer != existing["retailer_id"] else None) if existing else None
+            retailer if retailer != existing["retailer_id"] else None) if existing and existing["active"] else None
 
 
 async def _save_items(connection, product_id: int, barcode: str, items: list) -> int:

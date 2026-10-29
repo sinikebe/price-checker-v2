@@ -355,7 +355,8 @@ async def get_draft(draft_id: int, request: Request):
             "FROM v2_price_drafts d "
             "JOIN v2_retailers r ON r.id=d.retailer_id "
             "JOIN v2_stores s ON s.id=d.store_id "
-            "WHERE d.product_draft_id=$1 ORDER BY d.created_at DESC,d.id DESC LIMIT 100",
+            "WHERE d.product_draft_id=$1 AND s.active "
+            "ORDER BY d.created_at DESC,d.id DESC LIMIT 100",
             draft_id,
         )
         result["linked_prices"] = [

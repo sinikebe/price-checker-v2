@@ -144,7 +144,8 @@ async def export_products_prices(request: Request):
             "source_url,capture_ean,price,quantity_text, unit_price_amount, unit_price_unit, available, "
             "observed_at, note, sales_channel FROM v2_price_observations "
             "WHERE product_id IS NOT NULL AND NOT superseded "
-            "AND correction_status IS DISTINCT FROM 'active' ORDER BY id"
+            "AND correction_status IS DISTINCT FROM 'active' "
+            "AND EXISTS (SELECT 1 FROM v2_stores s WHERE s.id=store_id AND s.active) ORDER BY id"
         )
         stores = await connection.fetch(
             "SELECT id, retailer_id, name, city, postal_code, supports_drive, "

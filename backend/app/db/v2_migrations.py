@@ -852,6 +852,16 @@ MIGRATIONS = {
         ADD COLUMN comparison_scope varchar(80)
         CHECK (comparison_scope IS NULL OR btrim(comparison_scope) <> '');
     """,
+    "0029_store_lifecycle": """
+        ALTER TABLE v2_stores ADD COLUMN active boolean NOT NULL DEFAULT true;
+        CREATE INDEX v2_stores_active_idx ON v2_stores(id) WHERE active;
+        -- Preserve only source identifiers after a permanent deletion, so a
+        -- later price sync cannot silently recreate the removed location.
+        CREATE TABLE v2_deleted_store_sources (
+            source_key text PRIMARY KEY,
+            deleted_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
 
 }
 

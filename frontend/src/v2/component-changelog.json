@@ -141,6 +141,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.72",
+      "components": {
+        "products": {
+          "version": "0.1.38",
+          "notes": [
+            "Les administrateurs peuvent désactiver temporairement un magasin ou le supprimer définitivement avec ses prix."
+          ]
+        },
+        "basket": {
+          "version": "0.1.8",
+          "notes": [
+            "Les magasins désactivés ne figurent plus dans les comparaisons du panier."
+          ]
+        }
+      }
     }
   ]
 }

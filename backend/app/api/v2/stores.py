@@ -71,7 +71,7 @@ async def matches(
             "r.id AS retailer_id,r.group_id AS retailer_group_id "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE r.group_id IN (SELECT group_id FROM v2_retailers "
-            "WHERE lower(name)=lower($1)) AND " + VISIBLE + " AND NOT EXISTS "
+            "WHERE lower(name)=lower($1)) AND s.active AND " + VISIBLE + " AND NOT EXISTS "
             "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id) "
             "ORDER BY s.id LIMIT 5000",
             retailer.strip(), user is not None and user["role"] == "admin",
@@ -142,7 +142,7 @@ async def retailer_groups(request: Request):
         )
         retailers = await connection.fetch(
             "SELECT r.id,r.name,r.group_id,count(s.id) FILTER (WHERE "
-            "(s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
+            "s.active AND (s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
             "WHERE o.store_id=s.id)) AND NOT EXISTS "
             "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)) "
             "AS store_count FROM v2_retailers r LEFT JOIN v2_stores s ON s.retailer_id=r.id "
@@ -223,16 +223,20 @@ async def list_stores(request: Request):
     """Public directory, grouped by explicit retailer family in the client."""
     connection = await _connect()
     try:
+        user = await _current_user(connection, request)
+        is_admin = user is not None and user["role"] == "admin"
         rows = await connection.fetch(
-            "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,"
+            "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,s.active,"
             "r.name AS retailer,r.id AS retailer_id,"
             "g.id AS retailer_group_id,g.name AS retailer_group FROM v2_stores s "
             "JOIN v2_retailers r ON r.id=s.retailer_id "
             "JOIN v2_retailer_groups g ON g.id=r.group_id "
-            "WHERE (s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
-            "WHERE o.store_id=s.id)) AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+            "WHERE ($1::boolean OR s.active) AND ($1::boolean OR s.osm_id IS NOT NULL OR EXISTS "
+            "(SELECT 1 FROM v2_price_observations o WHERE o.store_id=s.id)) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
             "WHERE m.kind='store' AND m.from_id=s.id) "
             "ORDER BY lower(g.name),lower(s.city),lower(s.name),s.id",
+            is_admin,
         )
         return [dict(row) for row in rows]
     finally:
@@ -248,7 +252,7 @@ async def get_store(store_id: int, request: Request):
             "SELECT s.*,r.name AS retailer,g.name AS retailer_group,g.id AS retailer_group_id "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
             "JOIN v2_retailer_groups g ON g.id=r.group_id "
-            "WHERE s.id=$1 AND (" + VISIBLE + " OR EXISTS "
+            "WHERE s.id=$1 AND (s.active OR $2::boolean) AND (" + VISIBLE + " OR EXISTS "
             "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id))",
             store_id, user is not None and user["role"] == "admin",
             user["id"] if user else None,
@@ -262,6 +266,15 @@ async def get_store(store_id: int, request: Request):
         result = dict(row)
         result["aliases"] = [dict(alias) for alias in aliases]
         result["merged_to_id"] = merged_to_id
+        if user is not None and user["role"] == "admin":
+            result["impact"] = {
+                "prices": await connection.fetchval(
+                    "SELECT count(*) FROM v2_price_observations WHERE store_id=$1", store_id),
+                "drafts": await connection.fetchval(
+                    "SELECT count(*) FROM v2_price_drafts WHERE store_id=$1", store_id),
+                "offers": await connection.fetchval(
+                    "SELECT count(*) FROM v2_offers WHERE store_id=$1", store_id),
+            }
         return result
     finally:
         await connection.close()
@@ -308,12 +321,129 @@ async def complete_store(store_id: int, payload: StoreCompletion, request: Reque
         await connection.close()
 
 
+class StoreActivity(BaseModel):
+    active: bool
+
+
+@router.put("/{store_id}/activity")
+async def set_store_activity(store_id: int, payload: StoreActivity, request: Request):
+    """Keep the data, but remove an inactive store from every public price view."""
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                "SELECT id,active FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            if await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
+                "WHERE kind='store' AND from_id=$1)", store_id,
+            ):
+                raise HTTPException(status_code=409, detail="Cette fiche a été fusionnée.")
+            await connection.execute(
+                "UPDATE v2_stores SET active=$2 WHERE id=$1", store_id, payload.active,
+            )
+        return {"id": store_id, "active": payload.active}
+    finally:
+        await connection.close()
+
+
+class StoreDeletion(BaseModel):
+    confirmation: str
+
+
+@router.post("/{store_id}/delete")
+async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
+    """Permanently remove a store and its entire price provenance in one transaction."""
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        async with connection.transaction():
+            store = await connection.fetchrow(
+                "SELECT id,name FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
+            )
+            if store is None:
+                raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            if payload.confirmation != store["name"]:
+                raise HTTPException(status_code=422, detail="Saisissez exactement le nom du magasin.")
+            if await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
+                "WHERE kind='store' AND from_id=$1)", store_id,
+            ):
+                raise HTTPException(status_code=409, detail="Supprimez la fiche actuelle, pas une ancienne fiche fusionnée.")
+            # Include donor identities: old Open Prices locations must not
+            # recreate the deleted store through their preserved merge links.
+            rows = await connection.fetch(
+                "SELECT id,import_key,osm_type,osm_id FROM v2_stores "
+                "WHERE id=$1 OR id IN (SELECT from_id FROM v2_content_merges "
+                "WHERE kind='store' AND to_id=$1) ORDER BY id FOR UPDATE", store_id,
+            )
+            ids = [row["id"] for row in rows]
+            sources = {"import:" + row["import_key"] for row in rows if row["import_key"]}
+            sources.update("osm:" + row["osm_type"] + ":" + str(row["osm_id"])
+                           for row in rows if row["osm_id"] is not None)
+            aliases = await connection.fetch(
+                "SELECT osm_type,osm_id FROM v2_store_osm_aliases "
+                "WHERE store_id=ANY($1::bigint[])", ids,
+            )
+            sources.update("osm:" + row["osm_type"] + ":" + str(row["osm_id"])
+                           for row in aliases)
+            if sources:
+                await connection.executemany(
+                    "INSERT INTO v2_deleted_store_sources(source_key) VALUES($1) "
+                    "ON CONFLICT DO NOTHING", [(source,) for source in sorted(sources)],
+                )
+            # A price should only correct or deduplicate another price from
+            # the same location. Refuse an unexpected cross-store reference.
+            external = await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM v2_price_observations o "
+                "WHERE o.store_id <> ALL($1::bigint[]) AND ("
+                "o.resolved_by_observation_id IN (SELECT id FROM v2_price_observations WHERE store_id=ANY($1::bigint[])) "
+                "OR o.superseded_by_correction_id IN (SELECT id FROM v2_price_observations WHERE store_id=ANY($1::bigint[])) "
+                "OR o.merge_duplicate_of_id IN (SELECT id FROM v2_price_observations WHERE store_id=ANY($1::bigint[]))))",
+                ids,
+            )
+            if external:
+                raise HTTPException(status_code=409, detail="Un prix d’un autre magasin référence encore ce magasin.")
+            prices = await connection.fetchval(
+                "SELECT count(*) FROM v2_price_observations WHERE store_id=ANY($1::bigint[])", ids,
+            )
+            await connection.execute(
+                "DELETE FROM v2_price_observations WHERE store_id=ANY($1::bigint[])", ids,
+            )
+            await connection.execute(
+                "DELETE FROM v2_offer_product_links WHERE offer_id IN "
+                "(SELECT id FROM v2_offers WHERE store_id=ANY($1::bigint[]))", ids,
+            )
+            await connection.execute("DELETE FROM v2_offers WHERE store_id=ANY($1::bigint[])", ids)
+            await connection.execute("DELETE FROM v2_price_drafts WHERE store_id=ANY($1::bigint[])", ids)
+            await connection.execute("DELETE FROM v2_store_osm_aliases WHERE store_id=ANY($1::bigint[])", ids)
+            await connection.execute(
+                "DELETE FROM v2_content_merges WHERE kind='store' AND "
+                "(from_id=ANY($1::bigint[]) OR to_id=ANY($1::bigint[]))", ids,
+            )
+            await connection.execute(
+                "DELETE FROM v2_content_reports WHERE kind='store' AND "
+                "(content_id=ANY($1::bigint[]) OR duplicate_id=ANY($1::bigint[]))", ids,
+            )
+            await connection.execute(
+                "DELETE FROM v2_stores WHERE id=ANY($1::bigint[])", ids,
+            )
+        return {"deleted_store_ids": ids, "deleted_prices": prices}
+    finally:
+        await connection.close()
+
+
 async def visible_store(connection: asyncpg.Connection, store_id: int, user: dict) -> dict:
     row = await connection.fetchrow(
         "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
         "r.id AS retailer_id,r.group_id AS retailer_group_id "
         "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
-        "WHERE s.id=$1 AND " + VISIBLE,
+        "WHERE s.id=$1 AND s.active AND " + VISIBLE,
         store_id, user["role"] == "admin", user["id"],
     )
     if row is None or await connection.fetchval(
