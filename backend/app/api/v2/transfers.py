@@ -11,7 +11,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 import asyncpg
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.api.v2.auth import _connect, _secure_write
@@ -144,7 +144,8 @@ async def export_products_prices(request: Request):
             "source_url,capture_ean,price,quantity_text, unit_price_amount, unit_price_unit, available, "
             "observed_at, note, sales_channel FROM v2_price_observations "
             "WHERE product_id IS NOT NULL AND NOT superseded "
-            "AND correction_status IS DISTINCT FROM 'active' ORDER BY id"
+            "AND correction_status IS DISTINCT FROM 'active' "
+            "AND EXISTS (SELECT 1 FROM v2_stores s WHERE s.id=store_id AND s.active) ORDER BY id"
         )
         stores = await connection.fetch(
             "SELECT id, retailer_id, name, city, postal_code, supports_drive, "
@@ -286,9 +287,99 @@ async def _import_products(
     return product_map, inserted_products
 
 
+async def _location_warnings(
+    connection: asyncpg.Connection, source: UUID,
+    retailers: dict[int, TransferRetailer], stores: dict[int, TransferStore],
+) -> tuple[list[dict], list[tuple[int, str]]]:
+    keys = {_key(source, "s", source_id): source_id for source_id in stores}
+    if not keys:
+        return [], []
+    deleted = {
+        row["source_key"]: row["deleted_at"].isoformat()
+        for row in await connection.fetch(
+            "SELECT source_key,deleted_at FROM v2_deleted_store_sources "
+            "WHERE source_key=ANY($1::text[])",
+            ["import:" + key for key in keys],
+        )
+    }
+    active = {
+        row["import_key"]: row["active"]
+        for row in await connection.fetch(
+            "SELECT import_key,active FROM v2_stores WHERE import_key=ANY($1::text[])",
+            list(keys),
+        )
+    }
+    warnings: list[dict] = []
+    approvals: list[tuple[int, str]] = []
+    for source_id, store in stores.items():
+        key = _key(source, "s", source_id)
+        if active.get(key) is False:
+            status = "inactive"
+        elif "import:" + key in deleted:
+            status = "deleted"
+            approvals.append((source_id, deleted["import:" + key]))
+        else:
+            continue
+        warnings.append({
+            "source_id": source_id, "retailer": retailers[store.retailer_id].name,
+            "name": store.name, "city": store.city,
+            "postal_code": store.postal_code, "status": status,
+        })
+    return warnings, sorted(approvals)
+
+
+def _approval_token(body: bytes | bytearray, approvals: list[tuple[int, str]]) -> str:
+    # Bind approval to this exact archive and the current set of deletions.
+    stamp = json.dumps(approvals, separators=(",", ":")).encode()
+    return hashlib.sha256(bytes(body) + b"\x00" + stamp).hexdigest()
+
+
+async def _read_bundle(request: Request) -> tuple[bytearray, TransferBundle]:
+    body = bytearray()
+    async for part in request.stream():
+        body.extend(part)
+        if len(body) > MAX_BUNDLE_BYTES:
+            raise HTTPException(status_code=413, detail="Fichier de transfert trop volumineux.")
+    try:
+        bundle = TransferBundle.model_validate_json(body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Format de transfert V2 invalide.") from exc
+    _validate_import_bundle(bundle)
+    return body, bundle
+
+
+async def _reject_own_archive(connection: asyncpg.Connection, bundle: TransferBundle) -> None:
+    own = await connection.fetchval(
+        "SELECT instance_id FROM v2_transfer_instance WHERE singleton=true"
+    )
+    if own == bundle.source_instance:
+        raise HTTPException(status_code=409, detail="Cette archive provient de cette instance.")
+
+
+@router.post("/import/preview")
+async def preview_import(request: Request):
+    _secure_write(request)
+    await _require_admin(request)
+    body, bundle = await _read_bundle(request)
+    _, retailers, stores, _ = _validate_import_bundle(bundle)
+    connection = await _connect()
+    try:
+        await _reject_own_archive(connection, bundle)
+        warnings, approvals = await _location_warnings(
+            connection, bundle.source_instance, retailers, stores
+        )
+        return {
+            "stores": warnings,
+            "approval_token": _approval_token(body, approvals) if approvals else None,
+        }
+    finally:
+        await connection.close()
+
+
 async def _import_locations(
     connection: asyncpg.Connection, source: UUID,
     retailers: dict[int, TransferRetailer], stores: dict[int, TransferStore],
+    approved_deleted_ids: set[int],
 ) -> tuple[dict[int, int], dict[int, int]]:
     retailer_map: dict[int, int] = {}
     for source_id, retailer in retailers.items():
@@ -313,6 +404,11 @@ async def _import_locations(
             store.postal_code, store.supports_drive, store.supports_delivery, key,
         )
         store_map[source_id] = target_id
+        if source_id in approved_deleted_ids:
+            await connection.execute(
+                "DELETE FROM v2_deleted_store_sources WHERE source_key=$1",
+                "import:" + key,
+            )
     return retailer_map, store_map
 
 
@@ -350,34 +446,41 @@ async def _import_prices(
 
 
 @router.post("/import")
-async def import_products_prices(request: Request):
+async def import_products_prices(
+    request: Request,
+    deleted_store_approval: str | None = Header(
+        default=None, alias="X-V2-Deleted-Store-Approval"
+    ),
+):
     _secure_write(request)
     await _require_admin(request)
-    body = bytearray()
-    async for part in request.stream():
-        body.extend(part)
-        if len(body) > MAX_BUNDLE_BYTES:
-            raise HTTPException(status_code=413, detail="Fichier de transfert trop volumineux.")
-    try:
-        bundle = TransferBundle.model_validate_json(body)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail="Format de transfert V2 invalide.") from exc
+    body, bundle = await _read_bundle(request)
     products, retailers, stores, prices = _validate_import_bundle(bundle)
     predecessor_ids = {p.predecessor_id for p in bundle.products if p.predecessor_id is not None}
     connection = await _connect()
     try:
         async with connection.transaction():
             await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
-            own = await connection.fetchval(
-                "SELECT instance_id FROM v2_transfer_instance WHERE singleton=true"
+            await _reject_own_archive(connection, bundle)
+            warnings, approvals = await _location_warnings(
+                connection, bundle.source_instance, retailers, stores
             )
-            if own == bundle.source_instance:
-                raise HTTPException(status_code=409, detail="Cette archive provient de cette instance.")
+            if any(item["status"] == "inactive" for item in warnings):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Un point de vente désactivé figure dans l'archive. Réactivez-le avant l'import.",
+                )
+            if approvals and deleted_store_approval != _approval_token(body, approvals):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Un point de vente supprimé figure dans l'archive. Vérifiez l'archive et validez sa réimportation.",
+                )
             product_map, inserted_products = await _import_products(
                 connection, bundle.source_instance, products, predecessor_ids
             )
             retailer_map, store_map = await _import_locations(
-                connection, bundle.source_instance, retailers, stores
+                connection, bundle.source_instance, retailers, stores,
+                {source_id for source_id, _ in approvals},
             )
             inserted_prices = await _import_prices(
                 connection, bundle.source_instance, prices, stores,

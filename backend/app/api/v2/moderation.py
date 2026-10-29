@@ -88,7 +88,7 @@ async def create_report(payload: ReportInput, request: Request):
             if payload.kind == "store":
                 visible = await connection.fetchval(
                     "SELECT EXISTS(SELECT 1 FROM v2_stores s WHERE s.id=$1 "
-                    "AND (s.osm_id IS NOT NULL OR EXISTS(SELECT 1 FROM v2_price_observations o "
+                    "AND s.active AND (s.osm_id IS NOT NULL OR EXISTS(SELECT 1 FROM v2_price_observations o "
                     "WHERE o.store_id=s.id)) AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
                     "WHERE m.kind='store' AND m.from_id=s.id))",payload.content_id)
                 if not visible:

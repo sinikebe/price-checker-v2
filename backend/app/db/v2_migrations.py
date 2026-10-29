@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import ssl
 
 import asyncpg
+
+from app.services.v2_catalogue_hierarchy import default_classification, default_comparison_scope
 
 MIGRATIONS = {
     "0001_accounts": """
@@ -831,6 +834,34 @@ MIGRATIONS = {
         );
         CREATE INDEX v2_api_tokens_user_idx ON v2_api_tokens(user_id,created_at DESC);
     """,
+    "0027_catalogue_hierarchy": """
+        CREATE TABLE v2_catalogue_classifications (
+            group_key varchar(100) PRIMARY KEY,
+            group_name varchar(100) NOT NULL,
+            department varchar(80) NOT NULL,
+            family varchar(80) NOT NULL,
+            source varchar(16) NOT NULL
+                CHECK (source IN ('local_tag','group_name','unclassified','manual')),
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            CHECK (btrim(group_name) <> '' AND btrim(department) <> '' AND btrim(family) <> '')
+        );
+    """,
+    "0028_catalogue_comparison_scopes": """
+        ALTER TABLE v2_catalogue_classifications
+        ADD COLUMN comparison_scope varchar(80)
+        CHECK (comparison_scope IS NULL OR btrim(comparison_scope) <> '');
+    """,
+    "0029_store_lifecycle": """
+        ALTER TABLE v2_stores ADD COLUMN active boolean NOT NULL DEFAULT true;
+        CREATE INDEX v2_stores_active_idx ON v2_stores(id) WHERE active;
+        -- Preserve only source identifiers after a permanent deletion, so a
+        -- later price sync cannot silently recreate the removed location.
+        CREATE TABLE v2_deleted_store_sources (
+            source_key text PRIMARY KEY,
+            deleted_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
 
 }
 
@@ -885,6 +916,51 @@ async def migrate_v2(config: dict) -> list[str]:
                 )
                 if not exists:
                     await connection.execute(ddl)
+                    if version == "0027_catalogue_hierarchy":
+                        # Run once, inside the migration transaction, using only
+                        # already-published local data. No OFF traffic at upgrade.
+                        rows = await connection.fetch(
+                            "SELECT lower(COALESCE(NULLIF(btrim(p.data->>'group'),''),'Sans groupe')) "
+                            "AS group_key,p.data FROM v2_products p "
+                            "WHERE NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+                            "WHERE w.kind='product' AND w.content_id=p.id) "
+                            "AND NOT EXISTS (SELECT 1 FROM v2_products next "
+                            "WHERE next.predecessor_id=p.id) "
+                            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+                            "WHERE m.kind='product' AND m.from_id=p.id)"
+                        )
+                        groups: dict[str, tuple[str, list[str]]] = {}
+                        for row in rows:
+                            data = json.loads(row["data"])
+                            group = (data.get("group") or "").strip() or "Sans groupe"
+                            key = row["group_key"]
+                            if key not in groups:
+                                groups[key] = (group, [])
+                            tags = data.get("tags")
+                            if isinstance(tags, list):
+                                groups[key][1].extend(tag for tag in tags if isinstance(tag, str))
+                        for key, (group, tags) in groups.items():
+                            department, family, source = default_classification(group, tags)
+                            await connection.execute(
+                                "INSERT INTO v2_catalogue_classifications "
+                                "(group_key,group_name,department,family,source) "
+                                "VALUES($1,$2,$3,$4,$5)",
+                                key, group, department, family, source,
+                            )
+                    if version == "0028_catalogue_comparison_scopes":
+                        # Curated local names only. Existing manually edited
+                        # department/family labels remain authoritative.
+                        rows = await connection.fetch(
+                            "SELECT group_key,group_name,family FROM v2_catalogue_classifications"
+                        )
+                        for row in rows:
+                            scope = default_comparison_scope(row["group_name"], row["family"])
+                            if scope:
+                                await connection.execute(
+                                    "UPDATE v2_catalogue_classifications "
+                                    "SET comparison_scope=$2 WHERE group_key=$1",
+                                    row["group_key"], scope,
+                                )
                     await connection.execute(
                         "INSERT INTO v2_schema_migrations(version) VALUES($1)", version
                     )

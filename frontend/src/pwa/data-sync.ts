@@ -3,7 +3,7 @@ import {
   PWA_PREVIOUS_CACHE_NAME, PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY,
   PWA_SYNC_ATTEMPT_KEY, PWA_VERSIONS_KEY,
 } from "./cache-keys";
-import { activeBasketUser, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
+import { activeBasketUser, isBasketProduct, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 
@@ -61,9 +61,11 @@ async function syncProducts(cache: Cache, userId: number | null) {
     const match = new URL(request.url).pathname.match(/^\/api\/v2\/products\/(\d+)$/);
     if (match && withdrawn.has(Number(match[1]))) await cache.delete(request);
   }
-  const current = readV2Basket(userId).filter(item => !withdrawn.has(item.id));
+  const current = readV2Basket(userId).filter(isBasketProduct).filter(item => !withdrawn.has(item.id));
   if (!current.length) {
-    if (readV2Basket(userId).length) writeV2Basket([], userId);
+    const latest = readV2Basket(userId);
+    if (latest.some(item => isBasketProduct(item) && withdrawn.has(item.id)))
+      writeV2Basket(latest.filter(item => !isBasketProduct(item) || !withdrawn.has(item.id)), userId);
     return;
   }
   const byId = new Map(catalog.map(product => [product.id, product]));
@@ -75,7 +77,8 @@ async function syncProducts(cache: Cache, userId: number | null) {
   }
   // Preserve membership edits made in another tab while product requests were pending.
   const latest = readV2Basket(userId);
-  writeV2Basket(latest.filter(item => !withdrawn.has(item.id)).map(item => {
+  writeV2Basket(latest.filter(item => !isBasketProduct(item) || !withdrawn.has(item.id)).map(item => {
+    if (!isBasketProduct(item)) return item;
     const product = refreshed.get(item.id);
     return product ? { id: item.id, data: product.data, revision: product.revision } : item;
   }), userId);

@@ -163,6 +163,11 @@ async def _barcode_belongs_to_product(
 async def _retailer_store(
     connection: asyncpg.Connection, payload: PriceDraftCreate, user: dict,
 ) -> tuple[int, int, int | None, int | None]:
+    # New locations must not cross a concurrent permanent deletion between
+    # the source-tombstone check and their insert. Lifecycle actions use this
+    # lock before taking a store row lock.
+    if payload.store_id is None:
+        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
     retailer_id = await connection.fetchval(
         "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
         payload.retailer,
@@ -201,6 +206,11 @@ async def _retailer_store(
         str(retailer_id), payload.store_name, payload.city, payload.postal_code
     ))
     import_key = "manual:store:" + _hash(identity)
+    if await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_deleted_store_sources WHERE source_key=$1)",
+        "import:" + import_key,
+    ):
+        raise HTTPException(status_code=409, detail="Ce magasin a été supprimé définitivement.")
     store_id = await connection.fetchval(
         "INSERT INTO v2_stores(retailer_id,name,city,postal_code,import_key) "
         "VALUES($1,$2,$3,$4,$5) ON CONFLICT(import_key) DO UPDATE "
@@ -210,11 +220,13 @@ async def _retailer_store(
     )
     canonical = await connection.fetchrow(
         "SELECT COALESCE(m.to_id,s.id) AS store_id,"
-        "c.retailer_id AS retailer_id FROM v2_stores s "
+        "c.retailer_id AS retailer_id,c.active FROM v2_stores s "
         "LEFT JOIN v2_content_merges m ON m.kind='store' AND m.from_id=s.id "
         "JOIN v2_stores c ON c.id=COALESCE(m.to_id,s.id) "
         "WHERE s.id=$1", store_id,
     )
+    if not canonical["active"]:
+        raise HTTPException(status_code=409, detail="Ce magasin est désactivé.")
     if canonical["retailer_id"] != retailer_id:
         same_group = await connection.fetchval(
             "SELECT a.group_id=b.group_id FROM v2_retailers a "
@@ -303,7 +315,7 @@ async def product_prices(product_id: int):
                 JOIN v2_retailers r ON r.id=o.retailer_id
                 LEFT JOIN v2_retailers sr ON sr.id=o.source_retailer_id
                 JOIN v2_stores s ON s.id=o.store_id
-                WHERE o.product_id=$1 AND NOT o.superseded
+                WHERE o.product_id=$1 AND NOT o.superseded AND s.active
                 ORDER BY o.store_id,o.sales_channel,o.observed_at DESC,o.id DESC
             ) latest
             ORDER BY latest.observed_at DESC,latest.id DESC LIMIT 201
@@ -338,7 +350,7 @@ async def product_price_drafts(product_id: int, request: Request):
             JOIN v2_retailers r ON r.id=d.retailer_id
             LEFT JOIN v2_retailers sr ON sr.id=d.source_retailer_id
             JOIN v2_stores s ON s.id=d.store_id
-            WHERE d.product_id=$1 AND (d.author_id=$2 OR
+            WHERE d.product_id=$1 AND s.active AND (d.author_id=$2 OR
                 ($3='admin' AND d.status='draft'))
             ORDER BY d.updated_at DESC,d.id DESC LIMIT 100
             """,
@@ -530,6 +542,10 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                 raise HTTPException(status_code=404, detail="Relevé à valider introuvable.")
             observation_id = None
             if approve:
+                if not await connection.fetchval(
+                    "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", draft["store_id"]
+                ):
+                    raise HTTPException(status_code=409, detail="Ce magasin est désactivé.")
                 if draft["product_id"] is None:
                     raise HTTPException(
                         status_code=409,

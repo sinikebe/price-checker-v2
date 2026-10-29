@@ -54,10 +54,10 @@ export default function V2HomePage({ user, onLogout }: {
   user: V2User | null;
   onLogout: () => Promise<void>;
 }) {
-  const { products } = useV2Basket();
+  const { items } = useV2Basket();
   const { installed, requestInstall } = usePwaInstall();
   const [installMessage, setInstallMessage] = useState("");
-  const basketCount = products.length;
+  const basketCount = items.length;
 
   async function installApp() {
     setInstallMessage(installMessages[await requestInstall()]);
@@ -168,7 +168,7 @@ export default function V2HomePage({ user, onLogout }: {
                 <div className="v2-journey-footer">
                   <span className="v2-journey-avatar"><BagIcon /></span>
                   <span>{basketCount > 0
-                    ? basketCount + " produit" + (basketCount > 1 ? "s" : "") + " dans votre panier"
+                    ? basketCount + " article" + (basketCount > 1 ? "s" : "") + " dans votre panier"
                     : "Votre panier vous attend"}</span>
                 </div>
               </div>
@@ -195,8 +195,8 @@ export default function V2HomePage({ user, onLogout }: {
               <span className="v2-action-icon v2-action-icon-peach"><BagIcon /></span>
               <span className="v2-action-title">{basketCount > 0 ? "Je reprends mon panier" : "Je prépare mon panier"}</span>
               <span className="v2-action-description">{basketCount > 0
-                ? "Retrouvez vos produits et continuez à organiser vos courses."
-                : "Gardez vos produits sous la main pour organiser vos prochaines courses."}</span>
+                ? "Retrouvez vos articles et continuez à organiser vos courses."
+                : "Gardez produits, groupes et ensembles sous la main pour vos courses."}</span>
               <span className="v2-action-link">Ouvrir mon panier <ArrowIcon /></span>
             </Link>
             <Link className="v2-action-card" to="/v2/produits">
