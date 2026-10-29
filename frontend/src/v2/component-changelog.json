@@ -236,6 +236,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.81",
+      "components": {
+        "basket": {
+          "version": "0.1.12",
+          "notes": [
+            "Le panier avancé distingue les paquets à acheter du coût au prorata des quantités utilisées, avec des quantités conservées dans les liens partagés."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.14",
+          "notes": [
+            "Les ingrédients d’une recette peuvent être ajoutés au panier selon le nombre de portions, avec le choix d’une référence pour chaque groupe."
+          ]
+        }
+      }
     }
   ]
 }

@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import ts from "typescript";
 
-const source = readFileSync(new URL("../src/v2/v2-basket-share.ts", import.meta.url), "utf8");
+const storageSource = readFileSync(new URL("../src/v2/v2-basket-storage.ts", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/v2/v2-basket-share.ts", import.meta.url), "utf8")
+  .replace('import { validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";', storageSource);
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -35,4 +37,11 @@ test("malformed, duplicate and excessive shared baskets are rejected", () => {
     ({ id: i + 1, revision: 1, data: { name: "Produit" } }))), null);
   const duplicate = btoa(JSON.stringify([1, [["g", "Lait", 0], ["g", "lait", 1]]])).replace(/=+$/, "");
   assert.equal(decodeBasketShare("#panier=" + duplicate), null);
+});
+
+test("shared advanced quantities survive round trip and malformed quantities are rejected", () => {
+  const hash = encodeBasketShare([{ kind: "group", name: "Beurre", quantity: { amount: "20", unit: "g" } }]);
+  assert.deepEqual(decodeBasketShare(hash), [["g", "Beurre", 0, { amount: "20", unit: "g" }]]);
+  const malformed = btoa(JSON.stringify([2, [["g", "Beurre", 0, { amount: "-20", unit: "g" }]]])).replace(/=+$/, "");
+  assert.equal(decodeBasketShare("#panier=" + malformed), null);
 });

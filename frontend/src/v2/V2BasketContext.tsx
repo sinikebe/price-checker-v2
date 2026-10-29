@@ -1,12 +1,16 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { V2_BASKET_EVENT, activateBasketUser, basketItemKey, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
+import { combineQuantities } from "./v2-basket-quantity";
+import type { BasketQuantity } from "./v2-basket-storage";
 
 type BasketValue = {
   items: BasketItem[];
   add: (item: BasketItem) => void;
   remove: (item: BasketItem | number) => void;
   setEnabled: (item: BasketItem, enabled: boolean) => void;
+  setQuantity: (item: BasketItem, quantity: BasketQuantity | undefined) => void;
+  addQuantities: (entries: { item: BasketItem; quantity: BasketQuantity }[]) => { added: number; merged: number; conflicts: number };
   replace: (item: BasketItem, next: BasketItem) => void;
   has: (item: BasketItem | number) => boolean;
   clear: () => void;
@@ -33,10 +37,25 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
       update(items.filter(saved => basketItemKey(saved) !== key)); },
     setEnabled: (item, enabled) => { const key = basketItemKey(item);
       update(items.map(saved => basketItemKey(saved) === key ? { ...saved, disabled: !enabled } : saved)); },
+    setQuantity: (item, quantity) => { const key = basketItemKey(item);
+      update(itemsRef.current.map(saved => basketItemKey(saved) === key ? { ...saved, quantity } : saved)); },
+    addQuantities: entries => {
+      const next = [...itemsRef.current];
+      let added = 0, merged = 0, conflicts = 0;
+      for (const entry of entries) {
+        const index = next.findIndex(saved => basketItemKey(saved) === basketItemKey(entry.item));
+        if (index < 0) { next.push({ ...entry.item, quantity: entry.quantity }); added++; continue; }
+        const quantity = combineQuantities(next[index].quantity, entry.quantity);
+        if (!quantity) { conflicts++; continue; }
+        next[index] = { ...next[index], quantity, disabled: false }; merged++;
+      }
+      if (added || merged) update(next);
+      return { added, merged, conflicts };
+    },
     replace: (item, next) => { const key = basketItemKey(item), nextKey = basketItemKey(next);
       if (key !== nextKey && items.some(saved => basketItemKey(saved) === nextKey)) return;
       update(items.map(saved => basketItemKey(saved) === key
-        ? { ...next, disabled: saved.disabled } : saved)); },
+        ? { ...next, disabled: saved.disabled, quantity: saved.quantity } : saved)); },
     has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
       return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },

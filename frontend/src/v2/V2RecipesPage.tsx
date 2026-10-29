@@ -8,6 +8,8 @@ import { recipeRequest, type Recipe, type RecipeIngredient, type RecipeInput, ty
 import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
+import { useV2Basket } from "./V2BasketContext";
+import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
 
 type Mode = "list" | "detail" | "new" | "edit";
 type Props = { mode: Mode; id?: number; user: V2User | null; onLogout: () => Promise<void> };
@@ -78,6 +80,7 @@ function List({ user, onLogout }: Props) {
 }
 
 function Detail({ id, user, onLogout }: Props) {
+  const basket = useV2Basket();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [access, setAccess] = useState<{ recipeId: number; userId: number; canEdit: boolean } | null>(null);
   const userId = user?.id;
@@ -86,6 +89,9 @@ function Detail({ id, user, onLogout }: Props) {
   const [productsError, setProductsError] = useState(false);
   const [error, setError] = useState("");
   const [servings, setServings] = useState("");
+  const [selectedProducts, setSelectedProducts] = useState<Record<number, number>>({});
+  const [included, setIncluded] = useState<Record<number, boolean>>({});
+  const [basketError, setBasketError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   useEffect(() => {
@@ -110,6 +116,35 @@ function Detail({ id, user, onLogout }: Props) {
     try { await recipeRequest<void>(`/${recipe.id}`, "DELETE"); navigate("/v2/recettes"); }
     catch (reason) { setError(message(reason)); setDeleting(false); }
   }
+  function addIngredients() {
+    if (!recipe || !positiveDecimal(servings)) { setBasketError("Indiquez un nombre de portions valide."); return; }
+    const entries: { item: BasketItem; quantity: BasketQuantity }[] = [];
+    const unavailable: string[] = [];
+    for (const [index, ingredient] of recipe.ingredients.entries()) {
+      if (ingredient.optional && included[index] !== true) continue;
+      const selected = selectedProducts[index] ?? 0;
+      const product = products.find(value => value.id === (selected || ingredient.product_id));
+      const item: BasketItem | null = product ?? (ingredient.group_name && !selected
+        ? { kind: "group", name: ingredient.group_name } : null);
+      if (!item) { unavailable.push(ingredient.label); continue; }
+      let quantity: BasketQuantity = { amount: "1", unit: "package" };
+      if (ingredient.amount && ingredient.unit) {
+        const scaled = Number(ingredient.amount) * Number(servings) / Number(recipe.base_servings);
+        const amount = String(Math.round(scaled * 1000000) / 1000000);
+        if (!Number.isFinite(scaled) || Number(amount) <= 0 || Number(amount) > 999999) { unavailable.push(ingredient.label); continue; }
+        quantity = { amount, unit: ingredient.unit };
+      }
+      entries.push({ item, quantity });
+    }
+    const result = basket.addQuantities(entries);
+    if (unavailable.length || result.conflicts) {
+      setBasketError(`${unavailable.length ? "Ingrédients sans produit disponible : " + unavailable.join(", ") + ". " : ""}${result.conflicts ? result.conflicts + " quantité(s) incompatibles avec le panier actuel. " : ""}Les autres ingrédients ont été ajoutés.`);
+      return;
+    }
+    if (!entries.length) { setBasketError("Aucun ingrédient sélectionné."); return; }
+    try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
+    navigate("/v2/panier");
+  }
   return <Frame user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to="/v2/recettes">← Toutes les recettes</Link>
     {error && <p role="alert" className="v2-recipes-error">{error}</p>}
@@ -118,14 +153,21 @@ function Detail({ id, user, onLogout }: Props) {
       {canEdit && <div className="v2-recipes-actions"><Link className="v2-button v2-button-secondary" to={`/v2/recettes/${recipe.id}/modifier`}>Modifier</Link><button className="v2-button v2-button-secondary" disabled={deleting} onClick={() => { void remove(); }}>Supprimer</button></div>}</div>
       <div className="v2-recipes-detail-grid"><section className="v2-recipes-card"><h2>Ingrédients</h2>
         <label className="v2-recipes-servings">Pour <input aria-label="Nombre de portions" type="number" min="0.001" step="0.001" value={servings} onChange={event => setServings(event.target.value)} /> portions</label>
+        <p>Ajoutez les ingrédients au panier pour comparer le coût des paquets et des quantités utilisées. Les ingrédients facultatifs sont décochés par défaut.</p>
+        {basketError && <p role="alert" className="v2-recipes-error">{basketError}</p>}
         <ul className="v2-recipes-ingredients">{recipe.ingredients.map(item => {
+          const index = recipe.ingredients.indexOf(item);
           const choices = item.group_name ? products.filter(product => product.data.group.trim().toLocaleLowerCase() === item.group_name?.trim().toLocaleLowerCase()) : [];
           return <li key={item.id}><div><strong>{item.amount && positiveDecimal(servings) ? `${scaledQuantity(item.amount, servings, recipe.base_servings)} ${item.unit === "piece" ? "pièce(s)" : item.unit} · ` : ""}{item.label}</strong>{item.optional && <span>Facultatif</span>}</div>
             {item.product_id && <p>Produit précis : <Link to={`/v2/produits/${item.product_id}`}>{item.product ? productName(item.product) : `Produit #${item.product_id}`}</Link></p>}
             {item.group_name && <div><p>Au choix dans « {item.group_name} »</p>{choices.length ? <div className="v2-recipes-choices">{choices.map(product => <Link key={product.id} to={`/v2/produits/${product.id}`}>{productName(product.data)} →</Link>)}</div> : <small>{productsError ? "Choix indisponibles actuellement." : "Aucun produit publié dans ce groupe pour le moment."}</small>}</div>}
+            {item.optional && <label className="v2-recipes-check"><input type="checkbox" checked={included[index] === true} onChange={event => setIncluded({ ...included, [index]: event.target.checked })} />Ajouter cet ingrédient facultatif</label>}
+            {item.group_name && <label className="v2-recipes-basket-choice">Référence pour le panier<select value={selectedProducts[index] ?? 0} onChange={event => setSelectedProducts({ ...selectedProducts, [index]: Number(event.target.value) })}>
+              <option value={0}>Choix automatique dans le groupe</option>{choices.map(product => <option key={product.id} value={product.id}>{productName(product.data)}</option>)}
+            </select></label>}
             {item.note && <small>{item.note}</small>}
           </li>;
-        })}</ul></section>
+        })}</ul><button type="button" className="v2-button v2-button-primary" onClick={addIngredients}>Ajouter les ingrédients au panier →</button></section>
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{recipe.prep_minutes != null && `Préparation : ${recipe.prep_minutes} min · `}{recipe.cook_minutes != null && `Cuisson : ${recipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{recipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
       <V2ReportControl kind="recipe" contentId={recipe.id} user={user} />
     </>}

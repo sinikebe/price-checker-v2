@@ -309,6 +309,11 @@
       "component": "open_prices",
       "version": "0.1.21",
       "reason": "Le bouton de partage est ajouté au catalogue sans changer le connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.81",
+      "reason": "Le panier avancé et le passage des recettes au panier sont annoncés dans les composants concernés."
     }
   ]
 }
