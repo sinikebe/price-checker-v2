@@ -5,6 +5,7 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2PriceDraftInbox from "./V2PriceDraftInbox";
 import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
 import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
@@ -88,8 +89,9 @@ function ListPage({ mode, user, onLogout }: Props) {
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
     </div>
     {mode === "catalogue" && <V2BarcodeSearch />}
+    {(mode === "mine" || (mode === "review" && user?.role === "admin")) && <h2 className="v2-workspace-section-title">Propositions de produits</h2>}
     {mode === "review" && user?.role !== "admin" ? <p role="alert">Accès réservé à l'administrateur.</p> :
-      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun {mode === "catalogue" ? "produit publié" : "brouillon"} pour le moment.</div> :
+      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun {mode === "catalogue" ? "produit publié" : "brouillon de produit"} pour le moment.</div> :
       <div className="v2-workspace-list">{data.map(item => {
         const draft = "status" in item;
         const href = draft ? "/v2/brouillons/" + item.id : "/v2/produits/" + item.id;
@@ -106,6 +108,7 @@ function ListPage({ mode, user, onLogout }: Props) {
       <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
         onClick={() => setPage(value => value + 1)}>Suivant</button>
     </div>}
+    {(mode === "mine" || mode === "review") && <V2PriceDraftInbox mode={mode} user={user} />}
     {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
   </Frame>;
 }

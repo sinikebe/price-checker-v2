@@ -186,6 +186,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.77",
+      "components": {
+        "products": {
+          "version": "0.1.43",
+          "notes": [
+            "Les propositions de prix sont visibles dans Mes brouillons et À valider, avec publication ou refus depuis la liste."
+          ]
+        }
+      }
     }
   ]
 }
