@@ -71,6 +71,17 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
                     "VALUES($1,$2,$3,'manual',1.50,now(),'in_store')",
                     product_id, retailer_id, store_id,
                 )
+            correction_id = await connection.fetchval(
+                "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,"
+                "source,price,observed_at,sales_channel) "
+                "VALUES($1,$2,$3,'manual',1.70,now(),'in_store') RETURNING id",
+                product_id, retailer_id, target_id,
+            )
+            await connection.execute(
+                "UPDATE v2_price_observations SET corrected_price=1.70,"
+                "correction_status='resolved',resolved_by_observation_id=$1 "
+                "WHERE store_id=$2 AND id<>$1", correction_id, target_id,
+            )
             await connection.execute(
                 "INSERT INTO v2_price_drafts(author_id,product_id,retailer_id,store_id,"
                 "entry_kind,price,observed_at) VALUES($1,$2,$3,$4,'manual',1.60,now())",
@@ -141,7 +152,7 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             assert (await client.post(path + "/delete", json={"confirmation": "Exemple fermé"})).status_code == 403
             deleted = await client.post(path + "/delete", json={"confirmation": "Exemple fermé"}, headers=admin)
             assert deleted.status_code == 200, deleted.text
-            assert deleted.json()["deleted_prices"] == 1
+            assert deleted.json()["deleted_prices"] == 2
             assert set(deleted.json()["deleted_store_ids"]) == {target_id, donor_id}
             assert (await client.get(path, headers=admin)).status_code == 404
             history = (await client.get(f"/api/v2/prices/products/{product_id}")).json()
