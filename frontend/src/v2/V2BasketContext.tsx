@@ -1,31 +1,33 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-import { V2_BASKET_EVENT, activateBasketUser, readV2Basket, writeV2Basket, type BasketProduct } from "./v2-basket-storage";
+import { V2_BASKET_EVENT, activateBasketUser, basketItemKey, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
 
 type BasketValue = {
-  products: BasketProduct[];
-  add: (product: BasketProduct) => void;
-  remove: (id: number) => void;
-  has: (id: number) => boolean;
+  items: BasketItem[];
+  add: (item: BasketItem) => void;
+  remove: (item: BasketItem | number) => void;
+  has: (item: BasketItem | number) => boolean;
   clear: () => void;
   setUser: (userId: number | null, preserveOffline?: boolean) => void;
 };
 const Context = createContext<BasketValue | null>(null);
 
 export function V2BasketProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState(readV2Basket);
+  const [items, setItems] = useState(readV2Basket);
   useEffect(() => {
-    const refresh = () => setProducts(readV2Basket());
+    const refresh = () => setItems(readV2Basket());
     window.addEventListener("storage", refresh);
     window.addEventListener(V2_BASKET_EVENT, refresh);
     return () => { window.removeEventListener("storage", refresh); window.removeEventListener(V2_BASKET_EVENT, refresh); };
   }, []);
-  const update = (next: BasketProduct[]) => { setProducts(next); try { writeV2Basket(next); } catch { /* current tab still works */ } };
+  const update = (next: BasketItem[]) => { setItems(next); try { writeV2Basket(next); } catch { /* current tab still works */ } };
   return <Context.Provider value={{
-    products,
-    add: product => { if (!products.some(item => item.id === product.id)) { update([...products, product]); } },
-    remove: id => { update(products.filter(item => item.id !== id)); },
-    has: id => products.some(item => item.id === id),
+    items,
+    add: item => { if (!items.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...items, item]); },
+    remove: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+      update(items.filter(saved => basketItemKey(saved) !== key)); },
+    has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+      return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },
     setUser: activateBasketUser,
   }}>{children}</Context.Provider>;

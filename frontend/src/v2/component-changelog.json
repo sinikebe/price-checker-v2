@@ -130,6 +130,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.71",
+      "components": {
+        "basket": {
+          "version": "0.1.7",
+          "notes": [
+            "Le panier accepte un produit, un groupe ou un ensemble et compare les prix selon plusieurs magasins, communes ou départements."
+          ]
+        }
+      }
     }
   ]
 }

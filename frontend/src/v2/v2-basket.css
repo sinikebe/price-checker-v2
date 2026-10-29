@@ -7,6 +7,17 @@
 .v2-basket-comparison-heading h2, .v2-basket-store h3 { margin: 0 0 5px; }
 .v2-basket-comparison-heading p, .v2-basket-store-heading p { margin: 0; }
 .v2-basket-comparison-heading button { flex: none; }
+.v2-basket-filters { margin: 0 0 20px; padding: 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; }
+.v2-basket-filters h3 { margin: 0 0 4px; }
+.v2-basket-filters p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .88rem; }
+.v2-basket-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
+.v2-basket-filter { min-width: 0; border: 1px solid var(--v2-line, #dce8db); border-radius: 8px; }
+.v2-basket-filter summary { padding: 10px; cursor: pointer; font-weight: 650; }
+.v2-basket-filter-options { display: grid; gap: 7px; max-height: 210px; overflow: auto; padding: 8px 10px 12px; border-top: 1px solid var(--v2-line, #dce8db); }
+.v2-basket-filter-options label { display: flex; align-items: start; gap: 7px; overflow-wrap: anywhere; cursor: pointer; }
+.v2-basket-filter-options input { margin-top: 4px; accent-color: #285f43; }
+.v2-basket-choice { display: grid; gap: 2px; min-width: 0; }
+.v2-basket-choice small { color: var(--v2-muted, #617467); }
 .v2-basket-store-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .v2-basket-store { min-width: 0; padding: 16px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
 .v2-basket-store h3 { color: #244b36; }
@@ -36,6 +47,7 @@ html[data-v2-theme="dark"] .v2-basket-age[data-age="aging"] { background: #57432
 html[data-v2-theme="dark"] .v2-basket-age[data-age="old"] { background: #34414b; color: #d8e0e7; }
 html[data-v2-theme="dark"] .v2-basket-missing { color: #ffe5ac !important; }
 @media (max-width: 600px) {
+  .v2-basket-filter-grid { grid-template-columns: 1fr; }
   .v2-basket-actions > button { flex: 1 1 100%; }
   .v2-basket-comparison-heading { flex-direction: column; }
   .v2-basket-store-heading { flex-direction: column; }

@@ -4,6 +4,8 @@ import type { V2User } from "./v2-auth-api";
 import { Frame } from "./V2ProductWorkspace";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import { productRequest, type Product } from "./v2-products-api";
+import { useV2Basket } from "./V2BasketContext";
+import type { BasketGroup, BasketScope } from "./v2-basket-storage";
 import "./v2-catalogue.css";
 
 type Classification = {
@@ -338,6 +340,8 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
 }
 
 function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
+  const basket = useV2Basket();
+  const basketGroup: BasketGroup = { kind: "group", name };
   const { data, error } = useCatalogue<CategoryDetail>("/categories/" + encodeURIComponent(name));
   const [savedClassification, setSavedClassification] = useState<Classification | null>(null);
   const classification = savedClassification ?? data;
@@ -353,7 +357,8 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       </>}
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="group" />
-      <h1>{data?.name || name}<span>.</span></h1><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div></div>
+      <h1>{data?.name || name}<span>.</span></h1><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
+      {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketGroup) ? basket.remove(basketGroup) : basket.add(basketGroup)}>{basket.has(basketGroup) ? "Retirer ce groupe du panier" : "Ajouter ce groupe au panier"}</button>}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
       <ComparisonContent detail={data} />
@@ -362,6 +367,8 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
 }
 
 function ScopePage({ department, family, scope, user, onLogout }: Props & { department: string; family: string; scope: string }) {
+  const basket = useV2Basket();
+  const basketScope: BasketScope = { kind: "scope", name: scope, department, family };
   const query = new URLSearchParams({ department, family, scope });
   const { data, error } = useCatalogue<ScopeDetail>("/comparison?" + query.toString());
   return <Frame user={user} onLogout={onLogout}>
@@ -371,7 +378,8 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
       <Link to={browsePath(department, family)}><LevelBadge level="family" /> {family}</Link>
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="scope" />
-      <h1>{scope}<span>.</span></h1><p>Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis.</p></div></div>
+      <h1>{scope}<span>.</span></h1><p>Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis.</p></div>
+      {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketScope) ? basket.remove(basketScope) : basket.add(basketScope)}>{basket.has(basketScope) ? "Retirer cet ensemble du panier" : "Ajouter cet ensemble au panier"}</button>}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       <h2>Groupes comparables inclus</h2>
       <div className="v2-workspace-list">{data.groups.map(group =>

@@ -164,6 +164,31 @@
       "component": "products",
       "version": "0.1.36",
       "reason": "Ajustement mineur du contraste des icônes en mode sombre, déjà annoncées pour le catalogue."
+    },
+    {
+      "component": "application",
+      "version": "0.1.71",
+      "reason": "Fonctions du panier annoncées dans le composant Panier."
+    },
+    {
+      "component": "products",
+      "version": "0.1.37",
+      "reason": "Boutons d’ajout au panier sur les pages de groupe et d’ensemble, annoncés dans le composant Panier."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.16",
+      "reason": "Réutilisation des prix publiés dans les filtres du panier, sans changement du connecteur Open Prices."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.16",
+      "reason": "Synchronisation hors ligne adaptée aux groupes et ensembles du panier, déjà annoncés dans le composant Panier."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.12",
+      "reason": "Adaptation technique de la synchronisation partagée au panier mixte, sans changement des recettes."
     }
   ]
 }
