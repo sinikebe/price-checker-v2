@@ -124,6 +124,21 @@
       "component": "accounts",
       "version": "0.1.22",
       "reason": "Renforcement interne du plafond de tentatives après l’ajout de la double authentification."
+    },
+    {
+      "component": "application",
+      "version": "0.1.68",
+      "reason": "Navigation du catalogue déjà annoncée dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.27",
+      "reason": "Stockage des classements préremplis déjà annoncé dans le composant Produits."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.14",
+      "reason": "Adaptation de la page du catalogue sans changement des relevés Open Prices."
     }
   ]
 }

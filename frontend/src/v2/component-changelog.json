@@ -108,6 +108,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.68",
+      "components": {
+        "products": {
+          "version": "0.1.34",
+          "notes": [
+            "Le catalogue se parcourt par rayon, famille puis groupe comparable ; les classements préremplis peuvent être corrigés."
+          ]
+        }
+      }
     }
   ]
 }
