@@ -131,6 +131,7 @@ BEARER_OPERATIONS = {
     ("DELETE", "/api/v2/products/drafts/{draft_id}"),
     ("GET", "/api/v2/products/{product_id}/off/refresh-status"),
     ("POST", "/api/v2/products/{product_id}/off/refresh"),
+    ("GET", "/api/v2/prices/drafts/mine"),
     ("GET", "/api/v2/prices/products/{product_id}/drafts"),
     ("POST", "/api/v2/prices/capture-drafts"),
     ("POST", "/api/v2/prices/products/{product_id}/drafts"),

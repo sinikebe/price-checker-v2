@@ -1,0 +1,28 @@
+.v2-workspace-heading > div:first-child, .v2-recipes-heading > div:first-child { min-width: 0; }
+.v2-share-title-row { display: flex; align-items: start; justify-content: space-between; gap: 12px; min-width: 0; }
+.v2-share-title-row h1 { min-width: 0; overflow-wrap: anywhere; }
+.v2-share-control { display: inline-flex; flex: none; flex-direction: column; align-items: end; gap: 3px; margin-top: 8px; }
+.v2-share-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 6px 10px;
+  border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: var(--v2-surface, #fff);
+  color: #2b684a; font: inherit; font-size: .83rem; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.v2-share-button svg { width: 17px; height: 17px; flex: none; }
+.v2-share-button:hover, .v2-share-button:focus-visible { background: #eaf5ea; border-color: #81b08e; }
+.v2-share-button:disabled { opacity: .55; cursor: not-allowed; }
+.v2-share-feedback { color: #286647; font-size: .8rem; }
+.v2-share-feedback:empty { display: none; }
+.v2-shared-basket { margin: 0 0 18px; padding: 17px; border: 1px solid #8bb999; border-radius: 12px; background: #f3faf3; }
+.v2-shared-basket h2 { margin: 0 0 5px; font-size: 1.15rem; }
+.v2-shared-basket p { margin: 0 0 10px; }
+.v2-shared-basket ul { margin: 0 0 14px; padding-left: 20px; }
+.v2-shared-basket li { margin: 3px 0; overflow-wrap: anywhere; }
+.v2-shared-basket li span { color: var(--v2-muted, #617467); }
+.v2-shared-basket-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+html[data-v2-theme="dark"] .v2-share-button { color: #c8eed2; background: #22392c; border-color: #63816a; }
+html[data-v2-theme="dark"] .v2-share-button:hover, html[data-v2-theme="dark"] .v2-share-button:focus-visible { background: #304a36; }
+html[data-v2-theme="dark"] .v2-share-feedback { color: #a9dfb3; }
+html[data-v2-theme="dark"] .v2-shared-basket { background: #20372a; border-color: #63816a; }
+@media (max-width: 600px) {
+  .v2-share-title-row { align-items: start; }
+  .v2-share-control { margin-top: 5px; }
+  .v2-share-button { min-height: 44px; }
+}

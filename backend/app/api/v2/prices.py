@@ -10,7 +10,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import asyncpg
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
@@ -357,6 +357,84 @@ async def product_price_drafts(product_id: int, request: Request):
             product_id, user["id"], user["role"],
         )
         return [_draft(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+async def _draft_inbox(connection, *, owner_id: int | None, limit: int, offset: int) -> dict:
+    """List private price proposals independently of product proposals."""
+    if owner_id is None:
+        predicate = "d.status='draft'"
+        parameters = []
+        order = "ASC"
+    else:
+        predicate = "d.author_id=$1 AND d.status IN ('draft','rejected')"
+        parameters = [owner_id]
+        order = "DESC"
+    total = await connection.fetchval(
+        f"SELECT count(*) FROM v2_price_drafts d WHERE {predicate}", *parameters,
+    )
+    rows = await connection.fetch(
+        f"""
+        SELECT d.id,d.product_id,d.product_draft_id,d.author_id,
+               u.username AS author,d.price,d.observed_at,d.sales_channel,
+               d.status,d.note,d.capture_ean,d.quantity_text,d.captured_store_name,
+               r.name AS retailer,sr.name AS source_retailer,
+               s.name AS store_name,s.city,s.active AS store_active,
+               COALESCE(p.data->>'name',pd.data->>'name','') AS product_name,
+               COALESCE(p.data->>'brand',pd.data->>'brand','') AS product_brand
+        FROM v2_price_drafts d
+        JOIN v2_users u ON u.id=d.author_id
+        JOIN v2_retailers r ON r.id=d.retailer_id
+        LEFT JOIN v2_retailers sr ON sr.id=d.source_retailer_id
+        JOIN v2_stores s ON s.id=d.store_id
+        LEFT JOIN v2_products p ON p.id=d.product_id
+        LEFT JOIN v2_product_drafts pd ON pd.id=d.product_draft_id
+        WHERE {predicate}
+        ORDER BY d.updated_at {order},d.id {order}
+        LIMIT ${len(parameters) + 1} OFFSET ${len(parameters) + 2}
+        """,
+        *parameters, limit, offset,
+    )
+    return {"items": [{**_draft(row),
+                       "product_id": row["product_id"],
+                       "product_draft_id": row["product_draft_id"],
+                       "product_name": row["product_name"],
+                       "product_brand": row["product_brand"],
+                       "store_active": row["store_active"]} for row in rows],
+            "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/drafts/mine")
+async def my_price_drafts(
+    request: Request,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        return await _draft_inbox(
+            connection, owner_id=user["id"], limit=limit, offset=offset,
+        )
+    finally:
+        await connection.close()
+
+
+@router.get("/drafts/review")
+async def review_price_drafts(
+    request: Request,
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    connection = await _connect()
+    try:
+        user = await _user(connection, request)
+        if user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+        return await _draft_inbox(
+            connection, owner_id=None, limit=limit, offset=offset,
+        )
     finally:
         await connection.close()
 

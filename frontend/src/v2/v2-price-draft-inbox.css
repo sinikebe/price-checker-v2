@@ -1,0 +1,14 @@
+.v2-workspace-section-title { margin: 0 0 14px; color: #244b36; }
+.v2-price-draft-inbox { margin-top: 24px; }
+.v2-price-draft-inbox h2 span { color: #718476; font-size: .9em; }
+.v2-price-draft-inbox-list { list-style: none; margin: 0; padding: 0; }
+.v2-price-draft-inbox-list li { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 16px 0; border-top: 1px solid #e8eee8; }
+.v2-price-draft-inbox-list strong, .v2-price-draft-inbox-list small { display: block; overflow-wrap: anywhere; }
+.v2-price-draft-inbox-list small { margin-top: 5px; color: #66786c; }
+.v2-price-draft-inbox-actions, .v2-price-draft-inbox-pages { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.v2-price-draft-inbox-actions { flex: none; }
+.v2-price-draft-inbox-actions a { color: #317c54; font-weight: 700; }
+.v2-price-draft-inbox-actions button, .v2-price-draft-inbox-pages button { padding: 8px 11px; border: 1px solid #a9c9ad; border-radius: 8px; background: #f5faf3; color: #245b3c; cursor: pointer; }
+.v2-price-draft-inbox-actions button:disabled, .v2-price-draft-inbox-pages button:disabled { opacity: .55; cursor: not-allowed; }
+.v2-price-draft-inbox-pages { margin-top: 15px; }
+@media(max-width: 700px) { .v2-price-draft-inbox-list li { align-items: start; flex-direction: column; } .v2-price-draft-inbox-actions { flex: auto; } }

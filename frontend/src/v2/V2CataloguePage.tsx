@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { Frame } from "./V2ProductWorkspace";
@@ -357,7 +358,8 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       </>}
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="group" />
-      <h1>{data?.name || name}<span>.</span></h1><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
+      <div className="v2-share-title-row"><h1>{data?.name || name}<span>.</span></h1>
+      {data && <V2ShareButton title={"Groupe comparable · " + (data.name || name)} url={window.location.origin + "/v2/categories/" + encodeURIComponent(data.name || name)} />}</div><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
       {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketGroup) ? basket.remove(basketGroup) : basket.add(basketGroup)}>{basket.has(basketGroup) ? "Retirer ce groupe du panier" : "Ajouter ce groupe au panier"}</button>}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
@@ -378,7 +380,8 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
       <Link to={browsePath(department, family)}><LevelBadge level="family" /> {family}</Link>
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="scope" />
-      <h1>{scope}<span>.</span></h1><p>Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis.</p></div>
+      <div className="v2-share-title-row"><h1>{scope}<span>.</span></h1>
+      {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div><p>Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis.</p></div>
       {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketScope) ? basket.remove(basketScope) : basket.add(basketScope)}>{basket.has(basketScope) ? "Retirer cet ensemble du panier" : "Ajouter cet ensemble au panier"}</button>}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       <h2>Groupes comparables inclus</h2>

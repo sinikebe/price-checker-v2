@@ -269,6 +269,46 @@
       "component": "open_prices",
       "version": "0.1.20",
       "reason": "Verrouillage des nouveaux magasins Open Prices pendant leur suppression définitive."
+    },
+    {
+      "component": "application",
+      "version": "0.1.76",
+      "reason": "Le préremplissage OFF et la correction de composition sont annoncés dans les composants concernés."
+    },
+    {
+      "component": "application",
+      "version": "0.1.77",
+      "reason": "L’accès aux propositions de prix est annoncé dans le composant Produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.23",
+      "reason": "La page commune aux brouillons de produits et de prix change sans modifier les données Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.78",
+      "reason": "La nouvelle expérience du panier est annoncée dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.79",
+      "reason": "La clarification visuelle du panier est annoncée dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.80",
+      "reason": "Le partage est annoncé dans les composants Panier et Produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.24",
+      "reason": "Le bouton de partage est ajouté à la fiche produit sans changer les données Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.21",
+      "reason": "Le bouton de partage est ajouté au catalogue sans changer le connecteur Open Prices."
     }
   ]
 }

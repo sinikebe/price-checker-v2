@@ -569,9 +569,13 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                         detail="Cette référence possède déjà une version suivante.",
                     )
                 before = _decoded(existing["data"])
+                # Filling a previously blank composition documents the existing
+                # reference; changing an established recipe creates a new version.
                 material = any(
                     before.get(key, "").strip() != data[key].strip()
-                    for key in ("composition", "package", "quantity")
+                    for key in ("package", "quantity")
+                ) or bool(before.get("composition", "").strip()) and (
+                    before["composition"].strip() != data["composition"].strip()
                 )
                 if material and draft["change_kind"] != "new_version":
                     raise HTTPException(

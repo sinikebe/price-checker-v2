@@ -15,6 +15,14 @@ export type BasketComparison = {
   stores: StoreQuote[]; split: PriceChoice[]; splitCents: number;
   missing: BasketItem[]; failed: BasketItem[]; truncated: BasketItem[];
 };
+export type PricePosition = "neutral" | "low" | "middle" | "high";
+export function pricePosition(cents: number, min: number, max: number): PricePosition {
+  if (!Number.isFinite(cents) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return "neutral";
+  const fraction = (cents - min) / (max - min);
+  if (fraction <= 1 / 3) return "low";
+  if (fraction <= 2 / 3) return "middle";
+  return "high";
+}
 export const emptyBasketFilters: BasketFilters = { storeIds: [], cities: [], departments: [] };
 const storeKey = (row: BasketPrice) => String(row.store_id) + ":" + row.sales_channel;
 const fold = (value: string) => value.trim().toLocaleLowerCase("fr");

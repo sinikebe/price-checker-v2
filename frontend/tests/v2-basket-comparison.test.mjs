@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { buildBasketComparison, postalDepartment } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { buildBasketComparison, postalDepartment, pricePosition } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const product = id => ({ id, revision: 1, data: { name: "Product " + id } });
 const line = (item, ...candidates) => ({ item, candidates });
@@ -105,4 +105,12 @@ test("ties prefer newer readings, while store and drive remain separate", () => 
 test("department extraction handles mainland, Corsica and overseas postal codes", () => {
   assert.deepEqual(["75001", "20190", "20200", "97100", "97410", "abc"].map(postalDepartment),
     ["75", "2A", "2B", "971", "974", null]);
+});
+
+
+test("price position is relative to comparable result range", () => {
+  assert.equal(pricePosition(100, 100, 100), "neutral");
+  assert.equal(pricePosition(100, 100, 400), "low");
+  assert.equal(pricePosition(250, 100, 400), "middle");
+  assert.equal(pricePosition(400, 100, 500), "high");
 });

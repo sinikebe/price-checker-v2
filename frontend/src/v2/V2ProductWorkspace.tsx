@@ -5,10 +5,12 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2PriceDraftInbox from "./V2PriceDraftInbox";
 import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
 import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import { useV2Basket } from "./V2BasketContext";
+import V2ShareButton from "./V2ShareButton";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
   type ProductData, type ProductEvent,
@@ -21,7 +23,7 @@ const fields: { key: "brand" | "name" | "commercial_name" | "composition" | "pac
   { key: "brand", label: "Marque" },
   { key: "name", label: "Nom du produit" },
   { key: "commercial_name", label: "Nom commercial complet" },
-  { key: "composition", label: "Composition", hint: "Si elle change, une nouvelle version du produit sera créée." },
+  { key: "composition", label: "Composition", hint: "Modifier une composition déjà renseignée exige une nouvelle version." },
   { key: "package", label: "Conditionnement", hint: "Ex. flacon souple" },
   { key: "quantity", label: "Quantité", hint: "Ex. 415 g ou 1 L" },
   { key: "ean", label: "Code EAN / GTIN", hint: "8, 12, 13 ou 14 chiffres, facultatif." },
@@ -88,8 +90,9 @@ function ListPage({ mode, user, onLogout }: Props) {
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
     </div>
     {mode === "catalogue" && <V2BarcodeSearch />}
+    {(mode === "mine" || (mode === "review" && user?.role === "admin")) && <h2 className="v2-workspace-section-title">Propositions de produits</h2>}
     {mode === "review" && user?.role !== "admin" ? <p role="alert">Accès réservé à l'administrateur.</p> :
-      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun {mode === "catalogue" ? "produit publié" : "brouillon"} pour le moment.</div> :
+      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun {mode === "catalogue" ? "produit publié" : "brouillon de produit"} pour le moment.</div> :
       <div className="v2-workspace-list">{data.map(item => {
         const draft = "status" in item;
         const href = draft ? "/v2/brouillons/" + item.id : "/v2/produits/" + item.id;
@@ -106,6 +109,7 @@ function ListPage({ mode, user, onLogout }: Props) {
       <button type="button" className="v2-button v2-button-secondary" disabled={data.length < pageSize}
         onClick={() => setPage(value => value + 1)}>Suivant</button>
     </div>}
+    {(mode === "mine" || mode === "review") && <V2PriceDraftInbox mode={mode} user={user} />}
     {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
   </Frame>;
 }
@@ -138,6 +142,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [localError, setLocalError] = useState("");
   const localVersion = useRef(0);
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
+  const [allowOffDefault] = useState(() => !localRead(localKey));
   const [tagInput, setTagInput] = useState("");
   const [retailerInput, setRetailerInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -300,7 +305,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
           </fieldset>}
         </fieldset>
-        <V2OffLookup data={data} disabled={busy || readonly}
+        <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
           onApply={next => persist(next, changeKind, true)} />
         {conflict && draft && <div className="v2-workspace-conflict" role="alert">
           <strong>Conflit de brouillon.</strong> Votre saisie locale repose sur une version différente de celle du serveur.
@@ -335,7 +340,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
       <aside className="v2-workspace-card v2-workspace-aside"><h2>Visibilité</h2>
         <p>{draft ? "Ce brouillon est visible par son auteur et les administrateurs." : "La saisie locale n'est visible que dans ce navigateur."}</p>
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
-        <p>Un changement de composition ou de format exige une nouvelle version liée à l'ancienne fiche.</p>
+        <p>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</p>
         {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
           <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}
@@ -361,7 +366,8 @@ function Detail({ mode, id, user, onLogout }: Props) {
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><h1>{d.brand} {d.name}<span>.</span></h1>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>
+      <V2ShareButton title={[d.brand, d.name].filter(Boolean).join(" ")} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
       <p>{d.commercial_name || d.quantity}</p></div>
       <div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => product && (basket.has(product.id) ? basket.remove(product.id) : basket.add(product))}>{basket.has(product.id) ? "Retirer du panier" : "Ajouter au panier"}</button><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
