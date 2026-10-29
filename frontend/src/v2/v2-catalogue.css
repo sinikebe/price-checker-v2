@@ -32,3 +32,10 @@
   .v2-catalogue-search-row { flex-direction: column; }
   .v2-catalogue-pagination { justify-content: space-between; }
 }
+.v2-catalogue-crumbs { display: flex; flex-wrap: wrap; gap: .35rem; margin: 1rem 0; font-size: .95rem; color: var(--v2-muted); }
+.v2-catalogue-crumbs a { color: inherit; }
+.v2-catalogue-classification { margin: 1.2rem 0; padding: 1rem; border: 1px solid #d5e0df; border-radius: .7rem; }
+.v2-catalogue-classification h2 { margin-top: 0; }
+.v2-catalogue-classification fieldset { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; padding: 0; border: 0; }
+.v2-catalogue-classification label { display: grid; gap: .35rem; min-width: min(100%, 14rem); font-weight: 650; }
+.v2-catalogue-classification input { width: 100%; padding: .65rem; border: 1px solid #9da9ad; border-radius: .5rem; background: #fff; color: #14252b; }

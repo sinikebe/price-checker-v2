@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _connect
+from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
+from app.services.v2_catalogue_hierarchy import UNCATEGORIZED
 
 router = APIRouter(prefix="/api/v2/catalogue", tags=["v2-catalogue"])
 
@@ -29,18 +31,46 @@ STORE_MATCH = """EXISTS (
 )"""
 
 
+def _classification(row) -> dict:
+    return {
+        "department": row["department"] if row else UNCATEGORIZED,
+        "family": row["family"] if row else UNCATEGORIZED,
+        "classification_source": row["source"] if row else "unclassified",
+        "classification_revision": row["revision"] if row else 0,
+    }
+
+
+class ClassificationUpdate(BaseModel):
+    department: str = Field(min_length=1, max_length=80)
+    family: str = Field(min_length=1, max_length=80)
+    base_revision: int = Field(ge=0)
+
+    @field_validator("department", "family")
+    @classmethod
+    def clean_label(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Le classement ne peut pas être vide.")
+        return value
+
+
 @router.get("/categories")
 async def list_categories():
     connection = await _connect()
     try:
         rows = await connection.fetch(
-            f"""SELECT min(category) AS name, count(*) AS product_count
+            f"""SELECT min(v.category) AS name, count(*) AS product_count,
+                       c.department,c.family,c.source,c.revision
                 FROM (SELECT {CATEGORY} AS category FROM v2_products p
-                      WHERE {CURRENT}) visible
-                GROUP BY lower(category)
-                ORDER BY lower(min(category))"""
+                      WHERE {CURRENT}) v
+                LEFT JOIN v2_catalogue_classifications c
+                  ON c.group_key=lower(v.category)
+                GROUP BY lower(v.category),c.department,c.family,c.source,c.revision
+                ORDER BY lower(min(v.category))"""
         )
-        return [dict(row) for row in rows]
+        return [{"name": row["name"], "product_count": row["product_count"],
+                 **_classification(row if row["source"] is not None else None)}
+                for row in rows]
     finally:
         await connection.close()
 
@@ -199,8 +229,13 @@ async def category_detail(name: str):
             """,
             ids,
         )
+        classification = await connection.fetchrow(
+            "SELECT department,family,source,revision FROM v2_catalogue_classifications "
+            "WHERE group_key=lower($1)", rows[0]["category_name"],
+        )
         return {
             "name": rows[0]["category_name"],
+            **_classification(classification),
             "products": [_product(row) for row in rows],
             "observations": [
                 {"id": row["id"], "product_id": row["product_id"],
@@ -211,5 +246,53 @@ async def category_detail(name: str):
             ],
             "history_limit_per_product": 30,
         }
+    finally:
+        await connection.close()
+
+
+@router.put("/categories/{name}/classification")
+async def update_category_classification(
+    name: str, payload: ClassificationUpdate, request: Request,
+):
+    """An admin classifies the comparable group; products and recipes stay intact."""
+    _secure_write(request)
+    if not name or len(name) > 100:
+        raise HTTPException(status_code=404, detail="Groupe comparable introuvable.")
+    connection = await _connect()
+    try:
+        user = await _current_user(connection, request)
+        if user is None or user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+        async with connection.transaction():
+            group = await connection.fetchval(
+                f"SELECT min({CATEGORY}) FROM v2_products p WHERE {CURRENT} "
+                f"AND lower({CATEGORY})=lower($1)", name,
+            )
+            if group is None:
+                raise HTTPException(status_code=404, detail="Groupe comparable introuvable.")
+            current = await connection.fetchrow(
+                "SELECT revision FROM v2_catalogue_classifications "
+                "WHERE group_key=lower($1) FOR UPDATE", group,
+            )
+            if (current["revision"] if current else 0) != payload.base_revision:
+                raise HTTPException(status_code=409, detail="Ce classement a changé. Rechargez-le avant de réessayer.")
+            if current:
+                row = await connection.fetchrow(
+                    "UPDATE v2_catalogue_classifications SET department=$2,family=$3,"
+                    "source='manual',revision=revision+1,updated_at=now() "
+                    "WHERE group_key=lower($1) RETURNING department,family,source,revision",
+                    group, payload.department, payload.family,
+                )
+            else:
+                row = await connection.fetchrow(
+                    "INSERT INTO v2_catalogue_classifications "
+                    "(group_key,group_name,department,family,source) "
+                    "VALUES(lower($1),$1,$2,$3,'manual') ON CONFLICT DO NOTHING "
+                    "RETURNING department,family,source,revision",
+                    group, payload.department, payload.family,
+                )
+                if row is None:
+                    raise HTTPException(status_code=409, detail="Ce classement a changé. Rechargez-le avant de réessayer.")
+        return {"name": group, **_classification(row)}
     finally:
         await connection.close()
