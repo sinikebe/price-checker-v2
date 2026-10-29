@@ -87,9 +87,9 @@ function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value
     </select></label><button type="button" className="v2-button v2-button-secondary" onClick={() => save(amount, unit)}>Appliquer</button>
     {error && <small role="alert">Quantité positive requise (6 décimales maximum).</small>}</div>;
 }
-function ChoiceLabel({ choice }: { choice: PriceChoice }) {
+function ChoiceLabel({ choice, advanced }: { choice: PriceChoice; advanced: boolean }) {
   return <span className="v2-basket-choice"><Link to={itemHref(choice.item)}>{itemName(choice.item)}</Link>
-    {choice.item.quantity && <small>Demandé : {choice.item.quantity.amount} {choice.item.quantity.unit === "package" ? "paquet(s)" : choice.item.quantity.unit === "piece" ? "pièce(s)" : choice.item.quantity.unit}</small>}
+    {advanced && choice.item.quantity && <small>Demandé : {choice.item.quantity.amount} {choice.item.quantity.unit === "package" ? "paquet(s)" : choice.item.quantity.unit === "piece" ? "pièce(s)" : choice.item.quantity.unit}</small>}
     {"kind" in choice.item && <small>Choix : <Link to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</Link>
       {choice.product.data.quantity && " · " + choice.product.data.quantity}</small>}</span>;
 }
@@ -291,7 +291,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                 const reading = choices[0].reading;
                 return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
                   <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong>{advanced && <span>Part utilisée : {money(choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
-                  <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
+                  <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} advanced={advanced} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                 </li>;
               })}</ul></details>}
             {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix ou quantité de paquet compatible : {comparison.missing.map(itemName).join(", ")}. Aucun total complet n’est calculé.</p>}
@@ -311,7 +311,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
               return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
                 <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{advanced && <span>Part utilisée : {money(store.choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
                 <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>
-                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
+                  <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} advanced={advanced} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                   {!complete && <p className="v2-basket-missing">Sans prix ici : {activeItems.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
                 </details>
               </li>;
