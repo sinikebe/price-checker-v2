@@ -207,6 +207,8 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
 async def _save_items(connection, product_id: int, barcode: str, items: list) -> int:
     imported = 0
     async with connection.transaction():
+        # Share the lifecycle lock before any tombstone or store lookup.
+        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
         for item in items:
             if not isinstance(item, dict):
                 continue

@@ -254,6 +254,21 @@
       "component": "open_prices",
       "version": "0.1.19",
       "reason": "Le verrouillage du cycle de vie évite une réimportation concurrente, sans modifier le connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.75",
+      "reason": "Correction technique des courses entre suppression de magasin et création de prix, sans nouvelle fonction visible."
+    },
+    {
+      "component": "products",
+      "version": "0.1.41",
+      "reason": "Verrouillage des nouveaux magasins proposés avec un prix pendant leur suppression définitive."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.20",
+      "reason": "Verrouillage des nouveaux magasins Open Prices pendant leur suppression définitive."
     }
   ]
 }

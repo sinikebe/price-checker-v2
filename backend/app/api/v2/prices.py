@@ -163,6 +163,11 @@ async def _barcode_belongs_to_product(
 async def _retailer_store(
     connection: asyncpg.Connection, payload: PriceDraftCreate, user: dict,
 ) -> tuple[int, int, int | None, int | None]:
+    # New locations must not cross a concurrent permanent deletion between
+    # the source-tombstone check and their insert. Lifecycle actions use this
+    # lock before taking a store row lock.
+    if payload.store_id is None:
+        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
     retailer_id = await connection.fetchval(
         "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
         payload.retailer,
