@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.81",
+    "version": "0.1.82",
     "status": "active"
   },
   "products": {
@@ -11,12 +11,12 @@
   },
   "recipes": {
     "label": "Recettes",
-    "version": "0.1.14",
+    "version": "0.1.15",
     "status": "active"
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.12",
+    "version": "0.1.13",
     "status": "active"
   },
   "database": {
