@@ -7,6 +7,7 @@ administrator approves them; fuzzy names are never silently attached.
 from __future__ import annotations
 
 import re
+import hashlib
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Literal
@@ -253,7 +254,10 @@ async def get_store(store_id: int, request: Request):
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
             "JOIN v2_retailer_groups g ON g.id=r.group_id "
             "WHERE s.id=$1 AND (s.active OR $2::boolean) AND (" + VISIBLE + " OR EXISTS "
-            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id))",
+            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)) "
+            "AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+            "JOIN v2_stores target ON target.id=m.to_id "
+            "WHERE m.kind='store' AND m.from_id=s.id AND NOT target.active))",
             store_id, user is not None and user["role"] == "admin",
             user["id"] if user else None,
         )
@@ -378,12 +382,19 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
             # Include donor identities: old Open Prices locations must not
             # recreate the deleted store through their preserved merge links.
             rows = await connection.fetch(
-                "SELECT id,import_key,osm_type,osm_id FROM v2_stores "
+                "SELECT id,retailer_id,name,city,postal_code,import_key,osm_type,osm_id FROM v2_stores "
                 "WHERE id=$1 OR id IN (SELECT from_id FROM v2_content_merges "
                 "WHERE kind='store' AND to_id=$1) ORDER BY id FOR UPDATE", store_id,
             )
             ids = [row["id"] for row in rows]
             sources = {"import:" + row["import_key"] for row in rows if row["import_key"]}
+            for row in rows:
+                if row["city"] and row["postal_code"]:
+                    identity = "|".join((str(row["retailer_id"]), row["name"],
+                                         row["city"], row["postal_code"]))
+                    sources.add("import:manual:store:" + hashlib.sha256(
+                        identity.casefold().encode("utf-8")
+                    ).hexdigest()[:32])
             sources.update("osm:" + row["osm_type"] + ":" + str(row["osm_id"])
                            for row in rows if row["osm_id"] is not None)
             aliases = await connection.fetch(

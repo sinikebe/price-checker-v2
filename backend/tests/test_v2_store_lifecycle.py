@@ -51,6 +51,15 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
                 "VALUES($1,'Exemple ouvert','Paris','75002','node',12346) RETURNING id",
                 retailer_id,
             )
+            donor_id = await connection.fetchval(
+                "INSERT INTO v2_stores(retailer_id,name,city,postal_code,import_key) "
+                "VALUES($1,'Ancien nom','Paris','75001','open_prices:location:77777') "
+                "RETURNING id", retailer_id,
+            )
+            await connection.execute(
+                "INSERT INTO v2_content_merges(kind,from_id,to_id,from_snapshot,to_snapshot,result_snapshot) "
+                "VALUES('store',$1,$2,'{}','{}','{}')", donor_id, target_id,
+            )
             product_id = await connection.fetchval(
                 "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
                 json.dumps({"name": "Produit", "brand": "Test", "group": "Lait"}),
@@ -78,7 +87,7 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             )
             await connection.execute(
                 "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
-                "VALUES('way',54321,$1)", target_id,
+                "VALUES('way',54321,$1)", donor_id,
             )
         finally:
             await connection.close()
@@ -103,6 +112,7 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             disabled = await client.put(path + "/activity", json={"active": False}, headers=admin)
             assert disabled.status_code == 200, disabled.text
             assert (await client.get(path)).status_code == 404
+            assert (await client.get(f"/api/v2/stores/{donor_id}")).status_code == 404
             assert (await client.get(path, headers=admin)).json()["active"] is False
             assert target_id not in {row["id"] for row in (await client.get("/api/v2/stores")).json()}
             assert target_id in {row["id"] for row in (await client.get("/api/v2/stores", headers=admin)).json()}
@@ -132,6 +142,7 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             deleted = await client.post(path + "/delete", json={"confirmation": "Exemple fermé"}, headers=admin)
             assert deleted.status_code == 200, deleted.text
             assert deleted.json()["deleted_prices"] == 1
+            assert set(deleted.json()["deleted_store_ids"]) == {target_id, donor_id}
             assert (await client.get(path, headers=admin)).status_code == 404
             history = (await client.get(f"/api/v2/prices/products/{product_id}")).json()
             assert {row["store_id"] for row in history["latest_by_store"]} == {other_id}

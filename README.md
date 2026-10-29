@@ -8,6 +8,8 @@ Catalogue collaboratif de produits, panier et recettes, avec une application web
 
 Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent une courbe de prix par magasin et canal, ainsi que le dernier relevé de chacun classé par prix et signalé selon sa fraîcheur, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Le catalogue se parcourt par rayon, famille, ensemble facultatif, groupe comparable puis produit. La recherche couvre les références, les groupes et les magasins ; les fiches de groupe et d’ensemble comparent les produits qu’elles réunissent.
 
+Sur chaque fiche magasin, l’administrateur peut le désactiver temporairement (fiche et prix masqués des résultats publics, données conservées) ou le supprimer définitivement avec ses prix, brouillons et offres associés. La suppression demande de saisir le nom du magasin.
+
 Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
 
 Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.

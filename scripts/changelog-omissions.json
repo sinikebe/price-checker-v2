@@ -219,6 +219,11 @@
       "component": "pwa",
       "version": "0.1.17",
       "reason": "Le contrôle de signalement partagé respecte le statut des magasins ; aucun changement du mode hors ligne."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.21",
+      "reason": "Le masquage des brouillons de prix liés à un magasin désactivé ne change pas les données Open Food Facts."
     }
   ]
 }
