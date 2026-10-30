@@ -281,6 +281,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.86",
+      "components": {
+        "basket": {
+          "version": "0.1.17",
+          "notes": [
+            "Les magasins sélectionnés peuvent être enregistrés par défaut pour le panier, uniquement dans ce navigateur."
+          ]
+        }
+      }
     }
   ]
 }

@@ -354,6 +354,11 @@
       "component": "recipes",
       "version": "0.1.17",
       "reason": "Le résolveur des références est partagé avec le panier sans autre changement du parcours Recettes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.86",
+      "reason": "L’enregistrement des magasins par défaut est annoncé dans le composant Panier."
     }
   ]
 }
