@@ -1,0 +1,12 @@
+.v2-basket-share-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(85vh, 750px); padding: 20px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 14px; background: var(--v2-surface, #fff); color: inherit; box-shadow: 0 16px 48px #0005; overflow: auto; }
+.v2-basket-share-dialog::backdrop { background: #101e16a6; }
+.v2-basket-share-top { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.v2-basket-share-top h2 { margin: 0; font-size: 1.3rem; }
+.v2-basket-share-close { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.8rem; line-height: 1; cursor: pointer; }
+.v2-basket-share-dialog p { margin: 10px 0; }
+.v2-basket-share-list { max-height: 180px; margin: 12px 0; padding-left: 20px; overflow: auto; }
+.v2-basket-share-list li { margin: 4px 0; overflow-wrap: anywhere; }
+.v2-basket-share-list span { color: var(--v2-muted, #617467); }
+.v2-basket-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-basket-share-qr { margin-top: 16px; text-align: center; }
+.v2-basket-share-qr img { display: block; max-width: 100%; height: auto; margin: auto; padding: 7px; background: white; border-radius: 8px; }

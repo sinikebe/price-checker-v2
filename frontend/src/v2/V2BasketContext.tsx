@@ -14,6 +14,7 @@ type BasketValue = {
   replace: (item: BasketItem, next: BasketItem) => void;
   has: (item: BasketItem | number) => boolean;
   clear: () => void;
+  replaceAll: (incoming: BasketItem[]) => void;
   merge: (incoming: BasketItem[]) => number;
   setUser: (userId: number | null, preserveOffline?: boolean) => void;
 };
@@ -60,6 +61,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
     has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
       return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },
+    replaceAll: incoming => update(incoming),
     merge: incoming => {
       const current = itemsRef.current;
       const keys = new Set(current.map(basketItemKey));
