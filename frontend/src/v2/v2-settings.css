@@ -107,3 +107,9 @@ html[data-v2-theme="dark"] .v2-security-form :is(input,select) { --v2-input-back
 .v2-connector-store code { overflow-wrap: anywhere; }
 .v2-connector-item { border-left: 3px solid currentColor; padding: .4rem 1rem; margin: 1rem 0; }
 .v2-connector-item h4 { margin: .3rem 0; }
+.v2-connector-settings { margin: .7rem 0; }
+.v2-connector-settings summary { cursor: pointer; font-weight: 700; }
+.v2-connector-settings form { display: grid; gap: .75rem; margin-top: .75rem; }
+.v2-connector-settings form > label { display: grid; gap: .3rem; }
+.v2-connector-settings form > label:has(input[type="checkbox"]) { display: block; }
+.v2-connector-settings form > label input[type="number"] { max-width: 14rem; }
