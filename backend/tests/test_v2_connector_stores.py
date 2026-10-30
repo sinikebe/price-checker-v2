@@ -142,6 +142,34 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 base_url="https://testserver",
             ) as shopper:
                 assert (await shopper.post(refresh_url, headers=write)).status_code == 429
+            connection = await test_connect()
+            try:
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
+            original_enqueue = api.enqueue_installed
+
+            async def broken_enqueue(*_args):
+                raise RuntimeError("Simulated connector failure")
+
+            monkeypatch.setattr(api, "enqueue_installed", broken_enqueue)
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(
+                        app=app, client=("10.0.0.4", 12345), raise_app_exceptions=False),
+                    base_url="https://testserver",
+                ) as shopper:
+                    for _ in range(api.CLIENT_REFRESH_REQUESTS_PER_HOUR):
+                        assert (await shopper.post(refresh_url, headers=write)).status_code == 500
+                    assert (await shopper.post(refresh_url, headers=write)).status_code == 429
+            finally:
+                monkeypatch.setattr(api, "enqueue_installed", original_enqueue)
+            connection = await test_connect()
+            try:
+                assert await connection.fetchval(
+                    "SELECT sum(attempts) FROM v2_auth_limits") == 2 * api.CLIENT_REFRESH_REQUESTS_PER_HOUR
+            finally:
+                await connection.close()
             disable = await client.put(prefix, headers=write,
                 json={"action": "disable", "expected_installed_commit": revisions[0]})
             assert disable.status_code == 200 and not disable.json()["stores"][0]["installations"][0]["enabled"]
