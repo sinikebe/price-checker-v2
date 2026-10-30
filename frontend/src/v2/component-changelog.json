@@ -292,6 +292,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.87",
+      "components": {
+        "basket": {
+          "version": "0.1.18",
+          "notes": [
+            "Le partage du panier montre les quantités, propose un lien, une liste et un QR code, et permet de remplacer le panier reçu."
+          ]
+        }
+      }
     }
   ]
 }

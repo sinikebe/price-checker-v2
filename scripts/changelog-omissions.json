@@ -359,6 +359,11 @@
       "component": "application",
       "version": "0.1.86",
       "reason": "L’enregistrement des magasins par défaut est annoncé dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.87",
+      "reason": "Les options de partage et la reprise des quantités sont annoncées dans le composant Panier."
     }
   ]
 }
