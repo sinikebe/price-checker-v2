@@ -314,6 +314,36 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.90",
+      "components": {
+        "application": {
+          "version": "0.1.90",
+          "notes": [
+            "Les administrateurs peuvent ajouter des stores GitHub, installer et gérer leurs connecteurs, et lire le journal propre à chaque connecteur.",
+            "La page Versions comporte une rubrique Connecteurs avec leur journal dédié."
+          ]
+        },
+        "basket": {
+          "version": "0.1.21",
+          "notes": [
+            "L’ajout d’un produit au panier peut demander une actualisation de prix aux connecteurs installés, selon leur cadence."
+          ]
+        },
+        "database": {
+          "version": "0.1.31",
+          "notes": [
+            "Les stores et les versions installées des connecteurs sont enregistrés avec possibilité de retour à la version précédente."
+          ]
+        },
+        "deployment": {
+          "version": "0.1.22",
+          "notes": [
+            "L’image serveur comprend Git, SSH et le navigateur requis par les connecteurs de prix."
+          ]
+        }
+      }
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { V2_BASKET_EVENT, activateBasketUser, basketItemKey, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
+import { V2_BASKET_EVENT, activateBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
+import { requestConnectorRefresh } from "./v2-connector-refresh";
 import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
 
@@ -30,7 +31,14 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
     window.addEventListener(V2_BASKET_EVENT, refresh);
     return () => { window.removeEventListener("storage", refresh); window.removeEventListener(V2_BASKET_EVENT, refresh); };
   }, []);
-  const update = (next: BasketItem[]) => { itemsRef.current = next; setItems(next); try { writeV2Basket(next); } catch { /* current tab still works */ } };
+  const update = (next: BasketItem[]) => {
+    const previous = new Set(itemsRef.current.filter(isBasketProduct).map(item => item.id));
+    itemsRef.current = next; setItems(next);
+    try { writeV2Basket(next); } catch { /* current tab still works */ }
+    for (const item of next) if (isBasketProduct(item) && !previous.has(item.id)) {
+      void requestConnectorRefresh(item.id);
+    }
+  };
   return <Context.Provider value={{
     items,
     add: item => { if (!items.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...items, item]); },

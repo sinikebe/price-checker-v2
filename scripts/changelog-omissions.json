@@ -379,6 +379,11 @@
       "component": "application",
       "version": "0.1.89",
       "reason": "La simplification du partage est annoncée dans le composant Panier."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.18",
+      "reason": "Le panneau de stores est ajouté aux paramètres en ligne sans nouveau comportement hors ligne."
     }
   ]
 }

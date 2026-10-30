@@ -33,7 +33,10 @@ async def main() -> None:
                 )
                 for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
             ])
-            if role != config["username"] or not limited or not can_write:
+            can_create_connector = await connection.fetchval(
+                "SELECT has_schema_privilege(current_user, 'v2_connectors', 'CREATE')"
+            )
+            if role != config["username"] or not limited or not can_write or not can_create_connector:
                 raise ValueError(f"Application role check: role={role}, limited={limited}, can_write={can_write}")
             print("Bundled database application role is limited and writable.")
             return
@@ -54,6 +57,14 @@ async def main() -> None:
         )
         await connection.execute(f'GRANT CONNECT ON DATABASE "{database}" TO "{role}"')
         await connection.execute(f'GRANT USAGE ON SCHEMA public TO "{role}"')
+        await connection.execute(f'GRANT USAGE, CREATE ON SCHEMA v2_connectors TO "{role}"')
+        await connection.execute(
+            f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES '
+            f'IN SCHEMA v2_connectors TO "{role}"'
+        )
+        await connection.execute(
+            f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA v2_connectors TO "{role}"'
+        )
         await connection.execute(
             f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES '
             f'IN SCHEMA public TO "{role}"'
