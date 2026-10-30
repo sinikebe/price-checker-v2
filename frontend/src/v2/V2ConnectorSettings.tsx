@@ -7,8 +7,8 @@ type Settings = {
     consecutive_failures?: number; next_run_at?: string | null };
 };
 
-export default function V2ConnectorSettings({ storeId, connectorId, version }: {
-  storeId: number; connectorId: string; version: string;
+export default function V2ConnectorSettings({ storeId, connectorId, version, installationEnabled }: {
+  storeId: number; connectorId: string; version: string; installationEnabled: boolean;
 }) {
   const endpoint = `/api/v2/connector-stores/${storeId}/connectors/${encodeURIComponent(connectorId)}/settings`;
   const [saved, setSaved] = useState<Settings | null>(null);
@@ -51,6 +51,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version }: {
 
   return <details className="v2-connector-settings" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>Réglages du connecteur</summary>
+    {!installationEnabled && <p role="status">Installation désactivée : aucun relevé ne sera lancé, même si les relevés sont autorisés ci-dessous. Réactivez le connecteur dans le store pour reprendre.</p>}
     {saved && <form onSubmit={event => void save(event)}>
       {saved.fields.map(field => <label key={field.key}>
         {field.type === "boolean"

@@ -131,7 +131,7 @@ export default function V2ConnectorStores() {
             }}>Désinstaller</button>
           </div>}
           {installed && <V2ConnectorSettings key={`${installed.commit_sha}-${installed.enabled}`}
-            storeId={store.id} connectorId={connector.id} version={installed.version} />}
+            storeId={store.id} connectorId={connector.id} version={installed.version} installationEnabled={installed.enabled} />}
         </div>;
       })}
       {store.installations.filter(item => !store.catalog.some(connector => connector.id === item.connector_id)).map(item =>
@@ -149,7 +149,7 @@ export default function V2ConnectorStores() {
             }}>Désinstaller</button>
           </div>
           <V2ConnectorSettings key={`${item.commit_sha}-${item.enabled}`}
-            storeId={store.id} connectorId={item.connector_id} version={item.version} />
+            storeId={store.id} connectorId={item.connector_id} version={item.version} installationEnabled={item.enabled} />
         </div>)}
     </div>)}
     {error && <p role="alert" className="v2-schedule-error">{error}</p>}
