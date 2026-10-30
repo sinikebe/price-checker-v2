@@ -151,6 +151,10 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
         if (product.merged_to_id || product.successor_id) product = await productRequest<Product>("/" + (product.merged_to_id || product.successor_id));
         return { id: product.id, revision: product.revision, data: product.data, disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
       }));
+      if (new Set(incoming.map(basketItemKey)).size !== incoming.length) {
+        setImportError("Ce lien contient des articles qui désignent maintenant le même produit. Votre panier n’a pas été modifié.");
+        return;
+      }
       const added = mode === "replace" ? incoming.length : merge(incoming);
       if (mode === "replace") replaceAll(incoming);
       if (incoming.some(item => item.quantity)) toggleAdvanced(true);
