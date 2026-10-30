@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
+import { requestBasketConnectorRefresh } from "./v2-connector-refresh";
 import V2BasketShare from "./V2BasketShare";
 import { readBasketDefaultStores, writeBasketDefaultStores } from "./v2-basket-default-stores";
 import { currentBasketProduct } from "./v2-basket-product";
@@ -177,6 +178,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const [categoryError, setCategoryError] = useState(false);
   const [shown, setShown] = useState({ key: "", count: PAGE_SIZE });
   const activeItems = useMemo(() => items.filter(item => !item.disabled), [items]);
+  const prioritizedProducts = useRef<Set<number>>(new Set());
   const key = JSON.stringify(activeItems.map(item => [basketItemKey(item), advanced ? item.quantity : null])) + ":" + refresh;
   const ready = snapshot?.key === key;
   const hasComparable = items.some(item => "kind" in item);
@@ -206,6 +208,13 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       }
       await Promise.all(Array.from({ length: Math.min(4, lines.length) }, () => candidateWorker()));
       const products = [...new Map(lines.flatMap(line => line.candidates).map(product => [product.id, product])).values()];
+      // A group or scope may contain hundreds of candidates; only concrete
+      // basket products are priority requests, including their current successor.
+      const priorityIds = lines.filter(line => !("kind" in line.item))
+        .flatMap(line => line.candidates.map(product => product.id))
+        .filter(id => !prioritizedProducts.current.has(id));
+      for (const id of priorityIds) prioritizedProducts.current.add(id);
+      if (priorityIds.length) void requestBasketConnectorRefresh(priorityIds);
       const responses = new Map<number, BasketPriceResponse | null>();
       let index = 0;
       async function worker() {

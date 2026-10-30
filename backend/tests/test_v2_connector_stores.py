@@ -104,6 +104,7 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 " if set(values) != {'resumed'} or type(values['resumed']) is not bool: raise ValueError('Invalid settings')\n"
                 " await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=$1', values['resumed'])\n"
                 "async def enqueue(connection, product_id): return 'queued'\n"
+                "async def enqueue_basket(connection, product_id): return 'priority_queued'\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
                     "changelog": [{"version": f"0.1.{next_revision}", "notes": ["Version tested."]}],
@@ -168,6 +169,27 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 await connection.close()
             versions = await client.get("/api/v2/connector-stores/versions")
             assert versions.json()["connectors"][0]["changelog"][0]["version"] == "0.1.1"
+            basket_url = "/api/v2/connector-stores/demo/products/refresh"
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.0.9", 12345)),
+                base_url="https://testserver",
+            ) as shopper:
+                basket = await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [1, 2, 1]})
+                assert basket.status_code == 200, basket.text
+                assert basket.json() == {"products": {"1": "priority_queued", "2": "priority_queued"}}
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [0]})
+                ).status_code == 422
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": list(range(1, 52))})
+                ).status_code == 422
+            connection = await test_connect()
+            try:
+                assert await connection.fetchval("SELECT sum(attempts) FROM v2_auth_limits") == 2
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
             # Basket refresh is intentionally anonymous, but neither one
             # client nor many clients may create unbounded collector demand.
             refresh_url = "/api/v2/connector-stores/demo/products/1/refresh"

@@ -50,6 +50,10 @@ class ConnectorSettingsChange(BaseModel):
     values: dict[str, bool | int]
 
 
+class BasketRefreshBatch(BaseModel):
+    product_ids: list[int] = Field(min_length=1, max_length=50)
+
+
 def _catalog(raw):
     return raw if isinstance(raw, list) else json.loads(raw)
 
@@ -374,7 +378,9 @@ async def remove_store(store_id: int, request: Request):
         await connection.close()
 
 
-async def enqueue_installed(connection, connector_id: str, product_id: int) -> str:
+async def enqueue_installed(
+    connection, connector_id: str, product_id: int, *, basket: bool = False
+) -> str:
     row = await connection.fetchrow(
         "SELECT store_id,commit_sha FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
         connector_id)
@@ -382,10 +388,49 @@ async def enqueue_installed(connection, connector_id: str, product_id: int) -> s
         return "disabled"
     try:
         module = load_installed(row["store_id"], connector_id, row["commit_sha"])
-        return await module.enqueue(connection, product_id)
+        hook = getattr(module, "enqueue_basket", None) if basket else None
+        return await (hook if callable(hook) else module.enqueue)(connection, product_id)
     except (FileNotFoundError, ImportError, ValueError, OSError):
         logger.exception("Connector %s unavailable", connector_id)
         return "unavailable"
+
+
+async def _admit_refresh(connection, connector_id: str, request: Request) -> bool:
+    async with connection.transaction():
+        installed = await connection.fetchval(
+            "SELECT 1 FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
+            connector_id)
+        if not installed:
+            return False
+        client_key = _limit_key(f"connector-refresh:{connector_id}", request)
+        shared_key = hashlib.sha256(f"connector-refresh:shared:{connector_id}".encode()).hexdigest()
+        if await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR:
+            raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
+        if await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR:
+            raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
+    # Commit admission before connector code; failure cannot refund demand.
+    return True
+
+
+@router.post("/{connector_id}/products/refresh")
+async def request_basket_refresh(
+    connector_id: str, payload: BasketRefreshBatch, request: Request
+):
+    _secure_write(request)
+    ids = list(dict.fromkeys(payload.product_ids))
+    if any(product_id <= 0 for product_id in ids):
+        raise HTTPException(status_code=422, detail="Produit invalide.")
+    connection = await _connect()
+    try:
+        if not await _admit_refresh(connection, connector_id, request):
+            return {"products": {str(product_id): "disabled" for product_id in ids}}
+        return {"products": {
+            str(product_id): await enqueue_installed(
+                connection, connector_id, product_id, basket=True)
+            for product_id in ids
+        }}
+    finally:
+        await connection.close()
 
 
 @router.post("/{connector_id}/products/{product_id}/refresh")
@@ -395,21 +440,8 @@ async def request_connector_refresh(connector_id: str, product_id: int, request:
         raise HTTPException(status_code=422, detail="Produit invalide.")
     connection = await _connect()
     try:
-        async with connection.transaction():
-            installed = await connection.fetchval(
-                "SELECT 1 FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
-                connector_id)
-            if not installed:
-                return {"status": "disabled"}
-            client_key = _limit_key(f"connector-refresh:{connector_id}", request)
-            shared_key = hashlib.sha256(f"connector-refresh:shared:{connector_id}".encode()).hexdigest()
-            if await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR:
-                raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
-            if await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR:
-                raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
-        # Commit the admission budget before running third-party connector code.
-        # A connector exception must not refund the request and allow retries
-        # without limit.
+        if not await _admit_refresh(connection, connector_id, request):
+            return {"status": "disabled"}
         return {"status": await enqueue_installed(connection, connector_id, product_id)}
     finally:
         await connection.close()

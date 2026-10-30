@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { V2_BASKET_EVENT, activateBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
-import { requestConnectorRefresh } from "./v2-connector-refresh";
+import { requestBasketConnectorRefresh } from "./v2-connector-refresh";
 import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
 
@@ -36,7 +36,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
     itemsRef.current = next; setItems(next);
     try { writeV2Basket(next); } catch { /* current tab still works */ }
     for (const item of next) if (isBasketProduct(item) && !previous.has(item.id)) {
-      void requestConnectorRefresh(item.id);
+      void requestBasketConnectorRefresh([item.id]);
     }
   };
   return <Context.Provider value={{
