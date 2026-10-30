@@ -344,6 +344,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.91",
+      "components": {
+        "application": {
+          "version": "0.1.91",
+          "notes": [
+            "Le retour à une version précédente n’est proposé que si le connecteur déclare sa compatibilité avec les données installées."
+          ]
+        }
+      }
     }
   ]
 }

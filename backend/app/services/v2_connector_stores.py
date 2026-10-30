@@ -153,9 +153,13 @@ def validate_catalog(root: Path) -> list[dict]:
             versions.add(change["version"])
         if version not in versions:
             raise ValueError(f"Le journal de {identifier} doit décrire la version courante.")
+        rollback_supported = item.get("rollback_supported", False)
+        if not isinstance(rollback_supported, bool):
+            raise ValueError("Compatibilité de restauration invalide.")
         seen.add(identifier)
         result.append({"id": identifier, "name": name.strip(), "version": version,
-                       "entry": entry, "changelog": changes})
+                       "entry": entry, "changelog": changes,
+                       "rollback_supported": rollback_supported})
     return result
 
 

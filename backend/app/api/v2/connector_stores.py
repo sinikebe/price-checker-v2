@@ -222,7 +222,8 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                         "UPDATE v2_connector_installations SET version=$1,commit_sha=$2,"
                         "previous_version=$3,previous_commit=$4,updated_at=now() "
                         "WHERE connector_id=$5", item["version"], store["fetched_commit"],
-                        current["version"], current["commit_sha"], connector_id)
+                        current["version"] if item["rollback_supported"] else None,
+                        current["commit_sha"] if item["rollback_supported"] else None, connector_id)
                 else:
                     await connection.execute(
                         "INSERT INTO v2_connector_installations(connector_id,store_id,version,commit_sha) "

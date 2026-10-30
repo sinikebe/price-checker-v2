@@ -80,7 +80,7 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 hashlib.sha256(token.encode()).hexdigest(), admin_id)
         finally:
             await connection.close()
-        revisions = ["a" * 40, "b" * 40]
+        revisions = ["a" * 40, "b" * 40, "c" * 40]
         next_revision = 0
         async def fake_fetch(store_id, repository, private):
             nonlocal next_revision
@@ -94,7 +94,8 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 "async def enqueue(connection, product_id): return 'queued'\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
-                    "changelog": [{"version": f"0.1.{next_revision}", "notes": ["Version tested."]}]}
+                    "changelog": [{"version": f"0.1.{next_revision}", "notes": ["Version tested."]}],
+                    "rollback_supported": next_revision < 3}
             (folder / "connector-store.json").write_text(json.dumps({"api": 1, "connectors": [item]}))
             return sha, validate_catalog(folder)
         monkeypatch.setattr(api, "fetch_store", fake_fetch)
@@ -137,6 +138,14 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 json={"action": "rollback", "expected_installed_commit": revisions[1]})
             assert rollback.status_code == 200, rollback.text
             assert rollback.json()["stores"][0]["installations"][0]["commit_sha"] == revisions[0]
+            assert (await client.post(f"/api/v2/connector-stores/{store_id}/refresh", headers=write)).status_code == 200
+            incompatible = await client.put(prefix, headers=write,
+                json={"action": "update", "expected_commit": revisions[2],
+                      "expected_installed_commit": revisions[0]})
+            assert incompatible.status_code == 200, incompatible.text
+            assert incompatible.json()["stores"][0]["installations"][0]["previous_commit"] is None
+            assert (await client.put(prefix, headers=write,
+                json={"action": "rollback", "expected_installed_commit": revisions[2]})).status_code == 409
             assert (await client.delete(prefix, headers=write)).status_code == 200
             assert (await client.get("/api/v2/connector-stores/versions")).json() == {"connectors": []}
             assert (await client.delete(f"/api/v2/connector-stores/{store_id}", headers=write)).status_code == 200
