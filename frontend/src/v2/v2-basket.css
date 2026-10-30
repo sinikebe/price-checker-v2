@@ -1,4 +1,12 @@
 .v2-basket-comparison { margin-bottom: 25px; }
+.v2-basket-mode { margin-bottom: 14px; }
+.v2-basket-mode p { margin: 3px 0 0; color: var(--v2-muted, #617467); font-size: .88rem; }
+.v2-basket-quantity { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
+.v2-basket-quantity label, .v2-recipes-basket-choice { display: grid; gap: 4px; min-width: 0; font-size: .8rem; font-weight: 650; }
+.v2-basket-quantity input, .v2-basket-quantity select, .v2-recipes-basket-choice select { min-height: 44px; max-width: 100%; padding: 8px; border: 1px solid var(--v2-line, #b6cbbc); border-radius: 8px; color: inherit; background: var(--v2-surface, #fff); font: inherit; }
+.v2-basket-quantity input { width: 115px; }
+.v2-basket-quantity small { width: 100%; color: #a23b31; }
+.v2-recipes-basket-choice { margin-top: 8px; }
 .v2-basket-comparison-heading, .v2-basket-store-heading { display: flex; align-items: start; justify-content: space-between; gap: 15px; }
 .v2-basket-comparison-heading { margin-bottom: 18px; }
 .v2-basket-comparison-heading h2, .v2-basket-store h3 { margin: 0 0 5px; }

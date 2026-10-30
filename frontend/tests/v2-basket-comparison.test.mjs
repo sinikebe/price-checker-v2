@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import ts from "typescript";
 
-const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.meta.url), "utf8");
+const quantitySource = readFileSync(new URL("../src/v2/v2-basket-quantity.ts", import.meta.url), "utf8");
+const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.meta.url), "utf8")
+  .replace('import { pricedQuantity } from "./v2-basket-quantity";', quantitySource);
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -113,4 +115,29 @@ test("price position is relative to comparable result range", () => {
   assert.equal(pricePosition(100, 100, 400), "low");
   assert.equal(pricePosition(250, 100, 400), "middle");
   assert.equal(pricePosition(400, 100, 500), "high");
+});
+
+test("advanced basket buys whole packs while showing the used share", () => {
+  const butter = { ...product(1), data: { name: "Beurre", quantity_amount: "250", quantity_unit: "g" } };
+  const item = { ...butter, quantity: { amount: "20", unit: "g" } };
+  const result = buildBasketComparison([line(item, butter)], new Map([[1, response(reading(1, 10, "2.50"))]]), undefined, true);
+  assert.equal(result.splitCents, 250);
+  assert.equal(result.splitUsedCents, 20);
+  assert.equal(result.split[0].packages, 1);
+  const many = buildBasketComparison([line({ ...item, quantity: { amount: "600", unit: "g" } }, butter)],
+    new Map([[1, response(reading(1, 10, "2.50"))]]), undefined, true);
+  assert.equal(many.splitCents, 750);
+  assert.equal(many.splitUsedCents, 600);
+  assert.equal(many.split[0].packages, 3);
+});
+
+test("advanced comparison excludes incompatible or unknown package sizes", () => {
+  const item = { kind: "group", name: "Beurre", quantity: { amount: "20", unit: "g" } };
+  const unknown = product(1);
+  const butter = { ...product(2), data: { name: "Beurre", quantity_amount: "250", quantity_unit: "g" } };
+  const result = buildBasketComparison([line(item, unknown, butter)], new Map([
+    [1, response(reading(1, 10, "1.00"))], [2, response(reading(2, 10, "2.50"))],
+  ]), undefined, true);
+  assert.equal(result.split[0].product.id, 2);
+  assert.equal(result.splitCents, 250);
 });

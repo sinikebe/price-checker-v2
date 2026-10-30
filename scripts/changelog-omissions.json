@@ -309,6 +309,36 @@
       "component": "open_prices",
       "version": "0.1.21",
       "reason": "Le bouton de partage est ajouté au catalogue sans changer le connecteur Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.81",
+      "reason": "Le panier avancé et le passage des recettes au panier sont annoncés dans les composants concernés."
+    },
+    {
+      "component": "application",
+      "version": "0.1.82",
+      "reason": "Ajustements de fiabilité du passage des recettes et des paniers partagés, sans nouvelle fonction à annoncer."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.13",
+      "reason": "L’ajout atomique et l’activation à l’import d’un panier partagé corrigent des cas limites du panier avancé déjà annoncé."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.15",
+      "reason": "Une recette dont les quantités sont incompatibles n’ajoute plus une partie seulement des ingrédients au panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.83",
+      "reason": "Précision du libellé des sous-totaux du panier avancé, déjà annoncés."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.14",
+      "reason": "Un coût utilisé incomplet est désormais explicitement nommé sous-total, sans nouvelle fonction."
     }
   ]
 }
