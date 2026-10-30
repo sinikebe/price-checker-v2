@@ -384,6 +384,11 @@
       "component": "pwa",
       "version": "0.1.18",
       "reason": "Le panneau de stores est ajouté aux paramètres en ligne sans nouveau comportement hors ligne."
+    },
+    {
+      "component": "application",
+      "version": "0.1.94",
+      "reason": "Garantit que le quota de relevé déjà annoncé reste consommé si le connecteur échoue."
     }
   ]
 }
