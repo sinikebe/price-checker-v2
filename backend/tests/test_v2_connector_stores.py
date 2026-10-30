@@ -124,6 +124,24 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 await connection.close()
             versions = await client.get("/api/v2/connector-stores/versions")
             assert versions.json()["connectors"][0]["changelog"][0]["version"] == "0.1.1"
+            # Basket refresh is intentionally anonymous, but neither one
+            # client nor many clients may create unbounded collector demand.
+            refresh_url = "/api/v2/connector-stores/demo/products/1/refresh"
+            for address in ("10.0.0.1", "10.0.0.2"):
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app, client=(address, 12345)),
+                    base_url="https://testserver",
+                ) as shopper:
+                    for _ in range(api.CLIENT_REFRESH_REQUESTS_PER_HOUR):
+                        response = await shopper.post(refresh_url, headers=write)
+                        assert response.status_code == 200, response.text
+                        assert response.json() == {"status": "queued"}
+                    assert (await shopper.post(refresh_url, headers=write)).status_code == 429
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.0.3", 12345)),
+                base_url="https://testserver",
+            ) as shopper:
+                assert (await shopper.post(refresh_url, headers=write)).status_code == 429
             disable = await client.put(prefix, headers=write,
                 json={"action": "disable", "expected_installed_commit": revisions[0]})
             assert disable.status_code == 200 and not disable.json()["stores"][0]["installations"][0]["enabled"]
