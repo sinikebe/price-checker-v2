@@ -90,7 +90,10 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             entry = folder / "connectors/demo/entry.py"
             entry.parent.mkdir(parents=True)
             entry.write_text(
-                "async def setup(connection): await connection.execute('CREATE TABLE IF NOT EXISTS v2_connectors.v2_demo_connector_state(id int)')\n"
+                "async def setup(connection):\n"
+                " await connection.execute('CREATE TABLE IF NOT EXISTS v2_connectors.v2_demo_connector_state(resumed boolean NOT NULL DEFAULT false)')\n"
+                " await connection.execute('INSERT INTO v2_connectors.v2_demo_connector_state(resumed) SELECT false WHERE NOT EXISTS(SELECT 1 FROM v2_connectors.v2_demo_connector_state)')\n"
+                "async def resume(connection): await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=true')\n"
                 "async def enqueue(connection, product_id): return 'queued'\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
@@ -124,6 +127,15 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             disable = await client.put(prefix, headers=write,
                 json={"action": "disable", "expected_installed_commit": revisions[0]})
             assert disable.status_code == 200 and not disable.json()["stores"][0]["installations"][0]["enabled"]
+            enable = await client.put(prefix, headers=write,
+                json={"action": "enable", "expected_installed_commit": revisions[0]})
+            assert enable.status_code == 200 and enable.json()["stores"][0]["installations"][0]["enabled"]
+            connection = await test_connect()
+            try:
+                assert await connection.fetchval(
+                    "SELECT resumed FROM v2_connectors.v2_demo_connector_state")
+            finally:
+                await connection.close()
             assert (await client.post(f"/api/v2/connector-stores/{store_id}/refresh", headers=write)).status_code == 200
             stale = await client.put(prefix, headers=write,
                 json={"action": "update", "expected_commit": revisions[0],

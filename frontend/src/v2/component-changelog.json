@@ -355,6 +355,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.92",
+      "components": {
+        "application": {
+          "version": "0.1.92",
+          "notes": [
+            "Un connecteur suspendu peut être réactivé depuis les paramètres, avec reprise de sa file en attente."
+          ]
+        }
+      }
     }
   ]
 }

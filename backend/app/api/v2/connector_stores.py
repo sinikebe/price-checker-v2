@@ -243,6 +243,17 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
             elif payload.action in ("enable", "disable"):
                 if not current:
                     raise HTTPException(status_code=404, detail="Connecteur non installé.")
+                if payload.action == "enable" and not current["enabled"]:
+                    try:
+                        module = await asyncio.to_thread(
+                            load_installed, store_id, connector_id, current["commit_sha"])
+                    except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+                        raise HTTPException(status_code=422, detail="Code du connecteur indisponible.") from exc
+                    resume = getattr(module, "resume", None)
+                    if resume is not None:
+                        if not callable(resume):
+                            raise HTTPException(status_code=422, detail="Reprise du connecteur invalide.")
+                        await resume(connection)
                 await connection.execute(
                     "UPDATE v2_connector_installations SET enabled=$1,updated_at=now() WHERE connector_id=$2",
                     payload.action == "enable", connector_id)
