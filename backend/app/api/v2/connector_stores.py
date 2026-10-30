@@ -45,6 +45,11 @@ class InstallationChange(BaseModel):
     expected_installed_commit: str | None = None
 
 
+class ConnectorSettingsChange(BaseModel):
+    expected_revision: int = Field(ge=0)
+    values: dict[str, bool | int]
+
+
 def _catalog(raw):
     return raw if isinstance(raw, list) else json.loads(raw)
 
@@ -265,6 +270,76 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                     "UPDATE v2_connector_installations SET enabled=$1,updated_at=now() WHERE connector_id=$2",
                     payload.action == "enable", connector_id)
         return await _list(connection)
+    finally:
+        await connection.close()
+
+
+async def _settings_hook(connection, store_id: int, connector_id: str, hook_name: str):
+    row = await connection.fetchrow(
+        "SELECT commit_sha FROM v2_connector_installations WHERE store_id=$1 AND connector_id=$2",
+        store_id,
+        connector_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Connecteur non installé.")
+    try:
+        module = await asyncio.to_thread(
+            load_installed, store_id, connector_id, row["commit_sha"]
+        )
+    except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+        raise HTTPException(
+            status_code=503, detail="Code du connecteur indisponible."
+        ) from exc
+    hook = getattr(module, hook_name, None)
+    if not callable(hook):
+        raise HTTPException(
+            status_code=404,
+            detail="Cette version du connecteur ne propose pas de réglages.",
+        )
+    return hook
+
+
+@router.get("/{store_id}/connectors/{connector_id}/settings")
+async def connector_settings(store_id: int, connector_id: str, request: Request):
+    await _require_admin(request)
+    connection = await _connect()
+    try:
+        hook = await _settings_hook(connection, store_id, connector_id, "settings_read")
+        return await hook(connection)
+    finally:
+        await connection.close()
+
+
+@router.put("/{store_id}/connectors/{connector_id}/settings")
+async def update_connector_settings(
+    store_id: int, connector_id: str, payload: ConnectorSettingsChange, request: Request
+):
+    _secure_write(request)
+    await _require_admin(request)
+    connection = await _connect()
+    try:
+        async with connection.transaction():
+            # Serialize with installation changes so a pinned module cannot be
+            # switched while its settings hook runs.
+            row = await connection.fetchrow(
+                "SELECT commit_sha FROM v2_connector_installations "
+                "WHERE store_id=$1 AND connector_id=$2 FOR UPDATE",
+                store_id,
+                connector_id,
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Connecteur non installé.")
+            hook = await _settings_hook(
+                connection, store_id, connector_id, "settings_write"
+            )
+            try:
+                await hook(connection, payload.expected_revision, payload.values)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            read = await _settings_hook(
+                connection, store_id, connector_id, "settings_read"
+            )
+            return await read(connection)
     finally:
         await connection.close()
 

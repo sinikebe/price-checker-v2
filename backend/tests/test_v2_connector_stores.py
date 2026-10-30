@@ -94,6 +94,15 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 " await connection.execute('CREATE TABLE IF NOT EXISTS v2_connectors.v2_demo_connector_state(resumed boolean NOT NULL DEFAULT false)')\n"
                 " await connection.execute('INSERT INTO v2_connectors.v2_demo_connector_state(resumed) SELECT false WHERE NOT EXISTS(SELECT 1 FROM v2_connectors.v2_demo_connector_state)')\n"
                 "async def resume(connection): await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=true')\n"
+                "async def settings_read(connection):\n"
+                " row = await connection.fetchrow('SELECT resumed FROM v2_connectors.v2_demo_connector_state')\n"
+                " return {'revision': int(row['resumed']), 'fields': [{'key': 'resumed', 'label': 'Enabled', 'type': 'boolean'}], 'values': {'resumed': row['resumed']}}\n"
+                "async def settings_write(connection, expected_revision, values):\n"
+                " from fastapi import HTTPException\n"
+                " row = await connection.fetchrow('SELECT resumed FROM v2_connectors.v2_demo_connector_state FOR UPDATE')\n"
+                " if expected_revision != int(row['resumed']): raise HTTPException(status_code=409, detail='Stale settings')\n"
+                " if set(values) != {'resumed'} or type(values['resumed']) is not bool: raise ValueError('Invalid settings')\n"
+                " await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=$1', values['resumed'])\n"
                 "async def enqueue(connection, product_id): return 'queued'\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
@@ -117,6 +126,41 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 json={"action": "install", "expected_commit": revisions[0]})
             assert install.status_code == 200, install.text
             assert install.json()["stores"][0]["installations"][0]["commit_sha"] == revisions[0]
+            settings_url = prefix + "/settings"
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url="https://testserver"
+            ) as anonymous:
+                assert (await anonymous.get(settings_url)).status_code == 403
+                assert (
+                    await anonymous.put(
+                        settings_url,
+                        headers=write,
+                        json={"expected_revision": 0, "values": {"resumed": True}},
+                    )
+                ).status_code == 403
+            initial_settings = await client.get(settings_url)
+            assert initial_settings.status_code == 200
+            assert initial_settings.json()["values"] == {"resumed": False}
+            invalid_settings = await client.put(
+                settings_url,
+                headers=write,
+                json={"expected_revision": 0, "values": {"resumed": 4}},
+            )
+            assert invalid_settings.status_code == 422
+            changed_settings = await client.put(
+                settings_url,
+                headers=write,
+                json={"expected_revision": 0, "values": {"resumed": True}},
+            )
+            assert changed_settings.status_code == 200
+            assert changed_settings.json()["values"] == {"resumed": True}
+            assert (
+                await client.put(
+                    settings_url,
+                    headers=write,
+                    json={"expected_revision": 0, "values": {"resumed": False}},
+                )
+            ).status_code == 409
             connection = await test_connect()
             try:
                 assert await connection.fetchval("SELECT to_regclass('v2_connectors.v2_demo_connector_state')")
