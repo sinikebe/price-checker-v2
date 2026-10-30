@@ -377,6 +377,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.95",
+      "components": {
+        "application": {
+          "version": "0.1.95",
+          "notes": [
+            "Les administrateurs peuvent régler la fréquence des connecteurs compatibles depuis leurs paramètres, sans exposer leur code privé."
+          ]
+        }
+      }
     }
   ]
 }

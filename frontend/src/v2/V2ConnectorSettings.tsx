@@ -16,7 +16,9 @@ export default function V2ConnectorSettings({ storeId, connectorId, version }: {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
+    if (!open) return;
     let active = true;
     void fetch(endpoint, { credentials: "same-origin", cache: "no-store" }).then(async response => {
       if (!response.ok) throw new Error(response.status === 404
@@ -27,7 +29,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version }: {
       if (active) { setSaved(value); setDraft(value.values); setError(""); }
     }).catch(reason => { if (active) setError(String(reason)); });
     return () => { active = false; };
-  }, [endpoint, version]);
+  }, [endpoint, version, open]);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -47,7 +49,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version }: {
     finally { setBusy(false); }
   }
 
-  return <details className="v2-connector-settings">
+  return <details className="v2-connector-settings" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>Réglages du connecteur</summary>
     {saved && <form onSubmit={event => void save(event)}>
       {saved.fields.map(field => <label key={field.key}>
