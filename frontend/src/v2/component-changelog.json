@@ -366,6 +366,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.93",
+      "components": {
+        "application": {
+          "version": "0.1.93",
+          "notes": [
+            "Les demandes de relevé des connecteurs sont limitées pour protéger la cadence de collecte."
+          ]
+        }
+      }
     }
   ]
 }
