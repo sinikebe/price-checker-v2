@@ -364,6 +364,16 @@
       "component": "application",
       "version": "0.1.87",
       "reason": "Les options de partage et la reprise des quantités sont annoncées dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.88",
+      "reason": "La correction de collision à l’import du panier partagé est interne et ne change pas les options annoncées."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.19",
+      "reason": "Empêche un doublon si deux références du lien désignent désormais le même produit, sans nouvelle fonction visible."
     }
   ]
 }
