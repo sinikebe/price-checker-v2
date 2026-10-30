@@ -374,6 +374,11 @@
       "component": "basket",
       "version": "0.1.19",
       "reason": "Empêche un doublon si deux références du lien désignent désormais le même produit, sans nouvelle fonction visible."
+    },
+    {
+      "component": "application",
+      "version": "0.1.89",
+      "reason": "La simplification du partage est annoncée dans le composant Panier."
     }
   ]
 }

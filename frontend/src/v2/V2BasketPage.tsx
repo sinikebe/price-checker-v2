@@ -288,7 +288,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link><Link to="/v2/parametres">Paramètres</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
     </div></header>
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><div className="v2-share-title-row"><h1>Mon panier<span>.</span></h1><V2BasketShare items={items} url={shareUrl} /></div><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p><V2BasketShare items={items} url={shareUrl} /></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
       {sharedLink && <section className="v2-shared-basket" aria-label="Panier partagé">
         {sharedEntries ? <>
           <h2>Panier partagé</h2>

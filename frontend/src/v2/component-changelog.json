@@ -303,6 +303,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.89",
+      "components": {
+        "basket": {
+          "version": "0.1.20",
+          "notes": [
+            "Les actions de partage du panier sont accessibles directement, avec un QR code affiché dans la page."
+          ]
+        }
+      }
     }
   ]
 }
