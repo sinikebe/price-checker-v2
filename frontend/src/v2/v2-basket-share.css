@@ -1,0 +1,9 @@
+.v2-basket-share { margin-top: 12px; }
+.v2-basket-share-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-basket-share-actions .v2-share-button { min-height: 40px; }
+.v2-basket-share-hint { font-size: .82rem; color: var(--v2-muted, #617467); }
+.v2-basket-share-qr { width: fit-content; max-width: 100%; margin-top: 12px; text-align: center; }
+.v2-basket-share-qr img { display: block; max-width: 100%; height: auto; padding: 7px; background: white; border-radius: 8px; }
+.v2-basket-share-qr p { margin: 5px 0 0; font-size: .82rem; }
+.v2-basket-share .v2-share-feedback { margin: 6px 0 0; }
+@media (max-width: 600px) { .v2-basket-share-actions .v2-share-button { min-height: 44px; } }

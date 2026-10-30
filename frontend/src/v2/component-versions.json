@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.85",
+    "version": "0.1.94",
     "status": "active"
   },
   "products": {
@@ -16,12 +16,12 @@
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.16",
+    "version": "0.1.21",
     "status": "active"
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.30",
+    "version": "0.1.31",
     "status": "active"
   },
   "open_food_facts": {
@@ -36,12 +36,12 @@
   },
   "pwa": {
     "label": "Mode hors ligne / PWA",
-    "version": "0.1.17",
+    "version": "0.1.18",
     "status": "active"
   },
   "deployment": {
     "label": "Installation et mise à jour",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "status": "active"
   },
   "open_prices": {

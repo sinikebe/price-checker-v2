@@ -863,6 +863,34 @@ MIGRATIONS = {
         );
     """,
 
+    "0032_connector_stores": """
+        CREATE TABLE v2_connector_stores (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            name varchar(100) NOT NULL,
+            repository varchar(200) NOT NULL UNIQUE,
+            private boolean NOT NULL DEFAULT false,
+            catalog jsonb NOT NULL DEFAULT '[]'::jsonb,
+            fetched_commit char(40),
+            fetched_at timestamptz,
+            created_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE TABLE v2_connector_installations (
+            connector_id varchar(64) PRIMARY KEY,
+            store_id bigint NOT NULL REFERENCES v2_connector_stores(id) ON DELETE CASCADE,
+            version varchar(32) NOT NULL,
+            commit_sha char(40) NOT NULL,
+            enabled boolean NOT NULL DEFAULT true,
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
+    "0033_connector_rollback": """
+        ALTER TABLE v2_connector_installations
+            ADD COLUMN previous_version varchar(32),
+            ADD COLUMN previous_commit char(40);
+    """,
+    "0034_connector_schema": """
+        CREATE SCHEMA IF NOT EXISTS v2_connectors;
+    """,
 }
 
 

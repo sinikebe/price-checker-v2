@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
-import V2ShareButton from "./V2ShareButton";
+import V2BasketShare from "./V2BasketShare";
+import { readBasketDefaultStores, writeBasketDefaultStores } from "./v2-basket-default-stores";
 import { currentBasketProduct } from "./v2-basket-product";
 import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryName, sharedEntryQuantity } from "./v2-basket-share";
+import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, validBasketQuantity, type BasketGroup, type BasketItem, type BasketProduct, type BasketQuantity, type BasketScope } from "./v2-basket-storage";
 import { buildBasketComparison, emptyBasketFilters, postalDepartment, purchaseTotalCents,
@@ -123,7 +125,7 @@ function MultiFilter<T extends string | number>({ title, options, selected, onCh
 }
 
 export default function V2BasketPage({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
-  const { items, remove, clear, setEnabled, setQuantity, replace, merge } = useV2Basket();
+  const { items, remove, clear, setEnabled, setQuantity, replace, replaceAll, merge } = useV2Basket();
   const [advanced, setAdvanced] = useState(() => { try { return localStorage.getItem("v2:basket:advanced") === "1"; } catch { return false; } });
   const toggleAdvanced = (value: boolean) => { setAdvanced(value); try { localStorage.setItem("v2:basket:advanced", value ? "1" : "0"); } catch { /* current tab still works */ } };
   const location = useLocation();
@@ -136,8 +138,9 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const [importError, setImportError] = useState("");
   const [importNotice, setImportNotice] = useState("");
   const closeSharedLink = () => navigate({ pathname: location.pathname, search: location.search }, { replace: true });
-  async function importSharedBasket() {
+  async function importSharedBasket(mode: "add" | "replace") {
     if (!sharedEntries || importing) return;
+    if (mode === "replace" && items.length && !window.confirm("Remplacer tout votre panier actuel par ce panier partagé ?")) return;
     setImporting(true);
     setImportError("");
     try {
@@ -148,9 +151,16 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
         if (product.merged_to_id || product.successor_id) product = await productRequest<Product>("/" + (product.merged_to_id || product.successor_id));
         return { id: product.id, revision: product.revision, data: product.data, disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
       }));
-      const added = merge(incoming);
+      if (new Set(incoming.map(basketItemKey)).size !== incoming.length) {
+        setImportError("Ce lien contient des articles qui désignent maintenant le même produit. Votre panier n’a pas été modifié.");
+        return;
+      }
+      const added = mode === "replace" ? incoming.length : merge(incoming);
+      if (mode === "replace") replaceAll(incoming);
       if (incoming.some(item => item.quantity)) toggleAdvanced(true);
-      setImportNotice(added ? added + " article" + (added > 1 ? "s" : "") + " ajouté" + (added > 1 ? "s" : "") + " au panier." : "Tous ces articles sont déjà dans votre panier.");
+      setImportNotice(mode === "replace" ? "Panier remplacé avec les quantités partagées." : added
+        ? added + " article" + (added > 1 ? "s" : "") + " ajouté" + (added > 1 ? "s" : "") + " au panier. Les articles déjà présents ont gardé leur quantité."
+        : "Tous ces articles sont déjà dans votre panier ; leurs quantités n’ont pas changé.");
       closeSharedLink();
     } catch {
       setImportError("Impossible de récupérer tous les produits de ce panier. Aucun article n’a été ajouté.");
@@ -158,7 +168,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   }
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState<PriceSnapshot | null>(null);
-  const [filters, setFilters] = useState<BasketFilters>(emptyBasketFilters);
+  const [defaultStores, setDefaultStores] = useState(readBasketDefaultStores);
+  const [filters, setFilters] = useState<BasketFilters>(() => ({
+    ...emptyBasketFilters, storeIds: readBasketDefaultStores().map(store => store.id),
+  }));
+  const [defaultStoreError, setDefaultStoreError] = useState(false);
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryError, setCategoryError] = useState(false);
   const [shown, setShown] = useState({ key: "", count: PAGE_SIZE });
@@ -217,7 +231,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const availableRows = ready && snapshot ? [...snapshot.responses.values()].flatMap(response => response?.latest_by_store ?? []) : [];
   const storeNames = new Map<number, string>();
   for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
-  const storeOptions = [...storeNames.keys()].sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
+  for (const store of defaultStores) if (!storeNames.has(store.id)) storeNames.set(store.id, store.name);
+  const storeOptions = [...new Set([...storeNames.keys(), ...filters.storeIds])]
+    .sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
+  const unavailableDefaultStores = defaultStores.filter(store => filters.storeIds.includes(store.id)
+    && !availableRows.some(row => row.store_id === store.id));
   const cityOptions = [...new Set(availableRows.map(row => row.city?.trim()).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const departmentOptions = [...new Set(availableRows.map(row => postalDepartment(row.postal_code)).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const hasOpenPrices = comparison?.stores.some(store => store.choices.some(choice =>
@@ -230,6 +248,23 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     splitStores.set(storeKey, current);
   }
   const anyFilter = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
+  const defaultsMatch = filters.storeIds.length === defaultStores.length
+    && filters.storeIds.every(id => defaultStores.some(store => store.id === id));
+  function saveDefaultStores() {
+    try {
+      const stores = filters.storeIds.map(id => ({ id, name: (storeNames.get(id) ?? `Magasin ${id}`).slice(0, 160) }));
+      writeBasketDefaultStores(stores);
+      setDefaultStores(stores);
+      setDefaultStoreError(false);
+    } catch { setDefaultStoreError(true); }
+  }
+  function removeDefaultStores() {
+    try {
+      writeBasketDefaultStores([]);
+      setDefaultStores([]);
+      setDefaultStoreError(false);
+    } catch { setDefaultStoreError(true); }
+  }
   const listKey = key + ":" + JSON.stringify(filters);
   const shownCount = shown.key === listKey ? shown.count : PAGE_SIZE;
   const visibleStores = comparison?.stores.slice(0, shownCount) ?? [];
@@ -253,13 +288,15 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       <nav className="v2-nav" aria-label="Navigation principale"><Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/recettes">Recettes</Link><Link className="v2-nav-current" to="/v2/panier" aria-current="page">Panier</Link><Link to="/v2/parametres">Paramètres</Link>{user ? <button type="button" onClick={() => void onLogout()}>Déconnexion</button> : <Link to="/v2/connexion">Connexion</Link>}</nav>
     </div></header>
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><div className="v2-share-title-row"><h1>Mon panier<span>.</span></h1><V2ShareButton title="Mon panier Price Checker" url={shareUrl} disabled={!items.length} /></div><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>Mon panier<span>.</span></h1><p>Panier local et disponible hors ligne. Comparez les prix selon vos choix.</p><V2BasketShare items={items} url={shareUrl} /></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
       {sharedLink && <section className="v2-shared-basket" aria-label="Panier partagé">
         {sharedEntries ? <>
           <h2>Panier partagé</h2>
-          <p>{sharedEntries.length} article{sharedEntries.length > 1 ? "s" : ""} dans ce lien. Les prix seront recalculés selon les magasins disponibles ; votre panier actuel est conservé.</p>
-          <ul>{sharedEntries.map((entry, index) => <li key={index}>{sharedEntryName(entry)}{sharedEntryQuantity(entry) && <span> · {sharedEntryQuantity(entry)?.amount} {sharedEntryQuantity(entry)?.unit}</span>}{sharedEntryDisabled(entry) && <span> · exclu du calcul</span>}</li>)}</ul>
-          <div className="v2-shared-basket-actions"><button type="button" className="v2-button v2-button-primary" disabled={importing} onClick={() => void importSharedBasket()}>{importing ? "Importation…" : "Ajouter à mon panier"}</button>
+          <p>{sharedEntries.length} article{sharedEntries.length > 1 ? "s" : ""} dans ce lien. Les prix seront recalculés selon les magasins disponibles.</p>
+          <ul>{sharedEntries.map((entry, index) => <li key={index}>{sharedEntryName(entry)} <span>· {basketQuantityLabel(sharedEntryQuantity(entry))}{sharedEntryDisabled(entry) ? " · exclu du calcul" : ""}</span></li>)}</ul>
+          <p>Ajouter conserve les articles et quantités déjà présents. Remplacer reprend exactement ce panier partagé.</p>
+          <div className="v2-shared-basket-actions"><button type="button" className="v2-button v2-button-primary" disabled={importing} onClick={() => void importSharedBasket("add")}>{importing ? "Importation…" : "Ajouter les articles manquants"}</button>
+            <button type="button" className="v2-button v2-button-secondary" disabled={importing} onClick={() => void importSharedBasket("replace")}>Remplacer mon panier</button>
             <button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Ignorer</button></div>
           {importError && <p role="alert">{importError}</p>}
         </> : <><h2>Lien de panier invalide</h2><p>Ce lien ne peut pas être ouvert.</p><button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Fermer</button></>}
@@ -319,6 +356,16 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
               <MultiFilter title="Magasins" options={storeOptions} selected={filters.storeIds} onChange={storeIds => setFilters({ ...filters, storeIds })} label={id => storeNames.get(id) ?? String(id)} />
               <MultiFilter title="Communes" options={cityOptions} selected={filters.cities} onChange={cities => setFilters({ ...filters, cities })} label={city => city} />
               <MultiFilter title="Départements" options={departmentOptions} selected={filters.departments} onChange={departments => setFilters({ ...filters, departments })} label={department => department} />
+            </div>
+            <div className="v2-basket-default-stores">
+              <p>{defaultStores.length ? `${defaultStores.length} magasin${defaultStores.length > 1 ? "s" : ""} par défaut sur ce navigateur.` : "Aucun magasin par défaut enregistré sur ce navigateur."}</p>
+              <div className="v2-basket-default-actions">
+                {filters.storeIds.length > 0 && !defaultsMatch && <button type="button" className="v2-button v2-button-secondary" onClick={saveDefaultStores}>Enregistrer les magasins sélectionnés par défaut</button>}
+                {defaultStores.length > 0 && !defaultsMatch && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters({ ...filters, storeIds: defaultStores.map(store => store.id) })}>Rétablir les magasins par défaut</button>}
+                {defaultStores.length > 0 && <button type="button" className="v2-button v2-button-secondary" onClick={removeDefaultStores}>Supprimer les magasins par défaut</button>}
+              </div>
+              {unavailableDefaultStores.length > 0 && <p>Sans prix pour ce panier : {unavailableDefaultStores.map(store => storeNames.get(store.id) ?? store.name).join(", ")}.</p>}
+              {defaultStoreError && <p role="alert">Impossible d’enregistrer ce choix dans le navigateur.</p>}
             </div>
             {anyFilter && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters(emptyBasketFilters)}>Effacer les filtres</button>}
           </details>}
