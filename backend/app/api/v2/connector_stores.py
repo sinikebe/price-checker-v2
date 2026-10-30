@@ -332,7 +332,10 @@ async def request_connector_refresh(connector_id: str, product_id: int, request:
                 raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
             if await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR:
                 raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
-            return {"status": await enqueue_installed(connection, connector_id, product_id)}
+        # Commit the admission budget before running third-party connector code.
+        # A connector exception must not refund the request and allow retries
+        # without limit.
+        return {"status": await enqueue_installed(connection, connector_id, product_id)}
     finally:
         await connection.close()
 
