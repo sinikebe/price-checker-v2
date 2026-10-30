@@ -270,6 +270,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.85",
+      "components": {
+        "basket": {
+          "version": "0.1.16",
+          "notes": [
+            "Les produits conservés dans le panier suivent leur référence actuelle avant la comparaison des prix."
+          ]
+        }
+      }
     }
   ]
 }

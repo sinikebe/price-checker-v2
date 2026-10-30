@@ -4,7 +4,7 @@ import V2ReportControl from "./V2ReportControl";
 import { positiveDecimal, scaledQuantity } from "../recipes/quantity";
 import type { V2User } from "./v2-auth-api";
 import { productRequest, type Product } from "./v2-products-api";
-import { currentRecipeProduct } from "./v2-recipes-product";
+import { currentBasketProduct } from "./v2-basket-product";
 import { recipeRequest, type Recipe, type RecipeIngredient, type RecipeInput, type RecipePage, type RecipeUnit, type RecipeProposal, type RecipeSubmission } from "./v2-recipes-api";
 import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
@@ -116,7 +116,7 @@ function Detail({ id, user, onLogout }: Props) {
     if (!currentRecipe || !productsReady || productsError || !missingProductIds.length) return;
     let active = true;
     Promise.all(missingProductIds.map(async productId => [productId,
-      await currentRecipeProduct(productId, products, candidateId => productRequest<Product>("/" + candidateId))] as const))
+      await currentBasketProduct(productId, products, candidateId => productRequest<Product>("/" + candidateId))] as const))
       .then(entries => {
         if (!active) return;
         const resolved: Record<number, Product> = {};
