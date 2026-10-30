@@ -37,7 +37,8 @@ export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=safe.directory
 export GIT_CONFIG_VALUE_0=$source_dir
 base_ref="${V2_UPGRADE_BASE_REF:-}"
-if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]]; then
+if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]] ||
+   ! git -C "$source_dir" rev-parse --verify "$base_ref^{commit}" >/dev/null 2>&1; then
   if git -C "$source_dir" rev-parse --verify HEAD^2 >/dev/null 2>&1; then
     base_ref=HEAD^2^
   else

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import versions from "./component-versions.json";
+import V2ConnectorVersions from "./V2ConnectorVersions";
 import "./v2-home.css";
 import "./v2-versions.css";
 
@@ -11,7 +12,10 @@ export default function V2VersionsPage() {
       <h1>Versions des composants</h1>
       <p>Versions des composants utilisés par cette installation.</p>
       <p><Link className="v2-versions-changelog" to="/v2/changelog">Voir le journal des nouveautés →</Link></p>
-      <div className="v2-versions-list">
+      <nav className="v2-versions-menu" aria-label="Rubriques des versions">
+        <a href="#composants">Composants</a><a href="#connecteurs">Connecteurs</a>
+      </nav>
+      <div id="composants" className="v2-versions-list">
         {Object.entries(versions).map(([id, component]) =>
           <div className="v2-versions-item" key={id}>
             <span>{component.label}</span>
@@ -19,6 +23,7 @@ export default function V2VersionsPage() {
           </div>
         )}
       </div>
+      <V2ConnectorVersions />
     </main>
   </div>;
 }

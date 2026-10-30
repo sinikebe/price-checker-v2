@@ -354,6 +354,36 @@
       "component": "recipes",
       "version": "0.1.17",
       "reason": "Le résolveur des références est partagé avec le panier sans autre changement du parcours Recettes."
+    },
+    {
+      "component": "application",
+      "version": "0.1.86",
+      "reason": "L’enregistrement des magasins par défaut est annoncé dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.87",
+      "reason": "Les options de partage et la reprise des quantités sont annoncées dans le composant Panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.88",
+      "reason": "La correction de collision à l’import du panier partagé est interne et ne change pas les options annoncées."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.19",
+      "reason": "Empêche un doublon si deux références du lien désignent désormais le même produit, sans nouvelle fonction visible."
+    },
+    {
+      "component": "application",
+      "version": "0.1.89",
+      "reason": "La simplification du partage est annoncée dans le composant Panier."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.18",
+      "reason": "Le panneau de stores est ajouté aux paramètres en ligne sans nouveau comportement hors ligne."
     }
   ]
 }

@@ -9,6 +9,7 @@ import V2HostHealth from "./V2HostHealth";
 import V2TransferPanel from "./V2TransferPanel";
 import V2AccountDeletion from "./V2AccountDeletion";
 import V2AccountSecurity from "./V2AccountSecurity";
+import V2ConnectorStores from "./V2ConnectorStores";
 import "./v2-settings.css";
 
 const updateMessages = {
@@ -108,6 +109,7 @@ export default function V2SettingsPage({ user, onAccountDeleted }: {
           onAccountDeleted();
         }} />}
         {user?.role === "admin" && <V2HostHealth />}
+        {user?.role === "admin" && <V2ConnectorStores key={`stores-${user.id}`} />}
         {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
         {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}
         {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">

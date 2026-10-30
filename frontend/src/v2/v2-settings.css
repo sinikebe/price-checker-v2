@@ -98,3 +98,12 @@ html[data-v2-theme="dark"] .v2-host-alert-notice { background: #47272e; color: #
 .v2-security-feedback { grid-column: 1 / -1; font-weight: 700; }
 html[data-v2-theme="dark"] .v2-security-form :is(input,select) { --v2-input-background: #172822; }
 @media (max-width: 700px) { .v2-security-once ul { columns: 1; } }
+.v2-connector-stores { grid-column: 1 / -1; }
+.v2-connector-stores form { display: grid; gap: .75rem; }
+.v2-connector-stores form > label { display: grid; gap: .3rem; }
+.v2-connector-stores input:not([type="checkbox"]), .v2-connector-stores textarea { width: 100%; box-sizing: border-box; padding: .6rem; border: 1px solid var(--v2-border, #b4bcc5); border-radius: .35rem; font: inherit; }
+.v2-connector-stores textarea { overflow-wrap: anywhere; }
+.v2-connector-store { border-top: 1px solid var(--v2-border, #b4bcc5); margin-top: 1.25rem; padding-top: 1rem; }
+.v2-connector-store code { overflow-wrap: anywhere; }
+.v2-connector-item { border-left: 3px solid currentColor; padding: .4rem 1rem; margin: 1rem 0; }
+.v2-connector-item h4 { margin: .3rem 0; }

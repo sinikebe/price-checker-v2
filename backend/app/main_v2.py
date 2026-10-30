@@ -17,6 +17,7 @@ from app.api.v2.account_security import router as account_security_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
 from app.api.v2.catalogue import router as catalogue_router
+from app.api.v2.connector_stores import router as connector_stores_router, connector_worker
 from app.api.v2.duplicate_merges import router as duplicate_merges_router
 from app.api.v2.host_health import router as host_health_router
 from app.api.v2.legal import router as legal_router
@@ -57,7 +58,8 @@ async def retention_worker():
 async def lifespan(_: FastAPI):
     workers = [asyncio.create_task(off_refresh_worker()),
                asyncio.create_task(retention_worker()),
-               asyncio.create_task(open_prices_worker())]
+               asyncio.create_task(open_prices_worker()),
+               asyncio.create_task(connector_worker())]
     try:
         yield
     finally:
@@ -103,6 +105,7 @@ ROUTERS = (
     account_security_router,
     products_router,
     catalogue_router,
+    connector_stores_router,
     prices_router,
     stores_router,
     transfers_router,

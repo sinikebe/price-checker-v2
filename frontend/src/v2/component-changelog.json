@@ -281,6 +281,91 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.86",
+      "components": {
+        "basket": {
+          "version": "0.1.17",
+          "notes": [
+            "Les magasins sélectionnés peuvent être enregistrés par défaut pour le panier, uniquement dans ce navigateur."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.87",
+      "components": {
+        "basket": {
+          "version": "0.1.18",
+          "notes": [
+            "Le partage du panier montre les quantités, propose un lien, une liste et un QR code, et permet de remplacer le panier reçu."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.89",
+      "components": {
+        "basket": {
+          "version": "0.1.20",
+          "notes": [
+            "Les actions de partage du panier sont accessibles directement, avec un QR code affiché dans la page."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.90",
+      "components": {
+        "application": {
+          "version": "0.1.90",
+          "notes": [
+            "Les administrateurs peuvent ajouter des stores GitHub, installer et gérer leurs connecteurs, et lire le journal propre à chaque connecteur.",
+            "La page Versions comporte une rubrique Connecteurs avec leur journal dédié."
+          ]
+        },
+        "basket": {
+          "version": "0.1.21",
+          "notes": [
+            "L’ajout d’un produit au panier peut demander une actualisation de prix aux connecteurs installés, selon leur cadence."
+          ]
+        },
+        "database": {
+          "version": "0.1.31",
+          "notes": [
+            "Les stores et les versions installées des connecteurs sont enregistrés avec possibilité de retour à la version précédente."
+          ]
+        },
+        "deployment": {
+          "version": "0.1.22",
+          "notes": [
+            "L’image serveur comprend Git, SSH et le navigateur requis par les connecteurs de prix."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.91",
+      "components": {
+        "application": {
+          "version": "0.1.91",
+          "notes": [
+            "Le retour à une version précédente n’est proposé que si le connecteur déclare sa compatibilité avec les données installées."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.92",
+      "components": {
+        "application": {
+          "version": "0.1.92",
+          "notes": [
+            "Un connecteur suspendu peut être réactivé depuis les paramètres, avec reprise de sa file en attente."
+          ]
+        }
+      }
     }
   ]
 }
