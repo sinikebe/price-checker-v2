@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import shutil
@@ -10,7 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, SecretStr
 
-from app.api.v2.auth import _connect, _secure_write
+from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write
 from app.api.v2.setup import _require_admin
 from app.services.v2_connector_stores import (
     fetch_store, generate_key, key_path, load_installed, public_key,
@@ -19,6 +20,12 @@ from app.services.v2_connector_stores import (
 
 router = APIRouter(prefix="/api/v2/connector-stores", tags=["v2-connector-stores"])
 logger = logging.getLogger(__name__)
+
+# A basket can request refreshes anonymously. Bound demand before invoking
+# private collectors: one shared, durable budget per connector and a smaller
+# budget per client. The worker's own cadence remains the final traffic bound.
+REFRESH_REQUESTS_PER_HOUR = 12
+CLIENT_REFRESH_REQUESTS_PER_HOUR = 6
 
 
 class StoreCreate(BaseModel):
@@ -313,7 +320,19 @@ async def request_connector_refresh(connector_id: str, product_id: int, request:
         raise HTTPException(status_code=422, detail="Produit invalide.")
     connection = await _connect()
     try:
-        return {"status": await enqueue_installed(connection, connector_id, product_id)}
+        async with connection.transaction():
+            installed = await connection.fetchval(
+                "SELECT 1 FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
+                connector_id)
+            if not installed:
+                return {"status": "disabled"}
+            client_key = _limit_key(f"connector-refresh:{connector_id}", request)
+            shared_key = hashlib.sha256(f"connector-refresh:shared:{connector_id}".encode()).hexdigest()
+            if await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR:
+                raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
+            if await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR:
+                raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
+            return {"status": await enqueue_installed(connection, connector_id, product_id)}
     finally:
         await connection.close()
 
