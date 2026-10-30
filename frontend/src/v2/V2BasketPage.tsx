@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
 import V2ShareButton from "./V2ShareButton";
+import { readBasketDefaultStores, writeBasketDefaultStores } from "./v2-basket-default-stores";
 import { currentBasketProduct } from "./v2-basket-product";
 import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryName, sharedEntryQuantity } from "./v2-basket-share";
 import { productRequest, type Product } from "./v2-products-api";
@@ -158,7 +159,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   }
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState<PriceSnapshot | null>(null);
-  const [filters, setFilters] = useState<BasketFilters>(emptyBasketFilters);
+  const [defaultStores, setDefaultStores] = useState(readBasketDefaultStores);
+  const [filters, setFilters] = useState<BasketFilters>(() => ({
+    ...emptyBasketFilters, storeIds: readBasketDefaultStores().map(store => store.id),
+  }));
+  const [defaultStoreError, setDefaultStoreError] = useState(false);
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryError, setCategoryError] = useState(false);
   const [shown, setShown] = useState({ key: "", count: PAGE_SIZE });
@@ -217,7 +222,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const availableRows = ready && snapshot ? [...snapshot.responses.values()].flatMap(response => response?.latest_by_store ?? []) : [];
   const storeNames = new Map<number, string>();
   for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
-  const storeOptions = [...storeNames.keys()].sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
+  for (const store of defaultStores) if (!storeNames.has(store.id)) storeNames.set(store.id, store.name);
+  const storeOptions = [...new Set([...storeNames.keys(), ...filters.storeIds])]
+    .sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
+  const unavailableDefaultStores = defaultStores.filter(store => filters.storeIds.includes(store.id)
+    && !availableRows.some(row => row.store_id === store.id));
   const cityOptions = [...new Set(availableRows.map(row => row.city?.trim()).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const departmentOptions = [...new Set(availableRows.map(row => postalDepartment(row.postal_code)).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const hasOpenPrices = comparison?.stores.some(store => store.choices.some(choice =>
@@ -230,6 +239,23 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     splitStores.set(storeKey, current);
   }
   const anyFilter = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
+  const defaultsMatch = filters.storeIds.length === defaultStores.length
+    && filters.storeIds.every(id => defaultStores.some(store => store.id === id));
+  function saveDefaultStores() {
+    try {
+      const stores = filters.storeIds.map(id => ({ id, name: (storeNames.get(id) ?? `Magasin ${id}`).slice(0, 160) }));
+      writeBasketDefaultStores(stores);
+      setDefaultStores(stores);
+      setDefaultStoreError(false);
+    } catch { setDefaultStoreError(true); }
+  }
+  function removeDefaultStores() {
+    try {
+      writeBasketDefaultStores([]);
+      setDefaultStores([]);
+      setDefaultStoreError(false);
+    } catch { setDefaultStoreError(true); }
+  }
   const listKey = key + ":" + JSON.stringify(filters);
   const shownCount = shown.key === listKey ? shown.count : PAGE_SIZE;
   const visibleStores = comparison?.stores.slice(0, shownCount) ?? [];
@@ -319,6 +345,16 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
               <MultiFilter title="Magasins" options={storeOptions} selected={filters.storeIds} onChange={storeIds => setFilters({ ...filters, storeIds })} label={id => storeNames.get(id) ?? String(id)} />
               <MultiFilter title="Communes" options={cityOptions} selected={filters.cities} onChange={cities => setFilters({ ...filters, cities })} label={city => city} />
               <MultiFilter title="Départements" options={departmentOptions} selected={filters.departments} onChange={departments => setFilters({ ...filters, departments })} label={department => department} />
+            </div>
+            <div className="v2-basket-default-stores">
+              <p>{defaultStores.length ? `${defaultStores.length} magasin${defaultStores.length > 1 ? "s" : ""} par défaut sur ce navigateur.` : "Aucun magasin par défaut enregistré sur ce navigateur."}</p>
+              <div className="v2-basket-default-actions">
+                {filters.storeIds.length > 0 && !defaultsMatch && <button type="button" className="v2-button v2-button-secondary" onClick={saveDefaultStores}>Enregistrer les magasins sélectionnés par défaut</button>}
+                {defaultStores.length > 0 && !defaultsMatch && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters({ ...filters, storeIds: defaultStores.map(store => store.id) })}>Rétablir les magasins par défaut</button>}
+                {defaultStores.length > 0 && <button type="button" className="v2-button v2-button-secondary" onClick={removeDefaultStores}>Supprimer les magasins par défaut</button>}
+              </div>
+              {unavailableDefaultStores.length > 0 && <p>Sans prix pour ce panier : {unavailableDefaultStores.map(store => storeNames.get(store.id) ?? store.name).join(", ")}.</p>}
+              {defaultStoreError && <p role="alert">Impossible d’enregistrer ce choix dans le navigateur.</p>}
             </div>
             {anyFilter && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters(emptyBasketFilters)}>Effacer les filtres</button>}
           </details>}
