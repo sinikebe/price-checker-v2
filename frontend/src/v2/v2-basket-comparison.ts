@@ -1,4 +1,5 @@
 import type { BasketItem, BasketProduct } from "./v2-basket-storage";
+import { pricedQuantity, purchaseDemand } from "./v2-basket-quantity";
 
 export type BasketPrice = {
   id: number; price: string; observed_at: string; retailer: string; store_name: string;
@@ -9,10 +10,10 @@ export type BasketPrice = {
 export type BasketPriceResponse = { latest_by_store: BasketPrice[]; stores_truncated: boolean };
 export type BasketLine = { item: BasketItem; candidates: BasketProduct[] };
 export type BasketFilters = { storeIds: number[]; cities: string[]; departments: string[] };
-export type PriceChoice = { item: BasketItem; product: BasketProduct; reading: BasketPrice; cents: number };
+export type PriceChoice = { item: BasketItem; product: BasketProduct; reading: BasketPrice; cents: number; packages: number; usedCents: number; used: boolean };
 export type StoreQuote = { key: string; reading: BasketPrice; choices: PriceChoice[]; cents: number; coverage: number };
 export type BasketComparison = {
-  stores: StoreQuote[]; split: PriceChoice[]; splitCents: number;
+  stores: StoreQuote[]; split: PriceChoice[]; splitCents: number; splitUsedCents: number;
   missing: BasketItem[]; failed: BasketItem[]; truncated: BasketItem[];
 };
 export type PricePosition = "neutral" | "low" | "middle" | "high";
@@ -48,14 +49,38 @@ function validPrice(row: BasketPrice): number | null {
 }
 function cheaper(left: PriceChoice, right: PriceChoice) {
   return left.cents - right.cents
+    || left.usedCents - right.usedCents
     || right.reading.observed_at.localeCompare(left.reading.observed_at)
     || left.reading.store_id - right.reading.store_id
     || left.reading.sales_channel.localeCompare(right.reading.sales_channel)
     || left.product.id - right.product.id;
 }
+// Total cash outlay for the concrete choices shown, sharing whole packs when
+// several lines use the same product at the same store and sales channel.
+export function purchaseTotalCents(choices: PriceChoice[], advanced: boolean): number {
+  if (!advanced) return choices.reduce((sum, choice) => sum + choice.cents, 0);
+  const groups = new Map<string, { demand: bigint; capacity: bigint; unitCents: number }>();
+  for (const [index, choice] of choices.entries()) {
+    const quantity = purchaseDemand(choice.item, choice.product, true);
+    const unitCents = validPrice(choice.reading);
+    if (!quantity || unitCents === null) return NaN;
+    const baseKey = storeKey(choice.reading) + ":" + choice.product.id;
+    const current = groups.get(baseKey);
+    // Never combine contradictory package snapshots or price readings.
+    const key = current && (current.capacity !== quantity.capacity || current.unitCents !== unitCents)
+      ? baseKey + ":" + index : baseKey;
+    const group = groups.get(key);
+    if (group) group.demand += quantity.demand;
+    else groups.set(key, { ...quantity, unitCents });
+  }
+  return [...groups.values()].reduce((sum, group) =>
+    sum + Number((group.demand + group.capacity - 1n) / group.capacity) * group.unitCents, 0);
+}
+
 export function buildBasketComparison(
   lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
   filters: BasketFilters = emptyBasketFilters,
+  advanced = false,
 ): BasketComparison {
   const stores = new Map<string, StoreQuote>();
   const split: PriceChoice[] = [], missing: BasketItem[] = [], failed: BasketItem[] = [], truncated: BasketItem[] = [];
@@ -69,7 +94,9 @@ export function buildBasketComparison(
     for (const product of products) for (const reading of responses.get(product.id)!.latest_by_store) {
       const cents = validPrice(reading);
       if (cents === null || !matchesBasketFilters(reading, filters)) continue;
-      const choice = { item: line.item, product, reading, cents };
+      const quantity = pricedQuantity(line.item, product, cents, advanced);
+      if (!quantity) continue;
+      const choice = { item: line.item, product, reading, ...quantity };
       const key = storeKey(reading), current = byStore.get(key);
       if (!current || cheaper(choice, current) < 0) byStore.set(key, choice);
     }
@@ -82,14 +109,16 @@ export function buildBasketComparison(
         store = { key, reading: choice.reading, choices: [], cents: 0, coverage: 0 };
         stores.set(key, store);
       }
-      store.choices.push(choice); store.cents += choice.cents; store.coverage += 1;
+      store.choices.push(choice); store.coverage += 1;
     }
   }
+  for (const store of stores.values()) store.cents = purchaseTotalCents(store.choices, advanced);
   const storeList = [...stores.values()].sort((left, right) => {
     const leftComplete = left.coverage === lines.length, rightComplete = right.coverage === lines.length;
     if (leftComplete !== rightComplete) return leftComplete ? -1 : 1;
     if (!leftComplete && left.coverage !== right.coverage) return right.coverage - left.coverage;
     return left.cents - right.cents || left.reading.store_name.localeCompare(right.reading.store_name, "fr");
   });
-  return { stores: storeList, split, splitCents: split.reduce((sum, choice) => sum + choice.cents, 0), missing, failed, truncated };
+  return { stores: storeList, split, splitCents: purchaseTotalCents(split, advanced),
+    splitUsedCents: split.reduce((sum, choice) => sum + choice.usedCents, 0), missing, failed, truncated };
 }

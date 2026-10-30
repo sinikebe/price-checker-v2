@@ -1,11 +1,19 @@
 import type { Product } from "./v2-products-api";
 
 export const V2_BASKET_EVENT = "v2-basket-updated";
+export type BasketQuantity = { amount: string; unit: "g" | "kg" | "ml" | "cl" | "l" | "piece" | "package" };
+export function validBasketQuantity(value: unknown): value is BasketQuantity {
+  if (!value || typeof value !== "object" || !("amount" in value) || !("unit" in value)) return false;
+  const quantity = value as BasketQuantity;
+  return typeof quantity.amount === "string" && /^\d{1,6}(?:\.\d{1,6})?$/.test(quantity.amount)
+    && Number(quantity.amount) > 0 && ["g", "kg", "ml", "cl", "l", "piece", "package"].includes(quantity.unit);
+}
 const ACTIVE_USER_KEY = "v2:basket:active-user";
 const ANON_KEY = "v2:basket:anonymous";
-export type BasketProduct = Pick<Product, "id" | "data" | "revision"> & { disabled?: boolean };
-export type BasketGroup = { kind: "group"; name: string; disabled?: boolean };
-export type BasketScope = { kind: "scope"; name: string; department: string; family: string; disabled?: boolean };
+type BasketOptions = { disabled?: boolean; quantity?: BasketQuantity };
+export type BasketProduct = Pick<Product, "id" | "data" | "revision"> & BasketOptions;
+export type BasketGroup = { kind: "group"; name: string } & BasketOptions;
+export type BasketScope = { kind: "scope"; name: string; department: string; family: string } & BasketOptions;
 export type BasketItem = BasketProduct | BasketGroup | BasketScope;
 export function isBasketProduct(item: BasketItem): item is BasketProduct { return !("kind" in item); }
 export const basketItemKey = (item: BasketItem): string => "kind" in item
@@ -31,7 +39,8 @@ export function readV2Basket(userId: number | null = activeBasketUser()): Basket
       return "id" in item && typeof item.id === "number" && "data" in item && !!item.data
         && typeof item.data === "object" && "name" in item.data && typeof item.data.name === "string"
         && "revision" in item && typeof item.revision === "number";
-    }) : [];
+    }).map(item => item.quantity === undefined ? item : validBasketQuantity(item.quantity)
+      ? item : (() => { const { quantity: _quantity, ...rest } = item; void _quantity; return rest as BasketItem; })()) : [];
   } catch { return []; }
 }
 export function writeV2Basket(items: BasketItem[], userId: number | null = activeBasketUser()) {

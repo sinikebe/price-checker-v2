@@ -236,6 +236,51 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.81",
+      "components": {
+        "basket": {
+          "version": "0.1.12",
+          "notes": [
+            "Le panier avancé distingue les paquets à acheter du coût au prorata des quantités utilisées, avec des quantités conservées dans les liens partagés."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.14",
+          "notes": [
+            "Les ingrédients d’une recette peuvent être ajoutés au panier selon le nombre de portions, avec le choix d’une référence pour chaque groupe."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.84",
+      "components": {
+        "basket": {
+          "version": "0.1.15",
+          "notes": [
+            "Le coût d’achat mutualise les paquets utilisés par plusieurs ingrédients du même produit."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.16",
+          "notes": [
+            "Les recettes retrouvent la référence actuelle d’un produit remplacé avant son ajout au panier."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.85",
+      "components": {
+        "basket": {
+          "version": "0.1.16",
+          "notes": [
+            "Les produits conservés dans le panier suivent leur référence actuelle avant la comparaison des prix."
+          ]
+        }
+      }
     }
   ]
 }
