@@ -28,6 +28,29 @@ export function combineQuantities(current: BasketQuantity | undefined, incoming:
   return null;
 }
 
+// Integer micro-units keep shared-pack ceilings exact at decimal boundaries.
+const MICRO = 1000000n;
+function decimalMicro(value: string): bigint | null {
+  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(value);
+  return match ? BigInt(match[1]) * MICRO + BigInt((match[2] ?? "").padEnd(6, "0")) : null;
+}
+
+export function purchaseDemand(item: BasketItem, product: BasketProduct, advanced: boolean) {
+  const requested = advanced ? item.quantity : undefined;
+  const size = decimalMicro(product.data.quantity_amount ?? "");
+  if (!requested || requested.unit === "package") {
+    const packages = requested ? decimalMicro(requested.amount) : MICRO;
+    if (!packages) return null;
+    return size
+      ? { demand: packages * size, capacity: MICRO * size }
+      : { demand: packages, capacity: MICRO };
+  }
+  const factor = factors[requested.unit];
+  const amount = decimalMicro(requested.amount);
+  if (!factor || !amount || !size || factor.unit !== product.data.quantity_unit) return null;
+  return { demand: amount * BigInt(factor.factor) * MICRO, capacity: size * MICRO };
+}
+
 export function pricedQuantity(item: BasketItem, product: BasketProduct, packageCents: number, advanced: boolean) {
   const requested = advanced ? item.quantity : undefined;
   if (!requested) return { packages: 1, cents: packageCents, usedCents: packageCents, used: false };

@@ -5,7 +5,7 @@ import V2ShareButton from "./V2ShareButton";
 import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryName, sharedEntryQuantity } from "./v2-basket-share";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, validBasketQuantity, type BasketGroup, type BasketItem, type BasketProduct, type BasketQuantity, type BasketScope } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment,
+import { buildBasketComparison, emptyBasketFilters, postalDepartment, purchaseTotalCents,
   pricePosition, type BasketFilters, type BasketLine, type BasketPrice, type BasketPriceResponse, type PriceChoice } from "./v2-basket-comparison";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
@@ -276,22 +276,22 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
           <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm("Vider le panier ?")) clear(); }}>Vider le panier</button>
         </details>
         {activeItems.length ? <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
-          <div className="v2-basket-comparison-heading"><div><h2>Meilleur prix</h2>
-            <p>Derniers prix publiés dans les magasins filtrés. Déplacement et frais de livraison exclus.</p></div>
+          <div className="v2-basket-comparison-heading"><div><h2>{advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
+            <p>Derniers prix publiés dans les magasins filtrés. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div>
             <button type="button" className="v2-button v2-button-secondary" onClick={() => setRefresh(value => value + 1)}>Actualiser les prix</button></div>
           {!ready && <p role="status">Chargement des prix…</p>}
           {comparison && <>
             {comparison.failed.length > 0 && <p className="v2-recipes-error">Prix impossibles à charger pour {comparison.failed.length} article{comparison.failed.length > 1 ? "s" : ""}. Réessayez d’actualiser.</p>}
-            {comparison.truncated.length > 0 && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de 200 par produit. Le minimum affiché peut être incomplet.</p>}
-            <div className="v2-basket-split-total" aria-live="polite"><span>{comparison.missing.length ? "Sous-total réparti des articles avec prix" : "Total le moins cher en répartissant les courses"}</span>
+            {comparison.truncated.length > 0 && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de 200 par produit. {advanced ? "L’estimation affichée peut être incomplète." : "Le minimum affiché peut être incomplet."}</p>}
+            <div className="v2-basket-split-total" aria-live="polite"><span>{comparison.missing.length ? "Sous-total réparti des articles avec prix" : advanced ? "Coût estimé de la sélection répartie" : "Total le moins cher en répartissant les courses"}</span>
               <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
               {advanced && comparison.split.length > 0 && <span>{comparison.missing.length ? "Sous-total de la part utilisée" : "Part utilisée au prorata"} : <strong>{money(comparison.splitUsedCents)}</strong></span>}
               <small>{comparison.split.length}/{activeItems.length} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente</small></div>
-            {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>
+            {splitStores.size > 0 && <details className="v2-basket-breakdown"><summary>Voir la répartition des courses</summary>{advanced && <p>Les prix par article sont indiqués avant mutualisation ; le total compte chaque paquet partagé une seule fois.</p>}
               <ul className="v2-basket-store-list">{[...splitStores].map(([storeKey, choices]) => {
                 const reading = choices[0].reading;
                 return <li key={storeKey} className="v2-basket-store"><div className="v2-basket-store-heading"><div><h3>{reading.retailer}</h3><p>{storeName(reading)}</p></div>
-                  <div className="v2-basket-total"><strong>{money(choices.reduce((sum, choice) => sum + choice.cents, 0))}</strong>{advanced && <span>Part utilisée : {money(choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
+                  <div className="v2-basket-total"><strong>{money(purchaseTotalCents(choices, advanced))}</strong>{advanced && <span>Part utilisée : {money(choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{choices.length} article{choices.length > 1 ? "s" : ""}</span></div></div>
                   <ul className="v2-basket-lines">{choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} advanced={advanced} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                 </li>;
               })}</ul></details>}
@@ -306,12 +306,12 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             </div>
             {anyFilter && <button type="button" className="v2-button v2-button-secondary" onClick={() => setFilters(emptyBasketFilters)}>Effacer les filtres</button>}
           </details>}
-            <div className="v2-basket-results-heading"><h3>Magasins les moins chers</h3><p>Paniers complets classés par prix ; sous-totaux partiels ensuite.</p></div>
+            <div className="v2-basket-results-heading"><h3>{advanced ? "Magasins comparés" : "Magasins les moins chers"}</h3><p>Paniers complets classés par prix ; sous-totaux partiels ensuite.</p></div>
             {visibleStores.length ? <ul className="v2-basket-store-list">{visibleStores.map(store => {
               const complete = store.coverage === activeItems.length;
               return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
                 <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{advanced && <span>{complete ? "Part utilisée" : "Sous-total de la part utilisée"} : {money(store.choices.reduce((sum, choice) => sum + choice.usedCents, 0))}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{activeItems.length} articles</span></div></div>
-                <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>
+                <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>{advanced && <p>Prix par article avant mutualisation des paquets.</p>}
                   <ul className="v2-basket-lines">{store.choices.map(choice => <li key={basketItemKey(choice.item)}><ChoiceLabel choice={choice} advanced={advanced} /><DatedPrice choice={choice} range={rangeFor(choice)} /></li>)}</ul>
                   {!complete && <p className="v2-basket-missing">Sans prix ici : {activeItems.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))).map(itemName).join(", ")}.</p>}
                 </details>
