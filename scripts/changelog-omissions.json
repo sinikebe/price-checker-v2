@@ -339,6 +339,11 @@
       "component": "basket",
       "version": "0.1.14",
       "reason": "Un coût utilisé incomplet est désormais explicitement nommé sous-total, sans nouvelle fonction."
+    },
+    {
+      "component": "application",
+      "version": "0.1.84",
+      "reason": "Les corrections des coûts et des références de recettes sont annoncées dans les composants concernés."
     }
   ]
 }

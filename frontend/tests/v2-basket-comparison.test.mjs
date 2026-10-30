@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const quantitySource = readFileSync(new URL("../src/v2/v2-basket-quantity.ts", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.meta.url), "utf8")
-  .replace('import { pricedQuantity } from "./v2-basket-quantity";', quantitySource);
+  .replace('import { pricedQuantity, purchaseDemand } from "./v2-basket-quantity";', quantitySource);
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -140,4 +140,26 @@ test("advanced comparison excludes incompatible or unknown package sizes", () =>
   ]), undefined, true);
   assert.equal(result.split[0].product.id, 2);
   assert.equal(result.splitCents, 250);
+});
+
+test("advanced totals share a purchased pack across product and group lines", () => {
+  const butter = { ...product(1), data: { name: "Beurre", quantity_amount: "250.000", quantity_unit: "g" } };
+  const exact = { ...butter, quantity: { amount: "20", unit: "g" } };
+  const group = { kind: "group", name: "Beurre", quantity: { amount: "20", unit: "g" } };
+  const result = buildBasketComparison([line(exact, butter), line(group, butter)],
+    new Map([[1, response(reading(1, 10, "2.50"), reading(2, 20, "3.00"))]]), undefined, true);
+  assert.equal(result.stores.find(store => store.key === "10:in_store").cents, 250);
+  assert.equal(result.splitCents, 250);
+  assert.equal(result.splitUsedCents, 40);
+  assert.equal(result.stores.find(store => store.key === "20:in_store").cents, 300);
+});
+
+test("shared packs use exact aggregate ceilings across physical and package requests", () => {
+  const butter = { ...product(1), data: { name: "Beurre", quantity_amount: "250.000", quantity_unit: "g" } };
+  const result = buildBasketComparison([
+    line({ ...butter, quantity: { amount: "125", unit: "g" } }, butter),
+    line({ kind: "group", name: "Beurre", quantity: { amount: "0.5", unit: "package" } }, butter),
+  ], new Map([[1, response(reading(1, 10, "2.50"))]]), undefined, true);
+  assert.equal(result.splitCents, 250);
+  assert.equal(result.splitUsedCents, 250);
 });

@@ -253,6 +253,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.84",
+      "components": {
+        "basket": {
+          "version": "0.1.15",
+          "notes": [
+            "Le coût d’achat mutualise les paquets utilisés par plusieurs ingrédients du même produit."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.16",
+          "notes": [
+            "Les recettes retrouvent la référence actuelle d’un produit remplacé avant son ajout au panier."
+          ]
+        }
+      }
     }
   ]
 }
