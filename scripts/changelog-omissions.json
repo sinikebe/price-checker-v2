@@ -344,6 +344,16 @@
       "component": "application",
       "version": "0.1.84",
       "reason": "Les corrections des coûts et des références de recettes sont annoncées dans les composants concernés."
+    },
+    {
+      "component": "application",
+      "version": "0.1.85",
+      "reason": "La résolution des références du panier est annoncée dans le composant Panier."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.17",
+      "reason": "Le résolveur des références est partagé avec le panier sans autre changement du parcours Recettes."
     }
   ]
 }

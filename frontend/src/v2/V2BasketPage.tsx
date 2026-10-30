@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
 import V2ShareButton from "./V2ShareButton";
+import { currentBasketProduct } from "./v2-basket-product";
 import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryName, sharedEntryQuantity } from "./v2-basket-share";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, validBasketQuantity, type BasketGroup, type BasketItem, type BasketProduct, type BasketQuantity, type BasketScope } from "./v2-basket-storage";
@@ -90,11 +91,20 @@ function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value
 function ChoiceLabel({ choice, advanced }: { choice: PriceChoice; advanced: boolean }) {
   return <span className="v2-basket-choice"><Link to={itemHref(choice.item)}>{itemName(choice.item)}</Link>
     {advanced && choice.item.quantity && <small>Demandé : {choice.item.quantity.amount} {choice.item.quantity.unit === "package" ? "paquet(s)" : choice.item.quantity.unit === "piece" ? "pièce(s)" : choice.item.quantity.unit}</small>}
+    {!('kind' in choice.item) && choice.product.id !== choice.item.id && <small>Référence actuelle : <Link to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</Link></small>}
     {"kind" in choice.item && <small>Choix : <Link to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</Link>
       {choice.product.data.quantity && " · " + choice.product.data.quantity}</small>}</span>;
 }
 async function fetchCandidates(item: BasketItem, signal: AbortSignal): Promise<BasketProduct[]> {
-  if (!("kind" in item)) return [item];
+  if (!("kind" in item)) {
+    const current = await currentBasketProduct(item.id, null, async productId => {
+      const response = await fetch("/api/v2/products/" + productId,
+        { credentials: "same-origin", cache: "no-store", signal });
+      if (!response.ok) throw new Error("Produit introuvable");
+      return response.json() as Promise<Product>;
+    });
+    return current ? [current] : [];
+  }
   const path = item.kind === "group" ? "/categories/" + encodeURIComponent(item.name)
     : "/comparison?" + new URLSearchParams({ department: item.department, family: item.family, scope: item.name });
   const response = await fetch("/api/v2/catalogue" + path, { credentials: "same-origin", cache: "no-store", signal });
@@ -171,10 +181,16 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     if (activeItems.length === 0) return;
     const controller = new AbortController();
     async function load() {
-      const lines = await Promise.all(activeItems.map(async item => {
-        try { return { item, candidates: await fetchCandidates(item, controller.signal) }; }
-        catch { return { item, candidates: [] }; }
-      }));
+      const lines: BasketLine[] = activeItems.map(item => ({ item, candidates: [] }));
+      let candidateIndex = 0;
+      async function candidateWorker() {
+        while (candidateIndex < lines.length && !controller.signal.aborted) {
+          const line = lines[candidateIndex++];
+          try { line.candidates = await fetchCandidates(line.item, controller.signal); }
+          catch { line.candidates = []; }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, lines.length) }, () => candidateWorker()));
       const products = [...new Map(lines.flatMap(line => line.candidates).map(product => [product.id, product])).values()];
       const responses = new Map<number, BasketPriceResponse | null>();
       let index = 0;
