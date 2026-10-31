@@ -389,6 +389,11 @@
       "component": "application",
       "version": "0.1.94",
       "reason": "Garantit que le quota de relevé déjà annoncé reste consommé si le connecteur échoue."
+    },
+    {
+      "component": "application",
+      "version": "0.1.97",
+      "reason": "Le déclenchement et les badges génériques sont annoncés dans les composants Produits et Open Prices."
     }
   ]
 }

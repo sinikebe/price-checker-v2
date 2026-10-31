@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { select } from "d3-selection";
 import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 import type { V2User } from "./v2-auth-api";
+import { CONNECTOR_PRICE_REFRESH_EVENT, V2ConnectorQueueIndicator, useConnectorQueue } from "./V2ConnectorQueueIndicator";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -249,6 +250,7 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
 }
 
 export default function V2PriceHistory({ productId, user, current }: { productId: number; user: V2User | null; current: boolean }) {
+  const queueBadges = useConnectorQueue(current ? [productId] : []);
   const userId = user?.id;
   const [prices, setPrices] = useState<PricesResponse | null>(null);
   const [drafts, setDrafts] = useState<PriceDraft[] | null>(null);
@@ -272,6 +274,11 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     }
   }, [productId, userId]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const onPrice = () => { void refresh(); };
+    window.addEventListener(CONNECTOR_PRICE_REFRESH_EVENT, onPrice);
+    return () => window.removeEventListener(CONNECTOR_PRICE_REFRESH_EVENT, onPrice);
+  }, [refresh]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -313,6 +320,8 @@ export default function V2PriceHistory({ productId, user, current }: { productId
   });
   return <section className="v2-workspace-card v2-price-history" aria-labelledby="v2-price-heading">
     <div className="v2-price-heading"><div><h2 id="v2-price-heading">Prix relevés</h2>
+      {queueBadges.filter(badge => !comparison.some(item => item.latest.store_name === badge.store_name))
+        .map(badge => <V2ConnectorQueueIndicator key={badge.connectorId} badge={badge} />)}
       <p>Une évolution distincte par magasin et canal : aucun trait ne relie deux points de vente différents.</p></div>
     </div>
     {!prices && !error && <p>Chargement des prix…</p>}
@@ -325,7 +334,9 @@ export default function V2PriceHistory({ productId, user, current }: { productId
           const valid = plottable(item.latest);
           return <li key={item.key} className="v2-price-store-card" style={{ borderInlineStartColor: item.color }}>
             <div className="v2-price-store-name"><span className="v2-price-store-swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
-              <div><strong>{item.latest.store_name}</strong><small>{storeMeta(item.latest)}</small></div></div>
+              <div><strong>{item.latest.store_name}</strong><small>{storeMeta(item.latest)}</small>
+                {queueBadges.filter(badge => badge.store_name === item.latest.store_name)
+                  .map(badge => <V2ConnectorQueueIndicator key={badge.connectorId} badge={badge} />)}</div></div>
             <div className="v2-price-store-reading">
               <strong className={valid ? "" : "v2-price-store-invalid"}>{money(item.latest.price)}</strong>
               {index === 0 && valid && <span className="v2-price-store-best">Prix relevé le plus bas</span>}

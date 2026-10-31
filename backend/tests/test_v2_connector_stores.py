@@ -105,6 +105,8 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 " await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=$1', values['resumed'])\n"
                 "async def enqueue(connection, product_id): return 'queued'\n"
                 "async def enqueue_basket(connection, product_id): return 'priority_queued'\n"
+                "async def product_statuses(connection, product_ids):\n"
+                " return {str(product_id): {'status': 'eligible' if product_id == 1 else 'unmapped_product', 'rank': None, 'store_name': 'Test'} for product_id in product_ids}\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
                     "changelog": [{"version": f"0.1.{next_revision}", "notes": ["Version tested."]}],
@@ -169,6 +171,26 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 await connection.close()
             versions = await client.get("/api/v2/connector-stores/versions")
             assert versions.json()["connectors"][0]["changelog"][0]["version"] == "0.1.1"
+            page_url = "/api/v2/connector-stores/demo/products/page-refresh"
+            status_url = "/api/v2/connector-stores/demo/products/status"
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.0.8", 12345)),
+                base_url="https://testserver",
+            ) as page_viewer:
+                state = await page_viewer.post(status_url, headers=write, json={"product_ids": [1, 2]})
+                assert state.status_code == 200, state.text
+                assert state.json()["products"]["1"]["status"] == "eligible"
+                page = await page_viewer.post(page_url, headers=write, json={"product_ids": [1, 2]})
+                assert page.status_code == 200, page.text
+                assert page.json()["products"]["1"]["status"] == "queued"
+                assert page.json()["products"]["2"]["status"] == "unmapped_product"
+                assert (await page_viewer.post(page_url, headers=write, json={"product_ids": [0]})).status_code == 422
+            connection = await test_connect()
+            try:
+                assert await connection.fetchval("SELECT sum(attempts) FROM v2_auth_limits") == 2
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
             basket_url = "/api/v2/connector-stores/demo/products/refresh"
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app, client=("10.0.0.9", 12345)),

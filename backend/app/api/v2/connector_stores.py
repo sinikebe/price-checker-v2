@@ -396,6 +396,44 @@ async def enqueue_installed(
         return "unavailable"
 
 
+async def page_product_statuses(connection, connector_id: str, product_ids: list[int]) -> dict[str, dict]:
+    """Read an installed connector's optional, database-only price-page status hook."""
+    row = await connection.fetchrow(
+        "SELECT store_id,commit_sha FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
+        connector_id,
+    )
+    fallback = {str(product_id): {"status": "disabled", "rank": None} for product_id in product_ids}
+    if not row:
+        return fallback
+    try:
+        module = await asyncio.to_thread(
+            load_installed, row["store_id"], connector_id, row["commit_sha"]
+        )
+    except (FileNotFoundError, ImportError, ValueError, OSError):
+        logger.exception("Connector %s unavailable", connector_id)
+        return {key: {"status": "unavailable", "rank": None} for key in fallback}
+    hook = getattr(module, "product_statuses", None)
+    if not callable(hook):
+        return {key: {"status": "unsupported", "rank": None} for key in fallback}
+    raw = await hook(connection, product_ids)
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=503, detail="État du connecteur invalide.")
+    result = {}
+    for product_id in product_ids:
+        item = raw.get(str(product_id))
+        if not isinstance(item, dict) or not isinstance(item.get("status"), str):
+            raise HTTPException(status_code=503, detail="État du connecteur invalide.")
+        rank = item.get("rank")
+        if rank is not None and (type(rank) is not int or rank < 1):
+            raise HTTPException(status_code=503, detail="État du connecteur invalide.")
+        store_name = item.get("store_name")
+        if store_name is not None and (not isinstance(store_name, str) or len(store_name) > 200):
+            raise HTTPException(status_code=503, detail="État du connecteur invalide.")
+        result[str(product_id)] = {"status": item["status"], "rank": rank,
+                                   "store_name": store_name}
+    return result
+
+
 class _BudgetSpent(Exception):
     pass
 
@@ -451,6 +489,60 @@ async def request_basket_refresh(
             statuses[str(product_id)] = await enqueue_installed(
                 connection, connector_id, product_id, basket=True)
         return {"products": statuses}
+    finally:
+        await connection.close()
+
+
+@router.post("/{connector_id}/products/status")
+async def connector_product_statuses(
+    connector_id: str, payload: BasketRefreshBatch, request: Request
+):
+    _secure_write(request)
+    ids = list(dict.fromkeys(payload.product_ids))
+    if any(product_id <= 0 for product_id in ids):
+        raise HTTPException(status_code=422, detail="Produit invalide.")
+    connection = await _connect()
+    try:
+        return {"products": await page_product_statuses(connection, connector_id, ids)}
+    finally:
+        await connection.close()
+
+
+@router.post("/{connector_id}/products/page-refresh")
+async def request_page_refresh(
+    connector_id: str, payload: BasketRefreshBatch, request: Request
+):
+    """Admit only eligible products; a page view never promotes basket priority."""
+    _secure_write(request)
+    ids = list(dict.fromkeys(payload.product_ids))
+    if any(product_id <= 0 for product_id in ids):
+        raise HTTPException(status_code=422, detail="Produit invalide.")
+    connection = await _connect()
+    try:
+        before = await page_product_statuses(connection, connector_id, ids)
+        candidates = [product_id for product_id in ids
+                      if before[str(product_id)]["status"] == "eligible"]
+        if not candidates:
+            return {"products": before}
+        try:
+            admitted = await _admit_refresh(connection, connector_id, request, candidates)
+        except HTTPException as exc:
+            if exc.status_code != 429:
+                raise
+            admitted = []
+        if admitted is None:
+            return {"products": {str(product_id): {"status": "disabled", "rank": None}
+                                  for product_id in ids}}
+        outcomes = {}
+        for product_id in admitted:
+            outcomes[str(product_id)] = await enqueue_installed(connection, connector_id, product_id)
+        after = await page_product_statuses(connection, connector_id, ids)
+        for product_id in candidates[len(admitted):]:
+            after[str(product_id)] = {"status": "rate_limited", "rank": None}
+        for key, outcome in outcomes.items():
+            if after[key]["status"] == "eligible":
+                after[key] = {"status": outcome, "rank": None}
+        return {"products": after}
     finally:
         await connection.close()
 

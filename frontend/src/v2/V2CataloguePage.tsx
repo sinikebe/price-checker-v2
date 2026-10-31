@@ -6,6 +6,7 @@ import { Frame } from "./V2ProductWorkspace";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import { productRequest, type Product } from "./v2-products-api";
 import { useV2Basket } from "./V2BasketContext";
+import { CONNECTOR_PRICE_REFRESH_EVENT, V2ConnectorQueueIndicator, useConnectorQueue } from "./V2ConnectorQueueIndicator";
 import type { BasketGroup, BasketScope } from "./v2-basket-storage";
 import "./v2-catalogue.css";
 
@@ -153,9 +154,12 @@ function useCatalogue<T>(path: string, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    catalogueRequest<T>(path).then(data => { if (active) setResult({ path, data, error: "" }); })
-      .catch(error => { if (active) setResult({ path, data: null, error: String(error) }); });
-    return () => { active = false; };
+    const load = () => { catalogueRequest<T>(path).then(data => { if (active) setResult({ path, data, error: "" }); })
+      .catch(error => { if (active) setResult({ path, data: null, error: String(error) }); }); };
+    load();
+    if (path.startsWith("/categories/") || path.startsWith("/comparison?"))
+      window.addEventListener(CONNECTOR_PRICE_REFRESH_EVENT, load);
+    return () => { active = false; window.removeEventListener(CONNECTOR_PRICE_REFRESH_EVENT, load); };
   }, [path, enabled]);
   return result.path === path ? result : { path, data: null, error: "" };
 }
@@ -289,6 +293,7 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
   const subset = params.get("subset") || "";
   const products = detail.products;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
+  const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id));
   const availableMetrics = unitMetrics.map(unit => ({
     unit, count: selectedProducts.filter(product => quantityFor(product)?.unit === unit).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
@@ -330,6 +335,11 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
     <p role="status">{selectedProducts.length} produit{selectedProducts.length > 1 ? "s" : ""} affiché{selectedProducts.length > 1 ? "s" : ""} sur {products.length}.</p>
     {selectedProducts.length ? <>
       <h2>Prix des produits sélectionnés</h2>
+      {queueBadges.length > 0 && <div aria-label="Relevés en file">{queueBadges.map(badge =>
+        <span key={`${badge.connectorId}:${badge.productId}`}>
+          {productName(selectedProducts.find(product => product.id === badge.productId)!)} · {badge.connector} :
+          <V2ConnectorQueueIndicator badge={badge} />
+        </span>)}</div>}
       {!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
       <CategoryChart detail={detail} products={selectedProducts} metric={metric} showGroup={showGroup} />
       <h2>Produits</h2>
