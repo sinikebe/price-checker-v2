@@ -6,7 +6,8 @@ import { Frame } from "./V2ProductWorkspace";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import { productRequest, type Product } from "./v2-products-api";
 import { useV2Basket } from "./V2BasketContext";
-import { CONNECTOR_PRICE_REFRESH_EVENT, V2ConnectorQueueIndicator, useConnectorQueue } from "./V2ConnectorQueueIndicator";
+import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
+import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import type { BasketGroup, BasketScope } from "./v2-basket-storage";
 import "./v2-catalogue.css";
 

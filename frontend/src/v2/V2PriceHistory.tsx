@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { select } from "d3-selection";
 import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 import type { V2User } from "./v2-auth-api";
-import { CONNECTOR_PRICE_REFRESH_EVENT, V2ConnectorQueueIndicator, useConnectorQueue } from "./V2ConnectorQueueIndicator";
+import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
+import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import "./v2-price-history.css";
 
 type Observation = {
