@@ -104,6 +104,7 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 " if set(values) != {'resumed'} or type(values['resumed']) is not bool: raise ValueError('Invalid settings')\n"
                 " await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=$1', values['resumed'])\n"
                 "async def enqueue(connection, product_id): return 'queued'\n"
+                "async def enqueue_basket(connection, product_id): return 'priority_queued'\n"
                 "async def process_one(): pass\n")
             item = {"id": "demo", "name": "Demo", "version": f"0.1.{next_revision}",
                     "changelog": [{"version": f"0.1.{next_revision}", "notes": ["Version tested."]}],
@@ -168,6 +169,61 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 await connection.close()
             versions = await client.get("/api/v2/connector-stores/versions")
             assert versions.json()["connectors"][0]["changelog"][0]["version"] == "0.1.1"
+            basket_url = "/api/v2/connector-stores/demo/products/refresh"
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.0.9", 12345)),
+                base_url="https://testserver",
+            ) as shopper:
+                basket = await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [1, 2, 1]})
+                assert basket.status_code == 200, basket.text
+                assert basket.json() == {"products": {"1": "priority_queued", "2": "priority_queued"}}
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [0]})
+                ).status_code == 422
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": list(range(1, 52))})
+                ).status_code == 422
+                # The budget counts products, not requests. Two are spent, so of the
+                # next batch only the products that still fit are admitted, in order.
+                limit = api.CLIENT_REFRESH_REQUESTS_PER_HOUR
+                rest = list(range(3, 3 + limit))
+                partial = await shopper.post(basket_url, headers=write, json={"product_ids": rest})
+                assert partial.status_code == 200, partial.text
+                assert partial.json() == {"products": {
+                    str(product_id): "priority_queued" if index < limit - 2 else "rate_limited"
+                    for index, product_id in enumerate(rest)}}
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [limit + 3]})
+                ).status_code == 429
+            connection = await test_connect()
+            try:
+                # One unit of each budget per admitted product; refused ones are not charged.
+                assert await connection.fetchval(
+                    "SELECT sum(attempts) FROM v2_auth_limits") == 2 * limit
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
+            # The shared budget is spent across clients, by batches too.
+            for index in range(api.REFRESH_REQUESTS_PER_HOUR // limit):
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app, client=(f"10.0.1.{index}", 12345)),
+                    base_url="https://testserver",
+                ) as shopper:
+                    full = await shopper.post(
+                        basket_url, headers=write, json={"product_ids": list(range(1, limit + 1))})
+                    assert set(full.json()["products"].values()) == {"priority_queued"}
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.1.99", 12345)),
+                base_url="https://testserver",
+            ) as shopper:
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [1]})).status_code == 429
+            connection = await test_connect()
+            try:
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
             # Basket refresh is intentionally anonymous, but neither one
             # client nor many clients may create unbounded collector demand.
             refresh_url = "/api/v2/connector-stores/demo/products/1/refresh"

@@ -388,6 +388,24 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.96",
+      "components": {
+        "application": {
+          "version": "0.1.96",
+          "notes": [
+            "Les paramètres des connecteurs indiquent les produits éligibles à un relevé hors file."
+          ]
+        },
+        "basket": {
+          "version": "0.1.22",
+          "notes": [
+            "La consultation du panier donne la priorité à ses produits dans les demandes de relevé.",
+            "Les produits ajoutés ensemble au panier font l’objet d’une seule demande de relevé, comptée produit par produit dans la limite horaire."
+          ]
+        }
+      }
     }
   ]
 }

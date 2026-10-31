@@ -4,7 +4,7 @@ type Field = { key: string; label: string; type: "boolean" | "integer"; min?: nu
 type Settings = {
   revision: number; fields: Field[]; values: Record<string, boolean | number>;
   status?: { pending_count?: number; paused_at?: string | null;
-    consecutive_failures?: number; next_run_at?: string | null };
+    eligible_count?: number; consecutive_failures?: number; next_run_at?: string | null };
 };
 
 export default function V2ConnectorSettings({ storeId, connectorId, version, installationEnabled }: {
@@ -12,6 +12,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
 }) {
   const endpoint = `/api/v2/connector-stores/${storeId}/connectors/${encodeURIComponent(connectorId)}/settings`;
   const [saved, setSaved] = useState<Settings | null>(null);
+  const [status, setStatus] = useState<Settings["status"]>();
   const [draft, setDraft] = useState<Record<string, boolean | number>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -26,9 +27,15 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
         : "Impossible de lire les réglages du connecteur.");
       return response.json() as Promise<Settings>;
     }).then(value => {
-      if (active) { setSaved(value); setDraft(value.values); setError(""); }
+      if (active) { setSaved(value); setDraft(value.values); setStatus(value.status); setError(""); }
     }).catch(reason => { if (active) setError(String(reason)); });
-    return () => { active = false; };
+    const timer = window.setInterval(() => {
+      void fetch(endpoint, { credentials: "same-origin", cache: "no-store" })
+        .then(response => response.ok ? response.json() as Promise<Settings> : null)
+        .then(value => { if (active && value) setStatus(value.status); })
+        .catch(() => { /* Keep the last readable count and any unsaved draft. */ });
+    }, 60_000);
+    return () => { active = false; window.clearInterval(timer); };
   }, [endpoint, version, open]);
 
   async function save(event: FormEvent) {
@@ -44,7 +51,8 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
         throw new Error(body?.detail || "Impossible d’enregistrer les réglages.");
       }
       const value = await response.json() as Settings;
-      setSaved(value); setDraft(value.values); setNotice("Réglages enregistrés.");
+      setSaved(value); setDraft(value.values); setStatus(value.status);
+      setNotice("Réglages enregistrés.");
     } catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
   }
@@ -63,10 +71,11 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
       </label>)}
       <button className="v2-button v2-button-primary" type="submit" disabled={busy}>
         {busy ? "Enregistrement…" : "Enregistrer les réglages"}</button>
-      {saved.status && <p role="status">
-        {saved.status.pending_count ?? 0} produit(s) en attente.
-        {saved.status.paused_at && ` Suspendu après ${saved.status.consecutive_failures ?? 0} échecs ; réactivez le connecteur dans le store après vérification.`}
-        {saved.status.next_run_at && ` Prochain départ au plus tôt : ${new Date(saved.status.next_run_at).toLocaleString("fr-FR")}.`}
+      {status && <p role="status">
+        {status.pending_count ?? 0} produit(s) en attente.
+        {status.eligible_count !== undefined && ` ${status.eligible_count} produit(s) éligible(s) hors file.`}
+        {status.paused_at && ` Suspendu après ${status.consecutive_failures ?? 0} échecs ; réactivez le connecteur dans le store après vérification.`}
+        {status.next_run_at && ` Prochain départ au plus tôt : ${new Date(status.next_run_at).toLocaleString("fr-FR")}.`}
       </p>}
     </form>}
     {error && <p role="alert" className="v2-schedule-error">{error}</p>}
