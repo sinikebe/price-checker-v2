@@ -394,6 +394,21 @@
       "component": "application",
       "version": "0.1.97",
       "reason": "Le déclenchement et les badges génériques sont annoncés dans les composants Produits et Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.98",
+      "reason": "Le déclenchement des relevés depuis une fiche utilise désormais des quotas distincts de ceux du panier."
+    },
+    {
+      "component": "products",
+      "version": "0.1.46",
+      "reason": "Les pastilles de file d’attente sont mieux annoncées par les lecteurs d’écran et adaptées au thème sombre."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.23",
+      "reason": "Les prix ne se rechargent plus après une réponse limitée ou indisponible du connecteur."
     }
   ]
 }
