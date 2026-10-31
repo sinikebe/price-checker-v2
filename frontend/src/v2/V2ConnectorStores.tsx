@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import V2ConnectorSettings from "./V2ConnectorSettings";
 
 type Change = { version: string; notes: string[] };
 type Connector = { id: string; name: string; version: string; changelog: Change[] };
@@ -129,6 +130,8 @@ export default function V2ConnectorStores() {
                 void action(`${base}/${store.id}/connectors/${connector.id}`, "DELETE", undefined, "Connecteur désinstallé.");
             }}>Désinstaller</button>
           </div>}
+          {installed && <V2ConnectorSettings key={`${installed.commit_sha}-${installed.enabled}`}
+            storeId={store.id} connectorId={connector.id} version={installed.version} installationEnabled={installed.enabled} />}
         </div>;
       })}
       {store.installations.filter(item => !store.catalog.some(connector => connector.id === item.connector_id)).map(item =>
@@ -145,6 +148,8 @@ export default function V2ConnectorStores() {
                 void action(`${base}/${store.id}/connectors/${item.connector_id}`, "DELETE", undefined, "Connecteur désinstallé.");
             }}>Désinstaller</button>
           </div>
+          <V2ConnectorSettings key={`${item.commit_sha}-${item.enabled}`}
+            storeId={store.id} connectorId={item.connector_id} version={item.version} installationEnabled={item.enabled} />
         </div>)}
     </div>)}
     {error && <p role="alert" className="v2-schedule-error">{error}</p>}

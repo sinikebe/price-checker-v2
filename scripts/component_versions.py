@@ -139,6 +139,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-settings.css", ("application",)),
     ("frontend/src/v2/V2VersionsPage.tsx", ("application",)),
     ("frontend/src/v2/V2ConnectorStores.tsx", ("application",)),
+    ("frontend/src/v2/V2ConnectorSettings.tsx", ("application",)),
     ("frontend/src/v2/V2ConnectorVersions.tsx", ("application",)),
     ("frontend/src/v2/v2-connector-refresh.ts", ("application", "basket")),
     ("frontend/src/v2/V2ChangelogPage.tsx", ("application",)),
