@@ -184,9 +184,43 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 assert (await shopper.post(
                     basket_url, headers=write, json={"product_ids": list(range(1, 52))})
                 ).status_code == 422
+                # The budget counts products, not requests. Two are spent, so of the
+                # next batch only the products that still fit are admitted, in order.
+                limit = api.CLIENT_REFRESH_REQUESTS_PER_HOUR
+                rest = list(range(3, 3 + limit))
+                partial = await shopper.post(basket_url, headers=write, json={"product_ids": rest})
+                assert partial.status_code == 200, partial.text
+                assert partial.json() == {"products": {
+                    str(product_id): "priority_queued" if index < limit - 2 else "rate_limited"
+                    for index, product_id in enumerate(rest)}}
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [limit + 3]})
+                ).status_code == 429
             connection = await test_connect()
             try:
-                assert await connection.fetchval("SELECT sum(attempts) FROM v2_auth_limits") == 2
+                # One unit of each budget per admitted product; refused ones are not charged.
+                assert await connection.fetchval(
+                    "SELECT sum(attempts) FROM v2_auth_limits") == 2 * limit
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
+            # The shared budget is spent across clients, by batches too.
+            for index in range(api.REFRESH_REQUESTS_PER_HOUR // limit):
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app, client=(f"10.0.1.{index}", 12345)),
+                    base_url="https://testserver",
+                ) as shopper:
+                    full = await shopper.post(
+                        basket_url, headers=write, json={"product_ids": list(range(1, limit + 1))})
+                    assert set(full.json()["products"].values()) == {"priority_queued"}
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("10.0.1.99", 12345)),
+                base_url="https://testserver",
+            ) as shopper:
+                assert (await shopper.post(
+                    basket_url, headers=write, json={"product_ids": [1]})).status_code == 429
+            connection = await test_connect()
+            try:
                 await connection.execute("DELETE FROM v2_auth_limits")
             finally:
                 await connection.close()

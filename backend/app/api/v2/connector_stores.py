@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 # A basket can request refreshes anonymously. Bound demand before invoking
 # private collectors: one shared, durable budget per connector and a smaller
-# budget per client. The worker's own cadence remains the final traffic bound.
+# budget per client. Both count products, one unit each, however many a request
+# batches. The worker's own cadence remains the final traffic bound.
 REFRESH_REQUESTS_PER_HOUR = 12
 CLIENT_REFRESH_REQUESTS_PER_HOUR = 6
 
@@ -395,21 +396,40 @@ async def enqueue_installed(
         return "unavailable"
 
 
-async def _admit_refresh(connection, connector_id: str, request: Request) -> bool:
+class _BudgetSpent(Exception):
+    pass
+
+
+async def _admit_refresh(
+    connection, connector_id: str, request: Request, product_ids: list[int]
+) -> list[int] | None:
+    """Charge one unit of the client and shared budgets per product, in order, until one is spent.
+
+    Returns the admitted products (a prefix of `product_ids`), or None when the
+    connector is not enabled. A product is charged to both budgets or to neither.
+    """
     async with connection.transaction():
         installed = await connection.fetchval(
             "SELECT 1 FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
             connector_id)
         if not installed:
-            return False
+            return None
         client_key = _limit_key(f"connector-refresh:{connector_id}", request)
         shared_key = hashlib.sha256(f"connector-refresh:shared:{connector_id}".encode()).hexdigest()
-        if await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR:
-            raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
-        if await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR:
+        admitted: list[int] = []
+        for product_id in product_ids:
+            try:
+                async with connection.transaction():  # savepoint: a refused product is not charged
+                    if (await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR
+                            or await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR):
+                        raise _BudgetSpent
+            except _BudgetSpent:
+                break
+            admitted.append(product_id)
+        if not admitted:
             raise HTTPException(status_code=429, detail="Rafraîchissements trop fréquents.")
     # Commit admission before connector code; failure cannot refund demand.
-    return True
+    return admitted
 
 
 @router.post("/{connector_id}/products/refresh")
@@ -422,13 +442,15 @@ async def request_basket_refresh(
         raise HTTPException(status_code=422, detail="Produit invalide.")
     connection = await _connect()
     try:
-        if not await _admit_refresh(connection, connector_id, request):
+        admitted = await _admit_refresh(connection, connector_id, request, ids)
+        if admitted is None:
             return {"products": {str(product_id): "disabled" for product_id in ids}}
-        return {"products": {
-            str(product_id): await enqueue_installed(
+        # Products beyond the budget are reported, not queued; the client may retry later.
+        statuses = {str(product_id): "rate_limited" for product_id in ids}
+        for product_id in admitted:
+            statuses[str(product_id)] = await enqueue_installed(
                 connection, connector_id, product_id, basket=True)
-            for product_id in ids
-        }}
+        return {"products": statuses}
     finally:
         await connection.close()
 
@@ -440,7 +462,7 @@ async def request_connector_refresh(connector_id: str, product_id: int, request:
         raise HTTPException(status_code=422, detail="Produit invalide.")
     connection = await _connect()
     try:
-        if not await _admit_refresh(connection, connector_id, request):
+        if await _admit_refresh(connection, connector_id, request, [product_id]) is None:
             return {"status": "disabled"}
         return {"status": await enqueue_installed(connection, connector_id, product_id)}
     finally:
