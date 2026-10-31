@@ -401,7 +401,8 @@
         "basket": {
           "version": "0.1.22",
           "notes": [
-            "La consultation du panier donne la priorité à ses produits dans les demandes de relevé."
+            "La consultation du panier donne la priorité à ses produits dans les demandes de relevé.",
+            "Les produits ajoutés ensemble au panier font l’objet d’une seule demande de relevé, comptée produit par produit dans la limite horaire."
           ]
         }
       }

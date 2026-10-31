@@ -1,3 +1,5 @@
+import type { BasketItem } from "./v2-basket-storage";
+
 type InstalledConnector = { id: string; enabled: boolean };
 let installed: Promise<InstalledConnector[]> | null = null;
 let fetchedAt = 0;
@@ -23,6 +25,11 @@ export async function requestConnectorRefresh(productId: number): Promise<void> 
       });
     } catch { /* Optional connector must not interrupt shopping. */ }
   }
+}
+
+/** Products of `next` missing from `previous`: one basket change makes one batched request. */
+export function addedProductIds(previous: ReadonlySet<number>, next: readonly BasketItem[]): number[] {
+  return next.flatMap(item => "kind" in item ? [] : [item.id]).filter(id => !previous.has(id));
 }
 
 export async function requestBasketConnectorRefresh(productIds: number[]): Promise<void> {
