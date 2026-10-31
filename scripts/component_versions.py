@@ -144,6 +144,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-connector-refresh.ts", ("application", "basket")),
     ("frontend/src/v2/V2ConnectorQueueIndicator.tsx", ("application", "products", "open_prices")),
     ("frontend/src/v2/v2-connector-page-refresh.ts", ("application", "products", "open_prices")),
+    ("frontend/src/v2/v2-connector-queue-state.ts", ("application", "products", "open_prices")),
     ("frontend/src/v2/v2-connector-queue.css", ("application", "products", "open_prices")),
     ("frontend/src/v2/V2ChangelogPage.tsx", ("application",)),
     ("frontend/src/v2/v2-changelog.css", ("application",)),

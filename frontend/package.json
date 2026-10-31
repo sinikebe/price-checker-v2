@@ -9,6 +9,7 @@
     "build:v2": "tsc -b && vite build",
     "lint": "eslint .",
     "test:basket": "node --test tests/v2-basket-*.test.mjs",
+    "test:connector": "node --test tests/v2-connector-*.test.mjs",
     "test:bookmarklet": "node --test tests/v2-bookmarklet*.test.mjs"
   },
   "dependencies": {

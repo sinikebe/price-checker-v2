@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 # batches. The worker's own cadence remains the final traffic bound.
 REFRESH_REQUESTS_PER_HOUR = 12
 CLIENT_REFRESH_REQUESTS_PER_HOUR = 6
+# Price pages request readings on view, also anonymously. They draw on their own,
+# smaller budgets so that browsing can never use up what a basket is entitled to.
+PAGE_REFRESH_REQUESTS_PER_HOUR = 6
+CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR = 3
 
 
 class StoreCreate(BaseModel):
@@ -415,7 +419,11 @@ async def page_product_statuses(connection, connector_id: str, product_ids: list
     hook = getattr(module, "product_statuses", None)
     if not callable(hook):
         return {key: {"status": "unsupported", "rank": None} for key in fallback}
-    raw = await hook(connection, product_ids)
+    try:
+        raw = await hook(connection, product_ids)
+    except Exception:  # connector code is third-party: a price page must still load
+        logger.exception("Connector %s status hook failed", connector_id)
+        return {key: {"status": "unavailable", "rank": None} for key in fallback}
     if not isinstance(raw, dict):
         raise HTTPException(status_code=503, detail="État du connecteur invalide.")
     result = {}
@@ -439,27 +447,31 @@ class _BudgetSpent(Exception):
 
 
 async def _admit_refresh(
-    connection, connector_id: str, request: Request, product_ids: list[int]
+    connection, connector_id: str, request: Request, product_ids: list[int], *, page: bool = False
 ) -> list[int] | None:
     """Charge one unit of the client and shared budgets per product, in order, until one is spent.
 
-    Returns the admitted products (a prefix of `product_ids`), or None when the
-    connector is not enabled. A product is charged to both budgets or to neither.
+    Basket and price-page requests use separate budgets. Returns the admitted
+    products (a prefix of `product_ids`), or None when the connector is not
+    enabled. A product is charged to both budgets or to neither.
     """
+    scope = "connector-page-refresh" if page else "connector-refresh"
+    client_limit = CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR if page else CLIENT_REFRESH_REQUESTS_PER_HOUR
+    shared_limit = PAGE_REFRESH_REQUESTS_PER_HOUR if page else REFRESH_REQUESTS_PER_HOUR
     async with connection.transaction():
         installed = await connection.fetchval(
             "SELECT 1 FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
             connector_id)
         if not installed:
             return None
-        client_key = _limit_key(f"connector-refresh:{connector_id}", request)
-        shared_key = hashlib.sha256(f"connector-refresh:shared:{connector_id}".encode()).hexdigest()
+        client_key = _limit_key(f"{scope}:{connector_id}", request)
+        shared_key = hashlib.sha256(f"{scope}:shared:{connector_id}".encode()).hexdigest()
         admitted: list[int] = []
         for product_id in product_ids:
             try:
                 async with connection.transaction():  # savepoint: a refused product is not charged
-                    if (await _bump_limit(connection, client_key, 3600) > CLIENT_REFRESH_REQUESTS_PER_HOUR
-                            or await _bump_limit(connection, shared_key, 3600) > REFRESH_REQUESTS_PER_HOUR):
+                    if (await _bump_limit(connection, client_key, 3600) > client_limit
+                            or await _bump_limit(connection, shared_key, 3600) > shared_limit):
                         raise _BudgetSpent
             except _BudgetSpent:
                 break
@@ -525,7 +537,7 @@ async def request_page_refresh(
         if not candidates:
             return {"products": before}
         try:
-            admitted = await _admit_refresh(connection, connector_id, request, candidates)
+            admitted = await _admit_refresh(connection, connector_id, request, candidates, page=True)
         except HTTPException as exc:
             if exc.status_code != 429:
                 raise

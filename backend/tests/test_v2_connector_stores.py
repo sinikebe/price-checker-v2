@@ -191,6 +191,38 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 await connection.execute("DELETE FROM v2_auth_limits")
             finally:
                 await connection.close()
+            # Price pages draw on their own budgets: spending them never reduces a basket's.
+            basket_path = "/api/v2/connector-stores/demo/products/refresh"
+            page_limit = api.CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR
+            assert api.PAGE_REFRESH_REQUESTS_PER_HOUR == 2 * page_limit
+            async def page_client(address):
+                return httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app, client=(address, 12345)),
+                    base_url="https://testserver")
+            async with await page_client("10.0.2.1") as visitor:
+                for _ in range(page_limit):
+                    queued = await visitor.post(page_url, headers=write, json={"product_ids": [1]})
+                    assert queued.json()["products"]["1"]["status"] == "queued", queued.text
+                throttled = await visitor.post(page_url, headers=write, json={"product_ids": [1]})
+                assert throttled.status_code == 200, throttled.text
+                assert throttled.json()["products"]["1"]["status"] == "rate_limited"
+                basket = await visitor.post(basket_path, headers=write, json={"product_ids": [1]})
+                assert basket.json() == {"products": {"1": "priority_queued"}}
+            async with await page_client("10.0.2.2") as visitor:
+                for _ in range(page_limit):
+                    queued = await visitor.post(page_url, headers=write, json={"product_ids": [1]})
+                    assert queued.json()["products"]["1"]["status"] == "queued", queued.text
+            # The shared page budget is now spent for every client, and still leaves baskets alone.
+            async with await page_client("10.0.2.3") as visitor:
+                throttled = await visitor.post(page_url, headers=write, json={"product_ids": [1]})
+                assert throttled.json()["products"]["1"]["status"] == "rate_limited"
+                basket = await visitor.post(basket_path, headers=write, json={"product_ids": [1]})
+                assert basket.json() == {"products": {"1": "priority_queued"}}
+            connection = await test_connect()
+            try:
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
             basket_url = "/api/v2/connector-stores/demo/products/refresh"
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app, client=("10.0.0.9", 12345)),
@@ -335,3 +367,75 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             await root.execute('DROP DATABASE "' + db_name + '" WITH (FORCE)')
         finally:
             await root.close()
+
+
+class _Installed:
+    """The only database access of `page_product_statuses` is one installation lookup."""
+
+    def __init__(self, row):
+        self.row = row
+
+    async def fetchrow(self, *_args):
+        return self.row
+
+
+def _module(monkeypatch, **hooks):
+    from types import SimpleNamespace
+
+    from app.api.v2 import connector_stores as api
+
+    monkeypatch.setattr(api, "load_installed", lambda *_args: SimpleNamespace(**hooks))
+    return api, _Installed({"store_id": 1, "commit_sha": "a" * 40})
+
+
+@pytest.mark.asyncio
+async def test_page_status_without_enabled_installation_is_disabled():
+    from app.api.v2 import connector_stores as api
+
+    result = await api.page_product_statuses(_Installed(None), "demo", [1, 2])
+    assert result == {"1": {"status": "disabled", "rank": None}, "2": {"status": "disabled", "rank": None}}
+
+
+@pytest.mark.asyncio
+async def test_page_status_without_hook_is_unsupported(monkeypatch):
+    api, connection = _module(monkeypatch)
+    assert await api.page_product_statuses(connection, "demo", [1]) == {
+        "1": {"status": "unsupported", "rank": None}}
+
+
+@pytest.mark.asyncio
+async def test_page_status_passes_through_a_valid_answer(monkeypatch):
+    async def product_statuses(_connection, ids):
+        return {str(i): {"status": "queued", "rank": 3, "store_name": "Magasin"} for i in ids}
+    api, connection = _module(monkeypatch, product_statuses=product_statuses)
+    assert await api.page_product_statuses(connection, "demo", [7]) == {
+        "7": {"status": "queued", "rank": 3, "store_name": "Magasin"}}
+
+
+@pytest.mark.asyncio
+async def test_page_status_degrades_when_the_connector_hook_fails(monkeypatch):
+    async def product_statuses(_connection, _ids):
+        raise RuntimeError("connector bug")
+    api, connection = _module(monkeypatch, product_statuses=product_statuses)
+    assert await api.page_product_statuses(connection, "demo", [1, 2]) == {
+        "1": {"status": "unavailable", "rank": None}, "2": {"status": "unavailable", "rank": None}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer", [
+    [],  # not a mapping
+    {},  # requested product missing
+    {"1": {"rank": None}},  # no status
+    {"1": {"status": "queued", "rank": 0}},  # rank must be positive
+    {"1": {"status": "queued", "rank": True}},  # a boolean is not a rank
+    {"1": {"status": "queued", "rank": None, "store_name": "x" * 201}},  # name too long
+])
+async def test_page_status_rejects_a_malformed_answer(monkeypatch, answer):
+    from fastapi import HTTPException
+
+    async def product_statuses(_connection, _ids):
+        return answer
+    api, connection = _module(monkeypatch, product_statuses=product_statuses)
+    with pytest.raises(HTTPException) as refused:
+        await api.page_product_statuses(connection, "demo", [1])
+    assert refused.value.status_code == 503

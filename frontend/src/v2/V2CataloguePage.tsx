@@ -336,7 +336,7 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
     <p role="status">{selectedProducts.length} produit{selectedProducts.length > 1 ? "s" : ""} affiché{selectedProducts.length > 1 ? "s" : ""} sur {products.length}.</p>
     {selectedProducts.length ? <>
       <h2>Prix des produits sélectionnés</h2>
-      {queueBadges.length > 0 && <div aria-label="Relevés en file">{queueBadges.map(badge =>
+      {queueBadges.length > 0 && <div role="status" aria-label="Relevés en file">{queueBadges.map(badge =>
         <span key={`${badge.connectorId}:${badge.productId}`}>
           {productName(selectedProducts.find(product => product.id === badge.productId)!)} · {badge.connector} :
           <V2ConnectorQueueIndicator badge={badge} />

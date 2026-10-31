@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isActiveStatus, readingFinished } from "./v2-connector-queue-state";
 
 export const CONNECTOR_PRICE_REFRESH_EVENT = "v2-connector-price-refreshed";
 type ProductStatus = { status: string; rank: number | null; store_name?: string | null };
@@ -42,14 +43,12 @@ export function useConnectorQueue(productIds: number[]): QueueBadge[] {
         const item = products[String(productId)];
         return item ? [{ ...item, connector: connector.name, connectorId: connector.id, productId }] : [];
       }));
-      const completed = next.some(item => {
-        const old = previous.get(`${item.connectorId}:${item.productId}`);
-        return (old === "queued" || old === "running") && item.status !== "queued" && item.status !== "running";
-      });
+      const completed = next.some(item =>
+        readingFinished(previous.get(`${item.connectorId}:${item.productId}`), item.status));
       previous = new Map(next.map(item => [`${item.connectorId}:${item.productId}`, item.status]));
-      setState({ key, badges: next.filter(item => item.status === "queued" || item.status === "running") });
+      setState({ key, badges: next.filter(item => isActiveStatus(item.status)) });
       if (completed) window.dispatchEvent(new Event(CONNECTOR_PRICE_REFRESH_EVENT));
-      if (next.some(item => item.status === "queued" || item.status === "running"))
+      if (next.some(item => isActiveStatus(item.status)))
         timer = setTimeout(() => { void check(false); }, 30_000);
     }
     void check(true);
