@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.96",
+    "version": "0.1.98",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.44",
+    "version": "0.1.46",
     "status": "active"
   },
   "recipes": {
@@ -46,7 +46,7 @@
   },
   "open_prices": {
     "label": "Connecteur Open Prices",
-    "version": "0.1.21",
+    "version": "0.1.23",
     "status": "active"
   },
   "bookmarklet": {

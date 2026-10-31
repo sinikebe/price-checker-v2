@@ -406,6 +406,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.97",
+      "components": {
+        "products": {
+          "version": "0.1.45",
+          "notes": [
+            "Les fiches et comparaisons indiquent la position des relevés demandés aux connecteurs compatibles."
+          ]
+        },
+        "open_prices": {
+          "version": "0.1.22",
+          "notes": [
+            "Les prix affichés se réactualisent à la fin d’un relevé demandé depuis une fiche."
+          ]
+        }
+      }
     }
   ]
 }

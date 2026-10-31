@@ -1,7 +1,7 @@
 {
   "name": "price-checker-v2-frontend",
   "private": true,
-  "version": "0.1.96",
+  "version": "0.1.98",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -9,6 +9,7 @@
     "build:v2": "tsc -b && vite build",
     "lint": "eslint .",
     "test:basket": "node --test tests/v2-basket-*.test.mjs",
+    "test:connector": "node --test tests/v2-connector-*.test.mjs",
     "test:bookmarklet": "node --test tests/v2-bookmarklet*.test.mjs"
   },
   "dependencies": {
