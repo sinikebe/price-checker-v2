@@ -586,6 +586,29 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.112",
+      "components": {
+        "application": {
+          "version": "0.1.112",
+          "notes": [
+            "Un produit retiré de la gamme d’un magasin n’est plus relu chaque semaine ni désactivé ailleurs ; délai de revérification réglable dans Connecteurs."
+          ]
+        },
+        "products": {
+          "version": "0.1.51",
+          "notes": [
+            "La page d’un produit indique les magasins où il est retiré de la gamme, depuis quand et quand il sera revérifié."
+          ]
+        },
+        "basket": {
+          "version": "0.1.29",
+          "notes": [
+            "Le panier ignore les prix d’un magasin qui ne vend plus le produit et indique combien de prix ont été laissés de côté."
+          ]
+        }
+      }
     }
   ]
 }
