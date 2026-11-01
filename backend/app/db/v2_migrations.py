@@ -891,6 +891,16 @@ MIGRATIONS = {
     "0034_connector_schema": """
         CREATE SCHEMA IF NOT EXISTS v2_connectors;
     """,
+    "0035_search_settings": """
+        CREATE TABLE v2_search_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            complete_list_max integer NOT NULL DEFAULT 50
+                CHECK (complete_list_max BETWEEN 5 AND 200),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_search_settings (singleton) VALUES (true);
+    """,
 }
 
 

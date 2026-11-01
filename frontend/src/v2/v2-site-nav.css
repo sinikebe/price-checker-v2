@@ -82,3 +82,7 @@ html[data-v2-theme="dark"] .v2-site-search { border-color: #355248; background: 
 html[data-v2-theme="dark"] .v2-site-search:focus-within { border-color: #a6d9ad; box-shadow: 0 0 0 3px rgba(166, 217, 173, .2); }
 html[data-v2-theme="dark"] .v2-back-button:focus-visible, html[data-v2-theme="dark"] .v2-search-toggle:focus-visible, html[data-v2-theme="dark"] .v2-search-close:focus-visible { outline-color: #b8e98a; }
 @media (max-width: 760px) { html[data-v2-theme="dark"] .v2-site-search.is-open { background: #14231f; } }
+
+/* The native clear button of the search fields, in the palette of the site. */
+.v2-site-search input::-webkit-search-cancel-button, .v2-dynamic-search-bar input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin: 0 4px; cursor: pointer; background: center / 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2361736d' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E"); }
+html[data-v2-theme="dark"] .v2-site-search input::-webkit-search-cancel-button, html[data-v2-theme="dark"] .v2-dynamic-search-bar input::-webkit-search-cancel-button { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b0c5b8' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6 6 18'/%3E%3C/svg%3E"); }

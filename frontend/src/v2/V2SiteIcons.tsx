@@ -14,3 +14,4 @@ export const PersonIcon = () => <Icon><circle cx="12" cy="8.5" r="3.6" /><path d
 export const SearchIcon = () => <Icon><circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5 5" /></Icon>;
 export const ChevronLeftIcon = () => <Icon><path d="M14.5 5.5 8 12l6.5 6.5" /></Icon>;
 export const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6 6 18" /></Icon>;
+export const BarcodeIcon = () => <Icon><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><path d="M7.5 9v6M10.5 9v6M13.5 9v6M16.5 9v6" /></Icon>;
