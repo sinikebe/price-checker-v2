@@ -445,6 +445,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.101",
+      "components": {
+        "application": {
+          "version": "0.1.101",
+          "notes": [
+            "Nouvelle navigation : une barre d’icônes en bas de l’écran et un menu de profil en haut à droite."
+          ]
+        }
+      }
     }
   ]
 }
