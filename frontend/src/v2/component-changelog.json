@@ -542,6 +542,28 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.108",
+      "components": {
+        "basket": {
+          "version": "0.1.27",
+          "notes": [
+            "Les administrateurs n’ont plus de limite de crédits pour récupérer les prix du panier, afin de pouvoir tester."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.109",
+      "components": {
+        "application": {
+          "version": "0.1.109",
+          "notes": [
+            "Le journal indique la cause de l’échec d’un connecteur (type d’erreur ou statut HTTP) et sa désactivation automatique."
+          ]
+        }
+      }
     }
   ]
 }

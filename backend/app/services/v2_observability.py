@@ -135,3 +135,76 @@ async def announce_start(connect, version: str) -> None:
             await connection.close()
     except Exception as exc:
         logger.warning("Start event skipped: %s", exc.__class__.__name__)
+
+
+_CONNECTOR_LOGGER = re.compile(r"^price_checker_connector_\d+_(?P<id>[a-z][a-z0-9_-]{1,63})_[0-9a-f]{40}$")
+_ERROR_CLASS = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,59}")
+
+
+class ConnectorFailureCapture(logging.Handler):
+    """Journals why a connector reading failed, from the connector's own warnings and errors.
+
+    Only closed facts leave the log record: the class name of the exception, an HTTP status, the product
+    number and the fact that the connector disabled itself. The text of the message, which a connector
+    may fill with anything, is never read into the journal.
+    """
+
+    def __init__(self, connect):
+        super().__init__(level=logging.WARNING)
+        self.connect = connect
+        self.tasks: set[asyncio.Task] = set()
+
+    @staticmethod
+    def facts(record: logging.LogRecord) -> tuple[str, dict] | None:
+        message = record.msg if isinstance(record.msg, str) else ""
+        arguments = record.args if isinstance(record.args, tuple) else ()
+        if "connector disabled" in message:
+            return "connector.disabled", {}
+        fields: dict = {}
+        error = type(record.exc_info[1]).__name__ if record.exc_info and record.exc_info[1] else None
+        if error and _ERROR_CLASS.fullmatch(error):
+            fields["error"] = error
+        if "HTTP %s" in message and arguments and type(arguments[-1]) is int and 100 <= arguments[-1] <= 599:
+            fields["http_status"] = arguments[-1]
+        if "product %s" in message and arguments and type(arguments[0]) is int and arguments[0] > 0:
+            fields["product_id"] = arguments[0]
+        return ("connector.failure", fields) if ("error" in fields or "http_status" in fields) else None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        match = _CONNECTOR_LOGGER.match(record.name)
+        if match is None:
+            return
+        try:
+            facts = self.facts(record)
+            loop = asyncio.get_running_loop()
+        except Exception:  # a log call must never raise; without a running loop there is nowhere to write
+            return
+        if facts is None:
+            return
+        event, fields = facts
+        connector = match.group("id")
+        if not logbook.allow_every(f"failure:{connector}:{event}:{sorted(fields.items())}", 10):
+            return
+        task = loop.create_task(self._store(event, connector, fields))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    async def _store(self, event: str, connector: str, fields: dict) -> None:
+        try:
+            connection = await self.connect()
+            try:
+                await logbook.log_event(connection, event, connector=connector, **fields)
+            finally:
+                await connection.close()
+        except Exception as exc:
+            logger.warning("Connector failure not journaled: %s", exc.__class__.__name__)
+
+
+def install_connector_capture(connect) -> ConnectorFailureCapture:
+    handler = ConnectorFailureCapture(connect)
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def remove_connector_capture(handler: ConnectorFailureCapture) -> None:
+    logging.getLogger().removeHandler(handler)

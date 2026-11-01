@@ -55,7 +55,16 @@ def public_state(balance: int, week_granted: int, today: date) -> dict:
         "hold_max": HOLD_MAX,
         "granted_this_week": week_granted,
         "next_grant_on": next_grant_on(today, week_granted).isoformat(),
+        "unlimited": False,
     }
+
+
+def unlimited_state(today: date) -> dict:
+    """The credits of an administrator, which are not counted.
+
+    `balance` stays at the holding limit, so that a page loaded before this existed does not disable its button.
+    """
+    return {**public_state(HOLD_MAX, 0, today), "unlimited": True}
 
 
 def seconds_until(day: date, now: datetime) -> int:

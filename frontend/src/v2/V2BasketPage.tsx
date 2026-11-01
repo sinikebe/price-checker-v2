@@ -17,7 +17,7 @@ import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters } from "./v2-basket-comparison";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
-import { creditLabel, nextGrantLabel } from "./v2-basket-credits-api";
+import { costNote, creditLabel, nextGrantLabel, outOfCredits } from "./v2-basket-credits-api";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
@@ -126,7 +126,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const listKey = (snapshot?.fetchedAt ?? "") + JSON.stringify(filters) + (advanced ? "A" : "S") + activeItems.map(basketItemKey).join();
   const shownCount = shown.key === listKey ? shown.count : FIRST_STORES;
   const fetching = state.phase === "loading";
-  const noCredit = credits !== null && credits.balance < 1;
+  const noCredit = outOfCredits(credits);
 
   return <div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
@@ -170,11 +170,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             : <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
               {!snapshot ? <>
                 <h2>Comparer les prix</h2>
-                <p>Les prix sont récupérés à la demande, pour 1 crédit{credits ? ` (${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""})` : ""}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
+                <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit{credits ? ` (${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
               </> : <>
                 <div className="v2-basket-comparison-heading"><div><h2>{advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
-                {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer (1 crédit).</p>}
+                {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits)}.</p>}
                 {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} limited={view.limited.length}
                   shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} />}
               </>}

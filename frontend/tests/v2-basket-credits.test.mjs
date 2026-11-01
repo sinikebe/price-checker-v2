@@ -65,3 +65,15 @@ test("the next grant is named in everyday words", () => {
   assert.equal(creditLabel(1), "1 crédit");
   assert.equal(creditLabel(5), "5 crédits");
 });
+
+test("an administrator is never out of credits, and is not shown a cost", async () => {
+  const { outOfCredits, costNote } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+  const member = { ...credits, balance: 0 };
+  assert.equal(outOfCredits(member), true);
+  assert.equal(outOfCredits({ ...member, balance: 3 }), false);
+  assert.equal(outOfCredits({ ...member, unlimited: true }), false, "the balance is only a placeholder for an administrator");
+  assert.equal(outOfCredits(null), false, "an unknown balance leaves the decision to the server");
+  assert.equal(costNote(member), " (1 crédit)");
+  assert.equal(costNote({ ...member, unlimited: true }), "");
+  assert.equal(costNote(null), " (1 crédit)");
+});
