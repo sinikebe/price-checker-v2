@@ -273,7 +273,7 @@ async def comparison_scope_detail(
         await connection.close()
 
 
-@router.get("/categories/{name}")
+@router.get("/categories/{name:path}")
 async def category_detail(name: str):
     if not name or len(name) > 100:
         raise HTTPException(status_code=404, detail="Catégorie introuvable.")
@@ -304,7 +304,7 @@ async def category_detail(name: str):
         await connection.close()
 
 
-@router.put("/categories/{name}/classification")
+@router.put("/categories/{name:path}/classification")
 async def update_category_classification(
     name: str, payload: ClassificationUpdate, request: Request,
 ):

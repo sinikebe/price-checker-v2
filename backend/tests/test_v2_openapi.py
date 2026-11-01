@@ -1,5 +1,6 @@
 """The published API reference is generated from the served FastAPI routes."""
 
+import re
 from importlib.metadata import version as package_version
 
 import httpx
@@ -46,8 +47,9 @@ async def test_openapi_docs_match_served_routes():
         )
         if isinstance(route, APIRoute)
     ]
+    # OpenAPI documents `{name:path}` as `{name}`: compare without the path converter.
     served = {
-        (f"{context.prefix if context else ''}{route.path}", method.lower())
+        (re.sub(r"\{(\w+):\w+\}", r"{\1}", f"{context.prefix if context else ''}{route.path}"), method.lower())
         for route, context in api_routes
         if route.path.startswith("/api/v2/")
         for method in route.methods

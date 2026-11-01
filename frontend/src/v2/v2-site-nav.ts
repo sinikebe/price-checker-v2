@@ -97,3 +97,32 @@ export function nextMenuIndex(current: number, key: string, count: number): numb
 export function basketLabel(count: number): string {
   return count === 0 ? "Panier, vide" : count === 1 ? "Panier, 1 article" : `Panier, ${count} articles`;
 }
+
+const normalize = (pathname: string) => pathname.replace(/\/+$/, "") || "/";
+
+/**
+ * Where the back button goes when the app has no history of its own to return to (a page opened from a
+ * bookmark or a shared link): the parent page, never outside the app. Null on the home page.
+ */
+export function backTarget(pathname: string): string | null {
+  const path = normalize(pathname);
+  if (path === "/" || path === "/v2") return null;
+  if (path.startsWith("/v2/categories/")) return "/v2/produits";
+  if (path === "/v2/capture/installer") return "/v2";
+  const parts = path.split("/").filter(Boolean);
+  return parts.length <= 2 ? "/v2" : "/" + parts.slice(0, -1).join("/");
+}
+
+/** The longest search the catalogue accepts. */
+export const SEARCH_MAX_LENGTH = 120;
+
+/** The catalogue address that runs this search, or null when there is nothing to search for. */
+export function searchPath(term: string): string | null {
+  const text = term.replace(/\s+/g, " ").trim().slice(0, SEARCH_MAX_LENGTH).trim();
+  return text ? `/v2/produits?${new URLSearchParams({ q: text }).toString()}` : null;
+}
+
+/** What the header search field shows: the current catalogue search, or nothing on other pages. */
+export function searchTermFromLocation(pathname: string, search: string): string {
+  return normalize(pathname) === "/v2/produits" ? new URLSearchParams(search).get("q") ?? "" : "";
+}
