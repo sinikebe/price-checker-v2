@@ -554,6 +554,11 @@
       "component": "database",
       "version": "0.1.37",
       "reason": "Journal du panier."
+    },
+    {
+      "component": "application",
+      "version": "0.1.110",
+      "reason": "Icône du prix à l’unité."
     }
   ]
 }
