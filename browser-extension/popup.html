@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Price Checker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>Price Checker</h1>
+  <section id="setup" hidden>
+    <p>Reliez l’extension à votre instance. Le jeton se crée dans <b>Paramètres → Jetons API</b> (portée « contribuer »).</p>
+    <label>Adresse de l’instance<input id="instance" type="url" placeholder="https://mon-instance.example" autocomplete="off"></label>
+    <label>Jeton API<input id="token" type="password" autocomplete="off" spellcheck="false"></label>
+    <label>Numéro du magasin dans l’application<input id="store" type="number" min="1" step="1" placeholder="45"></label>
+    <button id="save" type="button">Enregistrer</button>
+  </section>
+  <section id="main" hidden>
+    <p class="muted" id="where"></p>
+    <label>Code-barres (EAN)<input id="ean" inputmode="numeric" maxlength="14" autocomplete="off"></label>
+    <button id="read" type="button">Lire le prix sur carrefour.fr</button>
+    <div id="result"></div>
+    <details id="diag" hidden><summary>Détails techniques (à joindre en cas de souci)</summary><pre id="diagText"></pre></details>
+    <p><a href="#" id="reset">Changer de réglages</a></p>
+  </section>
+  <p id="message" role="status"></p>
+  <script src="popup.js"></script>
+</body>
+</html>
