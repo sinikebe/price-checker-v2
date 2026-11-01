@@ -29,7 +29,7 @@ QUEUE = {"origin": "basket", "requested": 2, "queued": 1, "fresh": 1, "cooldown"
 # One valid example per registered event: a new event must come with one, and is stored by the test below.
 SAMPLES = {
     "system.started": ({"version": "0.1.105"}, None),
-    "system.migrated": ({"count": 2, "latest": "0037_logs_and_stats"}, None),
+    "system.migrated": ({"count": 2, "latest": "0038_store_product_status"}, None),
     "update.finished": ({"trigger": "manual", "result": "failed", "run_at": RUN, "reason": "other", "from_sha": "abc1234", "to_sha": "def5678"}, None),
     "cache.cleaned": ({"trigger": "update", "result": "done", "run_at": RUN, "freed_bytes": 10}, None),
     "host.alert": ({"metric": "disk", "pct": 85, "run_at": RUN}, None),
@@ -88,6 +88,9 @@ def test_levels_follow_the_outcome():
     assert level("update.finished", trigger="manual", result="current", run_at=run_at) == "debug"
     assert level("update.finished", trigger="manual", result="failed", run_at=run_at) == "error"
     assert level("connector.reading.finished", product_id=1, outcome="rejected") == "warning"
+    assert level("connector.reading.finished", product_id=1, outcome="failed") == "error"
+    for calm in ("complete", "skipped", "discontinued", "not_found"):
+        assert level("connector.reading.finished", product_id=1, outcome=calm) == "info", calm
     queue = {"origin": "basket", "requested": 2, "fresh": 2, "cooldown": 0, "rate_limited": 0, "other": 0}
     assert level("connector.queue.requested", queued=0, **queue) == "debug"
     assert level("connector.queue.requested", queued=1, **queue) == "info"

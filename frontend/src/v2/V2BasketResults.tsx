@@ -2,6 +2,7 @@ import V2BasketLines from "./V2BasketLines";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { pricePosition, purchaseTotalCents, type BasketComparison, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
 import { itemName, money, savingText, storeName, surplusText } from "./v2-basket-view";
+import { withdrawnPricesText } from "./v2-availability";
 
 /** The split across retailers, then the cheapest stores. Everything is computed from the fetched prices. */
 export default function V2BasketResults({ comparison, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings }: {
@@ -79,6 +80,7 @@ export default function V2BasketResults({ comparison, items, advanced, mode, lim
       </li>;
     })}</ul> : <p>Aucun prix comparable ne correspond à ce panier et à ces filtres.</p>}
     {comparison.stores.length > shownCount && <button type="button" className="v2-button v2-button-secondary v2-basket-load-more" onClick={onShowMore}>Voir d’autres magasins ({comparison.stores.length - shownCount})</button>}
+    {comparison.withdrawn > 0 && <p className="v2-basket-freshness-help">{withdrawnPricesText(comparison.withdrawn)}</p>}
     {openPrices && <p className="v2-basket-freshness-help">Certains relevés proviennent de <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>.</p>}
     <p className="v2-basket-freshness-help">Montants : vert = bas, orange = intermédiaire, rouge = haut. Trait sous le prix : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Les relevés indisponibles ou contestés sont exclus.</p>
   </>;

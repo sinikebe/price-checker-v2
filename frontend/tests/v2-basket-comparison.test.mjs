@@ -367,3 +367,15 @@ test("the price mode is the default and ignores the unit machinery", () => {
   assert.equal(buildBasketComparison(lines, responses, undefined, true).split[0].unit, undefined);
   assert.equal(buildBasketComparison(lines, responses, undefined, true).splitCents, compare(lines, responses, "price", true).splitCents);
 });
+
+test("the prices the server left out for a withdrawn product are counted once per product", () => {
+  const products = [product(1), product(2)];
+  const results = new Map([
+    [1, { ...response(reading(1, 10, "2.00")), withdrawn_count: 2 }],
+    [2, response(reading(2, 10, "1.00"))],
+  ]);
+  // The same product in two lines (a group and a single article) is not counted twice.
+  const lines = [line({ kind: "group", name: "Lait" }, products[0], products[1]), line(products[0], products[0])];
+  assert.equal(buildBasketComparison(lines, results).withdrawn, 2);
+  assert.equal(buildBasketComparison([line(products[1], products[1])], results).withdrawn, 0, "an older answer without the field counts none");
+});

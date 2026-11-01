@@ -102,13 +102,31 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
                 JOIN v2_retailers r ON r.id=o.retailer_id
                 JOIN v2_stores s ON s.id=o.store_id
                 WHERE o.product_id=ANY($1) AND NOT o.superseded AND s.active
+                  AND NOT EXISTS (SELECT 1 FROM v2_store_product_status w
+                                  WHERE w.product_id=o.product_id AND w.store_id=o.store_id
+                                    AND w.sales_channel=o.sales_channel AND o.observed_at<=w.checked_at)
                 ORDER BY o.product_id,o.store_id,o.sales_channel,o.observed_at DESC,o.id DESC
             ) latest
         ) ranked WHERE rank<=$2 ORDER BY product_id, rank
         """,
         product_ids, MAX_STORES + 1)
-    result = {product_id: {"latest_by_store": [], "stores_truncated": False}
+    result = {product_id: {"latest_by_store": [], "stores_truncated": False, "withdrawn_count": 0}
               for product_id in product_ids}
+    # Prices left out above: the product is known to be withdrawn there and nothing newer was seen.
+    for row in await connection.fetch(
+        """SELECT w.product_id, count(*) AS n FROM v2_store_product_status w
+           JOIN v2_stores s ON s.id=w.store_id AND s.active
+           WHERE w.product_id=ANY($1)
+             AND EXISTS (SELECT 1 FROM v2_price_observations o
+                         WHERE o.product_id=w.product_id AND o.store_id=w.store_id
+                           AND o.sales_channel=w.sales_channel AND NOT o.superseded
+                           AND o.observed_at<=w.checked_at)
+             AND NOT EXISTS (SELECT 1 FROM v2_price_observations o
+                             WHERE o.product_id=w.product_id AND o.store_id=w.store_id
+                               AND o.sales_channel=w.sales_channel AND NOT o.superseded
+                               AND o.observed_at>w.checked_at)
+           GROUP BY w.product_id""", product_ids):
+        result[row["product_id"]]["withdrawn_count"] = row["n"]
     for row in rows:
         entry = result[row["product_id"]]
         if len(entry["latest_by_store"]) == MAX_STORES:
