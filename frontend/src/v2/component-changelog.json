@@ -620,6 +620,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.115",
+      "components": {
+        "application": {
+          "version": "0.1.115",
+          "notes": [
+            "Une extension de navigateur (prototype) lit un prix sur Carrefour avec votre propre session et le propose à l’application."
+          ]
+        }
+      }
     }
   ]
 }

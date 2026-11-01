@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.114",
+    "version": "0.1.115",
     "status": "active"
   },
   "products": {
@@ -31,7 +31,7 @@
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.28",
+    "version": "0.1.29",
     "status": "active"
   },
   "pwa": {

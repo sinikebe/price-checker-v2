@@ -579,6 +579,11 @@
       "component": "application",
       "version": "0.1.113",
       "reason": "Largeur d’une carte des paramètres."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.29",
+      "reason": "Contrôle d’origine des jetons personnels, annoncé avec l’extension."
     }
   ]
 }
