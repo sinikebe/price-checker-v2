@@ -88,6 +88,9 @@ def test_levels_follow_the_outcome():
     assert level("update.finished", trigger="manual", result="current", run_at=run_at) == "debug"
     assert level("update.finished", trigger="manual", result="failed", run_at=run_at) == "error"
     assert level("connector.reading.finished", product_id=1, outcome="rejected") == "warning"
+    assert level("connector.reading.finished", product_id=1, outcome="failed") == "error"
+    for calm in ("complete", "skipped", "discontinued", "not_found"):
+        assert level("connector.reading.finished", product_id=1, outcome=calm) == "info", calm
     queue = {"origin": "basket", "requested": 2, "fresh": 2, "cooldown": 0, "rate_limited": 0, "other": 0}
     assert level("connector.queue.requested", queued=0, **queue) == "debug"
     assert level("connector.queue.requested", queued=1, **queue) == "info"

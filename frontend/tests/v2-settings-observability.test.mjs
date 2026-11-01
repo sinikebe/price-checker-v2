@@ -45,6 +45,8 @@ test("connector events name the queue operation, only with the counts that matte
   assert.equal(describeLog(item("connector.queue.dropped", { product_id: 130, reason: "fresh_elsewhere" })),
     "Produit 130 retiré de la file : un prix récent est arrivé d’une autre source.");
   assert.equal(describeLog(item("connector.reading.finished", { product_id: 5, outcome: "skipped" })), "Lecture du produit 5 : ignorée, le prix était déjà récent.");
+  assert.equal(describeLog(item("connector.reading.finished", { product_id: 6, outcome: "discontinued" })), "Lecture du produit 6 : produit retiré de la gamme du magasin.");
+  assert.equal(describeLog(item("connector.reading.finished", { product_id: 7, outcome: "not_found" })), "Lecture du produit 7 : produit absent du catalogue de l’enseigne.");
   assert.equal(nbsp(describeLog(item("connector.price.saved", { product_id: 130, store_id: 115, price_cents: 259, channel: "drive" }))),
     "Prix enregistré : produit 130, magasin 115, 2,59 € (drive).");
   assert.equal(describeLog(item("connector.worker.failed", { error: "TimeoutError" })), "Erreur dans le connecteur (TimeoutError).");
