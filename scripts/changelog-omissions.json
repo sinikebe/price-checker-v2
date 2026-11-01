@@ -584,6 +584,11 @@
       "component": "accounts",
       "version": "0.1.29",
       "reason": "Contrôle d’origine des jetons personnels, annoncé avec l’extension."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.25",
+      "reason": "Carte de téléchargement de l’extension dans les paramètres."
     }
   ]
 }
