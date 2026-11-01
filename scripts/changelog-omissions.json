@@ -429,6 +429,16 @@
       "component": "deployment",
       "version": "0.1.23",
       "reason": "Les panneaux de la page des paramètres sont répartis en onglets, sans changer le fonctionnement de ce composant."
+    },
+    {
+      "component": "application",
+      "version": "0.1.100",
+      "reason": "Les erreurs d’initialisation d’un connecteur s’affichent à l’administrateur, et une installation reprend un connecteur resté en pause."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.20",
+      "reason": "Le nettoyage local à la suppression d’un compte cible ses clés avec précision, annoncé dans le composant Comptes."
     }
   ]
 }

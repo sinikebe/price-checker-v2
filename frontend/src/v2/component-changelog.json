@@ -434,6 +434,19 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.100",
+      "components": {
+        "accounts": {
+          "version": "0.1.26",
+          "notes": [
+            "L’activation de la double authentification annonce qu’elle déconnecte vos autres appareils et révoque vos jetons API.",
+            "Désactiver la double authentification ou renouveler les codes de secours demande désormais une confirmation.",
+            "Supprimer un compte n’efface plus les brouillons enregistrés dans ce navigateur par d’autres comptes."
+          ]
+        }
+      }
     }
   ]
 }
