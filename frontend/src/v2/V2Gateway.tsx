@@ -416,7 +416,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
 
   useEffect(() => {
     const accountDeletedElsewhere = (event: StorageEvent) => {
-      if (event.key !== "v2:account:deleted") return;
+      if (event.key !== "v2:account:deleted" && event.key !== "v2:auth:changed") return;
       setAuthStatus(null);
       setAttempt(value => value + 1);
     };
@@ -433,6 +433,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     try {
       await authRequest<void>("logout", "POST");
       setAuthStatus((previous) => previous ? { ...previous, user: null } : previous);
+      // Other tabs recheck the session instead of showing a signed-in page.
+      try { localStorage.setItem("v2:auth:changed", String(Date.now())); } catch { /* the other tabs update on their next request */ }
     } catch (reason) {
       setError(errorMessage(reason));
     }
@@ -464,7 +466,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
   const withHostAlert = (page: ReactNode) => adminId !== null && !preferencesMode
     ? <><V2HostAlertNotice userId={adminId} />{page}</> : page;
-  if (preferencesMode) return <V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onAccountDeleted={() => {
+  if (preferencesMode) return <V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onLogout={logout} onAccountDeleted={() => {
     setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
   }} />;
   if (!authStatus.admin_initialized) {

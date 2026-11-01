@@ -1,19 +1,20 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2AccountSecurity from "./V2AccountSecurity";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2SettingsAccount from "./V2SettingsAccount";
 import V2SettingsGeneral from "./V2SettingsGeneral";
 import V2SettingsServer from "./V2SettingsServer";
+import V2SiteHeader from "./V2SiteHeader";
 import V2SettingsTabs from "./V2SettingsTabs";
 import {
   SETTINGS_BASE_PATH, resolveSettingsTab, settingsPanelDomId, settingsTabDomId, visibleSettingsTabs, type SettingsTabId,
 } from "./v2-settings-tabs";
 import "./v2-settings.css";
 
-export default function V2SettingsPage({ user, tabSlug, onAccountDeleted }: {
-  user: V2User | null; tabSlug?: string; onAccountDeleted: () => void;
+export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogout }: {
+  user: V2User | null; tabSlug?: string; onAccountDeleted: () => void; onLogout: () => Promise<void>;
 }) {
   const navigate = useNavigate();
   const [deleteNotice, setDeleteNotice] = useState("");
@@ -50,16 +51,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted }: {
 
   return <div className="v2-home v2-settings">
     <a className="v2-skip" href="#v2-settings-main">Aller au contenu</a>
-    <header className="v2-header"><div className="v2-wrap v2-header-inner">
-      <Link className="v2-brand" to="/v2" aria-label="Price Checker, accueil V2">
-        <span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
-        <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span>
-      </Link>
-      <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link to="/v2/magasins">Magasins</Link><Link to="/v2/recettes">Recettes</Link>
-        <Link to="/v2/panier">Panier</Link><Link className="v2-nav-current" to="/v2/parametres" aria-current="page">Paramètres</Link>
-      </nav>
-    </div></header>
+    <V2SiteHeader user={user} onLogout={onLogout} />
     <main id="v2-settings-main" className="v2-wrap v2-settings-main">
       <span className="v2-section-kicker">PRÉFÉRENCES</span>
       <h1>Paramètres<span>.</span></h1>

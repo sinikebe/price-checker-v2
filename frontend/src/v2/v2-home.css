@@ -102,20 +102,6 @@
   background: #b9db70;
 }
 
-.v2-nav {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 12px clamp(12px, 1.7vw, 24px);
-  font-size: .9rem;
-  font-weight: 650;
-}
-
-.v2-nav a {
-  white-space: nowrap;
-}
-
 .v2-beta-tag {
   display: inline-block;
   margin-left: .3em;
@@ -132,44 +118,9 @@
   vertical-align: .12em;
 }
 
-.v2-nav a:not(.v2-nav-current):hover,
 .v2-footer a:hover,
 .v2-discover-copy a:hover {
   color: #25815d;
-}
-
-.v2-nav-current {
-  position: relative;
-}
-
-.v2-nav-current::after {
-  content: "";
-  position: absolute;
-  height: 3px;
-  left: 0;
-  right: 0;
-  bottom: -10px;
-  border-radius: 99px;
-  background: #80bb6a;
-}
-
-.v2-nav-basket {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.v2-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 24px;
-  height: 24px;
-  padding-inline: 5px;
-  border-radius: 99px;
-  background: #e6f4d7;
-  color: #2c6948;
-  font-size: .77rem;
-  font-weight: 800;
 }
 
 .v2-hero {
@@ -753,17 +704,6 @@
     padding-block: 17px 13px;
   }
 
-  .v2-nav {
-    width: 100%;
-    justify-content: space-between;
-    gap: 10px;
-    font-size: .8rem;
-  }
-
-  .v2-nav-current::after {
-    bottom: -8px;
-  }
-
   .v2-hero-grid {
     gap: 28px;
     padding-block: 45px 53px;
@@ -857,18 +797,6 @@
 }
 
 @media (max-width: 380px) {
-  .v2-nav {
-    font-size: .72rem;
-  }
-
-  .v2-nav-basket {
-    gap: 4px;
-  }
-
-  .v2-count {
-    min-width: 21px;
-    height: 21px;
-  }
 
   .v2-button {
     width: 100%;
@@ -881,53 +809,8 @@
     transition: none;
   }
 }
-
-.v2-account-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: #3e6955;
-}
-.v2-account-nav button {
-  border: 0;
-  background: none;
-  color: #246846;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.v2-account-nav button:hover { text-decoration: underline; }
-.v2-account-signup {
-  padding: 9px 13px;
-  border-radius: 9px;
-  background: #d9f37d;
-  color: #204f3c !important;
-  font-weight: 800;
-}
-@media (max-width: 900px) {
-  .v2-account-nav { flex-wrap: wrap; }
-}
-
-.v2-account-nav button:focus-visible {
-  outline: 3px solid #20795e;
-  outline-offset: 3px;
-}
 @media (max-width: 1050px) {
   .v2-header-inner { flex-wrap: wrap; padding-block: 16px; }
-  .v2-nav { width: 100%; flex-wrap: wrap; }
-}
-@media (max-width: 640px) {
-  .v2-nav {
-    justify-content: flex-start;
-    column-gap: 17px;
-    row-gap: 12px;
-  }
-  .v2-account-nav {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 14px;
-  }
 }
 
 .v2-site-footer { min-height: 0; }
