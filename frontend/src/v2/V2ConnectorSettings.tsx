@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { initialDraft, secretHint, settingsPayload, type SettingField, type SettingValue } from "./v2-connector-settings";
 
-type Field = { key: string; label: string; type: "boolean" | "integer"; min?: number; max?: number };
 type Settings = {
-  revision: number; fields: Field[]; values: Record<string, boolean | number>;
+  revision: number; fields: SettingField[]; values: Record<string, SettingValue>;
   status?: { pending_count?: number; paused_at?: string | null;
     eligible_count?: number; consecutive_failures?: number; next_run_at?: string | null };
 };
@@ -13,7 +13,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
   const endpoint = `/api/v2/connector-stores/${storeId}/connectors/${encodeURIComponent(connectorId)}/settings`;
   const [saved, setSaved] = useState<Settings | null>(null);
   const [status, setStatus] = useState<Settings["status"]>();
-  const [draft, setDraft] = useState<Record<string, boolean | number>>({});
+  const [draft, setDraft] = useState<Record<string, SettingValue>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
         : "Impossible de lire les réglages du connecteur.");
       return response.json() as Promise<Settings>;
     }).then(value => {
-      if (active) { setSaved(value); setDraft(value.values); setStatus(value.status); setError(""); }
+      if (active) { setSaved(value); setDraft(initialDraft(value.fields, value.values)); setStatus(value.status); setError(""); }
     }).catch(reason => { if (active) setError(String(reason)); });
     const timer = window.setInterval(() => {
       void fetch(endpoint, { credentials: "same-origin", cache: "no-store" })
@@ -45,13 +45,13 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
     try {
       const response = await fetch(endpoint, { method: "PUT", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expected_revision: saved.revision, values: draft }) });
+        body: JSON.stringify({ expected_revision: saved.revision, values: settingsPayload(saved.fields, draft) }) });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null;
         throw new Error(body?.detail || "Impossible d’enregistrer les réglages.");
       }
       const value = await response.json() as Settings;
-      setSaved(value); setDraft(value.values); setStatus(value.status);
+      setSaved(value); setDraft(initialDraft(value.fields, value.values)); setStatus(value.status);
       setNotice("Réglages enregistrés.");
     } catch (reason) { setError(String(reason)); }
     finally { setBusy(false); }
@@ -65,6 +65,11 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
         {field.type === "boolean"
           ? <><input type="checkbox" checked={draft[field.key] === true}
               onChange={event => setDraft(current => ({ ...current, [field.key]: event.target.checked }))} /> {field.label}</>
+          : field.type === "secret"
+          ? <>{field.label}<input type="password" autoComplete="off" spellCheck={false} maxLength={200}
+              value={typeof draft[field.key] === "string" ? draft[field.key] as string : ""}
+              onChange={event => setDraft(current => ({ ...current, [field.key]: event.target.value }))} />
+              <small>{secretHint(field)}</small></>
           : <>{field.label}<input type="number" required step="1" min={field.min} max={field.max}
               value={typeof draft[field.key] === "number" ? draft[field.key] as number : ""}
               onChange={event => setDraft(current => ({ ...current, [field.key]: Number(event.target.value) }))} /></>}

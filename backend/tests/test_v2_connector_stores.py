@@ -622,3 +622,23 @@ async def test_run_connector_hook_maps_each_kind_of_failure():
     with pytest.raises(HTTPException) as passthrough:  # an HTTPException from the connector is kept
         await _run_connector_hook(_Hooked(error=already), None, invalid="invalid", failed="failed")
     assert passthrough.value is already
+
+
+def test_settings_accept_short_strings_for_secret_fields_and_nothing_larger():
+    from pydantic import ValidationError
+
+    from app.api.v2.connector_stores import MAX_SECRET_LENGTH, ConnectorSettingsChange, _without_secrets
+
+    ok = ConnectorSettingsChange(expected_revision=1, values={"enabled": True, "days": 7, "api_key": "pmx_x"})
+    assert ok.values == {"enabled": True, "days": 7, "api_key": "pmx_x"}
+    assert ConnectorSettingsChange(expected_revision=1, values={"api_key": ""}).values == {"api_key": ""}
+    for bad in ({"api_key": "x" * (MAX_SECRET_LENGTH + 1)}, {"k" * 65: 1}, {f"k{n}": n for n in range(33)},
+                {"a": [1]}, {"a": None}, {"a": {"b": 1}}):
+        with pytest.raises(ValidationError):
+            ConnectorSettingsChange(expected_revision=1, values=bad)
+    # Whatever a connector returns, the value of a secret field never goes to the browser.
+    leaky = {"revision": 1, "fields": [{"key": "api_key", "type": "secret", "label": "Key"}, {"key": "n", "type": "integer"}],
+             "values": {"api_key": "pmx_secret", "n": 3}}
+    assert _without_secrets(leaky)["values"] == {"n": 3}
+    assert "pmx_secret" not in json.dumps(_without_secrets(leaky))
+    assert _without_secrets("odd") == "odd"
