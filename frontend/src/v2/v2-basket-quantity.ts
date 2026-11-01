@@ -1,6 +1,6 @@
 import type { BasketQuantity, BasketItem, BasketProduct } from "./v2-basket-storage";
 
-type BaseUnit = "g" | "ml" | "piece";
+export type BaseUnit = "g" | "ml" | "piece";
 const factors: Record<BasketQuantity["unit"], { unit: BaseUnit; factor: number } | null> = {
   g: { unit: "g", factor: 1 }, kg: { unit: "g", factor: 1000 },
   ml: { unit: "ml", factor: 1 }, cl: { unit: "ml", factor: 10 }, l: { unit: "ml", factor: 1000 },
@@ -12,6 +12,14 @@ export function baseQuantity(quantity: BasketQuantity): { amount: number; unit: 
   if (!factor) return null;
   return { amount: Number(quantity.amount) * factor.factor, unit: factor.unit };
 }
+
+/** The size of one pack of a product, in grams, millilitres or pieces, when the catalogue knows it. */
+export function productSize(product: BasketProduct): { amount: number; unit: BaseUnit } | null {
+  const amount = Number(product.data.quantity_amount);
+  const unit = product.data.quantity_unit;
+  return Number.isFinite(amount) && amount > 0 && (unit === "g" || unit === "ml" || unit === "piece") ? { amount, unit } : null;
+}
+export const microUnits = (value: number): bigint => BigInt(Math.round(value * 1000000));
 
 export function combineQuantities(current: BasketQuantity | undefined, incoming: BasketQuantity): BasketQuantity | null {
   if (!current) return incoming;

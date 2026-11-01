@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { CreditIcon, FilterIcon, ListIcon, QuantityIcon, RefreshIcon, ShareIcon } from "./V2SiteIcons";
+import { CreditIcon, FilterIcon, ListIcon, QuantityIcon, RefreshIcon, ShareIcon, UnitPriceIcon } from "./V2SiteIcons";
 import { creditLabel, nextGrantLabel, outOfCredits, type BasketCredits } from "./v2-basket-credits-api";
 
 export type BasketPanel = "items" | "filters" | "share";
@@ -18,10 +18,10 @@ function Tool({ icon, label, detail, active, disabled, title, expanded, pressed,
 }
 
 /** Icon buttons for the basket tools, and the paid action that fetches the prices. */
-export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount, advanced, onAdvanced, filterCount, filtersAvailable,
+export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount, advanced, onAdvanced, unitMode, onUnitMode, filterCount, filtersAvailable,
   signedIn, credits, hasPrices, fetching, onFetch }: {
   panel: BasketPanel | null; onPanel: (panel: BasketPanel | null) => void; itemCount: number; activeCount: number;
-  advanced: boolean; onAdvanced: (value: boolean) => void; filterCount: number; filtersAvailable: boolean;
+  advanced: boolean; onAdvanced: (value: boolean) => void; unitMode: boolean; onUnitMode: (value: boolean) => void; filterCount: number; filtersAvailable: boolean;
   signedIn: boolean; credits: BasketCredits | null; hasPrices: boolean; fetching: boolean; onFetch: () => void;
 }) {
   const empty = outOfCredits(credits);
@@ -36,6 +36,10 @@ export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount
         expanded={panel === "items"} controls="v2-basket-panel-items" onClick={() => onPanel(panel === "items" ? null : "items")} />
       <Tool icon={<QuantityIcon />} label="Quantités" title={advanced ? "Panier avancé activé : une quantité par article" : "Activer le panier avancé : une quantité par article"}
         active={advanced} pressed={advanced} onClick={() => onAdvanced(!advanced)} />
+      <Tool icon={<UnitPriceIcon />} label="Prix à l’unité"
+        title={unitMode ? "Comparaison au prix à l’unité (par kg, L ou pièce) : cliquez pour revenir au prix à payer"
+          : "Comparer au prix à l’unité (par kg, L ou pièce) plutôt qu’au prix à payer"}
+        active={unitMode} pressed={unitMode} onClick={() => onUnitMode(!unitMode)} />
       <Tool icon={<FilterIcon />} label="Magasins" detail={filterCount ? String(filterCount) : undefined} disabled={!filtersAvailable}
         title={filtersAvailable ? "Filtrer les magasins comparés" : "Récupérez d’abord les prix pour filtrer les magasins"}
         active={panel === "filters" || filterCount > 0} expanded={panel === "filters"} controls="v2-basket-panel-filters"
