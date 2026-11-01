@@ -17,7 +17,10 @@ const UPDATE_REASON: Record<string, string> = {
 const DROPPED: Record<string, string> = {
   fresh_elsewhere: "un prix récent est arrivé d’une autre source", cooldown: "déjà lu au cours des dernières 24 h", unavailable: "connecteur indisponible",
 };
-const READING: Record<string, string> = { complete: "terminée", skipped: "ignorée, le prix était déjà récent", rejected: "page refusée", failed: "échec" };
+const READING: Record<string, string> = {
+  complete: "terminée", skipped: "ignorée, le prix était déjà récent", rejected: "page refusée", failed: "échec",
+  discontinued: "produit retiré de la gamme du magasin", not_found: "produit absent du catalogue de l’enseigne",
+};
 
 const HTTP_MEANING: Record<number, string> = { 401: "accès refusé", 403: "accès refusé", 404: "introuvable", 429: "trop de requêtes" };
 // What a Python exception class usually means for a connector; anything else is shown by its class name.

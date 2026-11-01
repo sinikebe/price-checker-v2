@@ -575,6 +575,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.111",
+      "components": {
+        "application": {
+          "version": "0.1.111",
+          "notes": [
+            "Le journal distingue un produit retiré de la gamme du magasin ou absent du catalogue de l’enseigne d’un échec de lecture."
+          ]
+        }
+      }
     }
   ]
 }

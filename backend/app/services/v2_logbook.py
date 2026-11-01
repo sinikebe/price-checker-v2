@@ -126,9 +126,10 @@ EVENTS: dict[str, Event] = {
     "connector.queue.dropped": Event("connector", "info", {
         "product_id": PRODUCT, "reason": choice("fresh_elsewhere", "cooldown", "unavailable")}, connector=True),
     "connector.reading.finished": Event(
-        "connector", lambda values: {"complete": "info", "skipped": "info", "rejected": "warning",
-                                     "failed": "error"}[values["outcome"]],
-        {"product_id": PRODUCT, "outcome": choice("complete", "skipped", "rejected", "failed")}, connector=True),
+        "connector", lambda values: {"complete": "info", "skipped": "info", "discontinued": "info", "not_found": "info",
+                                     "rejected": "warning", "failed": "error"}[values["outcome"]],
+        {"product_id": PRODUCT, "outcome": choice("complete", "skipped", "discontinued", "not_found", "rejected", "failed")},
+        connector=True),
     "connector.price.saved": Event("connector", "info", {
         "product_id": PRODUCT, "store_id": STORE, "price_cents": integer(0, 10**9),
         "channel": choice("in_store", "drive", "delivery")}, connector=True),
