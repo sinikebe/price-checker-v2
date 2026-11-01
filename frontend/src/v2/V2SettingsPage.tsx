@@ -5,6 +5,8 @@ import V2AccountSecurity from "./V2AccountSecurity";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2SettingsAccount from "./V2SettingsAccount";
 import V2SettingsGeneral from "./V2SettingsGeneral";
+import V2ServerLogs from "./V2ServerLogs";
+import V2ServerStats from "./V2ServerStats";
 import V2SettingsServer from "./V2SettingsServer";
 import V2SiteHeader from "./V2SiteHeader";
 import V2SettingsTabs from "./V2SettingsTabs";
@@ -33,7 +35,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
     return () => { document.title = previousTitle; };
   }, [tab.id, tab.label]);
 
-  function panel(id: SettingsTabId): ReactNode {
+  function panel(id: SettingsTabId, active: boolean): ReactNode {
     switch (id) {
       case "general": return <V2SettingsGeneral />;
       case "account": return user && <V2SettingsAccount user={user} onDeleted={cleared => {
@@ -45,6 +47,8 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
       case "security": return user && <V2AccountSecurity key={user.id} />;
       case "connectors": return user?.role === "admin" && <V2ConnectorStores key={`stores-${user.id}`} />;
       case "server": return user?.role === "admin" && <V2SettingsServer userId={user.id} />;
+      case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
+      case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;
     }
   }
   const showTabs = tabs.length > 1;
@@ -59,7 +63,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
       {showTabs && <V2SettingsTabs tabs={tabs} activeId={tab.id} />}
       {tabs.filter(item => item.id === tab.id || visited.has(item.id)).map(item => {
         const active = item.id === tab.id;
-        const grid = <div className="v2-settings-grid">{panel(item.id)}</div>;
+        const grid = <div className="v2-settings-grid">{panel(item.id, active)}</div>;
         return showTabs
           ? <div key={item.id} className="v2-settings-panel" role="tabpanel" id={settingsPanelDomId(item.id)}
               aria-labelledby={settingsTabDomId(item.id)} hidden={!active}>{grid}</div>

@@ -342,3 +342,25 @@ async def test_deleting_an_account_removes_its_credits(served, config):
     finally:
         await connection.close()
     assert [row["user_id"] for row in remaining] == [ben]
+
+
+@pytest.mark.asyncio
+async def test_basket_requests_are_journaled_as_numbers_without_the_account(served, config):
+    (ana, _ben), _stores, products = await seed(config)
+    body = {"items": [{"kind": "product", "id": products[0]}, {"kind": "group", "name": "Lait"}]}
+    async with served as client:
+        for _ in range(5):
+            assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 200
+        assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 429
+    connection = await connect_v2(config)
+    try:
+        logged = await connection.fetch("SELECT level,source,event,connector,data FROM v2_logs WHERE source='basket' ORDER BY id")
+    finally:
+        await connection.close()
+    assert [row["event"] for row in logged] == ["basket.prices.fetched"] * 5 + ["basket.prices.refused"]
+    fetched = [json.loads(row["data"]) for row in logged[:5]]
+    assert [entry["credits_left"] for entry in fetched] == [4, 3, 2, 1, 0]
+    assert fetched[0] == {"items": 2, "products": 2, "truncated": False, "credits_left": 4}
+    assert json.loads(logged[5]["data"]) == {"reason": "no_credits"}
+    assert all(row["connector"] is None for row in logged)
+    assert all(set(json.loads(row["data"])) <= {"items", "products", "truncated", "credits_left", "reason"} for row in logged)

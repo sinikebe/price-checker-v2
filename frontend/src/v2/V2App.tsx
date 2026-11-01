@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import V2Gateway from "./V2Gateway";
 import V2VersionsPage from "./V2VersionsPage";
@@ -6,6 +6,7 @@ import V2ChangelogPage from "./V2ChangelogPage";
 import V2LegalPage from "./V2LegalPage";
 import V2SiteFooter from "./V2SiteFooter";
 import { V2BasketProvider } from "./V2BasketContext";
+import { reportPage } from "./v2-page-traffic";
 
 const NOTICE_DISMISSED_KEY = "v2-early-notice-dismissed";
 
@@ -40,6 +41,7 @@ export default function V2App() {
   const product = path.match(/^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/);
   const isProductRoute = Boolean(product);
   useLayoutEffect(() => { if (isProductRoute) window.scrollTo(0, 0); }, [path, isProductRoute]);
+  useEffect(() => { reportPage(path); }, [path]);
   const category = path.match(/^\/v2\/categories\/([^/]+)$/);
   let categoryName: string | undefined;
   try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }

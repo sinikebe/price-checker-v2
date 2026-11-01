@@ -1,0 +1,51 @@
+.v2-observability { grid-column: 1 / -1; }
+.v2-logs-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 18px; margin: 0 0 14px; }
+.v2-logs-filters label, .v2-logs-filters legend { display: grid; gap: 4px; font-size: .82rem; font-weight: 650; }
+.v2-logs-filters fieldset { margin: 0; padding: 0; border: 0; }
+.v2-logs-filters legend { padding: 0; margin-bottom: 4px; }
+.v2-logs-filters select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--v2-line); border-radius: 10px; background: var(--v2-input-background, #fff); color: var(--v2-ink); font: inherit; }
+.v2-logs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.v2-logs-chip { min-height: 40px; padding: 0 14px; border: 1px solid var(--v2-line); border-radius: 999px; background: transparent; color: var(--v2-ink); font: inherit; font-weight: 650; cursor: pointer; }
+.v2-logs-chip[aria-pressed="true"] { border-color: #2f8061; background: #e4f1e1; color: #1f4d36; }
+.v2-logs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; }
+.v2-logs-actions .v2-button { min-height: 40px; }
+.v2-logs-live { display: flex !important; grid-auto-flow: column; align-items: center; gap: 7px !important; font-weight: 500 !important; }
+.v2-log-list { display: grid; margin: 0 0 14px; padding: 0; list-style: none; border-top: 1px solid var(--v2-line); }
+.v2-log { display: grid; grid-template-columns: 9.5rem 6.5rem 12rem minmax(0, 1fr); gap: 4px 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--v2-line); font-size: .9rem; }
+.v2-log time { color: var(--v2-muted); font-variant-numeric: tabular-nums; }
+.v2-log-level { width: fit-content; padding: 1px 9px; border-radius: 999px; background: #e8efe6; font-size: .76rem; font-weight: 700; }
+.v2-log[data-level="warning"] .v2-log-level { background: #fff2da; color: #6b4600; }
+.v2-log[data-level="error"] .v2-log-level { background: #fde7e7; color: #8b1f2c; }
+.v2-log[data-level="debug"] { color: var(--v2-muted); }
+.v2-log-source { color: var(--v2-muted); overflow-wrap: anywhere; }
+.v2-log-text { min-width: 0; overflow-wrap: anywhere; }
+.v2-stats-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; }
+.v2-stats-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 0 0 18px; }
+.v2-stats-card { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: 12px; }
+.v2-stats-card span { color: var(--v2-muted); font-size: .82rem; }
+.v2-stats-card strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.v2-stats-card small { color: var(--v2-muted); font-size: .78rem; }
+.v2-observability h3 { margin: 18px 0 8px; font-size: 1.05rem; }
+.v2-stats-scroll { overflow-x: auto; }
+.v2-stats-endpoints { min-width: 34rem; }
+.v2-stats-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.v2-stats-table th, .v2-stats-table td { padding: 7px 10px; border-bottom: 1px solid var(--v2-line); text-align: right; font-variant-numeric: tabular-nums; }
+.v2-stats-table th:first-child, .v2-stats-table td:first-child { text-align: left; }
+.v2-stats-table thead th { color: var(--v2-muted); font-size: .8rem; }
+.v2-stats-table tbody th { font-weight: 500; overflow-wrap: anywhere; }
+.v2-stats-table th button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline dotted; }
+.v2-stats-table th[aria-sort="descending"] button::after { content: " ▾"; }
+.v2-stats-method { display: inline-block; min-width: 3.3rem; color: var(--v2-muted); font-size: .76rem; font-weight: 700; }
+.v2-stats-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+html[data-v2-theme="dark"] .v2-logs-chip[aria-pressed="true"] { border-color: #5f8c6c; background: #294032; color: #e9fadd; }
+html[data-v2-theme="dark"] .v2-log-level { background: #2a3f35; }
+html[data-v2-theme="dark"] .v2-log[data-level="warning"] .v2-log-level { background: #47351f; color: #ffe5ac; }
+html[data-v2-theme="dark"] .v2-log[data-level="error"] .v2-log-level { background: #4b2328; color: #ffb7ac; }
+@media (max-width: 760px) {
+  .v2-log { grid-template-columns: auto 1fr; }
+  .v2-log time { grid-column: 1 / -1; }
+  .v2-log-source { text-align: right; }
+  .v2-log-text { grid-column: 1 / -1; }
+  .v2-stats-columns { grid-template-columns: minmax(0, 1fr); }
+  .v2-logs-actions { margin-left: 0; }
+}

@@ -911,6 +911,64 @@ MIGRATIONS = {
             updated_at timestamptz NOT NULL DEFAULT now()
         );
     """,
+    "0037_logs_and_stats": """
+        -- Operational journal and counters. Rows hold event codes, numbers and
+        -- values from fixed lists only: never names, addresses or free text.
+        CREATE TABLE v2_logs (
+            id bigserial PRIMARY KEY,
+            at timestamptz NOT NULL DEFAULT now(),
+            level smallint NOT NULL CHECK (level IN (10, 20, 30, 40)),
+            source varchar(20) NOT NULL CHECK (source ~ '^[a-z_]{1,20}$'),
+            event varchar(60) NOT NULL CHECK (event ~ '^[a-z_.]{1,60}$'),
+            connector varchar(64) CHECK (connector ~ '^[a-z][a-z0-9_-]{1,63}$'),
+            data jsonb NOT NULL DEFAULT '{}' CHECK (jsonb_typeof(data) = 'object')
+        );
+        CREATE INDEX v2_logs_at_idx ON v2_logs (at DESC, id DESC);
+        CREATE INDEX v2_logs_source_idx ON v2_logs (source, id DESC);
+        CREATE INDEX v2_logs_connector_idx ON v2_logs (connector, id DESC) WHERE connector IS NOT NULL;
+        CREATE TABLE v2_request_stats (
+            bucket timestamptz NOT NULL,
+            route varchar(200) NOT NULL,
+            method varchar(10) NOT NULL,
+            status_class smallint NOT NULL CHECK (status_class BETWEEN 1 AND 5),
+            requests integer NOT NULL CHECK (requests > 0),
+            duration_ms_sum bigint NOT NULL CHECK (duration_ms_sum >= 0),
+            duration_ms_max integer NOT NULL CHECK (duration_ms_max >= 0),
+            PRIMARY KEY (bucket, route, method, status_class)
+        );
+        CREATE TABLE v2_page_stats (
+            bucket timestamptz NOT NULL,
+            page varchar(40) NOT NULL,
+            views integer NOT NULL CHECK (views >= 0),
+            visits integer NOT NULL CHECK (visits >= 0),
+            PRIMARY KEY (bucket, page)
+        );
+        -- Every price a connector saves is journaled, whatever connector code saved it.
+        -- Logging must never block a price write, hence the swallowed errors.
+        CREATE FUNCTION v2_log_connector_price() RETURNS trigger LANGUAGE plpgsql AS $fn$
+        DECLARE installed text;
+        BEGIN
+            BEGIN
+                SELECT i.connector_id INTO installed FROM v2_connector_installations i
+                WHERE i.connector_id = NEW.source_provider
+                   OR left(i.connector_id, length(NEW.source_provider) + 1) = NEW.source_provider || '_'
+                ORDER BY (i.connector_id = NEW.source_provider) DESC, i.connector_id LIMIT 1;
+                INSERT INTO v2_logs (level, source, event, connector, data) VALUES (
+                    20, 'connector', 'connector.price.saved',
+                    COALESCE(installed, CASE WHEN NEW.source_provider ~ '^[a-z][a-z0-9_-]{1,63}$'
+                                             THEN NEW.source_provider END),
+                    jsonb_build_object('product_id', NEW.product_id, 'store_id', NEW.store_id,
+                                       'price_cents', round(NEW.price * 100)::int,
+                                       'channel', NEW.sales_channel));
+            EXCEPTION WHEN OTHERS THEN
+                NULL;
+            END;
+            RETURN NEW;
+        END
+        $fn$;
+        CREATE TRIGGER v2_connector_price_log AFTER INSERT ON v2_price_observations
+            FOR EACH ROW WHEN (NEW.source = 'connector') EXECUTE FUNCTION v2_log_connector_price();
+    """,
 }
 
 
@@ -1013,6 +1071,10 @@ async def migrate_v2(config: dict) -> list[str]:
                         "INSERT INTO v2_schema_migrations(version) VALUES($1)", version
                     )
                     applied.append(version)
+            if applied and await connection.fetchval("SELECT to_regclass('v2_logs') IS NOT NULL"):
+                from app.services.v2_logbook import log_event
+
+                await log_event(connection, "system.migrated", count=len(applied), latest=applied[-1])
     finally:
         await connection.close()
     return applied

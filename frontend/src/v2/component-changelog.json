@@ -520,6 +520,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.106",
+      "components": {
+        "application": {
+          "version": "0.1.106",
+          "notes": [
+            "Journaux et Statistiques dans les paramètres (administrateurs) : événements, requêtes, contributions et pages vues, sans donnée personnelle."
+          ]
+        }
+      }
     }
   ]
 }

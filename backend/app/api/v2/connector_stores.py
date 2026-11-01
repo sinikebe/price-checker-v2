@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, SecretStr
 
 from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write
 from app.api.v2.setup import _require_admin
+from app.services import v2_logbook as logbook
 from app.services.v2_connector_stores import (
     fetch_store, generate_key, key_path, load_installed, public_key,
     repository_url, save_key, store_dir, validate_catalog,
@@ -410,6 +411,17 @@ async def remove_store(store_id: int, request: Request):
         await connection.close()
 
 
+async def _journal_queue(connection, connector_id: str, origin: str, outcomes: dict[str, str]) -> None:
+    """Journal what a request did to a connector's queue: one summary, and one line per product queued."""
+    counts = logbook.outcome_counts(list(outcomes.values()))
+    await logbook.log_event(connection, "connector.queue.requested", connector=connector_id, origin=origin,
+                            requested=len(outcomes), **counts)
+    for product_id, outcome in outcomes.items():
+        if outcome == "queued":
+            await logbook.log_event(connection, "connector.queue.added", connector=connector_id,
+                                    product_id=int(product_id), origin=origin)
+
+
 async def enqueue_installed(
     connection, connector_id: str, product_id: int, *, basket: bool = False
 ) -> str:
@@ -527,6 +539,7 @@ async def request_basket_refresh(
         for product_id in admitted:
             statuses[str(product_id)] = await enqueue_installed(
                 connection, connector_id, product_id, basket=True)
+        await _journal_queue(connection, connector_id, "basket", statuses)
         return {"products": statuses}
     finally:
         await connection.close()
@@ -576,6 +589,10 @@ async def request_page_refresh(
         for product_id in admitted:
             outcomes[str(product_id)] = await enqueue_installed(connection, connector_id, product_id)
         after = await page_product_statuses(connection, connector_id, ids)
+        reported = {str(product_id): before[str(product_id)]["status"] for product_id in ids}
+        reported.update(outcomes)
+        reported.update({str(product_id): "rate_limited" for product_id in candidates[len(admitted):]})
+        await _journal_queue(connection, connector_id, "page", reported)
         for product_id in candidates[len(admitted):]:
             after[str(product_id)] = {"status": "rate_limited", "rank": None}
         for key, outcome in outcomes.items():
@@ -595,9 +612,26 @@ async def request_connector_refresh(connector_id: str, product_id: int, request:
     try:
         if await _admit_refresh(connection, connector_id, request, [product_id]) is None:
             return {"status": "disabled"}
-        return {"status": await enqueue_installed(connection, connector_id, product_id)}
+        status = await enqueue_installed(connection, connector_id, product_id)
+        await _journal_queue(connection, connector_id, "single", {str(product_id): status})
+        return {"status": status}
     finally:
         await connection.close()
+
+
+async def _journal_worker_failure(connector_id: str, exc: Exception) -> None:
+    """At most one journal line per connector every ten minutes, whatever the retry rate."""
+    if not logbook.allow_every(f"connector-worker:{connector_id}", 600):
+        return
+    try:
+        connection = await _connect()
+        try:
+            await logbook.log_event(connection, "connector.worker.failed", connector=connector_id,
+                                    error=exc.__class__.__name__)
+        finally:
+            await connection.close()
+    except Exception as failure:  # the journal must not stop the worker
+        logger.warning("Connector failure not journaled: %s", failure.__class__.__name__)
 
 
 async def connector_worker() -> None:
@@ -615,8 +649,9 @@ async def connector_worker() -> None:
                     await module.process_one()
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.exception("Connector %s worker deferred", row["connector_id"])
+                    await _journal_worker_failure(row["connector_id"], exc)
         except asyncio.CancelledError:
             raise
         except Exception:

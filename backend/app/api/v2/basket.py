@@ -13,6 +13,7 @@ from app.api.v2.catalogue import MAX_BIGINT, group_rows, scope_rows
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.services import v2_basket_credits as credits
+from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/basket", tags=["v2-basket"])
 
@@ -187,8 +188,12 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
             if state["balance"] >= 1:
                 result = await _gather(connection, payload.items)
                 state = await credits.spend_one(connection, user["id"], state)
+                await logbook.log_event(
+                    connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
+                    truncated=any(line["truncated"] for line in result["lines"]), credits_left=state["balance"])
         public = credits.public_state(state["balance"], state["week_granted"], state["today"])
         if result is None:
+            await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
             wait = credits.seconds_until(
                 credits.next_grant_on(state["today"], state["week_granted"]), state["now"])
             raise HTTPException(
