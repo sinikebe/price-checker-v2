@@ -9,6 +9,8 @@ const sandbox = { module: { exports: {} } };
 sandbox.globalThis = sandbox;
 vm.runInNewContext(readFileSync(new URL("carrefour-parse.js", directory), "utf8"), sandbox);
 const { sameEan, money } = sandbox.module.exports;
+const productPageUrl = (url, ean) => sandbox.module.exports.productPageUrl(url, ean);
+const parseProductPage = (html, ean) => JSON.parse(JSON.stringify(sandbox.module.exports.parseProductPage(html, ean)));
 const parseSearch = (text, ean) => JSON.parse(JSON.stringify(sandbox.module.exports.parseSearch(text, ean)));
 const EAN = "7613039830727";
 
@@ -113,4 +115,41 @@ test("the zip handed out by the settings page is a valid archive with every exte
   assert.match(check.stdout, /True/);
   assert.throws(() => makeZip([{ name: "../evil.js", data: new Uint8Array() }]), /invalide/);
   assert.throws(() => makeZip([{ name: "/abs.js", data: new Uint8Array() }]), /invalide/);
+});
+
+
+// The shape of a real product page: a schema.org Product with an AggregateOffer, and the chosen store in the page data.
+const PAGE = ean => `<html><head><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org/","@type":"Product","name":"Pâtes spaghetti CARREFOUR","url":"https://www.carrefour.fr/p/pates-spaghetti-carrefour-${ean}","gtin13":"${ean}","brand":{"@type":"Brand","name":"CARREFOUR"},
+"offers":{"@type":"AggregateOffer","offerCount":1,"lowPrice":1.35,"highPrice":1.35,"priceCurrency":"EUR","offers":[{"@type":"Offer","price":1.35,"priceCurrency":"EUR","availability":"https://schema.org/InStock","seller":{"@type":"Organization","name":"Carrefour Drive"}}]}}</script>
+</head><body><script>window.x={"storeUrl":"/magasin/city-maisons-laffitte","storePageUrl":"/magasin/city-maisons-laffitte"}</script></body></html>`;
+
+test("a product page gives the price once, the seller, the availability and the store the page shows", () => {
+  const page = parseProductPage(PAGE("3560070328888"), "3560070328888");
+  assert.equal(page.found, true);
+  assert.deepEqual(page.prices.map(price => price.value), [1.35], "the lowest, highest and offer price are the same offer, listed once");
+  assert.equal(page.price, 1.35);
+  assert.equal(page.seller, "Carrefour Drive");
+  assert.equal(page.available, true);
+  assert.equal(page.storeSlug, "city-maisons-laffitte");
+  assert.equal(page.storeLabel, "city maisons laffitte");
+  assert.equal(page.url, "https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888");
+  assert.equal(page.brand, "CARREFOUR");
+});
+
+test("a page for another product, or without data, never gives a price", () => {
+  assert.equal(parseProductPage(PAGE("3560070328888"), "7613039830727").found, false);
+  assert.equal(parseProductPage(PAGE("3560070328888"), "7613039830727").price, null);
+  for (const html of ["", "<html></html>", "<script type=\"application/ld+json\">{bad</script>"]) assert.equal(parseProductPage(html, "3560070328888").found, false);
+  assert.equal(parseProductPage(null, "3560070328888").found, false);
+  const soldOut = PAGE("3560070328888").replace("InStock", "OutOfStock");
+  assert.equal(parseProductPage(soldOut, "3560070328888").available, false);
+});
+
+test("the page address is the search's slug plus the EAN, and nothing else is built", () => {
+  assert.equal(productPageUrl("https://www.carrefour.fr/p/pates-spaghetti-carrefour", "3560070328888"), "https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888");
+  assert.equal(productPageUrl("https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888", "3560070328888"), "https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888");
+  for (const url of ["https://evil.example/p/x", "http://www.carrefour.fr/p/x", "https://www.carrefour.fr/p/x?next=https://evil.example", "https://www.carrefour.fr/p/../admin", null, 5])
+    assert.equal(productPageUrl(url, "3560070328888"), null, String(url));
+  assert.equal(productPageUrl("https://www.carrefour.fr/p/x", "abc"), null);
 });
