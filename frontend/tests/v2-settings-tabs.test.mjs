@@ -18,7 +18,7 @@ const ids = viewer => visibleSettingsTabs(viewer).map(tab => tab.id);
 test("each kind of viewer sees only the tabs they may use", () => {
   assert.deepEqual(ids(anonymous), ["general"]);
   assert.deepEqual(ids(member), ["general", "account", "security"]);
-  assert.deepEqual(ids(admin), ["general", "account", "security", "connectors", "server"]);
+  assert.deepEqual(ids(admin), ["general", "account", "security", "connectors", "server", "logs", "stats"]);
 });
 
 test("a visitor who is not signed in never gets an admin flag to count", () => {

@@ -1,6 +1,6 @@
 /** Pure logic of the settings tabs (no React, so it can be unit-tested). */
 
-export type SettingsTabId = "general" | "account" | "security" | "connectors" | "server";
+export type SettingsTabId = "general" | "account" | "security" | "connectors" | "server" | "logs" | "stats";
 export type SettingsViewer = { loggedIn: boolean; admin: boolean };
 type Access = "everyone" | "member" | "admin";
 
@@ -15,6 +15,8 @@ export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "security", slug: "securite", label: "Sécurité", access: "member" },
   { id: "connectors", slug: "connecteurs", label: "Connecteurs", access: "admin" },
   { id: "server", slug: "serveur", label: "Serveur", access: "admin" },
+  { id: "logs", slug: "journaux", label: "Journaux", access: "admin" },
+  { id: "stats", slug: "statistiques", label: "Statistiques", access: "admin" },
 ];
 
 function allowed(tab: SettingsTab, viewer: SettingsViewer): boolean {
