@@ -1,7 +1,7 @@
 {
   "name": "price-checker-v2-frontend",
   "private": true,
-  "version": "0.1.102",
+  "version": "0.1.103",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -13,6 +13,7 @@
     "test:settings": "node --test tests/v2-settings-*.test.mjs",
     "test:account": "node --test tests/v2-account-*.test.mjs",
     "test:nav": "node --test tests/v2-site-nav.test.mjs",
+    "test:search": "node --test tests/v2-catalogue-search.test.mjs",
     "test:bookmarklet": "node --test tests/v2-bookmarklet*.test.mjs"
   },
   "dependencies": {

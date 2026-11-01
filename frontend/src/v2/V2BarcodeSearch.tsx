@@ -1,9 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { ProductApiError, productRequest } from "./v2-products-api";
 import V2BarcodeScanner from "./V2BarcodeScanner";
-
-type BarcodeMatch = { kind: "product" | "draft"; id: number };
+import { resolveBarcodePath } from "./v2-barcode";
+import { isBarcode } from "./v2-catalogue-search";
 
 export default function V2BarcodeSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -15,7 +14,7 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
 
   async function resolveBarcode(code: string) {
     if (busyRef.current) return;
-    if (!/^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(code)) {
+    if (!isBarcode(code)) {
       setError("Saisissez un code-barres de 8, 12, 13 ou 14 chiffres.");
       return;
     }
@@ -23,14 +22,9 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
     setBusy(true);
     setError("");
     try {
-      const match = await productRequest<BarcodeMatch>("/by-barcode/" + code);
-      navigate(match.kind === "draft" ? "/v2/brouillons/" + match.id : "/v2/produits/" + match.id);
+      navigate(await resolveBarcodePath(code));
     } catch (reason) {
-      if (reason instanceof ProductApiError && reason.status === 404) {
-        navigate("/v2/produits/nouveau?ean=" + encodeURIComponent(code));
-      } else {
-        setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez.");
-      }
+      setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez.");
     } finally {
       busyRef.current = false;
       setBusy(false);

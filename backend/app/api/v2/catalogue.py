@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+import re
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _bump_limit, _connect, _current_user, _limit_key, _secure_write
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
@@ -171,23 +173,43 @@ async def find_stores(q: str = Query("", max_length=80)):
         await connection.close()
 
 
+MAX_BIGINT = 2**63 - 1
+# The text searched is the product's fields joined with one space, runs of spaces collapsed, so that an
+# empty or missing field does not change what a phrase spanning two fields matches. The browser filters
+# the same way (v2-catalogue-search.ts); the shared fixture frontend/tests/fixtures/search-parity.json
+# keeps both in agreement.
+SEARCH_TEXT = ("lower(btrim(regexp_replace(concat_ws(' ', p.data->>'brand', p.data->>'name', "
+               "p.data->>'commercial_name', p.data->>'quantity', p.data->>'ean'), '[ \\t\\n\\r\\f\\v]+', ' ', 'g')))")
+
+
+def _collapse(text: str) -> str:
+    return re.sub(r"[ \t\n\r\f\v]+", " ", text).strip()
+# Typing triggers searches: bound them per client. Both budgets are charged only for admitted requests.
+SUGGEST_PER_MINUTE = 10
+SUGGEST_PER_HOUR = 100
+SUGGEST_MIN_CHARS = 2
+COMPLETE_LIST_BOUNDS = (5, 200)
+
+
+def _search_conditions() -> str:
+    return f"""{CURRENT}
+            AND ($1='' OR strpos({SEARCH_TEXT}, lower($1)) > 0)
+            AND ($2='' OR lower({CATEGORY})=lower($2))
+            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
+
+
 @router.get("/search")
 async def search_products(
     q: str = Query("", max_length=120),
     category: str = Query("", max_length=100),
-    store_id: int | None = Query(None, ge=1),
+    store_id: int | None = Query(None, ge=1, le=MAX_BIGINT),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0, le=100000),
 ):
     connection = await _connect()
     try:
-        conditions = f"""{CURRENT}
-            AND ($1='' OR strpos(lower(concat_ws(' ', p.data->>'brand',
-                p.data->>'name', p.data->>'commercial_name',
-                p.data->>'quantity', p.data->>'ean')), lower($1)) > 0)
-            AND ($2='' OR lower({CATEGORY})=lower($2))
-            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
-        parameters = q.strip(), category.strip(), store_id
+        conditions = _search_conditions()
+        parameters = _collapse(q), category.strip(), store_id
         total = await connection.fetchval(
             f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters
         )
@@ -199,6 +221,102 @@ async def search_products(
         )
         return {"items": [_product(row) for row in rows], "total": total,
                 "limit": limit, "offset": offset}
+    finally:
+        await connection.close()
+
+
+async def _charge_search(connection, request: Request) -> None:
+    """Spend one unit of the per-client minute and hour budgets, or refuse with the wait time."""
+    for kind, seconds, allowed in (("catalogue-suggest-minute", 60, SUGGEST_PER_MINUTE),
+                                   ("catalogue-suggest-hour", 3600, SUGGEST_PER_HOUR)):
+        key = _limit_key(kind, request)
+        if await _bump_limit(connection, key, seconds) > allowed:
+            wait = await connection.fetchval(
+                "SELECT greatest(1, ceil(extract(epoch FROM window_started_at "
+                "+ ($2 * interval '1 second') - now())))::int FROM v2_auth_limits WHERE key=$1",
+                key, seconds)
+            raise HTTPException(
+                status_code=429, headers={"Retry-After": str(wait or seconds)},
+                detail="Trop de recherches. Réessayez dans quelques instants.")
+
+
+@router.get("/suggest")
+async def suggest_products(
+    request: Request,
+    q: str = Query("", max_length=120),
+    category: str = Query("", max_length=100),
+    store_id: int | None = Query(None, ge=1, le=MAX_BIGINT),
+):
+    """The complete list of matches, only when there are few enough; otherwise just their number.
+
+    The browser filters a list it holds as the text grows, so a request is needed again
+    only when a search is too broad to be listed or the text no longer extends a known one.
+    """
+    if len(_collapse(q)) < SUGGEST_MIN_CHARS:
+        raise HTTPException(status_code=422, detail=f"Saisissez au moins {SUGGEST_MIN_CHARS} caractères.")
+    connection = await _connect()
+    try:
+        await _charge_search(connection, request)
+        limit = await connection.fetchval("SELECT complete_list_max FROM v2_search_settings WHERE singleton")
+        conditions = _search_conditions()
+        parameters = _collapse(q), category.strip(), store_id
+        total = await connection.fetchval(
+            f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters)
+        complete = total <= limit
+        rows = await connection.fetch(
+            f"""SELECT p.* FROM v2_products p WHERE {conditions}
+                ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id LIMIT $4""",
+            *parameters, limit) if complete and total else []
+        return {"total": total, "complete": complete, "max": limit,
+                "items": [_product(row) for row in rows]}
+    finally:
+        await connection.close()
+
+
+class SearchSettingsChange(BaseModel):
+    complete_list_max: int = Field(ge=COMPLETE_LIST_BOUNDS[0], le=COMPLETE_LIST_BOUNDS[1])
+    expected_revision: int = Field(ge=0)
+
+
+async def _search_settings(connection) -> dict:
+    row = await connection.fetchrow(
+        "SELECT complete_list_max,revision FROM v2_search_settings WHERE singleton")
+    return {"complete_list_max": row["complete_list_max"], "revision": row["revision"],
+            "min": COMPLETE_LIST_BOUNDS[0], "max": COMPLETE_LIST_BOUNDS[1],
+            "per_minute": SUGGEST_PER_MINUTE, "per_hour": SUGGEST_PER_HOUR}
+
+
+async def _require_admin_user(connection, request: Request) -> None:
+    user = await _current_user(connection, request)
+    if user is None or user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+
+
+@router.get("/search-settings")
+async def read_search_settings(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        await _require_admin_user(connection, request)
+        return await _search_settings(connection)
+    finally:
+        await connection.close()
+
+
+@router.put("/search-settings")
+async def change_search_settings(payload: SearchSettingsChange, request: Request, response: Response):
+    _secure_write(request)
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        await _require_admin_user(connection, request)
+        updated = await connection.fetchval(
+            "UPDATE v2_search_settings SET complete_list_max=$1, revision=revision+1, updated_at=now() "
+            "WHERE singleton AND revision=$2 RETURNING revision",
+            payload.complete_list_max, payload.expected_revision)
+        if updated is None:
+            raise HTTPException(status_code=409, detail="Réglage modifié entre-temps. Rechargez la page.")
+        return await _search_settings(connection)
     finally:
         await connection.close()
 

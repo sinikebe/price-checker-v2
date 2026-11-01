@@ -474,6 +474,31 @@
       "component": "pwa",
       "version": "0.1.21",
       "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "application",
+      "version": "0.1.103",
+      "reason": "Recherche du catalogue."
+    },
+    {
+      "component": "database",
+      "version": "0.1.34",
+      "reason": "Recherche du catalogue."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.24",
+      "reason": "Recherche du catalogue."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.26",
+      "reason": "Recherche du catalogue."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.24",
+      "reason": "Recherche du catalogue."
     }
   ]
 }

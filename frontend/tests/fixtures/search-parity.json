@@ -1,0 +1,278 @@
+{
+  "comment": "Shared by backend/tests/test_v2_catalogue_search.py and frontend/tests/v2-catalogue-search.test.mjs: the server and the browser must give the same answers.",
+  "products": [
+    {
+      "id": 1,
+      "data": {
+        "brand": "Lactel",
+        "name": "Lait demi-écrémé",
+        "quantity": "1 L",
+        "ean": "3428272630010"
+      }
+    },
+    {
+      "id": 2,
+      "data": {
+        "brand": "Candia",
+        "name": "Lait entier",
+        "commercial_name": "",
+        "quantity": "1 L",
+        "ean": "3228022000012"
+      }
+    },
+    {
+      "id": 3,
+      "data": {
+        "brand": "Panzani",
+        "name": "Spaghetti n°5",
+        "commercial_name": "Pâtes de blé dur",
+        "quantity": "500 g",
+        "ean": "3038350010050"
+      }
+    },
+    {
+      "id": 4,
+      "data": {
+        "brand": "Taureau Ailé",
+        "name": "Riz basmati",
+        "quantity": "1 kg",
+        "ean": "3038350044017"
+      }
+    },
+    {
+      "id": 5,
+      "data": {
+        "brand": "Alpro",
+        "name": "LAIT D'AMANDE",
+        "quantity": "1 L",
+        "ean": "5411188119098"
+      }
+    },
+    {
+      "id": 6,
+      "data": {
+        "brand": "Lindt",
+        "name": "Chocolat noir",
+        "quantity": "100 g"
+      }
+    },
+    {
+      "id": 7,
+      "data": {
+        "name": "Lait",
+        "quantity": "500 ml"
+      }
+    },
+    {
+      "id": 8,
+      "data": {
+        "brand": "",
+        "name": "Lait de coco",
+        "quantity": "400 ml",
+        "ean": "8850332155016"
+      }
+    },
+    {
+      "id": 9,
+      "data": {
+        "brand": "Bonne Maman",
+        "name": "ÉCLAIR au chocolat",
+        "quantity": "4 x 70 g"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "q": "lait",
+      "ids": [
+        1,
+        2,
+        5,
+        7,
+        8
+      ],
+      "note": "case-insensitive, any field"
+    },
+    {
+      "q": "LAIT",
+      "ids": [
+        1,
+        2,
+        5,
+        7,
+        8
+      ]
+    },
+    {
+      "q": "lai",
+      "ids": [
+        1,
+        2,
+        5,
+        7,
+        8,
+        9
+      ],
+      "note": "a prefix of the previous query; also found inside 'éclair'"
+    },
+    {
+      "q": "  lait  ",
+      "ids": [
+        1,
+        2,
+        5,
+        7,
+        8
+      ],
+      "note": "surrounding spaces are ignored"
+    },
+    {
+      "q": "lait demi",
+      "ids": [
+        1
+      ]
+    },
+    {
+      "q": "lactel lait",
+      "ids": [
+        1
+      ],
+      "note": "spans brand and name: fields are joined with one space"
+    },
+    {
+      "q": "écrémé 1 l",
+      "ids": [
+        1
+      ],
+      "note": "spans name and quantity; commercial_name is absent"
+    },
+    {
+      "q": "entier 1 l",
+      "ids": [
+        2
+      ],
+      "note": "commercial_name is an empty string: runs of spaces are collapsed, so the phrase still matches"
+    },
+    {
+      "q": "entier  1 l",
+      "ids": [
+        2
+      ],
+      "note": "typed with two spaces: collapsed too"
+    },
+    {
+      "q": "lait 500",
+      "ids": [
+        7
+      ],
+      "note": "the missing brand, ean and commercial_name are skipped"
+    },
+    {
+      "q": "ailé riz",
+      "ids": [
+        4
+      ]
+    },
+    {
+      "q": "ml 8850",
+      "ids": [
+        8
+      ],
+      "note": "quantity and ean"
+    },
+    {
+      "q": "3428272630010",
+      "ids": [
+        1
+      ],
+      "note": "a full barcode"
+    },
+    {
+      "q": "34282",
+      "ids": [
+        1
+      ],
+      "note": "part of a barcode"
+    },
+    {
+      "q": "3038350",
+      "ids": [
+        3,
+        4
+      ]
+    },
+    {
+      "q": "pâtes",
+      "ids": [
+        3
+      ],
+      "note": "commercial_name"
+    },
+    {
+      "q": "pates",
+      "ids": [],
+      "note": "accents matter"
+    },
+    {
+      "q": "d'amande",
+      "ids": [
+        5
+      ]
+    },
+    {
+      "q": "n°5",
+      "ids": [
+        3
+      ]
+    },
+    {
+      "q": "1 l",
+      "ids": [
+        1,
+        2,
+        5
+      ]
+    },
+    {
+      "q": "coco",
+      "ids": [
+        8
+      ]
+    },
+    {
+      "q": "zzz",
+      "ids": []
+    },
+    {
+      "q": "éclair",
+      "ids": [
+        9
+      ],
+      "note": "accented capital letters are matched case-insensitively"
+    },
+    {
+      "q": "ÉCLAIR",
+      "ids": [
+        9
+      ]
+    },
+    {
+      "q": "eclair",
+      "ids": [],
+      "note": "accents matter"
+    },
+    {
+      "q": "maman éclair",
+      "ids": [
+        9
+      ],
+      "note": "spans brand and name"
+    },
+    {
+      "q": "4 x 70",
+      "ids": [
+        9
+      ]
+    }
+  ]
+}
