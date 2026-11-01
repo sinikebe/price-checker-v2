@@ -574,6 +574,11 @@
       "component": "open_prices",
       "version": "0.1.25",
       "reason": "Page des prix : mention des produits retirés de la gamme."
+    },
+    {
+      "component": "application",
+      "version": "0.1.113",
+      "reason": "Largeur d’une carte des paramètres."
     }
   ]
 }
