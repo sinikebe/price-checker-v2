@@ -106,7 +106,7 @@ def served(monkeypatch, config, clock):
         number = request.headers.get("x-test-user")
         if not number:
             raise HTTPException(status_code=401, detail="Connectez-vous.")
-        return {"id": int(number), "username": "u" + number, "role": "confirmed"}
+        return {"id": int(number), "username": "u" + number, "role": request.headers.get("x-test-role", "confirmed")}
     monkeypatch.setattr(basket, "_connect", connect)
     monkeypatch.setattr(basket, "_session_user", session_user)
     monkeypatch.setattr(prices, "_connect", connect)
@@ -160,7 +160,7 @@ async def test_an_account_starts_with_the_grant_of_the_day_and_pays_one_credit_p
         first = await client.get("/api/v2/basket/credits", headers=acting(ana))
         assert first.status_code == 200 and first.headers["cache-control"] == "no-store"
         assert first.json() == {"balance": 5, "daily_grant": 5, "weekly_max": 20, "hold_max": 20,
-                                "granted_this_week": 5, "next_grant_on": "2026-11-03"}
+                                "granted_this_week": 5, "next_grant_on": "2026-11-03", "unlimited": False}
         body = {"items": [{"kind": "product", "id": products[0]}]}
         fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
         assert fetched.status_code == 200, fetched.text
@@ -364,3 +364,45 @@ async def test_basket_requests_are_journaled_as_numbers_without_the_account(serv
     assert json.loads(logged[5]["data"]) == {"reason": "no_credits"}
     assert all(row["connector"] is None for row in logged)
     assert all(set(json.loads(row["data"])) <= {"items", "products", "truncated", "credits_left", "reason"} for row in logged)
+
+
+@pytest.mark.asyncio
+async def test_an_administrator_has_no_credit_limit_but_a_sanity_cap(served, config, monkeypatch, tmp_path):
+    monkeypatch.setenv("PRICE_CHECKER_V2_STATE_DIR", str(tmp_path))
+    (ana, ben), _stores, products = await seed(config)
+    body = {"items": [{"kind": "product", "id": products[0]}]}
+    admin = {**acting(ana), "x-test-role": "admin"}
+    async with served as client:
+        state = (await client.get("/api/v2/basket/credits", headers=admin)).json()
+        assert state["unlimited"] is True and state["balance"] == 20, "an older page still sees credits and keeps its button"
+        for _ in range(8):  # more than the 5 credits of a day
+            answer = await client.post("/api/v2/basket/prices", headers=admin, json=body)
+            assert answer.status_code == 200, answer.text
+            assert answer.json()["credits"]["unlimited"] is True
+        assert (await client.post("/api/v2/basket/prices", headers=acting(ben), json=body)).status_code == 200
+        monkeypatch.setattr(basket, "ADMIN_FETCHES_PER_MINUTE", 8)
+        runaway = await client.post("/api/v2/basket/prices", headers=admin, json=body)
+        assert runaway.status_code == 429 and runaway.headers["retry-after"] == "60"
+        assert "crédit" not in runaway.json()["detail"], "a rate cap, not a missing credit"
+    assert await balance(config, ana) is None, "no credit is held, spent or granted for an administrator"
+    assert await balance(config, ben) == 4, "a member still pays"
+    connection = await connect_v2(config)
+    try:
+        logged = [json.loads(row["data"]) for row in await connection.fetch(
+            "SELECT data FROM v2_logs WHERE event='basket.prices.fetched' ORDER BY id")]
+    finally:
+        await connection.close()
+    assert [entry.get("unlimited") for entry in logged] == [True] * 8 + [None]
+    assert "credits_left" not in logged[0] and logged[-1]["credits_left"] == 4
+
+
+@pytest.mark.asyncio
+async def test_the_role_comes_from_the_session_not_from_the_request(served, config):
+    (ana, _ben), _stores, products = await seed(config)
+    body = {"items": [{"kind": "product", "id": products[0]}]}
+    async with served as client:
+        for _ in range(5):
+            assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 200
+        boasting = {**acting(ana), "x-role": "admin", "x-admin": "1"}
+        assert (await client.post("/api/v2/basket/prices", headers=boasting, json=body)).status_code == 429
+        assert (await client.get("/api/v2/basket/credits", headers=boasting)).json()["unlimited"] is False

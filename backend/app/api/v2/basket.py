@@ -8,7 +8,8 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _connect, _secure_write, _session_user
+from app.api.v2.auth import _bump_limit, _connect, _secure_write, _session_user
+from app.api.v2.auth_security import account_limit_key
 from app.api.v2.catalogue import MAX_BIGINT, group_rows, scope_rows
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
@@ -22,6 +23,7 @@ MAX_CANDIDATES = 300  # products compared for one group or scope
 MAX_PRODUCTS = 600  # distinct products priced by one request
 MAX_STORES = 200  # latest price per store and channel, per product
 MAX_CHAIN = 32
+ADMIN_FETCHES_PER_MINUTE = 60  # administrators have no credit limit, only a sanity cap against a runaway loop
 
 
 def _clean(value: str) -> str:
@@ -163,6 +165,8 @@ async def read_credits(request: Request, response: Response):
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        if user["role"] == "admin":
+            return credits.unlimited_state(credits.paris_now().date())
         async with connection.transaction():
             state = await credits.lock_and_refill(connection, user["id"])
         return credits.public_state(state["balance"], state["week_granted"], state["today"])
@@ -175,13 +179,24 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
     """The candidates and latest prices of every basket line, for one credit.
 
     A refused or failed request costs nothing: the credit is spent in the
-    same transaction as the reading, once it succeeded.
+    same transaction as the reading, once it succeeded. Administrators are not
+    charged (and are capped at a generous rate).
     """
     _secure_write(request)
     response.headers["Cache-Control"] = "no-store"
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        if user["role"] == "admin":
+            # The role comes from the server-side session, never from the request.
+            if await _bump_limit(connection, account_limit_key("basket-admin", user["id"]), 60) > ADMIN_FETCHES_PER_MINUTE:
+                raise HTTPException(status_code=429, headers={"Retry-After": "60"},
+                                    detail="Trop de requêtes. Réessayez dans un instant.")
+            result = await _gather(connection, payload.items)
+            await logbook.log_event(
+                connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
+                truncated=any(line["truncated"] for line in result["lines"]), unlimited=True)
+            return {**result, "credits": credits.unlimited_state(credits.paris_now().date())}
         async with connection.transaction():
             state = await credits.lock_and_refill(connection, user["id"])
             result = None

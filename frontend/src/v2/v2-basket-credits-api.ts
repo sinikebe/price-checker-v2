@@ -4,6 +4,8 @@ import type { BasketPriceResponse } from "./v2-basket-comparison";
 export type BasketCredits = {
   balance: number; daily_grant: number; weekly_max: number; hold_max: number;
   granted_this_week: number; next_grant_on: string;
+  /** Administrators are not charged; `balance` is then only a placeholder. */
+  unlimited?: boolean;
 };
 export type BasketFetchResult = {
   fetched_at: string; credits: BasketCredits;
@@ -66,3 +68,7 @@ export function nextGrantLabel(nextGrantOn: string, today: Date = new Date()): s
   return days[new Date(target).getUTCDay()];
 }
 export const creditLabel = (count: number) => count + " crédit" + (count > 1 ? "s" : "");
+/** True when the account is known to have nothing left to spend (never for an administrator). */
+export const outOfCredits = (credits: BasketCredits | null) => credits !== null && !credits.unlimited && credits.balance < 1;
+/** " (1 crédit)" after the action's name, and nothing for an administrator. */
+export const costNote = (credits: BasketCredits | null) => credits?.unlimited ? "" : " (1 crédit)";

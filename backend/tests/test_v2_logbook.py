@@ -53,8 +53,8 @@ def test_every_registered_field_refuses_names_addresses_and_free_text():
         for field_name, check in definition.fields.items():
             assert field_name in fields or field_name in definition.optional
             for value in PERSONAL:
-                if value is True and field_name == "truncated":
-                    continue  # the only yes/no field: True is a legitimate value there
+                if value is True and field_name in ("truncated", "unlimited"):
+                    continue  # the yes/no fields: True is a legitimate value there
                 with pytest.raises(logbook.LogError):
                     check(value)
 
