@@ -1,12 +1,12 @@
 import V2BasketLines from "./V2BasketLines";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { pricePosition, purchaseTotalCents, type BasketComparison, type PriceChoice } from "./v2-basket-comparison";
-import { itemName, money, storeName } from "./v2-basket-view";
+import { pricePosition, purchaseTotalCents, type BasketComparison, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
+import { itemName, money, savingText, storeName } from "./v2-basket-view";
 
 /** The split across retailers, then the cheapest stores. Everything is computed from the fetched prices. */
-export default function V2BasketResults({ comparison, items, advanced, limited, shownCount, onShowMore, openPrices }: {
+export default function V2BasketResults({ comparison, items, advanced, limited, shownCount, onShowMore, openPrices, savings }: {
   comparison: BasketComparison; items: BasketItem[]; advanced: boolean; limited: number;
-  shownCount: number; onShowMore: () => void; openPrices: boolean;
+  shownCount: number; onShowMore: () => void; openPrices: boolean; savings: Map<string, StoreSaving>;
 }) {
   const lineCount = items.length;
   const splitStores = new Map<string, PriceChoice[]>();
@@ -14,6 +14,12 @@ export default function V2BasketResults({ comparison, items, advanced, limited, 
     const storeKey = choice.reading.store_id + ":" + choice.reading.sales_channel;
     splitStores.set(storeKey, [...(splitStores.get(storeKey) ?? []), choice]);
   }
+  // The stores that bring the most come first: the last ones are the first candidates to leave out of the shopping.
+  const rank = ([key]: [string, PriceChoice[]]) => {
+    const saving = savings.get(key);
+    return saving ? saving.unpriced > 0 ? Infinity : saving.extraCents : -1;
+  };
+  const splitRows = [...splitStores].sort((a, b) => rank(b) - rank(a));
   const itemRanges = new Map<string, { min: number; max: number }>();
   const totalRanges = new Map<number, { min: number; max: number }>();
   for (const store of comparison.stores) {
@@ -38,15 +44,19 @@ export default function V2BasketResults({ comparison, items, advanced, limited, 
       <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
       {advanced && comparison.split.length > 0 && <span>{comparison.missing.length ? "Sous-total de la part utilisée" : "Part utilisée au prorata"} : <strong>{money(comparison.splitUsedCents)}</strong></span>}
       <small>{comparison.split.length}/{lineCount} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente</small>
-      {splitStores.size > 0 && <ul className="v2-basket-split-stores">{[...splitStores].map(([storeKey, choices]) => {
+      {splitStores.size > 0 && <ul className="v2-basket-split-stores">{splitRows.map(([storeKey, choices]) => {
         const reading = choices[0].reading;
+        const saving = savings.get(storeKey);
+        const note = saving ? savingText(saving, comparison.splitCents, splitStores.size === 1) : null;
         return <li key={storeKey}><details className="v2-basket-breakdown">
-          <summary><span className="v2-basket-split-store-name"><b>{reading.retailer}</b><small>{storeName(reading)}</small></span>
+          <summary><span className="v2-basket-split-store-name"><b>{reading.retailer}</b><small>{storeName(reading)}</small>
+            {note && <span className="v2-basket-saving" data-kind={note.kind}>{note.text}</span>}</span>
             <span className="v2-basket-split-store-total"><b>{money(purchaseTotalCents(choices, advanced))}</b><small>{choices.length} article{choices.length > 1 ? "s" : ""}</small></span></summary>
           {advanced && <p>Les prix par article sont indiqués avant mutualisation ; le total compte chaque paquet partagé une seule fois.</p>}
           <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} />
         </details></li>;
       })}</ul>}
+      {splitStores.size > 0 && <small className="v2-basket-saving-help">Économie : ce que vous dépenseriez de plus sans ce magasin, en prenant pour chaque article le prochain prix le plus bas dans les autres magasins comparés.</small>}
     </section>
     {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix ou quantité de paquet compatible : {missingNames(comparison.missing)}. Aucun total complet n’est calculé.</p>}
     <div className="v2-basket-results-heading"><h3>{visibleStores.length > 1 ? `Les ${Math.min(shownCount, comparison.stores.length)} magasins les moins chers` : "Le magasin le moins cher"}</h3>

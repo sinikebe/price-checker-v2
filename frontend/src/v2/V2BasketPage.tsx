@@ -14,7 +14,7 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment, type BasketFilters } from "./v2-basket-comparison";
+import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters } from "./v2-basket-comparison";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
 import { creditLabel, nextGrantLabel } from "./v2-basket-credits-api";
@@ -93,6 +93,8 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);
   const comparison = useMemo(() => view.lines.length
     ? buildBasketComparison(view.lines, view.responses, filters, advanced) : null, [view, filters, advanced]);
+  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison) : new Map(),
+    [comparison, view, filters, advanced]);
   const lineItems = view.lines.map(line => line.item);
   const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
   const storeNames = new Map<number, string>();
@@ -174,7 +176,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer (1 crédit).</p>}
                 {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} limited={view.limited.length}
-                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} />}
+                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} />}
               </>}
             </section>}
       </> : <div className="v2-recipes-card"><p>Votre panier est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue.</p></div>}

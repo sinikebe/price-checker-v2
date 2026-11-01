@@ -9,7 +9,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { buildBasketComparison, postalDepartment, pricePosition } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { buildBasketComparison, postalDepartment, pricePosition, splitSavings, readingKey } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const product = id => ({ id, revision: 1, data: { name: "Product " + id } });
 const line = (item, ...candidates) => ({ item, candidates });
@@ -162,4 +162,86 @@ test("shared packs use exact aggregate ceilings across physical and package requ
   ], new Map([[1, response(reading(1, 10, "2.50"))]]), undefined, true);
   assert.equal(result.splitCents, 250);
   assert.equal(result.splitUsedCents, 250);
+});
+
+// Three articles and three stores: each article is cheapest in a different store.
+function threeStores() {
+  const items = [1, 2, 3].map(id => ({ id, revision: 1, data: { name: "Article " + id } }));
+  const lines = items.map(item => line(item, product(item.id)));
+  const prices = { 1: { 10: "1.00", 20: "2.00", 30: "1.50" }, 2: { 10: "5.00", 20: "4.00", 30: "4.50" }, 3: { 10: "3.00", 20: "3.50", 30: "2.00" } };
+  const responses = new Map(Object.entries(prices).map(([id, byStore]) => [Number(id),
+    response(...Object.entries(byStore).map(([store, price]) => reading(Number(id) * 100 + Number(store), Number(store), price)))]));
+  return { items, lines, responses };
+}
+const savings = (lines, responses, filters = { storeIds: [], cities: [], departments: [] }, advanced = false) =>
+  splitSavings(lines, responses, filters, advanced, buildBasketComparison(lines, responses, filters, advanced));
+
+test("each store of the split shows how much more the basket costs without it", () => {
+  const { lines, responses } = threeStores();
+  const comparison = buildBasketComparison(lines, responses);
+  assert.equal(comparison.splitCents, 700, "1.00 + 4.00 + 2.00");
+  const result = savings(lines, responses);
+  assert.deepEqual([...result.keys()].sort(), ["10:in_store", "20:in_store", "30:in_store"]);
+  // Without store 10, article 1 costs 1.50 elsewhere; without 20, article 2 costs 4.50; without 30, article 3 costs 3.00.
+  assert.deepEqual(result.get("10:in_store"), { extraCents: 50, unpriced: 0 });
+  assert.deepEqual(result.get("20:in_store"), { extraCents: 50, unpriced: 0 });
+  assert.deepEqual(result.get("30:in_store"), { extraCents: 100, unpriced: 0 });
+});
+
+test("the same price in another store means no saving", () => {
+  const { lines, responses } = threeStores();
+  responses.get(1).latest_by_store.find(row => row.store_id === 30).price = "1.00";
+  assert.deepEqual(savings(lines, responses).get("10:in_store"), { extraCents: 0, unpriced: 0 });
+});
+
+test("an article that only one store prices is reported, and left out of the comparison", () => {
+  const { items, lines, responses } = threeStores();
+  const only = { id: 4, revision: 1, data: { name: "Introuvable ailleurs" } };
+  lines.push(line(only, product(4)));
+  responses.set(4, response(reading(410, 10, "1.20")));
+  const result = savings(lines, responses);
+  assert.deepEqual(result.get("10:in_store"), { extraCents: 50, unpriced: 1 }, "article 1 moves to store 30; article 4 has no other price");
+  assert.deepEqual(result.get("20:in_store"), { extraCents: 50, unpriced: 0 });
+  assert.equal(items.length, 3);
+});
+
+test("a single store has no alternative at all", () => {
+  const item = { id: 1, revision: 1, data: { name: "Seul" } };
+  const lines = [line(item, product(1))], responses = new Map([[1, response(reading(1, 10, "2.00"))]]);
+  assert.deepEqual(savings(lines, responses).get("10:in_store"), { extraCents: 0, unpriced: 1 });
+});
+
+test("the alternatives are the stores that pass the filters", () => {
+  const { lines, responses } = threeStores();
+  const result = savings(lines, responses, { storeIds: [10, 20], cities: [], departments: [] });
+  assert.deepEqual([...result.keys()].sort(), ["10:in_store", "20:in_store"], "store 30 is not compared at all");
+  // Articles 1 and 3 are cheapest at store 10: they fall back to 2.00 and 3.50 at store 20, never to store 30's 1.50 and 2.00.
+  assert.deepEqual(result.get("10:in_store"), { extraCents: 150, unpriced: 0 });
+});
+
+test("the same store with another sales channel is another alternative", () => {
+  const item = { id: 1, revision: 1, data: { name: "Lait" } };
+  const lines = [line(item, product(1))];
+  const responses = new Map([[1, response(reading(1, 10, "1.00", { sales_channel: "drive" }), reading(2, 10, "1.40"), reading(3, 20, "1.60"))]]);
+  const result = savings(lines, responses);
+  assert.equal(readingKey(responses.get(1).latest_by_store[0]), "10:drive");
+  assert.deepEqual(result.get("10:drive"), { extraCents: 40, unpriced: 0 }, "the in-store price of the same store takes over");
+});
+
+test("advanced quantities and whole packs are priced the same way with and without the store", () => {
+  const pack = id => ({ id, revision: 1, data: { name: "Riz", quantity_amount: "500", quantity_unit: "g" } });
+  const item = { id: 1, revision: 1, data: { name: "Riz" }, quantity: { amount: "1", unit: "kg" } };
+  const lines = [line(item, pack(1))];
+  const responses = new Map([[1, response(reading(1, 10, "1.00"), reading(2, 20, "1.20"))]]);
+  const comparison = buildBasketComparison(lines, responses, undefined, true);
+  assert.equal(comparison.splitCents, 200, "two packs of 500 g at 1.00");
+  assert.deepEqual(savings(lines, responses, undefined, true).get("10:in_store"), { extraCents: 40, unpriced: 0 }, "two packs at 1.20");
+});
+
+test("the baseline comparison is unchanged by the exclusion argument", () => {
+  const { lines, responses } = threeStores();
+  const plain = buildBasketComparison(lines, responses);
+  const same = buildBasketComparison(lines, responses, undefined, false, new Set());
+  assert.equal(plain.splitCents, same.splitCents);
+  assert.equal(buildBasketComparison(lines, responses, undefined, false, new Set(["10:in_store"])).split.find(choice => choice.item === lines[0].item).reading.store_id, 30);
 });
