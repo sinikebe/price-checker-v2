@@ -7,8 +7,7 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from importlib.metadata import version as package_version
 
-import asyncpg
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
@@ -22,13 +21,16 @@ from app.api.v2.connector_stores import router as connector_stores_router, conne
 from app.api.v2.duplicate_merges import router as duplicate_merges_router
 from app.api.v2.host_health import router as host_health_router
 from app.api.v2.legal import router as legal_router
+from app.api.v2.logs import router as logs_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
 from app.api.v2.server_cache import router as server_cache_router
+from app.api.v2.setup import _ensure_state_dir
 from app.api.v2.setup import router as setup_router
+from app.api.v2.stats import router as stats_router
 from app.api.v2.stores import router as stores_router
 from app.api.v2.sync import router as sync_router
 from app.api.v2.transfers import router as transfers_router
@@ -37,8 +39,10 @@ from app.core.config import get_settings
 from app.services.openfoodfacts_client import aclose_off_client
 from app.services.v2_db_pool import close_v2_pool
 from app.services.v2_off_refresh_queue import off_refresh_worker
+from app.services import v2_observability, v2_request_stats
 from app.services.v2_open_prices_sync import open_prices_worker
 from app.services.v2_private_retention import purge_private_data
+from app.services.v2_request_stats import RequestStatsMiddleware
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
 
@@ -49,10 +53,13 @@ async def retention_worker():
             try:
                 await purge_ephemeral_auth_data(connection)
                 await purge_private_data(connection)
+                await v2_request_stats.purge(connection)
             finally:
                 await connection.close()
-        except (HTTPException, OSError, TimeoutError, asyncpg.PostgresError):
-            logging.getLogger(__name__).warning("V2 private-data cleanup deferred")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # any failure, so that the next hour tries again
+            logging.getLogger(__name__).warning("V2 private-data cleanup deferred: %s", exc.__class__.__name__)
         await asyncio.sleep(3600)
 
 
@@ -61,7 +68,9 @@ async def lifespan(_: FastAPI):
     workers = [asyncio.create_task(off_refresh_worker()),
                asyncio.create_task(retention_worker()),
                asyncio.create_task(open_prices_worker()),
-               asyncio.create_task(connector_worker())]
+               asyncio.create_task(connector_worker()),
+               asyncio.create_task(v2_observability.worker(_connect, _ensure_state_dir))]
+    await v2_observability.announce_start(_connect, package_version("price-checker-v2-backend"))
     try:
         yield
     finally:
@@ -70,6 +79,7 @@ async def lifespan(_: FastAPI):
         for worker in workers:
             with suppress(asyncio.CancelledError):
                 await worker
+        await v2_observability.final_flush(_connect)
         await aclose_off_client()
         await close_v2_pool()
 
@@ -88,6 +98,7 @@ app = FastAPI(
     swagger_ui_oauth2_redirect_url=None,
     lifespan=lifespan,
 )
+app.add_middleware(RequestStatsMiddleware)
 app.add_middleware(TrustedWebProxyMiddleware)
 settings = get_settings()
 app.add_middleware(
@@ -118,6 +129,8 @@ ROUTERS = (
     updates_router,
     host_health_router,
     server_cache_router,
+    logs_router,
+    stats_router,
 )
 
 # These operations use _current_user (directly or through their user helper)

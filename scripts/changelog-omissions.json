@@ -524,6 +524,21 @@
       "component": "pwa",
       "version": "0.1.22",
       "reason": "Synchronisation du panier."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.25",
+      "reason": "Journal des récupérations de prix."
+    },
+    {
+      "component": "database",
+      "version": "0.1.36",
+      "reason": "Tables du journal et des statistiques."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.23",
+      "reason": "Onglets des paramètres."
     }
   ]
 }
