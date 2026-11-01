@@ -901,6 +901,16 @@ MIGRATIONS = {
         );
         INSERT INTO v2_search_settings (singleton) VALUES (true);
     """,
+    "0036_basket_credits": """
+        CREATE TABLE v2_basket_credits (
+            user_id bigint PRIMARY KEY REFERENCES v2_users(id) ON DELETE CASCADE,
+            balance integer NOT NULL DEFAULT 0 CHECK (balance >= 0),
+            granted_on date,
+            week_start date,
+            week_granted integer NOT NULL DEFAULT 0 CHECK (week_granted >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
 }
 
 

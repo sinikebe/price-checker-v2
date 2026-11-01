@@ -16,6 +16,10 @@ export type BasketGroup = { kind: "group"; name: string } & BasketOptions;
 export type BasketScope = { kind: "scope"; name: string; department: string; family: string } & BasketOptions;
 export type BasketItem = BasketProduct | BasketGroup | BasketScope;
 export function isBasketProduct(item: BasketItem): item is BasketProduct { return !("kind" in item); }
+/** A basket line with fresher product data: its quantity and its excluded flag stay. */
+export function withProductData(item: BasketProduct, product: Pick<Product, "data" | "revision">): BasketProduct {
+  return { ...item, data: product.data, revision: product.revision };
+}
 export const basketItemKey = (item: BasketItem): string => "kind" in item
   ? item.kind === "group" ? "group:" + item.name.toLocaleLowerCase("fr")
     : ["scope", item.department, item.family, item.name].map(part => part.toLocaleLowerCase("fr")).join(":")

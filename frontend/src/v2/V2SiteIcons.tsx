@@ -15,3 +15,9 @@ export const SearchIcon = () => <Icon><circle cx="10.5" cy="10.5" r="6" /><path 
 export const ChevronLeftIcon = () => <Icon><path d="M14.5 5.5 8 12l6.5 6.5" /></Icon>;
 export const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6 6 18" /></Icon>;
 export const BarcodeIcon = () => <Icon><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><path d="M7.5 9v6M10.5 9v6M13.5 9v6M16.5 9v6" /></Icon>;
+export const ListIcon = () => <Icon><path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="4.7" cy="6.5" r="1" /><circle cx="4.7" cy="12" r="1" /><circle cx="4.7" cy="17.5" r="1" /></Icon>;
+export const FilterIcon = () => <Icon><path d="M4 5.5h16l-6.2 7.2v5.6l-3.6 1.7v-7.3Z" /></Icon>;
+export const QuantityIcon = () => <Icon><path d="M12 4v16M6 20h12" /><path d="M5.5 7.5h13" /><path d="M5.5 7.5 3 13.5a2.8 2.8 0 0 0 5 0Z" /><path d="M18.5 7.5 16 13.5a2.8 2.8 0 0 0 5 0Z" /></Icon>;
+export const RefreshIcon = () => <Icon><path d="M19.5 12a7.5 7.5 0 0 1-13.1 5" /><path d="M4.5 12a7.5 7.5 0 0 1 13.1-5" /><path d="M17.8 3.5v3.8h-3.8M6.2 20.5v-3.8h3.8" /></Icon>;
+export const CreditIcon = () => <Icon><circle cx="12" cy="12" r="8.2" /><path d="M14.8 9.3c-.6-.8-1.5-1.2-2.7-1.2-1.7 0-2.8 1.3-2.8 3.9s1.1 3.9 2.8 3.9c1.2 0 2.1-.4 2.7-1.2" /></Icon>;
+export const ShareIcon = () => <Icon><circle cx="18" cy="5.5" r="2.4" /><circle cx="6" cy="12" r="2.4" /><circle cx="18" cy="18.5" r="2.4" /><path d="m8.1 10.8 7.8-4.1M8.1 13.2l7.8 4.1" /></Icon>;

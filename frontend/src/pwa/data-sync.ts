@@ -3,7 +3,7 @@ import {
   PWA_PREVIOUS_CACHE_NAME, PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY,
   PWA_SYNC_ATTEMPT_KEY, PWA_VERSIONS_KEY,
 } from "./cache-keys";
-import { activeBasketUser, isBasketProduct, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
+import { activeBasketUser, isBasketProduct, readV2Basket, withProductData, writeV2Basket } from "../v2/v2-basket-storage";
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
 
@@ -80,7 +80,7 @@ async function syncProducts(cache: Cache, userId: number | null) {
   writeV2Basket(latest.filter(item => !isBasketProduct(item) || !withdrawn.has(item.id)).map(item => {
     if (!isBasketProduct(item)) return item;
     const product = refreshed.get(item.id);
-    return product ? { id: item.id, data: product.data, revision: product.revision } : item;
+    return product ? withProductData(item, product) : item;
   }), userId);
 }
 

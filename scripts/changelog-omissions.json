@@ -499,6 +499,31 @@
       "component": "open_prices",
       "version": "0.1.24",
       "reason": "Recherche du catalogue."
+    },
+    {
+      "component": "application",
+      "version": "0.1.104",
+      "reason": "Icônes et page du panier."
+    },
+    {
+      "component": "products",
+      "version": "0.1.50",
+      "reason": "Requêtes du catalogue partagées."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.19",
+      "reason": "Synchronisation hors ligne."
+    },
+    {
+      "component": "database",
+      "version": "0.1.35",
+      "reason": "Table des crédits du panier."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.22",
+      "reason": "Synchronisation du panier."
     }
   ]
 }

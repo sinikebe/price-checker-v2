@@ -23,3 +23,9 @@ test("package requests buy whole packs and physical requests need a known matchi
   assert.deepEqual(pricedQuantity({ quantity: { amount: "20", unit: "g" } }, product, 250, true),
     { packages: 1, cents: 250, usedCents: 20, used: true });
 });
+
+test("package counts add exactly, so the merged quantity stays valid", () => {
+  assert.deepEqual(combineQuantities({ amount: "0.1", unit: "package" }, { amount: "0.2", unit: "package" }), { amount: "0.3", unit: "package" });
+  assert.deepEqual(combineQuantities({ amount: "2", unit: "package" }, { amount: "1.5", unit: "package" }), { amount: "3.5", unit: "package" });
+  assert.equal(combineQuantities({ amount: "999999", unit: "package" }, { amount: "1", unit: "package" }), null);
+});

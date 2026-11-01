@@ -425,7 +425,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }, []);
 
   function authenticated(user: V2User) {
-    setLoginRedirect(authMode && new URLSearchParams(route.search).get("next") === "capture" ? "/v2/capture" : "/v2");
+    const next = authMode ? new URLSearchParams(route.search).get("next") : null;
+    setLoginRedirect(next === "capture" ? "/v2/capture" : next === "panier" ? "/v2/panier" : "/v2");
     setAuthStatus({ admin_initialized: true, user });
   }
 
