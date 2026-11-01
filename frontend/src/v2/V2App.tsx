@@ -44,6 +44,7 @@ export default function V2App() {
   let categoryName: string | undefined;
   try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }
   catch { categoryName = undefined; }
+  const settings = path.match(/^\/v2\/parametres(?:\/([^/]+))?$/);
   const recipe = path.match(/^\/v2\/recettes\/(\d+)(?:\/(modifier))?$/);
   const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
   const recipeMode = path === "/v2/recettes" ? "list"
@@ -67,11 +68,12 @@ export default function V2App() {
   const changelogComponent = path.match(/^\/v2\/changelog\/([^/]+)$/);
   if (changelogComponent) return withFooter(<V2ChangelogPage componentId={changelogComponent[1]} />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
-  if (["/v2/parametres", "/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier" || path === "/v2/magasins" || store) {
+  if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
+    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier" || path === "/v2/magasins" || store) {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
-      preferencesMode={path === "/v2/parametres"}
+      preferencesMode={Boolean(settings)}
+      preferencesTab={settings?.[1]}
       authMode={path === "/v2/connexion" ? "login" : path === "/v2/inscription" ? "register" : undefined}
       recipeMode={recipeMode}
       captureMode={captureMode}

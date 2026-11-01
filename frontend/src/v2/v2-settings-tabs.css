@@ -1,0 +1,8 @@
+.v2-settings-tabs { display: flex; gap: 4px; margin: 0 0 26px; border-bottom: 1px solid var(--v2-line); overflow-x: auto; scrollbar-width: thin; }
+.v2-settings-tab { flex: 0 0 auto; margin-bottom: -1px; padding: 11px 16px; border-bottom: 3px solid transparent; color: var(--v2-muted); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.v2-settings-tab:hover { color: var(--v2-ink); }
+.v2-settings-tab[aria-selected="true"] { border-bottom-color: #2f8061; color: var(--v2-ink); }
+.v2-settings-tab:focus-visible { outline: 2px solid #2f8061; outline-offset: -2px; border-radius: 8px; }
+.v2-settings-panel[hidden] { display: none; }
+html[data-v2-theme="dark"] .v2-settings-tab[aria-selected="true"] { border-bottom-color: #a6d9ad; }
+html[data-v2-theme="dark"] .v2-settings-tab:focus-visible { outline-color: #b8e98a; }

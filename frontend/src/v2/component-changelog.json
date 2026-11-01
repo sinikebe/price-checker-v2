@@ -423,6 +423,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.99",
+      "components": {
+        "application": {
+          "version": "0.1.99",
+          "notes": [
+            "Les paramètres sont regroupés en onglets : Général, Compte, Sécurité et, pour l’administrateur, Connecteurs et Serveur."
+          ]
+        }
+      }
     }
   ]
 }
