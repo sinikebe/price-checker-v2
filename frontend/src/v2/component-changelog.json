@@ -520,6 +520,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.106",
+      "components": {
+        "application": {
+          "version": "0.1.106",
+          "notes": [
+            "Paramètres → Journaux et Statistiques (administrateurs) : événements du serveur et des connecteurs, requêtes par point d’accès, contributions et pages vues, sans donnée personnelle."
+          ]
+        }
+      }
     }
   ]
 }
