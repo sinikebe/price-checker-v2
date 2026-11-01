@@ -473,6 +473,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.103",
+      "components": {
+        "products": {
+          "version": "0.1.49",
+          "notes": [
+            "La recherche affiche les résultats au fil de la saisie, et le scan d’un code-barres se fait depuis la même barre."
+          ]
+        }
+      }
     }
   ]
 }

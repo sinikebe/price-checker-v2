@@ -79,7 +79,8 @@ async def test_retailer_group_backfill_management_and_directory(monkeypatch):
                 "0024_retailer_groups", "0025_merge_source_retailers_and_barcode_sync",
                 "0026_account_security", "0027_catalogue_hierarchy",
                 "0028_catalogue_comparison_scopes", "0029_store_lifecycle",
-                "0032_connector_stores", "0033_connector_rollback", "0034_connector_schema"
+                "0032_connector_stores", "0033_connector_rollback", "0034_connector_schema",
+                "0035_search_settings"
             ]
         connection = await connect_v2(config)
         try:

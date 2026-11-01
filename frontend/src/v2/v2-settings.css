@@ -113,3 +113,5 @@ html[data-v2-theme="dark"] .v2-security-form :is(input,select) { --v2-input-back
 .v2-connector-settings form > label { display: grid; gap: .3rem; }
 .v2-connector-settings form > label:has(input[type="checkbox"]) { display: block; }
 .v2-connector-settings form > label input[type="number"] { max-width: 14rem; }
+.v2-search-settings { grid-column: 1 / -1; }
+.v2-search-settings input[type="number"] { max-width: 9rem; }

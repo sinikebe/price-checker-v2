@@ -3,7 +3,9 @@ import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { Frame } from "./V2ProductWorkspace";
-import V2BarcodeSearch from "./V2BarcodeSearch";
+import V2CatalogueSearch from "./V2CatalogueSearch";
+import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
+import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
 import { productRequest, type Product } from "./v2-products-api";
 import { useV2Basket } from "./V2BasketContext";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
@@ -122,18 +124,29 @@ async function offlineCatalogue(path: string): Promise<unknown> {
   if (path.startsWith("/search?")) {
     const params = new URLSearchParams(path.slice("/search?".length));
     if (params.get("store_id")) throw new Error("Le filtre magasin nécessite une connexion.");
-    const query = (params.get("q") || "").toLocaleLowerCase("fr");
     const category = (params.get("category") || "").toLocaleLowerCase("fr");
-    const matches = products.filter(product => {
-      const data = product.data;
-      return (!category || group(product).toLocaleLowerCase("fr") === category)
-        && (!query || [data.brand, data.name, data.commercial_name, data.quantity, data.ean]
-          .join(" ").toLocaleLowerCase("fr").includes(query));
-    });
+    const matches = products.filter(product => (!category || group(product).toLocaleLowerCase("fr") === category)
+      && matchesQuery(product, params.get("q") || ""));
     const limit = Number(params.get("limit") || 10), offset = Number(params.get("offset") || 0);
     return { items: matches.slice(offset, offset + limit), total: matches.length, limit, offset };
   }
   throw new Error("Cette recherche n’est pas disponible hors ligne.");
+}
+/** The most results the server lists in full, as last announced; used to decide the same way offline. */
+let knownCompleteMax = 50;
+async function suggest(query: string, scope: SearchScope, signal: AbortSignal): Promise<SuggestResult<Product>> {
+  try {
+    const result = await suggestRequest<Product>(query, scope, signal);
+    knownCompleteMax = result.max;
+    return result;
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    const filters = new URLSearchParams({ q: query, category: scope.category, limit: "1000", offset: "0" });
+    if (scope.storeId) filters.set("store_id", String(scope.storeId));
+    const local = await offlineCatalogue("/search?" + filters.toString()) as SearchResult;
+    const complete = local.total <= knownCompleteMax;
+    return { total: local.total, complete, max: knownCompleteMax, items: complete ? local.items : [] };
+  }
 }
 async function catalogueRequest<T>(path: string): Promise<T> {
   let response: Response;
@@ -411,8 +424,11 @@ function CatalogueIndex({ user, onLogout }: Props) {
   const q = params.get("q") || "", category = params.get("category") || "";
   const department = params.get("rayon") || "", family = params.get("famille") || "";
   const storeId = Number(params.get("store") || 0), storeLabel = params.get("store_label") || "";
-  const page = pageNumber(params), size = pageSize(params), searching = Boolean(q || category || storeId);
+  const page = pageNumber(params), size = pageSize(params);
   const [queryDraft, setQueryDraft] = useState(q), [categoryDraft, setCategoryDraft] = useState(category);
+  // From two characters the search follows the typing; before that, the filters and the browsing view apply.
+  const dynamicActive = normalizeQuery(queryDraft).length >= SEARCH_MIN_CHARS;
+  const searching = !dynamicActive && Boolean(q || category || storeId);
   const [storeDraft, setStoreDraft] = useState(storeLabel), [selectedStore, setSelectedStore] = useState(storeId);
   const [stores, setStores] = useState<Store[]>([]);
   const [filterError, setFilterError] = useState("");
@@ -470,10 +486,9 @@ function CatalogueIndex({ user, onLogout }: Props) {
       <p>Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence.</p></div>
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
     </div>
+    <V2CatalogueSearch value={queryDraft} onChange={setQueryDraft} scope={{ category, storeId }} suggest={suggest}
+      renderProduct={product => <ProductLink product={product} />}>
     <form className="v2-catalogue-search" onSubmit={apply}>
-      <label htmlFor="catalogue-query">Rechercher un produit</label>
-      <div className="v2-catalogue-search-row"><input id="catalogue-query" value={queryDraft} onChange={event => setQueryDraft(event.target.value)}
-        placeholder="Nom, marque ou code-barres" /><button className="v2-button v2-button-primary" type="submit">Rechercher</button></div>
       <details className="v2-catalogue-filters" open={Boolean(category || storeId) || undefined}><summary>Filtres {category || storeId ? "· actifs" : "· groupe et magasin"}</summary>
         <div className="v2-catalogue-filter-fields">
           <label>Groupe comparable <select value={categoryDraft} onChange={event => setCategoryDraft(event.target.value)}>
@@ -492,8 +507,8 @@ function CatalogueIndex({ user, onLogout }: Props) {
       </details>
       {filterError && <p role="alert">{filterError}</p>}
     </form>
-    <details className="v2-catalogue-scan"><summary>Scanner un code-barres</summary><V2BarcodeSearch /></details>
-    {searching ? <>
+    </V2CatalogueSearch>
+    {dynamicActive ? null : searching ? <>
       <div className="v2-catalogue-result-heading"><h2>Références</h2><Link to="/v2/produits">Effacer les filtres</Link></div>
       {search.error ? <p role="alert">{search.error}</p> : !result ? <p>Recherche…</p>
         : result.total === 0 ? <p>Aucun produit trouvé.</p> : <>

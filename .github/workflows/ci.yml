@@ -67,6 +67,7 @@ jobs:
       - run: npm run test:settings
       - run: npm run test:account
       - run: npm run test:nav
+      - run: npm run test:search
       - run: npm run test:bookmarklet
       - run: npm run build
 
