@@ -132,6 +132,11 @@ EVENTS: dict[str, Event] = {
     "connector.price.saved": Event("connector", "info", {
         "product_id": PRODUCT, "store_id": STORE, "price_cents": integer(0, 10**9),
         "channel": choice("in_store", "drive", "delivery")}, connector=True),
+    "connector.failure": Event(
+        "connector", lambda values: "error" if "error" in values else "warning",
+        {"error": pattern(r"[A-Za-z][A-Za-z0-9_]{0,59}"), "http_status": integer(100, 599), "product_id": PRODUCT},
+        frozenset({"error", "http_status", "product_id"}), connector=True),
+    "connector.disabled": Event("connector", "warning", {}, connector=True),
     "connector.worker.failed": Event("connector", "error", {"error": pattern(r"[A-Za-z][A-Za-z0-9_]{0,59}")}, connector=True),
     "basket.prices.fetched": Event("basket", "info", {
         "items": integer(0, 1000), "products": integer(0, 100_000), "truncated": boolean(),

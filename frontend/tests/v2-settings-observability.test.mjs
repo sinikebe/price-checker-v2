@@ -50,6 +50,21 @@ test("connector events name the queue operation, only with the counts that matte
   assert.equal(describeLog(item("connector.worker.failed", { error: "TimeoutError" })), "Erreur dans le connecteur (TimeoutError).");
 });
 
+test("a connector failure says why, from the error type or the HTTP status", () => {
+  const failure = (data, extra = {}) => describeLog(item("connector.failure", data, { source: "connector", level: "error", connector: "auchan_houilles", ...extra }));
+  assert.equal(failure({ error: "TimeoutError", product_id: 246 }), "Échec de la lecture du produit 246 : délai dépassé (TimeoutError).");
+  assert.equal(failure({ error: "ConnectError" }), "Échec dans le connecteur : connexion impossible (ConnectError).");
+  assert.equal(failure({ error: "TargetClosedError", product_id: 2 }), "Échec de la lecture du produit 2 : navigateur (TargetClosedError).");
+  assert.equal(failure({ error: "InsufficientPrivilegeError" }), "Échec dans le connecteur : base de données (InsufficientPrivilegeError).");
+  assert.equal(failure({ error: "KeyError" }), "Échec dans le connecteur : page ou réponse inattendue (KeyError).");
+  assert.equal(failure({ error: "ZeroDivisionError" }), "Échec dans le connecteur : erreur inattendue (ZeroDivisionError).");
+  assert.equal(failure({ http_status: 403 }), "Échec dans le connecteur : le site a répondu HTTP 403 (accès refusé).");
+  assert.equal(failure({ http_status: 429 }), "Échec dans le connecteur : le site a répondu HTTP 429 (trop de requêtes).");
+  assert.equal(failure({ http_status: 503 }), "Échec dans le connecteur : le site a répondu HTTP 503 (erreur du site).");
+  assert.equal(describeLog(item("connector.disabled", {}, { connector: "chronodrive_cormeilles" })),
+    "Connecteur désactivé automatiquement après des échecs. Il reste éteint jusqu’à sa réactivation dans les paramètres.");
+});
+
 test("an event this screen does not know yet is still shown, as its code and values", () => {
   assert.equal(describeLog(item("future.event", { count: 3, ok: true })), "future.event count=3 ok=true");
 });

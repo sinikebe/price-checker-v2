@@ -19,6 +19,17 @@ const DROPPED: Record<string, string> = {
 };
 const READING: Record<string, string> = { complete: "terminée", skipped: "ignorée, le prix était déjà récent", rejected: "page refusée", failed: "échec" };
 
+const HTTP_MEANING: Record<number, string> = { 401: "accès refusé", 403: "accès refusé", 404: "introuvable", 429: "trop de requêtes" };
+// What a Python exception class usually means for a connector; anything else is shown by its class name.
+function errorMeaning(error: string): string {
+  if (/timeout/i.test(error)) return "délai dépassé";
+  if (/connect|gaierror|network|dns|ssl|socket|resolve/i.test(error)) return "connexion impossible";
+  if (/target.?closed|browser|playwright|page.?crash/i.test(error)) return "navigateur";
+  if (/privilege|undefined(table|column)|postgres|asyncpg|integrity|unique|dataerror|interface/i.test(error)) return "base de données";
+  if (/json|decode|parse|key|value|attribute|type|index/i.test(error)) return "page ou réponse inattendue";
+  return "erreur inattendue";
+}
+
 /** The sentence for an event, built from its code and numbers: the server stores no text. */
 export function describeLog(item: LogItem): string {
   const d = item.data;
@@ -47,6 +58,13 @@ export function describeLog(item: LogItem): string {
     case "connector.queue.dropped": return `Produit ${number(d.product_id)} retiré de la file : ${DROPPED[text(d.reason)] ?? text(d.reason)}.`;
     case "connector.reading.finished": return `Lecture du produit ${number(d.product_id)} : ${READING[text(d.outcome)] ?? text(d.outcome)}.`;
     case "connector.price.saved": return `Prix enregistré : produit ${number(d.product_id)}, magasin ${number(d.store_id)}, ${euros.format(number(d.price_cents) / 100)} (${CHANNEL[text(d.channel)] ?? text(d.channel)}).`;
+    case "connector.failure": {
+      const status = typeof d.http_status === "number" ? d.http_status : null;
+      const cause = status !== null ? `le site a répondu HTTP ${status}${HTTP_MEANING[status] ? ` (${HTTP_MEANING[status]})` : status >= 500 ? " (erreur du site)" : ""}`
+        : `${errorMeaning(text(d.error))} (${text(d.error)})`;
+      return `Échec ${typeof d.product_id === "number" ? `de la lecture du produit ${d.product_id}` : "dans le connecteur"} : ${cause}.`;
+    }
+    case "connector.disabled": return "Connecteur désactivé automatiquement après des échecs. Il reste éteint jusqu’à sa réactivation dans les paramètres.";
     case "connector.worker.failed": return `Erreur dans le connecteur (${text(d.error)}).`;
     case "basket.prices.fetched": return `Prix du panier récupérés : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit", "produits")}${d.truncated ? " (limite de taille atteinte)" : ""} ; ${d.unlimited ? "compte sans limite de crédits" : `${plural(number(d.credits_left), "crédit restant", "crédits restants")} sur ce compte`}.`;
     case "basket.prices.refused": return "Récupération des prix du panier refusée : plus de crédit.";
