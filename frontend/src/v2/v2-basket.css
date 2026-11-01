@@ -1,6 +1,4 @@
 .v2-basket-comparison { margin-bottom: 25px; }
-.v2-basket-mode { margin-bottom: 14px; }
-.v2-basket-mode p { margin: 3px 0 0; color: var(--v2-muted, #617467); font-size: .88rem; }
 .v2-basket-quantity { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
 .v2-basket-quantity label, .v2-recipes-basket-choice { display: grid; gap: 4px; min-width: 0; font-size: .8rem; font-weight: 650; }
 .v2-basket-quantity input, .v2-basket-quantity select, .v2-recipes-basket-choice select { min-height: 44px; max-width: 100%; padding: 8px; border: 1px solid var(--v2-line, #b6cbbc); border-radius: 8px; color: inherit; background: var(--v2-surface, #fff); font: inherit; }
@@ -11,9 +9,6 @@
 .v2-basket-comparison-heading { margin-bottom: 18px; }
 .v2-basket-comparison-heading h2, .v2-basket-store h3 { margin: 0 0 5px; }
 .v2-basket-comparison-heading p, .v2-basket-store-heading p { margin: 0; }
-.v2-basket-comparison-heading button { flex: none; }
-.v2-basket-filters { margin: 0 0 20px; padding: 0 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; }
-.v2-basket-filters p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .88rem; }
 .v2-basket-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 10px; }
 .v2-basket-filter { min-width: 0; border: 1px solid var(--v2-line, #dce8db); border-radius: 8px; }
 .v2-basket-filter summary { padding: 10px; cursor: pointer; font-weight: 650; }
@@ -53,7 +48,6 @@
 .v2-basket-missing { margin: 12px 0 0; color: #775000 !important; font-size: .87rem; }
 .v2-basket-freshness-help { margin: 15px 0 0; font-size: .82rem; }
 
-
 html[data-v2-theme="dark"] .v2-basket-store { background: #1b3028; }
 html[data-v2-theme="dark"] .v2-basket-store-heading { background: #253b2f; border-bottom-color: #405b49; }
 html[data-v2-theme="dark"] .v2-basket-store[data-complete="false"] { border-color: #b98436; }
@@ -78,11 +72,6 @@ html[data-v2-theme="dark"] .v2-basket-missing { color: #ffe5ac !important; }
   .v2-basket-lines li { flex-direction: column; gap: 5px; }
   .v2-basket-reading { justify-items: start; text-align: left; }
 }
-
-.v2-basket-editor { margin-bottom: 14px; padding: 0 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
-.v2-basket-editor > summary, .v2-basket-filters > summary { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; font-weight: 700; }
-.v2-basket-editor > summary span, .v2-basket-filters > summary span { color: var(--v2-muted, #617467); font-size: .86rem; font-weight: 500; }
-.v2-basket-editor > p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .85rem; }
 .v2-basket-editor-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; list-style: none; margin: 0; padding: 0; }
 .v2-basket-editor-item { min-width: 0; display: grid; gap: 12px; padding: 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
 .v2-basket-editor-item[data-disabled="true"] { opacity: .72; }
@@ -121,15 +110,65 @@ html[data-v2-theme="dark"] .v2-basket-remove { color: #ffb7ac; }
   .v2-basket-store-heading { margin: -13px -13px 0; padding: 13px; }
   .v2-basket-split-total { padding: 14px; }
 }
-
-.v2-basket-editor[open] > summary, .v2-basket-filters[open] > summary { border-bottom: 1px solid var(--v2-line, #dce8db); margin-bottom: 12px; }
 .v2-basket-clear { margin: 12px 0 15px; }
-html[data-v2-theme="dark"] .v2-basket-editor { background: #1b3028; }
 
 @media (max-width: 600px) {
   .v2-basket-heading { gap: 12px; }
   .v2-basket-heading p { margin-bottom: 0; }
   .v2-basket-heading > a { min-height: 40px; padding: 8px 12px; font-size: .88rem; }
   .v2-basket-comparison-heading { gap: 8px; margin-bottom: 12px; }
-  .v2-basket-comparison-heading button { min-height: 40px; padding: 8px 12px; font-size: .82rem; }
 }
+
+/* Toolbar: icon buttons for the tools, and the paid action that fetches the prices. */
+.v2-basket-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; margin: 0 0 12px; }
+.v2-basket-tools { display: flex; gap: 8px; }
+.v2-basket-tool { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 12px; border: 1px solid var(--v2-line, #b6cbbc); border-radius: 999px; background: var(--v2-surface, #fff); color: #2b6a49; font: inherit; font-weight: 700; cursor: pointer; }
+.v2-basket-tool svg, .v2-basket-fetch svg { width: 20px; height: 20px; flex: none; }
+.v2-basket-tool[data-active="true"] { border-color: #8bb999; background: #e4f1e1; color: #1f4d36; }
+.v2-basket-tool:disabled { opacity: .5; cursor: not-allowed; }
+.v2-basket-tool:focus-visible, .v2-basket-fetch .v2-button:focus-visible { outline: 3px solid #2b6a49; outline-offset: 2px; }
+.v2-basket-tool-detail { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: #285f43; color: #fff; font-size: .72rem; line-height: 1.5; text-align: center; }
+.v2-basket-fetch { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.v2-basket-fetch .v2-button { display: inline-flex; align-items: center; gap: 8px; }
+.v2-basket-fetch .v2-button small { padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, .2); font-size: .72rem; font-weight: 600; }
+.v2-basket-credits { position: relative; display: inline-flex; align-items: center; gap: 5px; color: var(--v2-muted, #617467); font-size: .88rem; font-weight: 650; white-space: nowrap; }
+.v2-basket-credits[data-empty="true"] { color: #a23b31; }
+.v2-basket-status:empty { display: none; }
+.v2-basket-status p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .9rem; }
+.v2-basket-status .v2-recipes-error { color: #9b2839; }
+.v2-basket-panel { margin: 0 0 14px; padding: 14px 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
+.v2-basket-panel > p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .85rem; }
+.v2-basket-stale { margin: 0 0 14px; padding: 10px 13px; border-radius: 9px; background: #fff2da; color: #6b4600; font-size: .88rem; }
+.v2-basket-comparison > h2 { margin: 0 0 6px; }
+.v2-basket-comparison > p { margin: 0 0 12px; color: var(--v2-muted, #617467); }
+
+/* The split across retailers: one card, one row per store. */
+.v2-basket-split-stores { display: grid; margin: 12px 0 0; padding: 0; list-style: none; border-top: 1px solid rgba(40, 95, 67, .22); }
+.v2-basket-split-stores > li { border-bottom: 1px solid rgba(40, 95, 67, .14); }
+.v2-basket-split-stores .v2-basket-breakdown { margin-top: 0; }
+.v2-basket-split-stores .v2-basket-breakdown > summary { width: 100%; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.v2-basket-split-stores .v2-basket-breakdown > summary::before { content: none; }
+.v2-basket-split-store-name, .v2-basket-split-store-total { display: grid; gap: 1px; min-width: 0; }
+.v2-basket-split-store-name { flex: 1; }
+.v2-basket-split-store-total { flex: none; text-align: right; }
+.v2-basket-split-store-name b, .v2-basket-split-store-total b { color: #214d36; font-size: 1rem; }
+.v2-basket-split-store-name small, .v2-basket-split-store-total small { color: var(--v2-muted, #617467); font-size: .78rem; font-weight: 500; }
+.v2-basket-split-stores .v2-basket-lines { margin-bottom: 10px; }
+
+html[data-v2-theme="dark"] .v2-basket-tool { background: #1b3028; color: #d4f5c1; }
+html[data-v2-theme="dark"] .v2-basket-tool[data-active="true"] { border-color: #5f8c6c; background: #294032; color: #e9fadd; }
+html[data-v2-theme="dark"] .v2-basket-tool-detail { background: #70c897; color: #10281c; }
+html[data-v2-theme="dark"] .v2-basket-credits[data-empty="true"] { color: #ffaaa1; }
+html[data-v2-theme="dark"] .v2-basket-status .v2-recipes-error { color: #ffb7ac; }
+html[data-v2-theme="dark"] .v2-basket-panel { background: #1b3028; }
+html[data-v2-theme="dark"] .v2-basket-stale { background: #47351f; color: #ffe5ac; }
+html[data-v2-theme="dark"] .v2-basket-split-store-name b, html[data-v2-theme="dark"] .v2-basket-split-store-total b { color: #d4f5c1; }
+html[data-v2-theme="dark"] .v2-basket-split-stores, html[data-v2-theme="dark"] .v2-basket-split-stores > li { border-color: rgba(212, 245, 193, .2); }
+@media (max-width: 600px) {
+  .v2-basket-fetch { width: 100%; justify-content: space-between; }
+  .v2-basket-fetch .v2-button { flex: 1; justify-content: center; padding-inline: 12px; white-space: nowrap; }
+  .v2-basket-credits-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+}
+.v2-basket-store .v2-basket-breakdown { margin-top: 0; }
+.v2-basket-store .v2-basket-breakdown > summary { min-height: 40px; }
+.v2-basket-fetch .v2-button:disabled { opacity: .55; box-shadow: none; cursor: not-allowed; }

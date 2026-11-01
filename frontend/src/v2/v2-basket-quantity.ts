@@ -22,7 +22,7 @@ export function combineQuantities(current: BasketQuantity | undefined, incoming:
     return { amount: String(sum), unit: left.unit };
   }
   if (current.unit === "package" && incoming.unit === "package") {
-    const sum = Number(current.amount) + Number(incoming.amount);
+    const sum = Math.round((Number(current.amount) + Number(incoming.amount)) * 1000000) / 1000000;
     return sum <= 999999 ? { amount: String(sum), unit: "package" } : null;
   }
   return null;

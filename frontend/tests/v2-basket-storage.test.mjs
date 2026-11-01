@@ -14,7 +14,7 @@ globalThis.localStorage = {
   removeItem: key => storage.delete(key),
 };
 globalThis.window = { dispatchEvent: () => {} };
-const { readV2Basket, writeV2Basket, activateBasketUser } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { readV2Basket, writeV2Basket, activateBasketUser, withProductData } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const product = { id: 1, revision: 1, data: { name: "Jus" } };
 const group = { kind: "group", name: "Jus d'orange" };
 const scope = { kind: "scope", name: "Jus", department: "Boissons", family: "Jus de fruits" };
@@ -41,4 +41,11 @@ test("disabled articles remain in the local basket without changing identity", (
   storage.clear();
   writeV2Basket([{ ...group, disabled: true }, product], null);
   assert.deepEqual(readV2Basket(null), [{ ...group, disabled: true }, product]);
+});
+
+test("refreshing a product keeps the quantity and the excluded flag of its line", () => {
+  const line = { id: 1, revision: 1, data: { name: "Jus" }, quantity: { amount: "2", unit: "l" }, disabled: true };
+  assert.deepEqual(withProductData(line, { data: { name: "Jus d'orange" }, revision: 4 }),
+    { id: 1, revision: 4, data: { name: "Jus d'orange" }, quantity: { amount: "2", unit: "l" }, disabled: true });
+  assert.deepEqual(withProductData(product, { data: { name: "Jus 2" }, revision: 2 }), { id: 1, revision: 2, data: { name: "Jus 2" } });
 });

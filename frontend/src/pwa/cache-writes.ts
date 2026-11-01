@@ -1,6 +1,6 @@
 import type { Product } from "../v2/v2-products-api";
 import type { Recipe, RecipeSummary } from "../v2/v2-recipes-api";
-import { isBasketProduct, readV2Basket, writeV2Basket } from "../v2/v2-basket-storage";
+import { isBasketProduct, readV2Basket, withProductData, writeV2Basket } from "../v2/v2-basket-storage";
 
 import { PWA_CACHE_NAME, PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY } from "./cache-keys";
 async function cache() { return "caches" in window ? caches.open(PWA_CACHE_NAME) : null; }
@@ -31,6 +31,6 @@ export async function cacheApprovedProduct(product: Product) {
     await store.delete("/api/v2/products");
     await store.put(`/api/v2/products/${product.id}`, new Response(JSON.stringify(product), { headers: { "Content-Type": "application/json" } }));
     const basket = readV2Basket();
-    if (basket.some(item => isBasketProduct(item) && item.id === product.id)) writeV2Basket(basket.map(item => isBasketProduct(item) && item.id === product.id ? { id: product.id, data: product.data, revision: product.revision } : item));
+    if (basket.some(item => isBasketProduct(item) && item.id === product.id)) writeV2Basket(basket.map(item => isBasketProduct(item) && item.id === product.id ? withProductData(item, product) : item));
   } catch { /* cache is best-effort */ }
 }

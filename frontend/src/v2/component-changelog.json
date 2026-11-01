@@ -484,6 +484,25 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.104",
+      "components": {
+        "basket": {
+          "version": "0.1.24",
+          "notes": [
+            "Les prix du panier se récupèrent à la demande, pour 1 crédit : chaque compte reçoit 5 crédits par jour, 20 par semaine au maximum.",
+            "Panier simplifié : outils en icônes, répartition entre enseignes et les 2 magasins les moins chers.",
+            "Les quantités et les articles exclus ne sont plus perdus après une mise à jour du catalogue."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.28",
+          "notes": [
+            "Après la connexion depuis le panier, vous revenez au panier."
+          ]
+        }
+      }
     }
   ]
 }
