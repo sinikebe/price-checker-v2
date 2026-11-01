@@ -539,6 +539,11 @@
       "component": "pwa",
       "version": "0.1.23",
       "reason": "Onglets des paramètres."
+    },
+    {
+      "component": "application",
+      "version": "0.1.107",
+      "reason": "Économie par magasin du panier."
     }
   ]
 }
