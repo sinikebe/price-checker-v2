@@ -30,7 +30,7 @@ export default function V2HostAlertNotice({ userId }: { userId: number }) {
   return <aside className="v2-host-alert-notice" role="alert">
     <strong>Ressources du serveur au-dessus de 80 % :</strong> {alerts.map(alert =>
       `${metricNames[alert.metric]} ${alert.pct.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`).join(" · ")}
-    <Link to="/v2/parametres">Voir les mesures</Link>
+    <Link to="/v2/parametres/serveur">Voir les mesures</Link>
     <button type="button" onClick={dismiss} aria-label="Fermer l’alerte des ressources">Fermer</button>
   </aside>;
 }

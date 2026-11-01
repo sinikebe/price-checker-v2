@@ -409,6 +409,36 @@
       "component": "open_prices",
       "version": "0.1.23",
       "reason": "Les prix ne se rechargent plus après une réponse limitée ou indisponible du connecteur."
+    },
+    {
+      "component": "database",
+      "version": "0.1.32",
+      "reason": "Les panneaux de la page des paramètres sont répartis en onglets, sans changer le fonctionnement de ce composant."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.25",
+      "reason": "Les panneaux de la page des paramètres sont répartis en onglets, sans changer le fonctionnement de ce composant."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.19",
+      "reason": "Les panneaux de la page des paramètres sont répartis en onglets, sans changer le fonctionnement de ce composant."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.23",
+      "reason": "Les panneaux de la page des paramètres sont répartis en onglets, sans changer le fonctionnement de ce composant."
+    },
+    {
+      "component": "application",
+      "version": "0.1.100",
+      "reason": "Ajustements de l’installation des connecteurs."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.20",
+      "reason": "Ajustement du nettoyage local d’un compte supprimé."
     }
   ]
 }

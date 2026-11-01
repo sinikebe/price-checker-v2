@@ -423,6 +423,28 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.99",
+      "components": {
+        "application": {
+          "version": "0.1.99",
+          "notes": [
+            "Les paramètres sont organisés en onglets."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.100",
+      "components": {
+        "accounts": {
+          "version": "0.1.26",
+          "notes": [
+            "La double authentification prévient de ce que son activation entraîne et demande confirmation avant d’être désactivée."
+          ]
+        }
+      }
     }
   ]
 }

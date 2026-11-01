@@ -64,6 +64,8 @@ jobs:
       - run: npm run lint
       - run: npm run test:basket
       - run: npm run test:connector
+      - run: npm run test:settings
+      - run: npm run test:account
       - run: npm run test:bookmarklet
       - run: npm run build
 

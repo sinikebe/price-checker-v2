@@ -367,8 +367,9 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
+  preferencesTab?: string;
   preferencesMode?: boolean;
   authMode?: "login" | "register";
   workspaceMode?: "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
@@ -463,7 +464,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
   const withHostAlert = (page: ReactNode) => adminId !== null && !preferencesMode
     ? <><V2HostAlertNotice userId={adminId} />{page}</> : page;
-  if (preferencesMode) return <V2SettingsPage user={authStatus.user} onAccountDeleted={() => {
+  if (preferencesMode) return <V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onAccountDeleted={() => {
     setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
   }} />;
   if (!authStatus.admin_initialized) {

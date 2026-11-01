@@ -91,9 +91,9 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             entry.parent.mkdir(parents=True)
             entry.write_text(
                 "async def setup(connection):\n"
-                " await connection.execute('CREATE TABLE IF NOT EXISTS v2_connectors.v2_demo_connector_state(resumed boolean NOT NULL DEFAULT false)')\n"
+                " await connection.execute('CREATE TABLE IF NOT EXISTS v2_connectors.v2_demo_connector_state(resumed boolean NOT NULL DEFAULT false, resume_calls integer NOT NULL DEFAULT 0)')\n"
                 " await connection.execute('INSERT INTO v2_connectors.v2_demo_connector_state(resumed) SELECT false WHERE NOT EXISTS(SELECT 1 FROM v2_connectors.v2_demo_connector_state)')\n"
-                "async def resume(connection): await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resumed=true')\n"
+                "async def resume(connection): await connection.execute('UPDATE v2_connectors.v2_demo_connector_state SET resume_calls=resume_calls+1')\n"
                 "async def settings_read(connection):\n"
                 " row = await connection.fetchrow('SELECT resumed FROM v2_connectors.v2_demo_connector_state')\n"
                 " return {'revision': int(row['resumed']), 'fields': [{'key': 'resumed', 'label': 'Enabled', 'type': 'boolean'}], 'values': {'resumed': row['resumed']}}\n"
@@ -332,8 +332,9 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             assert enable.status_code == 200 and enable.json()["stores"][0]["installations"][0]["enabled"]
             connection = await test_connect()
             try:
+                # One resume from the fresh installation, one from enabling it again.
                 assert await connection.fetchval(
-                    "SELECT resumed FROM v2_connectors.v2_demo_connector_state")
+                    "SELECT resume_calls FROM v2_connectors.v2_demo_connector_state") == 2
             finally:
                 await connection.close()
             assert (await client.post(f"/api/v2/connector-stores/{store_id}/refresh", headers=write)).status_code == 200
@@ -439,3 +440,185 @@ async def test_page_status_rejects_a_malformed_answer(monkeypatch, answer):
     with pytest.raises(HTTPException) as refused:
         await api.page_product_statuses(connection, "demo", [1])
     assert refused.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_connector_hook_errors_are_reported_and_nothing_is_installed(monkeypatch, tmp_path):
+    """A connector's setup/resume failure is explained to the administrator and leaves no installation."""
+    from app.api.v2 import auth, connector_stores as api
+    from app.db.v2_migrations import connect_v2, migrate_v2
+    from app.main_v2 import app
+    from app.services import v2_connector_stores as service
+
+    config_path = os.getenv("V2_AUTH_TEST_CONFIG")
+    if not config_path:
+        pytest.skip("Disposable PostgreSQL required")
+    base = json.loads(Path(config_path).read_text())
+    assert base["database"] not in {"pricechecker_v2_dev", "pricechecker_v2_prod"}
+    db_name = "pcv2_store_hooks_" + secrets.token_hex(5)
+    root = await connect_v2(base)
+    try:
+        await root.execute('CREATE DATABASE "' + db_name + '"')
+    finally:
+        await root.close()
+    config = {**base, "database": db_name}
+    try:
+        await migrate_v2(config)
+
+        async def test_connect():
+            return await connect_v2(config)
+        monkeypatch.setattr(auth, "_connect", test_connect)
+        monkeypatch.setattr(api, "_connect", test_connect)
+        monkeypatch.setattr(api, "store_dir", lambda identifier: tmp_path / str(identifier))
+        monkeypatch.setattr(service, "store_dir", lambda identifier: tmp_path / str(identifier))
+        connection = await connect_v2(config)
+        try:
+            admin_id = await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES('admin','admin','test','admin') RETURNING id")
+            token = secrets.token_urlsafe(32)
+            await connection.execute(
+                "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
+                "VALUES($1,$2,now()+interval '1 hour')",
+                hashlib.sha256(token.encode()).hexdigest(), admin_id)
+        finally:
+            await connection.close()
+
+        state = ("CREATE TABLE IF NOT EXISTS v2_connectors.v2_hooks_state(resume_calls integer NOT NULL DEFAULT 0);"
+                 " INSERT INTO v2_connectors.v2_hooks_state SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM v2_connectors.v2_hooks_state)")
+        modules = [
+            # 0: setup refuses with a message meant for the administrator
+            "async def setup(connection): raise ValueError('Magasin ambigu : fusionnez les doublons.')\n"
+            "async def enqueue(connection, product_id): return 'queued'\nasync def process_one(): pass\n",
+            # 1: setup fails for an unexpected reason whose details must not reach the browser
+            "async def setup(connection): raise RuntimeError('secret internal detail')\n"
+            "async def enqueue(connection, product_id): return 'queued'\nasync def process_one(): pass\n",
+            # 2: resume refuses on installation
+            f"async def setup(connection): await connection.execute(\"{state}\")\n"
+            "async def resume(connection): raise ValueError('Boutique supprimée.')\n"
+            "async def enqueue(connection, product_id): return 'queued'\nasync def process_one(): pass\n",
+            # 3: a working connector that remembers it was resumed
+            f"async def setup(connection): await connection.execute(\"{state}\")\n"
+            "async def resume(connection): await connection.execute('UPDATE v2_connectors.v2_hooks_state SET resume_calls=resume_calls+1')\n"
+            "async def enqueue(connection, product_id): return 'queued'\nasync def process_one(): pass\n",
+        ]
+        shas = [chr(ord("a") + index) * 40 for index in range(len(modules))]
+        fetched = 0
+
+        async def fake_fetch(store_id, repository, private):
+            nonlocal fetched
+            sha, source = shas[fetched], modules[fetched]
+            fetched += 1
+            folder = tmp_path / str(store_id) / "revisions" / sha
+            entry = folder / "connectors/hooks/entry.py"
+            entry.parent.mkdir(parents=True)
+            entry.write_text(source)
+            item = {"id": "hooks", "name": "Hooks", "version": "0.1.0",
+                    "changelog": [{"version": "0.1.0", "notes": ["Version tested."]}]}
+            (folder / "connector-store.json").write_text(json.dumps({"api": 1, "connectors": [item]}))
+            return sha, validate_catalog(folder)
+        monkeypatch.setattr(api, "fetch_store", fake_fetch)
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="https://testserver") as client:
+            write = {"origin": "https://testserver"}
+            client.cookies.set("pc_v2_session", token)
+            add = await client.post("/api/v2/connector-stores", headers=write,
+                json={"name": "Test", "repository": "https://github.com/example/store", "private": False})
+            assert add.status_code == 201, add.text
+            store_id = add.json()["stores"][0]["id"]
+            prefix = f"/api/v2/connector-stores/{store_id}/connectors/hooks"
+
+            async def install(revision: int):
+                assert (await client.post(f"/api/v2/connector-stores/{store_id}/refresh",
+                                          headers=write)).status_code == 200
+                return await client.put(prefix, headers=write,
+                    json={"action": "install", "expected_commit": shas[revision]})
+
+            async def installations():
+                connection = await test_connect()
+                try:
+                    return await connection.fetchval("SELECT count(*) FROM v2_connector_installations")
+                finally:
+                    await connection.close()
+
+            refused = await install(0)
+            assert refused.status_code == 422
+            assert refused.json()["detail"] == "Magasin ambigu : fusionnez les doublons."
+            assert await installations() == 0
+
+            failed = await install(1)
+            assert failed.status_code == 503
+            assert "secret internal detail" not in failed.text
+            assert "initialisation du connecteur a échoué" in failed.json()["detail"]
+            assert await installations() == 0
+
+            paused = await install(2)
+            assert paused.status_code == 422 and paused.json()["detail"] == "Boutique supprimée."
+            assert await installations() == 0  # the installation row was rolled back with the failed resume
+
+            ok = await install(3)
+            assert ok.status_code == 200, ok.text
+            assert await installations() == 1
+            connection = await test_connect()
+            try:
+                # A fresh installation resumes the connector, so a pause kept from an earlier
+                # installation does not survive it.
+                assert await connection.fetchval(
+                    "SELECT resume_calls FROM v2_connectors.v2_hooks_state") == 1
+            finally:
+                await connection.close()
+    finally:
+        root = await connect_v2(base)
+        try:
+            await root.execute('DROP DATABASE "' + db_name + '" WITH (FORCE)')
+        finally:
+            await root.close()
+
+
+class _Hooked:
+    def __init__(self, *, error=None):
+        self.error, self.calls = error, 0
+
+    async def __call__(self, _connection):
+        self.calls += 1
+        if self.error:
+            raise self.error
+
+
+@pytest.mark.asyncio
+async def test_run_connector_hook_maps_each_kind_of_failure():
+    from fastapi import HTTPException
+
+    from app.api.v2.connector_stores import _run_connector_hook
+
+    ok = _Hooked()
+    await _run_connector_hook(ok, None, invalid="invalid", failed="failed")
+    assert ok.calls == 1
+
+    with pytest.raises(HTTPException) as not_callable:
+        await _run_connector_hook("not a function", None, invalid="invalid", failed="failed")
+    assert (not_callable.value.status_code, not_callable.value.detail) == (422, "invalid")
+
+    with pytest.raises(HTTPException) as explained:
+        await _run_connector_hook(_Hooked(error=ValueError("Message for the admin")), None,
+                                  invalid="invalid", failed="failed")
+    assert (explained.value.status_code, explained.value.detail) == (422, "Message for the admin")
+
+    with pytest.raises(HTTPException) as silent:  # an empty message falls back to the generic one
+        await _run_connector_hook(_Hooked(error=ValueError("")), None, invalid="invalid", failed="failed")
+    assert (silent.value.status_code, silent.value.detail) == (422, "failed")
+
+    with pytest.raises(HTTPException) as long_message:  # a connector cannot flood the admin UI
+        await _run_connector_hook(_Hooked(error=ValueError("x" * 1000)), None, invalid="i", failed="f")
+    assert len(long_message.value.detail) == 300
+
+    with pytest.raises(HTTPException) as unexpected:
+        await _run_connector_hook(_Hooked(error=RuntimeError("internal detail")), None,
+                                  invalid="invalid", failed="failed")
+    assert (unexpected.value.status_code, unexpected.value.detail) == (503, "failed")
+
+    already = HTTPException(status_code=409, detail="Réglages modifiés.")
+    with pytest.raises(HTTPException) as passthrough:  # an HTTPException from the connector is kept
+        await _run_connector_hook(_Hooked(error=already), None, invalid="invalid", failed="failed")
+    assert passthrough.value is already

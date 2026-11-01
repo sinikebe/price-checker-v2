@@ -1,57 +1,52 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { useV2Theme } from "./V2ThemeContext";
-import { usePwaUpdate } from "../pwa/PwaUpdateState";
-import versions from "./component-versions.json";
-import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
-import V2HostHealth from "./V2HostHealth";
-import V2TransferPanel from "./V2TransferPanel";
-import V2AccountDeletion from "./V2AccountDeletion";
 import V2AccountSecurity from "./V2AccountSecurity";
 import V2ConnectorStores from "./V2ConnectorStores";
+import V2SettingsAccount from "./V2SettingsAccount";
+import V2SettingsGeneral from "./V2SettingsGeneral";
+import V2SettingsServer from "./V2SettingsServer";
+import V2SettingsTabs from "./V2SettingsTabs";
+import {
+  SETTINGS_BASE_PATH, resolveSettingsTab, settingsPanelDomId, settingsTabDomId, visibleSettingsTabs, type SettingsTabId,
+} from "./v2-settings-tabs";
 import "./v2-settings.css";
 
-const updateMessages = {
-  idle: "Vérifiez si une nouvelle version de l’application est disponible.",
-  checking: "Recherche d’une mise à jour…",
-  current: "L’application est à jour.",
-  available: "Une nouvelle version est prête à être installée.",
-  offline: "Connectez-vous à Internet pour rechercher une mise à jour.",
-  unsupported: "La mise à jour automatique n’est pas disponible dans ce navigateur.",
-  error: "La vérification a échoué. Réessayez plus tard.",
-};
-
-export default function V2SettingsPage({ user, onAccountDeleted }: {
-  user: V2User | null; onAccountDeleted: () => void;
+export default function V2SettingsPage({ user, tabSlug, onAccountDeleted }: {
+  user: V2User | null; tabSlug?: string; onAccountDeleted: () => void;
 }) {
-  const { choice, setChoice } = useV2Theme();
-  const { checkState, checkForUpdates, applyUpdate } = usePwaUpdate();
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
+  const navigate = useNavigate();
   const [deleteNotice, setDeleteNotice] = useState("");
-  async function exportAccount() {
-    if (exporting) return;
-    setExporting(true); setExportError("");
-    try {
-      const response = await fetch("/api/v2/account/export", {
-        credentials: "same-origin", cache: "no-store",
-      });
-      if (!response.ok) throw new Error("L’export n’a pas pu être préparé.");
-      const objectUrl = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = "price-checker-v2-account.json";
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch (reason) { setExportError(String(reason)); }
-    finally { setExporting(false); }
-  }
+  const viewer = { loggedIn: Boolean(user), admin: user?.role === "admin" };
+  const tabs = visibleSettingsTabs(viewer);
+  const { tab, redirect } = resolveSettingsTab(tabSlug, viewer);
+  // Panels are mounted on first visit and then kept (hidden): a token or recovery codes shown once
+  // must survive a change of tab. The redirect is an effect, not a <Navigate>, so that the page and
+  // its "account deleted" notice stay mounted when the viewer's access changes under it.
+  const [visited, setVisited] = useState<ReadonlySet<SettingsTabId>>(() => new Set([tab.id]));
+  if (!visited.has(tab.id)) setVisited(new Set(visited).add(tab.id));
+  useEffect(() => { if (redirect) navigate(SETTINGS_BASE_PATH, { replace: true }); }, [redirect, navigate]);
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = "Paramètres | Price Checker";
+    document.title = (tab.id === "general" ? "" : `${tab.label} | `) + "Paramètres | Price Checker";
     return () => { document.title = previousTitle; };
-  }, []);
+  }, [tab.id, tab.label]);
+
+  function panel(id: SettingsTabId): ReactNode {
+    switch (id) {
+      case "general": return <V2SettingsGeneral />;
+      case "account": return user && <V2SettingsAccount user={user} onDeleted={cleared => {
+        setDeleteNotice(cleared
+          ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."
+          : "Compte supprimé sur le serveur. Effacez aussi les données de ce site dans votre navigateur : le nettoyage local n’a pas abouti.");
+        onAccountDeleted();
+      }} />;
+      case "security": return user && <V2AccountSecurity key={user.id} />;
+      case "connectors": return user?.role === "admin" && <V2ConnectorStores key={`stores-${user.id}`} />;
+      case "server": return user?.role === "admin" && <V2SettingsServer userId={user.id} />;
+    }
+  }
+  const showTabs = tabs.length > 1;
 
   return <div className="v2-home v2-settings">
     <a className="v2-skip" href="#v2-settings-main">Aller au contenu</a>
@@ -69,55 +64,15 @@ export default function V2SettingsPage({ user, onAccountDeleted }: {
       <span className="v2-section-kicker">PRÉFÉRENCES</span>
       <h1>Paramètres<span>.</span></h1>
       {deleteNotice && <p className="v2-settings-success" role="status">{deleteNotice}</p>}
-      <div className="v2-settings-grid">
-        <section className="v2-settings-card" aria-labelledby="v2-theme-heading">
-          <h2 id="v2-theme-heading">Apparence</h2>
-          <p>Choisissez le thème de cet appareil.</p>
-          <fieldset className="v2-theme-options">
-            <legend>Thème de l’application</legend>
-            {([ ["system", "Système"], ["light", "Clair"], ["dark", "Sombre"] ] as const).map(([value, label]) =>
-              <label key={value} className={choice === value ? "v2-theme-selected" : ""}>
-                <input type="radio" name="v2-theme" value={value} checked={choice === value} onChange={() => setChoice(value)} />
-                {label}
-              </label>
-            )}
-          </fieldset>
-        </section>
-        <section className="v2-settings-card" aria-labelledby="v2-update-heading">
-          <h2 id="v2-update-heading">Mises à jour</h2>
-          <p>Version installée : <strong>{versions.application.version}</strong></p>
-          <p className="v2-settings-status" role="status" aria-live="polite">{updateMessages[checkState]}</p>
-          <div className="v2-settings-actions">
-            <button type="button" className="v2-button v2-button-secondary" onClick={() => void checkForUpdates()} disabled={checkState === "checking"}>Vérifier les mises à jour</button>
-            {checkState === "available" && <button type="button" className="v2-button v2-button-primary" onClick={() => void applyUpdate()}>Mettre à jour l’application</button>}
-          </div>
-          <p className="v2-settings-note">La mise à jour actualise l’application sur cet appareil, pas le serveur. Elle recharge cette page : terminez vos modifications en cours avant de continuer.</p>
-          <Link className="v2-settings-link" to="/v2/versions">Détail des versions →</Link>
-        </section>
-        {user && <section className="v2-settings-card" aria-labelledby="v2-account-data-heading">
-          <h2 id="v2-account-data-heading">Mes données</h2>
-          <p>Téléchargez votre compte, vos brouillons, recettes, relevés et signalements au format JSON.</p>
-          <button type="button" className="v2-button v2-button-secondary" disabled={exporting}
-            onClick={() => { void exportAccount(); }}>{exporting ? "Préparation…" : "Exporter mes données"}</button>
-          {exportError && <p role="alert">{exportError}</p>}
-        </section>}
-        {user && <V2AccountSecurity key={user.id} />}
-        {user && user.role !== "admin" && <V2AccountDeletion userId={user.id} onDeleted={cleared => {
-          setDeleteNotice(cleared
-            ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."
-            : "Compte supprimé sur le serveur. Effacez aussi les données de ce site dans votre navigateur : le nettoyage local n’a pas abouti.");
-          onAccountDeleted();
-        }} />}
-        {user?.role === "admin" && <V2HostHealth />}
-        {user?.role === "admin" && <V2ConnectorStores key={`stores-${user.id}`} />}
-        {user?.role === "admin" && <V2ServerUpdateSchedule key={user.id} />}
-        {user?.role === "admin" && <V2TransferPanel key={`transfer-${user.id}`} />}
-        {user?.role === "admin" && <section className="v2-settings-card" aria-labelledby="v2-server-heading">
-          <h2 id="v2-server-heading">Serveur</h2>
-          <p>Nom d’hôte et configuration PostgreSQL de cette instance.</p>
-          <Link className="v2-settings-link" to="/v2/settings/database">Paramètres du serveur →</Link>
-        </section>}
-      </div>
+      {showTabs && <V2SettingsTabs tabs={tabs} activeId={tab.id} />}
+      {tabs.filter(item => item.id === tab.id || visited.has(item.id)).map(item => {
+        const active = item.id === tab.id;
+        const grid = <div className="v2-settings-grid">{panel(item.id)}</div>;
+        return showTabs
+          ? <div key={item.id} className="v2-settings-panel" role="tabpanel" id={settingsPanelDomId(item.id)}
+              aria-labelledby={settingsTabDomId(item.id)} hidden={!active}>{grid}</div>
+          : <div key={item.id}>{grid}</div>;
+      })}
     </main>
   </div>;
 }
