@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { test } from "node:test";
+import vm from "node:vm";
 
-const require = createRequire(import.meta.url);
-const directory = new URL("../../browser-extension/", import.meta.url);
-const { parseSearch, sameEan, money } = require(new URL("carrefour-parse.js", directory).pathname);
+const directory = new URL("../browser-extension/", import.meta.url);
+// The extension's scripts are classic scripts, not modules: run the parser in its own context, as a page would.
+const sandbox = { module: { exports: {} } };
+sandbox.globalThis = sandbox;
+vm.runInNewContext(readFileSync(new URL("carrefour-parse.js", directory), "utf8"), sandbox);
+const { sameEan, money } = sandbox.module.exports;
+const parseSearch = (text, ean) => JSON.parse(JSON.stringify(sandbox.module.exports.parseSearch(text, ean)));
 const EAN = "7613039830727";
 
 test("the same EAN is recognised with or without leading zeros, and nothing else is", () => {
@@ -83,4 +87,30 @@ test("the extension asks for no more than it needs and loads nothing from outsid
   }
   const popup = readFileSync(new URL("popup.html", directory), "utf8");
   assert.ok(!/<script(?![^>]*\bsrc=)/.test(popup), "no inline script");
+});
+
+test("the zip handed out by the settings page is a valid archive with every extension file", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync, readdirSync, writeFileSync, readFileSync: read } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const ts = (await import("typescript")).default;
+  const compile = name => ts.transpileModule(read(new URL(`../src/v2/${name}`, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const { makeZip, crc32 } = await import("data:text/javascript;base64," + Buffer.from(compile("v2-zip.ts")).toString("base64"));
+  assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926, "the standard CRC-32 check value");
+  // The files the page bundles are exactly the extension's own files.
+  const listing = read(new URL("../src/v2/v2-extension-files.ts", import.meta.url), "utf8");
+  const onDisk = readdirSync(new URL(directory)).sort();
+  for (const file of onDisk) assert.ok(listing.includes(`browser-extension/${file}?raw`), `${file} is bundled`);
+  assert.equal([...listing.matchAll(/browser-extension\/([\w.-]+)\?raw/g)].length, onDisk.length, "nothing else is bundled");
+  const encoder = new TextEncoder();
+  const files = [...onDisk, "instance.json"].map(name => ({ name, data: name === "instance.json" ? encoder.encode('{"instance":"https://price.example"}\n') : read(new URL(name, directory)) }));
+  const folder = mkdtempSync(tmpdir() + "/pc-zip-");
+  writeFileSync(folder + "/x.zip", makeZip(files, new Date(2026, 10, 1, 12, 30, 40)));
+  const check = spawnSync("python3", ["-I", "-c", "import sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None;print(sorted(z.namelist()));print(z.read('instance.json').decode().strip());print(z.read('manifest.json')==open(sys.argv[2],'rb').read())", folder + "/x.zip", new URL("manifest.json", directory).pathname], { encoding: "utf8" });
+  assert.equal(check.status, 0, check.stderr);
+  assert.match(check.stdout, /instance\.json/);
+  assert.match(check.stdout, /\{"instance":"https:\/\/price\.example"\}/);
+  assert.match(check.stdout, /True/);
+  assert.throws(() => makeZip([{ name: "../evil.js", data: new Uint8Array() }]), /invalide/);
+  assert.throws(() => makeZip([{ name: "/abs.js", data: new Uint8Array() }]), /invalide/);
 });

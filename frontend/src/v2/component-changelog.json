@@ -631,6 +631,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.116",
+      "components": {
+        "application": {
+          "version": "0.1.116",
+          "notes": [
+            "L’extension de navigateur se télécharge depuis Paramètres → Connecteurs, avec l’adresse de l’instance déjà renseignée."
+          ]
+        }
+      }
     }
   ]
 }

@@ -128,6 +128,11 @@
     $("save").addEventListener("click", function () { save().catch(function (e) { say(String(e.message || e), "bad"); }); });
     $("read").addEventListener("click", function () { read().catch(function (e) { say(String(e.message || e), "bad"); }); });
     $("reset").addEventListener("click", function (event) { event.preventDefault(); chrome.storage.local.remove("config").then(function () { config = null; clear(); show("setup"); }); });
+    // The copy handed out by an instance carries that instance's address, so it need not be typed.
+    fetch(chrome.runtime.getURL("instance.json")).then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
+      var origin = data && instanceOrigin(data.instance);
+      if (origin && !$("instance").value) $("instance").value = origin;
+    }).catch(function () { /* the plain copy has no such file */ });
     var stored = await chrome.storage.local.get("config");
     if (stored.config && stored.config.instance && stored.config.token && stored.config.store) { config = stored.config; enter(); } else show("setup");
   });
