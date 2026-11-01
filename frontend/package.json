@@ -11,6 +11,7 @@
     "test:basket": "node --test tests/v2-basket-*.test.mjs",
     "test:connector": "node --test tests/v2-connector-*.test.mjs",
     "test:settings": "node --test tests/v2-settings-*.test.mjs",
+    "test:account": "node --test tests/v2-account-*.test.mjs",
     "test:bookmarklet": "node --test tests/v2-bookmarklet*.test.mjs"
   },
   "dependencies": {

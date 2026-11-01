@@ -202,6 +202,26 @@ async def refresh_store(store_id: int, request: Request):
         await connection.close()
 
 
+async def _run_connector_hook(hook, connection, *, invalid: str, failed: str) -> None:
+    """Run a connector's setup or resume hook and report its failure to the administrator.
+
+    A ValueError carries a message the connector wrote for the administrator (for example
+    an ambiguous store) and is shown as is. Any other failure is logged and reported
+    generically, without leaking its details. The caller's transaction rolls back either way.
+    """
+    if not callable(hook):
+        raise HTTPException(status_code=422, detail=invalid)
+    try:
+        await hook(connection)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:300] or failed) from exc
+    except Exception as exc:
+        logger.exception("Connector hook failed")
+        raise HTTPException(status_code=503, detail=failed) from exc
+
+
 @router.put("/{store_id}/connectors/{connector_id}")
 async def change_installation(store_id: int, connector_id: str, payload: InstallationChange, request: Request):
     _secure_write(request)
@@ -235,9 +255,9 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                     raise HTTPException(status_code=422, detail="Code du connecteur incompatible ou introuvable.") from exc
                 setup = getattr(module, "setup", None)
                 if setup is not None:
-                    if not callable(setup):
-                        raise HTTPException(status_code=422, detail="Initialisation du connecteur invalide.")
-                    await setup(connection)
+                    await _run_connector_hook(
+                        setup, connection, invalid="Initialisation du connecteur invalide.",
+                        failed="L’initialisation du connecteur a échoué ; consultez les journaux du serveur.")
                 if current:
                     await connection.execute(
                         "UPDATE v2_connector_installations SET version=$1,commit_sha=$2,"
@@ -249,6 +269,13 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                     await connection.execute(
                         "INSERT INTO v2_connector_installations(connector_id,store_id,version,commit_sha) "
                         "VALUES($1,$2,$3,$4)", connector_id, store_id, item["version"], store["fetched_commit"])
+                    # A connector that paused itself keeps that state in its own tables across an
+                    # uninstall. A fresh installation is enabled, so let it resume like an enable does.
+                    resume = getattr(module, "resume", None)
+                    if resume is not None:
+                        await _run_connector_hook(
+                            resume, connection, invalid="Reprise du connecteur invalide.",
+                            failed="La reprise du connecteur a échoué ; consultez les journaux du serveur.")
             elif payload.action == "rollback":
                 if not current or not current["previous_commit"]:
                     raise HTTPException(status_code=409, detail="Aucune version précédente disponible.")
@@ -272,9 +299,9 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                         raise HTTPException(status_code=422, detail="Code du connecteur indisponible.") from exc
                     resume = getattr(module, "resume", None)
                     if resume is not None:
-                        if not callable(resume):
-                            raise HTTPException(status_code=422, detail="Reprise du connecteur invalide.")
-                        await resume(connection)
+                        await _run_connector_hook(
+                            resume, connection, invalid="Reprise du connecteur invalide.",
+                            failed="La reprise du connecteur a échoué ; consultez les journaux du serveur.")
                 await connection.execute(
                     "UPDATE v2_connector_installations SET enabled=$1,updated_at=now() WHERE connector_id=$2",
                     payload.action == "enable", connector_id)
