@@ -29,7 +29,7 @@ QUEUE = {"origin": "basket", "requested": 2, "queued": 1, "fresh": 1, "cooldown"
 # One valid example per registered event: a new event must come with one, and is stored by the test below.
 SAMPLES = {
     "system.started": ({"version": "0.1.105"}, None),
-    "system.migrated": ({"count": 2, "latest": "0037_logs_and_stats"}, None),
+    "system.migrated": ({"count": 2, "latest": "0038_store_product_status"}, None),
     "update.finished": ({"trigger": "manual", "result": "failed", "run_at": RUN, "reason": "other", "from_sha": "abc1234", "to_sha": "def5678"}, None),
     "cache.cleaned": ({"trigger": "update", "result": "done", "run_at": RUN, "freed_bytes": 10}, None),
     "host.alert": ({"metric": "disk", "pct": 85, "run_at": RUN}, None),

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2AccountSecurity from "./V2AccountSecurity";
+import V2AvailabilitySettings from "./V2AvailabilitySettings";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2SettingsAccount from "./V2SettingsAccount";
 import V2SettingsGeneral from "./V2SettingsGeneral";
@@ -45,7 +46,10 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
         onAccountDeleted();
       }} />;
       case "security": return user && <V2AccountSecurity key={user.id} />;
-      case "connectors": return user?.role === "admin" && <V2ConnectorStores key={`stores-${user.id}`} />;
+      case "connectors": return user?.role === "admin" && <>
+        <V2ConnectorStores key={`stores-${user.id}`} />
+        <V2AvailabilitySettings key={`availability-${user.id}`} />
+      </>;
       case "server": return user?.role === "admin" && <V2SettingsServer userId={user.id} />;
       case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
       case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;

@@ -969,6 +969,59 @@ MIGRATIONS = {
         CREATE TRIGGER v2_connector_price_log AFTER INSERT ON v2_price_observations
             FOR EACH ROW WHEN (NEW.source = 'connector') EXECUTE FUNCTION v2_log_connector_price();
     """,
+    "0038_store_product_status": """
+        -- A product a retailer no longer sells at one store, for one sales channel. It says
+        -- nothing about the product itself, its other stores or its price history.
+        CREATE TABLE v2_store_product_status (
+            product_id bigint NOT NULL REFERENCES v2_products(id) ON DELETE CASCADE,
+            store_id bigint NOT NULL REFERENCES v2_stores(id) ON DELETE CASCADE,
+            sales_channel varchar(16) NOT NULL CHECK (sales_channel IN ('in_store', 'drive', 'delivery')),
+            status varchar(16) NOT NULL CHECK (status IN ('discontinued')),
+            since timestamptz NOT NULL DEFAULT now(),
+            checked_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (product_id, store_id, sales_channel)
+        );
+        CREATE TABLE v2_availability_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            recheck_days integer NOT NULL DEFAULT 30 CHECK (recheck_days BETWEEN 0 AND 365),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_availability_settings (singleton) VALUES (true);
+        -- The contract with connectors: they ask, mark and clear through these functions,
+        -- so the rules (re-check delay, a newer price lifting the status) live in one place.
+        CREATE FUNCTION v2_store_product_held(p_product bigint, p_store bigint, p_channel text)
+        RETURNS boolean LANGUAGE sql STABLE AS $fn$
+            SELECT EXISTS (
+                SELECT 1 FROM v2_store_product_status s, v2_availability_settings c
+                WHERE s.product_id = p_product AND s.store_id = p_store AND s.sales_channel = p_channel
+                  AND (c.recheck_days = 0 OR s.checked_at + make_interval(days => c.recheck_days) > now())
+                  AND NOT EXISTS (
+                      SELECT 1 FROM v2_price_observations o
+                      WHERE o.product_id = s.product_id AND o.store_id = s.store_id
+                        AND o.sales_channel = s.sales_channel AND NOT o.superseded
+                        AND o.merge_duplicate_of_id IS NULL AND o.observed_at > s.checked_at)
+            )
+        $fn$;
+        CREATE FUNCTION v2_mark_store_product_discontinued(p_product bigint, p_store bigint, p_channel text)
+        RETURNS void LANGUAGE sql AS $fn$
+            INSERT INTO v2_store_product_status AS s (product_id, store_id, sales_channel, status)
+            VALUES (p_product, p_store, p_channel, 'discontinued')
+            ON CONFLICT (product_id, store_id, sales_channel) DO UPDATE SET
+                checked_at = now(),
+                since = CASE WHEN EXISTS (
+                    SELECT 1 FROM v2_price_observations o
+                    WHERE o.product_id = s.product_id AND o.store_id = s.store_id
+                      AND o.sales_channel = s.sales_channel AND NOT o.superseded
+                      AND o.merge_duplicate_of_id IS NULL AND o.observed_at > s.checked_at)
+                    THEN now() ELSE s.since END
+        $fn$;
+        CREATE FUNCTION v2_clear_store_product_status(p_product bigint, p_store bigint, p_channel text)
+        RETURNS void LANGUAGE sql AS $fn$
+            DELETE FROM v2_store_product_status
+            WHERE product_id = p_product AND store_id = p_store AND sales_channel = p_channel
+        $fn$;
+    """,
 }
 
 

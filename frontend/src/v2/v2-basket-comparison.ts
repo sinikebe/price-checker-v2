@@ -7,7 +7,7 @@ export type BasketPrice = {
   sales_channel: "in_store" | "drive" | "delivery";
   available: boolean; correction_status: string | null; source_provider: string | null;
 };
-export type BasketPriceResponse = { latest_by_store: BasketPrice[]; stores_truncated: boolean };
+export type BasketPriceResponse = { latest_by_store: BasketPrice[]; stores_truncated: boolean; withdrawn_count?: number };
 export type BasketLine = { item: BasketItem; candidates: BasketProduct[] };
 export type BasketFilters = { storeIds: number[]; cities: string[]; departments: string[] };
 /** "price": the least to pay for what is needed. "unit": the best price per kg, L or piece, even in a bigger pack. */
@@ -22,6 +22,8 @@ export type StoreQuote = { key: string; reading: BasketPrice; choices: PriceChoi
 export type BasketComparison = {
   stores: StoreQuote[]; split: PriceChoice[]; splitCents: number; splitUsedCents: number;
   missing: BasketItem[]; failed: BasketItem[]; truncated: BasketItem[];
+  /** Prices the server left out because the product is withdrawn at that store. */
+  withdrawn: number;
 };
 export type PricePosition = "neutral" | "low" | "middle" | "high";
 export function pricePosition(cents: number, min: number, max: number): PricePosition {
@@ -134,12 +136,17 @@ export function buildBasketComparison(
 ): BasketComparison {
   const stores = new Map<string, StoreQuote>();
   const split: PriceChoice[] = [], missing: BasketItem[] = [], failed: BasketItem[] = [], truncated: BasketItem[] = [];
+  const withdrawnSeen = new Set<number>();
+  let withdrawn = 0;
   for (const line of lines) {
     const products = [...new Map(line.candidates.map(product => [product.id, product])).values()];
     if (!products.length || products.some(product => !responses.get(product.id))) {
       failed.push(line.item); missing.push(line.item); continue;
     }
     if (products.some(product => responses.get(product.id)?.stores_truncated)) truncated.push(line.item);
+    for (const product of products) if (!withdrawnSeen.has(product.id)) {
+      withdrawnSeen.add(product.id); withdrawn += responses.get(product.id)?.withdrawn_count ?? 0;
+    }
     const byStore = new Map<string, PriceChoice>();
     const perUnit = mode === "unit" ? unitLine(line, advanced) : null;
     const compare = perUnit ? cheaperPerUnit : cheaper;
@@ -181,7 +188,7 @@ export function buildBasketComparison(
     return first || left.cents - right.cents || left.reading.store_name.localeCompare(right.reading.store_name, "fr");
   });
   return { stores: storeList, split, splitCents: purchaseTotalCents(split, advanced),
-    splitUsedCents: split.reduce((sum, choice) => sum + choice.usedCents, 0), missing, failed, truncated };
+    splitUsedCents: split.reduce((sum, choice) => sum + choice.usedCents, 0), missing, failed, truncated, withdrawn };
 }
 
 /** What a store of the split brings: the extra spending without it, and the articles only it prices. */
