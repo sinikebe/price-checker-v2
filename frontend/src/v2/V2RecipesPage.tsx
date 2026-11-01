@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import V2SiteHeader from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import V2ReportControl from "./V2ReportControl";
 import { positiveDecimal, scaledQuantity } from "../recipes/quantity";
@@ -23,13 +24,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : "Un
 function Frame({ children, user, onLogout }: { children: ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
   return <div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-recipes-main">Aller au contenu</a>
-    <header className="v2-header"><div className="v2-wrap v2-header-inner">
-      <Link className="v2-brand" to="/v2"><span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span><span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span></Link>
-      <nav className="v2-nav" aria-label="Navigation principale">
-        <Link to="/v2">Accueil</Link><Link to="/v2/produits">Produits</Link><Link className="v2-nav-current" to="/v2/recettes" aria-current="page">Recettes</Link><Link to="/v2/panier">Panier</Link><Link to="/v2/parametres">Paramètres</Link>
-        {user ? <span className="v2-account-nav"><span>{user.username}</span><button type="button" onClick={() => { void onLogout(); }}>Déconnexion</button></span> : <Link to="/v2/connexion">Connexion</Link>}
-      </nav>
-    </div></header>
+    <V2SiteHeader user={user} onLogout={onLogout} />
     <main id="v2-recipes-main" className="v2-wrap v2-recipes-main">{children}</main>
   </div>;
 }

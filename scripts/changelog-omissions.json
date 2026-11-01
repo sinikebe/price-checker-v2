@@ -439,6 +439,41 @@
       "component": "pwa",
       "version": "0.1.20",
       "reason": "Ajustement du nettoyage local d’un compte supprimé."
+    },
+    {
+      "component": "products",
+      "version": "0.1.47",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.18",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.23",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "database",
+      "version": "0.1.33",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.25",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.27",
+      "reason": "En-tête de page partagé."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.21",
+      "reason": "En-tête de page partagé."
     }
   ]
 }
