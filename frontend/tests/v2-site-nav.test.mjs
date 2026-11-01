@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-site-nav.ts", import.meta.url)
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { DOCK_ITEMS, activeDockId, basketLabel, initials, nextMenuIndex, profileMenuSections, roleLabel } = await import(
+const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, initials, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
 test("the dock has the five main sections, each with a distinct address", () => {
@@ -96,4 +96,61 @@ test("the basket's accessible name carries the number of items", () => {
   assert.equal(basketLabel(0), "Panier, vide");
   assert.equal(basketLabel(1), "Panier, 1 article");
   assert.equal(basketLabel(12), "Panier, 12 articles");
+});
+
+test("the back button has no target on the home page and goes up one level elsewhere", () => {
+  for (const home of ["/", "/v2", "/v2/"]) assert.equal(backTarget(home), null, home);
+  const cases = [
+    ["/v2/produits", "/v2"], ["/v2/panier", "/v2"], ["/v2/parametres", "/v2"], ["/v2/magasins", "/v2"],
+    ["/v2/produits/12", "/v2/produits"], ["/v2/produits/12/modifier", "/v2/produits/12"],
+    ["/v2/produits/12/historique", "/v2/produits/12"], ["/v2/produits/nouveau", "/v2/produits"],
+    ["/v2/recettes/5", "/v2/recettes"], ["/v2/recettes/5/modifier", "/v2/recettes/5"], ["/v2/recettes/nouvelle", "/v2/recettes"],
+    ["/v2/magasins/7", "/v2/magasins"], ["/v2/brouillons/3", "/v2/brouillons"], ["/v2/parametres/securite", "/v2/parametres"],
+    ["/v2/categories/Lait", "/v2/produits"], ["/v2/categories/P%C3%A2tes%2Friz", "/v2/produits"],
+    ["/v2/capture/installer", "/v2"], ["/v2/produits/12/", "/v2/produits"],
+  ];
+  for (const [path, parent] of cases) assert.equal(backTarget(path), parent, path);
+});
+
+test("going back always ends at the home page: every target leads towards it", () => {
+  for (const start of ["/v2/produits/12/modifier", "/v2/recettes/5/modifier", "/v2/parametres/serveur", "/v2/categories/x", "/v2/capture/installer"]) {
+    let path = start; const seen = new Set();
+    while (path !== null && path !== "/v2") { assert.ok(!seen.has(path), `loop at ${path}`); seen.add(path); path = backTarget(path); }
+    assert.equal(path, "/v2", start);
+  }
+});
+
+test("a search goes to the catalogue with the trimmed, single-spaced text", () => {
+  assert.equal(searchPath("lait"), "/v2/produits?q=lait");
+  assert.equal(searchPath("  pâtes   tricolores  "), "/v2/produits?q=p%C3%A2tes+tricolores");
+  assert.equal(searchPath("3017620422003"), "/v2/produits?q=3017620422003");
+  assert.equal(searchPath("lait & miel=1"), "/v2/produits?q=lait+%26+miel%3D1");
+});
+
+test("an empty search goes nowhere", () => {
+  for (const blank of ["", "   ", "\n\t "]) assert.equal(searchPath(blank), null);
+});
+
+test("a long search is cut to what the catalogue accepts", () => {
+  const link = searchPath("a".repeat(500));
+  assert.equal(new URLSearchParams(link.split("?")[1]).get("q").length, SEARCH_MAX_LENGTH);
+  assert.equal(SEARCH_MAX_LENGTH, 120);
+  const spaced = searchPath("a".repeat(119) + " " + "b".repeat(50));
+  assert.ok(!new URLSearchParams(spaced.split("?")[1]).get("q").endsWith(" "));
+});
+
+test("the field shows the current catalogue search and is empty elsewhere", () => {
+  assert.equal(searchTermFromLocation("/v2/produits", "?q=lait"), "lait");
+  assert.equal(searchTermFromLocation("/v2/produits/", "?q=p%C3%A2tes+tricolores"), "pâtes tricolores");
+  assert.equal(searchTermFromLocation("/v2/produits", ""), "");
+  assert.equal(searchTermFromLocation("/v2/produits", "?category=Lait"), "");
+  assert.equal(searchTermFromLocation("/v2/magasins", "?q=lait"), "");
+  assert.equal(searchTermFromLocation("/v2/produits/12", "?q=lait"), "");
+});
+
+test("a search survives the round trip through the address", () => {
+  for (const term of ["lait", "pâtes tricolores", "lait & miel=1", "50% réduit", "a/b"]) {
+    const link = searchPath(term); const [path, query] = link.split("?");
+    assert.equal(searchTermFromLocation(path, "?" + query), term, term);
+  }
 });

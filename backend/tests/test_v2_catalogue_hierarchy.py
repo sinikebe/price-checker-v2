@@ -211,3 +211,40 @@ async def test_scope_upgrade_preserves_existing_manual_locations(isolated_config
         ]
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_group_names_containing_a_slash_can_be_opened_and_classified(monkeypatch, isolated_config):
+    connection = await connect_v2(isolated_config)
+    try:
+        await connection.execute(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb)",
+            json.dumps({"name": "Pâtes tricolores", "brand": "Test", "group": "Pâtes/riz",
+                        "tags": [], "quantity": "500 g", "package": "sachet"}),
+        )
+    finally:
+        await connection.close()
+
+    async def fake_connect():
+        return await connect_v2(isolated_config)
+
+    async def fake_user(_connection, request):
+        role = request.headers.get("x-test-role")
+        return {"id": 1, "role": role} if role else None
+
+    monkeypatch.setattr(catalogue, "_connect", fake_connect)
+    monkeypatch.setattr(catalogue, "_current_user", fake_user)
+    # The page sends encodeURIComponent(name), so the slash arrives as %2F and is decoded by the server.
+    group = "/api/v2/catalogue/categories/P%C3%A2tes%2Friz"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
+        opened = await client.get(group)
+        assert opened.status_code == 200, opened.text
+        assert [item["data"]["name"] for item in opened.json()["products"]] == ["Pâtes tricolores"]
+        body = {"department": "Épicerie salée", "family": "Pâtes", "base_revision": 1}
+        # The classification route is reached too: it refuses by role, not with "not found".
+        assert (await client.put(group + "/classification", json=body)).status_code == 403
+        assert (await client.put(group + "/classification", json=body,
+                                 headers={"x-test-role": "visitor"})).status_code == 403
+        missing = await client.get("/api/v2/catalogue/categories/Absent%2Fgroupe")
+        assert missing.status_code == 404
+        assert missing.json()["detail"] == "Catégorie introuvable."
