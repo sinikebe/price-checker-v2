@@ -6,9 +6,10 @@ Certaines enseignes (Carrefour, Intermarché, Courses U) bloquent les lectures a
 
 ## Installer
 
-1. Chrome, Edge ou Brave : `chrome://extensions` → activer le mode développeur → *Charger l’extension non empaquetée* → choisir le dossier `browser-extension/`.
-2. Dans l’application : **Paramètres → Jetons API** → créer un jeton de portée **contribuer**.
-3. Cliquer sur l’icône de l’extension et renseigner l’adresse de l’instance, le jeton et le numéro du magasin (celui de la page du magasin dans l’application). Le navigateur demande l’autorisation de joindre votre instance, et seulement elle.
+1. Administrateurs : **Paramètres → Connecteurs → Extension de navigateur** → *Télécharger l’extension*. L’archive est préparée dans le navigateur à partir des fichiers de l’application et contient l’adresse de l’instance, que l’extension reprend toute seule. (Les sources sont dans `frontend/browser-extension/`.)
+2. Décompresser, puis dans Chrome, Edge ou Brave : `chrome://extensions` → activer le mode développeur → *Charger l’extension non empaquetée* → choisir le dossier décompressé.
+3. Dans l’application : **Paramètres → Jetons API** → créer un jeton de portée **contribuer**.
+4. Cliquer sur l’icône de l’extension et renseigner le jeton et le numéro du magasin (celui de la page du magasin dans l’application). Le navigateur demande l’autorisation de joindre votre instance, et seulement elle.
 
 ## Utiliser
 
