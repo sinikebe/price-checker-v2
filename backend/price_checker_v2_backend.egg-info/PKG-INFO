@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: price-checker-v2-backend
+Version: 0.1.98
+Requires-Python: >=3.12
+Requires-Dist: asyncpg==0.31.0
+Requires-Dist: argon2-cffi==25.1.0
+Requires-Dist: cryptography==50.0.2
+Requires-Dist: pyotp==2.10.0
+Requires-Dist: certifi==2026.10.23
+Requires-Dist: fastapi==0.138.0
+Requires-Dist: httpx==0.28.1
+Requires-Dist: pydantic-settings==2.14.2
+Requires-Dist: SQLAlchemy==2.0.51
+Requires-Dist: uvicorn[standard]==0.49.0
+Requires-Dist: playwright==1.56.0
