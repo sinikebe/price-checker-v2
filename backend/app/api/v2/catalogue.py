@@ -350,6 +350,35 @@ async def _recent_observations(connection, ids: list[int]) -> list[dict]:
     ]
 
 
+async def scope_rows(connection, department: str, family: str, scope: str, limit: int | None = None):
+    """The current products of a comparison scope, in display order."""
+    return await connection.fetch(
+        f"""SELECT p.*, {CATEGORY} AS category_name
+            FROM v2_products p
+            JOIN v2_catalogue_classifications c
+              ON c.group_key=lower({CATEGORY})
+            WHERE {CURRENT}
+              AND lower(c.department)=lower($1)
+              AND lower(c.family)=lower($2)
+              AND lower(c.comparison_scope)=lower($3)
+            ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id
+            LIMIT $4""",
+        department, family, scope, limit,
+    )
+
+
+async def group_rows(connection, name: str, limit: int | None = None):
+    """The current products of a comparable group, in display order."""
+    return await connection.fetch(
+        f"""SELECT p.*, {CATEGORY} AS category_name
+            FROM v2_products p WHERE {CURRENT}
+              AND lower({CATEGORY})=lower($1)
+            ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id
+            LIMIT $2""",
+        name, limit,
+    )
+
+
 @router.get("/comparison")
 async def comparison_scope_detail(
     department: str = Query(..., min_length=1, max_length=80),
@@ -359,18 +388,7 @@ async def comparison_scope_detail(
     """Read a curated union of published products across precise groups."""
     connection = await _connect()
     try:
-        rows = await connection.fetch(
-            f"""SELECT p.*, {CATEGORY} AS category_name
-                FROM v2_products p
-                JOIN v2_catalogue_classifications c
-                  ON c.group_key=lower({CATEGORY})
-                WHERE {CURRENT}
-                  AND lower(c.department)=lower($1)
-                  AND lower(c.family)=lower($2)
-                  AND lower(c.comparison_scope)=lower($3)
-                ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id""",
-            department, family, scope,
-        )
+        rows = await scope_rows(connection, department, family, scope)
         if not rows:
             raise HTTPException(status_code=404, detail="Ensemble de comparaison introuvable.")
         groups: dict[str, dict] = {}
@@ -397,13 +415,7 @@ async def category_detail(name: str):
         raise HTTPException(status_code=404, detail="Catégorie introuvable.")
     connection = await _connect()
     try:
-        rows = await connection.fetch(
-            f"""SELECT p.*, {CATEGORY} AS category_name
-                FROM v2_products p WHERE {CURRENT}
-                  AND lower({CATEGORY})=lower($1)
-                ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id""",
-            name,
-        )
+        rows = await group_rows(connection, name)
         if not rows:
             raise HTTPException(status_code=404, detail="Catégorie introuvable.")
         observations = await _recent_observations(connection, [row["id"] for row in rows])
