@@ -553,6 +553,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.109",
+      "components": {
+        "application": {
+          "version": "0.1.109",
+          "notes": [
+            "Le journal indique la cause de l’échec d’un connecteur (type d’erreur ou statut HTTP) et sa désactivation automatique."
+          ]
+        }
+      }
     }
   ]
 }
