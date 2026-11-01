@@ -503,6 +503,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.105",
+      "components": {
+        "deployment": {
+          "version": "0.1.25",
+          "notes": [
+            "Paramètres → Serveur affiche l’espace disque et permet de nettoyer le cache du serveur ; le nettoyage a aussi lieu après chaque mise à jour."
+          ]
+        },
+        "application": {
+          "version": "0.1.105",
+          "notes": [
+            "Les cartes des paramètres du serveur s’affichent correctement sur petit écran."
+          ]
+        }
+      }
     }
   ]
 }
