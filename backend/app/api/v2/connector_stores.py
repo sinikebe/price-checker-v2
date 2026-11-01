@@ -9,7 +9,7 @@ import shutil
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write
 from app.api.v2.setup import _require_admin
@@ -51,9 +51,23 @@ class InstallationChange(BaseModel):
     expected_installed_commit: str | None = None
 
 
+MAX_SECRET_LENGTH = 256
+
+
 class ConnectorSettingsChange(BaseModel):
+    """Booleans and integers, and short strings for write-only secret fields such as an API key."""
+
     expected_revision: int = Field(ge=0)
-    values: dict[str, bool | int]
+    values: dict[str, bool | int | str]
+
+    @field_validator("values")
+    @classmethod
+    def bounded(cls, values: dict[str, bool | int | str]) -> dict[str, bool | int | str]:
+        if len(values) > 32 or any(len(key) > 64 for key in values):
+            raise ValueError("Trop de réglages.")
+        if any(isinstance(value, str) and len(value) > MAX_SECRET_LENGTH for value in values.values()):
+            raise ValueError("Valeur trop longue.")
+        return values
 
 
 class BasketRefreshBatch(BaseModel):
@@ -336,13 +350,21 @@ async def _settings_hook(connection, store_id: int, connector_id: str, hook_name
     return hook
 
 
+def _without_secrets(settings):
+    """Never pass a secret field's value to the browser, whatever the connector's read hook returned."""
+    if not isinstance(settings, dict) or not isinstance(settings.get("fields"), list) or not isinstance(settings.get("values"), dict):
+        return settings
+    secret = {field.get("key") for field in settings["fields"] if isinstance(field, dict) and field.get("type") == "secret"}
+    return {**settings, "values": {key: value for key, value in settings["values"].items() if key not in secret}}
+
+
 @router.get("/{store_id}/connectors/{connector_id}/settings")
 async def connector_settings(store_id: int, connector_id: str, request: Request):
     await _require_admin(request)
     connection = await _connect()
     try:
         hook = await _settings_hook(connection, store_id, connector_id, "settings_read")
-        return await hook(connection)
+        return _without_secrets(await hook(connection))
     finally:
         await connection.close()
 
@@ -376,7 +398,7 @@ async def update_connector_settings(
             read = await _settings_hook(
                 connection, store_id, connector_id, "settings_read"
             )
-            return await read(connection)
+            return _without_secrets(await read(connection))
     finally:
         await connection.close()
 
