@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Price Checker — relevés Carrefour",
+  "version": "0.1.0",
+  "description": "Lit le prix d’un produit sur carrefour.fr, avec votre session et votre magasin, et le propose à votre instance Price Checker.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://www.carrefour.fr/*"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "content_scripts": [
+    { "matches": ["https://www.carrefour.fr/*"], "js": ["carrefour-parse.js", "content.js"], "run_at": "document_idle" }
+  ],
+  "action": { "default_title": "Price Checker", "default_popup": "popup.html" }
+}

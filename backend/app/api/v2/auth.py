@@ -82,6 +82,12 @@ def _password(value: SecretStr, *, min_length: int = 12) -> str:
 
 
 def _check_origin(request: Request) -> None:
+    # A request that carries its own bearer token has no ambient credentials to forge: the browser sends
+    # no token by itself, so another site cannot make it. Cookie sessions keep the check below. Such a
+    # request is authenticated by the token alone (see _current_user: a bearer header never falls back
+    # to the cookie), which lets a browser extension call the API from its own origin.
+    if request.headers.get("authorization") is not None:
+        return
     origin = request.headers.get("origin")
     if request.headers.get("sec-fetch-site") == "cross-site":
         raise HTTPException(status_code=403, detail="Origine non autorisée.")
