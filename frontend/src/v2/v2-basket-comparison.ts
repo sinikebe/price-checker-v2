@@ -26,6 +26,8 @@ export function pricePosition(cents: number, min: number, max: number): PricePos
 }
 export const emptyBasketFilters: BasketFilters = { storeIds: [], cities: [], departments: [] };
 const storeKey = (row: BasketPrice) => String(row.store_id) + ":" + row.sales_channel;
+/** Identifies a store and sales channel, as a row of the split or of the store ranking. */
+export const readingKey = storeKey;
 const fold = (value: string) => value.trim().toLocaleLowerCase("fr");
 
 // French postal codes include Corsica and overseas departments.
@@ -81,6 +83,7 @@ export function buildBasketComparison(
   lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
   filters: BasketFilters = emptyBasketFilters,
   advanced = false,
+  excluded: ReadonlySet<string> = new Set(),
 ): BasketComparison {
   const stores = new Map<string, StoreQuote>();
   const split: PriceChoice[] = [], missing: BasketItem[] = [], failed: BasketItem[] = [], truncated: BasketItem[] = [];
@@ -93,7 +96,7 @@ export function buildBasketComparison(
     const byStore = new Map<string, PriceChoice>();
     for (const product of products) for (const reading of responses.get(product.id)!.latest_by_store) {
       const cents = validPrice(reading);
-      if (cents === null || !matchesBasketFilters(reading, filters)) continue;
+      if (cents === null || !matchesBasketFilters(reading, filters) || excluded.has(storeKey(reading))) continue;
       const quantity = pricedQuantity(line.item, product, cents, advanced);
       if (!quantity) continue;
       const choice = { item: line.item, product, reading, ...quantity };
@@ -121,4 +124,29 @@ export function buildBasketComparison(
   });
   return { stores: storeList, split, splitCents: purchaseTotalCents(split, advanced),
     splitUsedCents: split.reduce((sum, choice) => sum + choice.usedCents, 0), missing, failed, truncated };
+}
+
+/** What a store of the split brings: the extra spending without it, and the articles only it prices. */
+export type StoreSaving = { extraCents: number; unpriced: number };
+
+/**
+ * For each store of the split, the split is built again without that store (same filters, same quantities),
+ * so each article takes its next lowest price elsewhere. `extraCents` compares the two totals on the articles
+ * that still have a price; `unpriced` counts those that have none without the store, which are left out of the
+ * comparison because no other price exists for them.
+ */
+export function splitSavings(
+  lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
+  filters: BasketFilters, advanced: boolean, baseline: BasketComparison,
+): Map<string, StoreSaving> {
+  const result = new Map<string, StoreSaving>();
+  for (const key of new Set(baseline.split.map(choice => storeKey(choice.reading)))) {
+    const without = buildBasketComparison(lines, responses, filters, advanced, new Set([key]));
+    const stillPriced = new Set(without.split.map(choice => choice.item));
+    const kept = baseline.split.filter(choice => stillPriced.has(choice.item));
+    const extraCents = without.splitCents - purchaseTotalCents(kept, advanced);
+    if (!Number.isFinite(extraCents)) continue;
+    result.set(key, { extraCents, unpriced: baseline.split.length - kept.length });
+  }
+  return result;
 }

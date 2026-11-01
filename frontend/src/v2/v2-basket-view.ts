@@ -1,5 +1,5 @@
 import type { BasketGroup, BasketItem, BasketProduct, BasketScope } from "./v2-basket-storage";
-import type { BasketPrice } from "./v2-basket-comparison";
+import type { BasketPrice, StoreSaving } from "./v2-basket-comparison";
 
 export type Category = { name: string; department: string; family: string; comparison_scope: string | null };
 
@@ -64,3 +64,15 @@ export const quantityText = (quantity: NonNullable<BasketItem["quantity"]>) =>
 /** Stores listed at first, and added by each "see more". */
 export const FIRST_STORES = 2;
 export const MORE_STORES = 5;
+
+/** What a store of the split brings, in words: the extra spending without it, or why it cannot be compared. */
+export function savingText(saving: StoreSaving, splitCents: number, singleStore: boolean): { kind: "saving" | "none" | "only"; text: string } {
+  if (saving.unpriced > 0) {
+    const articles = singleStore ? "ce panier" : `${saving.unpriced} article${saving.unpriced > 1 ? "s" : ""}`;
+    const rest = saving.extraCents > 0 ? ` · économie sur les autres articles : ${money(saving.extraCents)}` : "";
+    return { kind: "only", text: `Seul magasin avec un prix pour ${articles}${rest}` };
+  }
+  if (saving.extraCents <= 0) return { kind: "none", text: "Aucune économie : les mêmes prix existent ailleurs" };
+  const percent = Math.max(1, Math.round(100 * saving.extraCents / (splitCents + saving.extraCents)));
+  return { kind: "saving", text: `Économie grâce à ce magasin : ${money(saving.extraCents)} (${percent} %)` };
+}
