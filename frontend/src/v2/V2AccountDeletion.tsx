@@ -5,26 +5,18 @@ import {
   PWA_VERSIONS_KEY,
 } from "../pwa/cache-keys";
 import { V2_BASKET_EVENT } from "./v2-basket-storage";
+import { accountLocalKeys } from "./v2-account-local-keys";
 
 async function clearDeletedAccountData(userId: number): Promise<boolean> {
   let complete = true;
   try {
     const id = String(userId);
-    const prefixes = [
-      `v2:product:new:${id}`, `v2:product:edit:${id}:`,
-      `v2:product:draft:${id}:`, `v2:recipe:new:${id}`,
-      `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
-    ];
     const exact = [
       `${PWA_SYNC_ATTEMPT_KEY}:${id}`, `${PWA_VERSIONS_KEY}:${id}`,
       PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY,
       PWA_CACHE_GENERATION_KEY,
     ];
-    for (const key of Object.keys(localStorage)) {
-      if (exact.includes(key) || (key.startsWith("v2:basket:") && key.endsWith(":" + id)) || prefixes.some(prefix => key === prefix || key.startsWith(prefix))) {
-        localStorage.removeItem(key);
-      }
-    }
+    for (const key of accountLocalKeys(Object.keys(localStorage), userId, exact)) localStorage.removeItem(key);
     if (localStorage.getItem("v2:basket:active-user") === id) {
       localStorage.removeItem("v2:basket:active-user");
     }

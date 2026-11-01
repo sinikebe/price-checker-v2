@@ -1,4 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
+import {
+  REGENERATE_CONFIRMATION, activationNotice, activationWarning, disableConfirmation,
+} from "./v2-account-security-text";
 
 type MfaState = { enabled: boolean; pending: boolean; recovery_codes_remaining: number };
 type TokenRecord = {
@@ -28,14 +31,23 @@ function date(value: string): string {
   return new Date(value).toLocaleDateString("fr-FR");
 }
 
+/** A password and a second-factor code that belong to one form only, so forms never share what is typed. */
+function useCredentials() {
+  const [password, setPassword] = useState("");
+  const [factor, setFactor] = useState("");
+  return { password, factor, setPassword, setFactor, clear: () => { setPassword(""); setFactor(""); } };
+}
+
 export default function V2AccountSecurity() {
   const [mfa, setMfa] = useState<MfaState | null>(null);
   const [tokens, setTokens] = useState<TokenRecord[]>([]);
   const [setup, setSetup] = useState<SetupResult | null>(null);
   const [codes, setCodes] = useState<string[]>([]);
   const [createdToken, setCreatedToken] = useState("");
-  const [password, setPassword] = useState("");
-  const [factor, setFactor] = useState("");
+  const setupForm = useCredentials();
+  const regenerateForm = useCredentials();
+  const disableForm = useCredentials();
+  const tokenForm = useCredentials();
   const [confirmCode, setConfirmCode] = useState("");
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState<"read" | "contribute">("read");
@@ -64,32 +76,40 @@ export default function V2AccountSecurity() {
     event.preventDefault();
     void run(async () => {
       setCodes([]);
-      setSetup(await securityRequest<SetupResult>("mfa/setup", "POST", { password }));
-      setPassword("");
+      setSetup(await securityRequest<SetupResult>("mfa/setup", "POST", { password: setupForm.password }));
+      setupForm.clear();
       setNotice("Ajoutez cette clé dans votre application d’authentification, puis confirmez avec un code.");
     });
   }
   function confirm(event: FormEvent) {
     event.preventDefault();
+    const revoked = tokens.length;
     void run(async () => {
       const result = await securityRequest<RecoveryResult>("mfa/confirm", "POST", { code: confirmCode });
       setCodes(result.recovery_codes); setSetup(null); setConfirmCode("");
-      setNotice("Double authentification activée. Conservez les codes de secours hors de ce navigateur.");
+      tokenForm.clear();
+      setNotice(activationNotice(revoked));
     });
   }
   function regenerate(event: FormEvent) {
     event.preventDefault();
+    if (!window.confirm(REGENERATE_CONFIRMATION)) return;
     void run(async () => {
-      const result = await securityRequest<RecoveryResult>("mfa/recovery-codes", "POST", { password, second_factor: factor });
-      setCodes(result.recovery_codes); setPassword(""); setFactor("");
+      const result = await securityRequest<RecoveryResult>("mfa/recovery-codes", "POST", {
+        password: regenerateForm.password, second_factor: regenerateForm.factor,
+      });
+      setCodes(result.recovery_codes); regenerateForm.clear();
       setNotice("Les anciens codes de secours sont annulés.");
     });
   }
   function disable(event: FormEvent) {
     event.preventDefault();
+    if (!window.confirm(disableConfirmation(tokens.length))) return;
     void run(async () => {
-      await securityRequest<void>("mfa/disable", "POST", { password, second_factor: factor });
-      setCodes([]); setPassword(""); setFactor("");
+      await securityRequest<void>("mfa/disable", "POST", {
+        password: disableForm.password, second_factor: disableForm.factor,
+      });
+      setCodes([]); disableForm.clear(); regenerateForm.clear(); tokenForm.clear();
       setNotice("Double authentification désactivée. Les jetons API ont été révoqués.");
     });
   }
@@ -97,9 +117,10 @@ export default function V2AccountSecurity() {
     event.preventDefault();
     void run(async () => {
       const result = await securityRequest<TokenResult>("tokens", "POST", {
-        label, scope, expires_in_days: expiry, password, second_factor: mfa?.enabled ? factor : null,
+        label, scope, expires_in_days: expiry, password: tokenForm.password,
+        second_factor: mfa?.enabled ? tokenForm.factor : null,
       });
-      setCreatedToken(result.token); setPassword(""); setFactor(""); setLabel("");
+      setCreatedToken(result.token); tokenForm.clear(); setLabel("");
       setNotice("Jeton créé. Copiez-le maintenant : il ne sera plus affiché.");
     });
   }
@@ -119,21 +140,22 @@ export default function V2AccountSecurity() {
         <p className="v2-settings-note">Pour modifier cette protection, confirmez votre mot de passe et un code actuel ou de secours.</p>
         <form onSubmit={regenerate} className="v2-security-form">
           <h3>Renouveler les codes de secours</h3>
-          <label>Mot de passe<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
-          <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={factor} onChange={event => setFactor(event.target.value)} /></label>
+          <label>Mot de passe<input type="password" autoComplete="current-password" required value={regenerateForm.password} onChange={event => regenerateForm.setPassword(event.target.value)} /></label>
+          <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={regenerateForm.factor} onChange={event => regenerateForm.setFactor(event.target.value)} /></label>
           <button className="v2-button v2-button-secondary" disabled={busy}>Générer de nouveaux codes</button>
         </form>
         <form onSubmit={disable} className="v2-security-form">
           <h3>Désactiver la double authentification</h3>
           <p className="v2-settings-note">La désactivation révoque également tous vos jetons API.</p>
-          <label>Mot de passe<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
-          <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={factor} onChange={event => setFactor(event.target.value)} /></label>
+          <label>Mot de passe<input type="password" autoComplete="current-password" required value={disableForm.password} onChange={event => disableForm.setPassword(event.target.value)} /></label>
+          <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={disableForm.factor} onChange={event => disableForm.setFactor(event.target.value)} /></label>
           <button className="v2-button v2-button-secondary" disabled={busy}>Désactiver</button>
         </form>
       </> : <>
         <p><strong>Inactive</strong></p>
+        <p className="v2-settings-note">{activationWarning(tokens.length)}</p>
         {!setup ? <form onSubmit={prepare} className="v2-security-form">
-          <label>Confirmez votre mot de passe<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
+          <label>Confirmez votre mot de passe<input type="password" autoComplete="current-password" required value={setupForm.password} onChange={event => setupForm.setPassword(event.target.value)} /></label>
           <button className="v2-button v2-button-secondary" disabled={busy}>Configurer</button>
         </form> : <>
           <p>Saisissez cette clé dans une application compatible TOTP. La préparation expire au bout de 15 minutes.</p>
@@ -167,8 +189,8 @@ export default function V2AccountSecurity() {
         <label>Expiration<select value={expiry} onChange={event => setExpiry(Number(event.target.value))}>
           <option value={30}>30 jours</option><option value={90}>90 jours</option><option value={365}>1 an</option>
         </select></label>
-        <label>Mot de passe<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
-        {mfa?.enabled && <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={factor} onChange={event => setFactor(event.target.value)} /></label>}
+        <label>Mot de passe<input type="password" autoComplete="current-password" required value={tokenForm.password} onChange={event => tokenForm.setPassword(event.target.value)} /></label>
+        {mfa?.enabled && <label>Code actuel ou de secours<input type="text" autoComplete="one-time-code" required value={tokenForm.factor} onChange={event => tokenForm.setFactor(event.target.value)} /></label>}
         <button className="v2-button v2-button-primary" disabled={busy || mfa === null}>Créer un jeton</button>
       </form>
       {createdToken && <div className="v2-security-once" role="status">
