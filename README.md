@@ -72,7 +72,7 @@ python -m pytest -q backend/tests
 python3 scripts/component_versions.py check
 python3 scripts/check_component_changelog.py
 python3 -m unittest discover -s scripts/tests
-cd frontend && npm ci && npm run lint && npm run test:basket && npm run test:connector && npm run test:settings && npm run test:account && npm run test:bookmarklet && npm run build
+cd frontend && npm ci && npm run lint && npm run test:basket && npm run test:connector && npm run test:settings && npm run test:account && npm run test:nav && npm run test:bookmarklet && npm run build
 bash -n deployment/v2/install.sh deployment/v2/update.sh
 ```
 

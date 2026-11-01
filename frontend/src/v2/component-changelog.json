@@ -445,6 +445,34 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.101",
+      "components": {
+        "application": {
+          "version": "0.1.101",
+          "notes": [
+            "Nouvelle navigation : une barre d’icônes en bas de l’écran et un menu de profil en haut à droite."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.102",
+      "components": {
+        "application": {
+          "version": "0.1.102",
+          "notes": [
+            "Un champ de recherche et un bouton retour dans l’en-tête."
+          ]
+        },
+        "products": {
+          "version": "0.1.48",
+          "notes": [
+            "Les groupes dont le nom contient une barre oblique s’ouvrent de nouveau."
+          ]
+        }
+      }
     }
   ]
 }

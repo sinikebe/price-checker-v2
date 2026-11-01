@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallContext";
 import { useV2Basket } from "./V2BasketContext";
+import V2SiteHeader from "./V2SiteHeader";
 import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import "./v2-product-workspace.css";
@@ -79,39 +80,7 @@ export default function V2HomePage({ user, onLogout }: {
   return (
     <div className="v2-home">
       <a className="v2-skip" href="#v2-main">Aller au contenu</a>
-      <header className="v2-header">
-        <div className="v2-wrap v2-header-inner">
-          <Link className="v2-brand" to="/v2" aria-label="Price Checker, accueil V2">
-            <span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
-            <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span>
-          </Link>
-          <nav className="v2-nav" aria-label="Navigation principale">
-            <Link className="v2-nav-current" to="/v2" aria-current="page">Accueil</Link>
-            <Link to="/v2/produits">Produits</Link><Link to="/v2/magasins">Magasins</Link>
-            <Link to="/v2/recettes">Recettes</Link>
-            <Link to="/v2/a-completer">À compléter</Link>
-            <Link to="/v2/produits/nouveau">Ajouter un produit</Link>
-            <Link to="/v2/capture/installer">Capturer un prix <span className="v2-beta-tag">Bêta</span></Link>
-            {user && <Link to="/v2/brouillons">Mes brouillons</Link>}
-            {user?.role === "admin" && <Link to="/v2/moderation">À valider</Link>}
-            <Link to="/v2/parametres">Paramètres</Link>
-            <Link className="v2-nav-basket" to="/v2/panier">
-              Mon panier <span className="v2-count">{basketCount}</span>
-            </Link>
-            {user ? (
-              <span className="v2-account-nav">
-                <span>Bonjour, {user.username}</span>
-                <button type="button" onClick={() => { void onLogout(); }}>Déconnexion</button>
-              </span>
-            ) : (
-              <span className="v2-account-nav">
-                <Link to="/v2/connexion">Connexion</Link>
-                <Link className="v2-account-signup" to="/v2/inscription">Créer un compte</Link>
-              </span>
-            )}
-          </nav>
-        </div>
-      </header>
+      <V2SiteHeader user={user} onLogout={onLogout} />
 
       <main id="v2-main">
         <section className="v2-hero" aria-labelledby="v2-heading">
