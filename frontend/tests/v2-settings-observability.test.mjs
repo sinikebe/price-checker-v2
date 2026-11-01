@@ -30,6 +30,11 @@ test("each event reads as a sentence built from its code and numbers", () => {
     "Prix du panier récupérés : 3 articles, 12 produits (limite de taille atteinte) ; 1 crédit restant sur ce compte.");
 });
 
+test("an unlimited administrator fetch is journaled without a credit count", () => {
+  assert.equal(describeLog(item("basket.prices.fetched", { items: 3, products: 12, truncated: false, unlimited: true })),
+    "Prix du panier récupérés : 3 articles, 12 produits ; compte sans limite de crédits.");
+});
+
 test("connector events name the queue operation, only with the counts that matter", () => {
   const queue = { origin: "basket", requested: 12, queued: 2, fresh: 9, cooldown: 1, rate_limited: 0, other: 0 };
   assert.equal(describeLog(item("connector.queue.requested", queue, { source: "connector", connector: "auchan_houilles" })),

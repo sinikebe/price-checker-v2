@@ -12,6 +12,8 @@ Dans la répartition entre enseignes, chaque magasin indique ce qu’il apporte 
 
 Chaque compte reçoit **5 crédits par jour**, dans la limite de **20 crédits accordés par semaine** (du lundi au dimanche) et de **20 crédits détenus** à la fois. Le jour et la semaine sont ceux de Paris. Les crédits non utilisés sont reportés ; un jour sans visite n’en accorde pas de supplémentaires. Une requête refusée ou en erreur ne coûte rien : le crédit est dépensé dans la transaction qui lit les prix, une fois la lecture réussie.
 
+Les comptes administrateurs n’ont pas de limite de crédits, pour pouvoir tester : leurs récupérations ne sont pas décomptées (aucune ligne de solde n’est créée) et la réponse porte `unlimited: true`. Un plafond de 60 récupérations par minute et par compte administrateur reste en place contre une boucle incontrôlée ; il est refusé en `429` sans mention de crédit. Le rôle est lu dans la session côté serveur, jamais dans la requête.
+
 Sans compte, le panier reste consultable et modifiable, mais ses prix ne peuvent pas être récupérés : l’interface propose de se connecter.
 
 ## API

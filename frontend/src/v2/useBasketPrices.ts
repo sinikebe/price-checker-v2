@@ -56,7 +56,8 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
       setSnapshot(next);
       setCredits(result.credits);
       const left = result.credits.balance;
-      setState({ phase: "done", message: "Prix récupérés. " + (left ? creditLabel(left) + " restant" + (left > 1 ? "s" : "") + "." : "Plus de crédit aujourd’hui.") });
+      setState({ phase: "done", message: "Prix récupérés. " + (result.credits.unlimited ? "Crédits illimités."
+        : left ? creditLabel(left) + " restant" + (left > 1 ? "s" : "") + "." : "Plus de crédit aujourd’hui.") });
       const concrete = sent.flatMap((item, index) => "kind" in item ? [] : result.lines[index].product_ids);
       if (concrete.length) void requestBasketConnectorRefresh(concrete);
     } catch (error) {

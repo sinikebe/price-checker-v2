@@ -542,6 +542,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.108",
+      "components": {
+        "basket": {
+          "version": "0.1.27",
+          "notes": [
+            "Les administrateurs n’ont plus de limite de crédits pour récupérer les prix du panier, afin de pouvoir tester."
+          ]
+        }
+      }
     }
   ]
 }

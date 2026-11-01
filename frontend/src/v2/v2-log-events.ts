@@ -48,7 +48,7 @@ export function describeLog(item: LogItem): string {
     case "connector.reading.finished": return `Lecture du produit ${number(d.product_id)} : ${READING[text(d.outcome)] ?? text(d.outcome)}.`;
     case "connector.price.saved": return `Prix enregistré : produit ${number(d.product_id)}, magasin ${number(d.store_id)}, ${euros.format(number(d.price_cents) / 100)} (${CHANNEL[text(d.channel)] ?? text(d.channel)}).`;
     case "connector.worker.failed": return `Erreur dans le connecteur (${text(d.error)}).`;
-    case "basket.prices.fetched": return `Prix du panier récupérés : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit", "produits")}${d.truncated ? " (limite de taille atteinte)" : ""} ; ${plural(number(d.credits_left), "crédit restant", "crédits restants")} sur ce compte.`;
+    case "basket.prices.fetched": return `Prix du panier récupérés : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit", "produits")}${d.truncated ? " (limite de taille atteinte)" : ""} ; ${d.unlimited ? "compte sans limite de crédits" : `${plural(number(d.credits_left), "crédit restant", "crédits restants")} sur ce compte`}.`;
     case "basket.prices.refused": return "Récupération des prix du panier refusée : plus de crédit.";
     default: return `${item.event} ${Object.entries(d).map(([key, value]) => `${key}=${String(value)}`).join(" ")}`.trim();
   }
