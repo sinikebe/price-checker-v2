@@ -246,6 +246,9 @@ echo "Updated V2 ($target_branch): $old_sha -> $new_sha"
 if [[ -d /run/systemd/system ]]; then
   "$repo_dir/deployment/v2/install-host-health.sh" || echo "Host monitoring installation deferred." >&2
 fi
+if ! python3 "$repo_dir/deployment/v2/clean_server_cache.py" "$PRICE_CHECKER_V2_DATA_DIR" --trigger update; then
+  echo "Server cache cleaning deferred; run it from the administrator settings." >&2
+fi
 if ! python3 "$repo_dir/deployment/v2/prune_local_backups.py" "${PRICE_CHECKER_V2_DATA_DIR}/backups" "$backup"; then
   echo "Local backup pruning deferred; inspect the backup directory." >&2
 fi
