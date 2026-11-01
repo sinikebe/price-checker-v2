@@ -609,6 +609,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.114",
+      "components": {
+        "application": {
+          "version": "0.1.114",
+          "notes": [
+            "Les réglages d’un connecteur peuvent contenir une clé secrète : saisie une fois, jamais réaffichée, laissée vide pour la conserver."
+          ]
+        }
+      }
     }
   ]
 }
