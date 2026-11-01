@@ -71,9 +71,11 @@ async def lifespan(_: FastAPI):
                asyncio.create_task(connector_worker()),
                asyncio.create_task(v2_observability.worker(_connect, _ensure_state_dir))]
     await v2_observability.announce_start(_connect, package_version("price-checker-v2-backend"))
+    capture = v2_observability.install_connector_capture(_connect)
     try:
         yield
     finally:
+        v2_observability.remove_connector_capture(capture)
         for worker in workers:
             worker.cancel()
         for worker in workers:

@@ -38,6 +38,8 @@ SAMPLES = {
     "connector.queue.dropped": ({"product_id": 1, "reason": "fresh_elsewhere"}, "auchan_houilles"),
     "connector.reading.finished": ({"product_id": 1, "outcome": "complete"}, "auchan_houilles"),
     "connector.price.saved": ({"product_id": 1, "store_id": 2, "price_cents": 259, "channel": "drive"}, "auchan_houilles"),
+    "connector.failure": ({"error": "ReadTimeout", "http_status": 403, "product_id": 7}, "auchan_houilles"),
+    "connector.disabled": ({}, "auchan_houilles"),
     "connector.worker.failed": ({"error": "TimeoutError"}, "auchan_houilles"),
     "basket.prices.fetched": ({"items": 1, "products": 2, "truncated": False, "credits_left": 4}, None),
     "basket.prices.refused": ({"reason": "no_credits"}, None),
@@ -401,3 +403,104 @@ async def test_connector_queue_requests_are_journaled_by_every_route(db, config,
     added = await rows(db, "event='connector.queue.added'")
     assert sorted(json.loads(row["data"])["origin"] for row in added) == ["basket", "page", "single"]
     assert "10.9.9.9" not in json.dumps([str(row) for row in await rows(db)]), "no address in the journal"
+
+
+SHA = "a" * 40
+
+
+async def captured(config, logger_name, level, message, *args, exc=None):
+    """Log through a connector's logger with the capture installed; return the journal rows it produced."""
+    import logging
+
+    async def connect():
+        return await connect_v2(config)
+    handler = observability.install_connector_capture(connect)
+    try:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.DEBUG)
+        try:
+            if exc is not None:
+                raise exc
+        except Exception:
+            logger.log(level, message, *args, exc_info=exc is not None)
+        else:
+            logger.log(level, message, *args)
+        if handler.tasks:
+            await __import__("asyncio").gather(*list(handler.tasks))
+    finally:
+        observability.remove_connector_capture(handler)
+    connection = await connect()
+    try:
+        return [dict(row) for row in await connection.fetch(
+            "SELECT level, event, connector, data FROM v2_logs WHERE event IN ('connector.failure','connector.disabled') ORDER BY id")]
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_a_connector_exception_is_journaled_by_its_class_and_product_never_by_its_text(config):
+    import logging
+    logbook._throttle.clear()
+    name = f"price_checker_connector_1_auchan_houilles_{SHA}"
+    rows = await captured(config, name, logging.ERROR, "Auchan Houilles reading failed for product %s", 246,
+                          exc=TimeoutError("jean.dupont@example.org opened https://example.org/secret?token=abc"))
+    assert len(rows) == 1
+    assert (rows[0]["level"], rows[0]["connector"]) == (40, "auchan_houilles")
+    assert json.loads(rows[0]["data"]) == {"error": "TimeoutError", "product_id": 246}
+    assert "example" not in json.dumps(rows[0]) and "token" not in json.dumps(rows[0]), "the message text is never read"
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_a_refused_request_is_journaled_with_its_http_status(config):
+    import logging
+    logbook._throttle.clear()
+    name = f"price_checker_connector_2_chronodrive_cormeilles_{SHA}"
+    rows = await captured(config, name, logging.WARNING, "Chronodrive Cormeilles request refused: HTTP %s", 403)
+    assert [(row["level"], row["connector"], json.loads(row["data"])) for row in rows] == [
+        (30, "chronodrive_cormeilles", {"http_status": 403})]
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_a_connector_that_disables_itself_is_journaled(config):
+    import logging
+    logbook._throttle.clear()
+    name = f"price_checker_connector_2_chronodrive_cormeilles_{SHA}"
+    rows = await captured(config, name, logging.WARNING, "Chronodrive Cormeilles connector disabled; pending queue retained")
+    assert [(row["event"], row["level"], json.loads(row["data"])) for row in rows] == [("connector.disabled", 30, {})]
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_other_loggers_and_ordinary_messages_are_not_journaled(config):
+    import logging
+    logbook._throttle.clear()
+    assert await captured(config, "app.api.v2.connector_stores", logging.ERROR, "Connector hook failed", exc=RuntimeError("x")) == []
+    assert await captured(config, "price_checker_connector_1_Jean Dupont_" + SHA, logging.ERROR, "failed", exc=RuntimeError("x")) == []
+    name = f"price_checker_connector_1_auchan_houilles_{SHA}"
+    assert await captured(config, name, logging.WARNING, "Auchan Houilles page rejected product %s: %s", 5, "text") == []
+    assert await captured(config, name, logging.INFO, "Auchan Houilles reading failed for product %s", 5) == []
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_a_repeating_failure_is_journaled_once_in_a_row(config):
+    import logging
+    logbook._throttle.clear()
+    name = f"price_checker_connector_1_auchan_houilles_{SHA}"
+    await captured(config, name, logging.ERROR, "reading failed for product %s", 1, exc=TimeoutError())
+    rows = await captured(config, name, logging.ERROR, "reading failed for product %s", 1, exc=TimeoutError())
+    assert len(rows) == 1
+    logbook._throttle.clear()
+    rows = await captured(config, name, logging.ERROR, "reading failed for product %s", 1, exc=ValueError())
+    assert [json.loads(row["data"])["error"] for row in rows] == ["TimeoutError", "ValueError"], "another class is another failure"
+
+
+def test_the_capture_cannot_raise_from_a_log_call_without_an_event_loop():
+    import logging
+    handler = observability.ConnectorFailureCapture(lambda: None)
+    record = logging.LogRecord(f"price_checker_connector_1_auchan_houilles_{SHA}", logging.ERROR, __file__, 1, "reading failed for product %s", (3,), None)
+    handler.emit(record)  # no running loop: nothing to write, and no exception
+    assert handler.tasks == set()
