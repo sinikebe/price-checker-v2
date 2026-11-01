@@ -1,5 +1,5 @@
 import type { BasketGroup, BasketItem, BasketProduct, BasketScope } from "./v2-basket-storage";
-import type { BasketPrice, StoreSaving } from "./v2-basket-comparison";
+import type { BasketPrice, CompareMode, StoreSaving, UnitInfo } from "./v2-basket-comparison";
 
 export type Category = { name: string; department: string; family: string; comparison_scope: string | null };
 
@@ -65,14 +65,34 @@ export const quantityText = (quantity: NonNullable<BasketItem["quantity"]>) =>
 export const FIRST_STORES = 2;
 export const MORE_STORES = 5;
 
-/** What a store of the split brings, in words: the extra spending without it, or why it cannot be compared. */
-export function savingText(saving: StoreSaving, splitCents: number, singleStore: boolean): { kind: "saving" | "none" | "only"; text: string } {
+const amount = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+/** "2,40 € / kg": the price per kilogram, litre or piece of a choice. */
+export function unitPriceText(unit: UnitInfo): string {
+  const scale = unit.unit === "piece" ? 1 : 1000;
+  return `${money(unit.perUnitCents * scale)} / ${unit.unit === "g" ? "kg" : unit.unit === "ml" ? "L" : "pièce"}`;
+}
+/** What stays unused once the need is covered, or null when it is negligible. */
+export function surplusText(unit: UnitInfo): string | null {
+  const { surplus } = unit;
+  if (unit.unit === "piece") return surplus >= 0.5 ? `Reste après vos besoins : ${amount.format(surplus)} pièce${surplus >= 1.5 ? "s" : ""}` : null;
+  if (surplus < 1) return null;
+  const big = surplus >= 1000;
+  return `Reste après vos besoins : ${amount.format(big ? surplus / 1000 : surplus)} ${unit.unit === "g" ? (big ? "kg" : "g") : (big ? "L" : "ml")}`;
+}
+
+/**
+ * What a store of the split brings, in words: the extra spending without it (the extra value of the needed
+ * amounts, when comparing per unit), or why it cannot be compared. `totalCents` is the total on that basis.
+ */
+export function savingText(saving: StoreSaving, totalCents: number, singleStore: boolean, mode: CompareMode = "price"): { kind: "saving" | "none" | "only"; text: string } {
   if (saving.unpriced > 0) {
     const articles = singleStore ? "ce panier" : `${saving.unpriced} article${saving.unpriced > 1 ? "s" : ""}`;
     const rest = saving.extraCents > 0 ? ` · économie sur les autres articles : ${money(saving.extraCents)}` : "";
     return { kind: "only", text: `Seul magasin avec un prix pour ${articles}${rest}` };
   }
-  if (saving.extraCents <= 0) return { kind: "none", text: "Aucune économie : les mêmes prix existent ailleurs" };
-  const percent = Math.max(1, Math.round(100 * saving.extraCents / (splitCents + saving.extraCents)));
-  return { kind: "saving", text: `Économie grâce à ce magasin : ${money(saving.extraCents)} (${percent} %)` };
+  if (saving.extraCents <= 0) return { kind: "none", text: mode === "unit" ? "Aucune économie : le même prix à l’unité existe ailleurs" : "Aucune économie : les mêmes prix existent ailleurs" };
+  const percent = Math.max(1, Math.round(100 * saving.extraCents / (totalCents + saving.extraCents)));
+  return { kind: "saving", text: mode === "unit"
+    ? `Économie à l’unité : ${money(saving.extraCents)} sur la quantité utile (${percent} %)`
+    : `Économie grâce à ce magasin : ${money(saving.extraCents)} (${percent} %)` };
 }

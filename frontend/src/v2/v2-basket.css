@@ -182,3 +182,11 @@ html[data-v2-theme="dark"] .v2-basket-split-stores, html[data-v2-theme="dark"] .
 html[data-v2-theme="dark"] .v2-basket-saving { background: #2d4a37; color: #cdf3c0; }
 html[data-v2-theme="dark"] .v2-basket-saving[data-kind="none"] { background: #2a3731; color: #b8c7bd; }
 html[data-v2-theme="dark"] .v2-basket-saving[data-kind="only"] { background: #47351f; color: #ffe5ac; }
+
+/* Comparing per unit: the unit price and what stays unused. */
+.v2-basket-reading small.v2-basket-unit-price { color: #1b5a3a; font-weight: 650; }
+.v2-basket-reading small.v2-basket-surplus { color: #8b5400; }
+.v2-basket-unit-note { margin: 12px 0 0; padding: 10px 13px; border-radius: 9px; background: #fff2da; color: #6b4600; font-size: .84rem; }
+html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-unit-price { color: #a9e6b7; }
+html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-surplus { color: #ffd18a; }
+html[data-v2-theme="dark"] .v2-basket-unit-note { background: #47351f; color: #ffe5ac; }

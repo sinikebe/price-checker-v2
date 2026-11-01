@@ -14,7 +14,7 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters } from "./v2-basket-comparison";
+import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters, type CompareMode } from "./v2-basket-comparison";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
 import { costNote, creditLabel, nextGrantLabel, outOfCredits } from "./v2-basket-credits-api";
@@ -26,6 +26,8 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const { items, remove, clear, setEnabled, setQuantity, replace, replaceAll, merge } = useV2Basket();
   const [advanced, setAdvanced] = useState(() => { try { return localStorage.getItem("v2:basket:advanced") === "1"; } catch { return false; } });
   const toggleAdvanced = (value: boolean) => { setAdvanced(value); try { localStorage.setItem("v2:basket:advanced", value ? "1" : "0"); } catch { /* current tab still works */ } };
+  const [mode, setMode] = useState<CompareMode>(() => { try { return localStorage.getItem("v2:basket:compare") === "unit" ? "unit" : "price"; } catch { return "price"; } });
+  const changeMode = (value: CompareMode) => { setMode(value); try { localStorage.setItem("v2:basket:compare", value); } catch { /* current tab still works */ } };
   const location = useLocation();
   const navigate = useNavigate();
   const sharedLink = location.hash.startsWith("#panier=");
@@ -92,9 +94,9 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
 
   const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);
   const comparison = useMemo(() => view.lines.length
-    ? buildBasketComparison(view.lines, view.responses, filters, advanced) : null, [view, filters, advanced]);
-  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison) : new Map(),
-    [comparison, view, filters, advanced]);
+    ? buildBasketComparison(view.lines, view.responses, filters, advanced, new Set(), mode) : null, [view, filters, advanced, mode]);
+  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison, mode) : new Map(),
+    [comparison, view, filters, advanced, mode]);
   const lineItems = view.lines.map(line => line.item);
   const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
   const storeNames = new Map<number, string>();
@@ -123,7 +125,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       try { writeBasketDefaultStores([]); setDefaultStores([]); setDefaultStoreError(false); } catch { setDefaultStoreError(true); }
     },
   };
-  const listKey = (snapshot?.fetchedAt ?? "") + JSON.stringify(filters) + (advanced ? "A" : "S") + activeItems.map(basketItemKey).join();
+  const listKey = (snapshot?.fetchedAt ?? "") + JSON.stringify(filters) + (advanced ? "A" : "S") + mode + activeItems.map(basketItemKey).join();
   const shownCount = shown.key === listKey ? shown.count : FIRST_STORES;
   const fetching = state.phase === "loading";
   const noCredit = outOfCredits(credits);
@@ -148,7 +150,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       {importNotice && <p role="status">{importNotice}</p>}
       {items.length ? <>
         <V2BasketToolbar panel={panel} onPanel={setPanel} itemCount={items.length} activeCount={activeItems.length}
-          advanced={advanced} onAdvanced={toggleAdvanced} filterCount={filterCount} filtersAvailable={!!comparison}
+          advanced={advanced} onAdvanced={toggleAdvanced} unitMode={mode === "unit"} onUnitMode={value => changeMode(value ? "unit" : "price")} filterCount={filterCount} filtersAvailable={!!comparison}
           signedIn={!!user} credits={credits} hasPrices={!!snapshot} fetching={fetching} onFetch={() => void fetchPrices()} />
         <div className="v2-basket-status">
           {fetching && <p role="status">Récupération des prix…</p>}
@@ -172,10 +174,10 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                 <h2>Comparer les prix</h2>
                 <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit{credits ? ` (${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
               </> : <>
-                <div className="v2-basket-comparison-heading"><div><h2>{advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
+                <div className="v2-basket-comparison-heading"><div><h2>{mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité" : advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits)}.</p>}
-                {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} limited={view.limited.length}
+                {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} mode={mode} limited={view.limited.length}
                   shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} />}
               </>}
             </section>}

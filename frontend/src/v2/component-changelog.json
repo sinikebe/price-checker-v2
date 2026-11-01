@@ -564,6 +564,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.110",
+      "components": {
+        "basket": {
+          "version": "0.1.28",
+          "notes": [
+            "Nouvelle option « Prix à l’unité » du panier : comparer au meilleur prix au kilo, au litre ou à la pièce, avec le reste après vos besoins."
+          ]
+        }
+      }
     }
   ]
 }

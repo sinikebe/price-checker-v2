@@ -21,3 +21,4 @@ export const QuantityIcon = () => <Icon><path d="M12 4v16M6 20h12" /><path d="M5
 export const RefreshIcon = () => <Icon><path d="M19.5 12a7.5 7.5 0 0 1-13.1 5" /><path d="M4.5 12a7.5 7.5 0 0 1 13.1-5" /><path d="M17.8 3.5v3.8h-3.8M6.2 20.5v-3.8h3.8" /></Icon>;
 export const CreditIcon = () => <Icon><circle cx="12" cy="12" r="8.2" /><path d="M14.8 9.3c-.6-.8-1.5-1.2-2.7-1.2-1.7 0-2.8 1.3-2.8 3.9s1.1 3.9 2.8 3.9c1.2 0 2.1-.4 2.7-1.2" /></Icon>;
 export const ShareIcon = () => <Icon><circle cx="18" cy="5.5" r="2.4" /><circle cx="6" cy="12" r="2.4" /><circle cx="18" cy="18.5" r="2.4" /><path d="m8.1 10.8 7.8-4.1M8.1 13.2l7.8 4.1" /></Icon>;
+export const UnitPriceIcon = () => <Icon><path d="M3.5 11.8V4.5h7.3l9 9-7.3 7.3Z" /><circle cx="7.6" cy="8.6" r="1.2" /><path d="M16.5 14.5 12.8 18.2" /></Icon>;
