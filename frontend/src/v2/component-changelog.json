@@ -430,7 +430,7 @@
         "application": {
           "version": "0.1.99",
           "notes": [
-            "Les paramètres sont regroupés en onglets : Général, Compte, Sécurité et, pour l’administrateur, Connecteurs et Serveur."
+            "Les paramètres sont organisés en onglets."
           ]
         }
       }
@@ -441,9 +441,7 @@
         "accounts": {
           "version": "0.1.26",
           "notes": [
-            "L’activation de la double authentification annonce qu’elle déconnecte vos autres appareils et révoque vos jetons API.",
-            "Désactiver la double authentification ou renouveler les codes de secours demande désormais une confirmation.",
-            "Supprimer un compte n’efface plus les brouillons enregistrés dans ce navigateur par d’autres comptes."
+            "La double authentification prévient de ce que son activation entraîne et demande confirmation avant d’être désactivée."
           ]
         }
       }

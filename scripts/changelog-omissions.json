@@ -433,12 +433,12 @@
     {
       "component": "application",
       "version": "0.1.100",
-      "reason": "Les erreurs d’initialisation d’un connecteur s’affichent à l’administrateur, et une installation reprend un connecteur resté en pause."
+      "reason": "Ajustements de l’installation des connecteurs."
     },
     {
       "component": "pwa",
       "version": "0.1.20",
-      "reason": "Le nettoyage local à la suppression d’un compte cible ses clés avec précision, annoncé dans le composant Comptes."
+      "reason": "Ajustement du nettoyage local d’un compte supprimé."
     }
   ]
 }
