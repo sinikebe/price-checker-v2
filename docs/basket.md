@@ -4,6 +4,17 @@ Le panier reste sur l’appareil. Les prix, eux, sont récupérés **à la deman
 
 Le dernier relevé est conservé dans le navigateur (par compte) ; la page s’ouvre dessus sans rien demander. Filtrer les magasins, exclure un article, activer le panier avancé ou changer les quantités recalcule le résultat sur l’appareil, sans crédit. Un article ajouté ou remplacé depuis le relevé est signalé comme non inclus jusqu’à la prochaine actualisation.
 
+## Critère de comparaison : prix ou prix à l’unité
+
+Le bouton **Prix à l’unité** de la barre d’outils change le critère de choix, sans nouvelle récupération ni crédit. Il est mémorisé dans le navigateur.
+
+- **Prix** (par défaut) : pour chaque article, le produit qui coûte le moins pour la quantité nécessaire, en paquets entiers. C’est le bon choix pour faire ses recettes avec les quantités exactes en payant le moins possible.
+- **Prix à l’unité** : pour chaque article, le produit au meilleur prix au kilo, au litre ou à la pièce, même dans un format plus grand que le besoin. C’est le bon choix pour économiser sur la durée, avec l’inconvénient d’acheter parfois plus que nécessaire (5 kg pour 500 g).
+
+En prix à l’unité, le total affiché reste ce qu’il faut payer en caisse. Il est accompagné de la **valeur de la quantité utile** (ce que coûtent vos besoins à ce prix à l’unité), du prix à l’unité de chaque choix et du reste qui ne sert pas (« Reste après vos besoins : 4,5 kg »). Les magasins sont classés selon la valeur de la quantité utile, et l’économie de chaque magasin est mesurée sur cette valeur.
+
+Règles : seuls sont comparés les produits dont la taille est connue et exprimée dans la même unité (grammes, millilitres ou pièces) ; c’est l’unité de la quantité demandée, sinon la plus courante parmi les candidats. Sans quantité demandée, le besoin est un plus petit paquet du groupe (multiplié par le nombre de paquets demandé). Un article dont aucun produit n’a de taille connue reste comparé au prix du paquet. Pour un produit unique, les deux critères donnent le même résultat.
+
 ## Économie par magasin
 
 Dans la répartition entre enseignes, chaque magasin indique ce qu’il apporte : le panier est recalculé sans lui (mêmes filtres, mêmes quantités), chaque article prenant alors le prochain prix le plus bas dans les autres magasins comparés. L’écart entre les deux totaux est l’économie, aussi donnée en pourcentage du total sans ce magasin. Cela aide à décider si un détour par une enseigne en vaut la peine. Un magasin est identifié par son point de vente et son canal (magasin, drive, livraison). Si un article n’a de prix que dans ce magasin, la ligne l’indique au lieu d’une économie, et cet article est laissé hors de la comparaison. Le calcul est local, sans crédit, et suit les filtres et le panier avancé.

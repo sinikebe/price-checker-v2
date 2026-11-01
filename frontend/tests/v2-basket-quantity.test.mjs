@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-quantity.ts", import.me
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { combineQuantities, pricedQuantity } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { combineQuantities, pricedQuantity, productSize, microUnits } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 test("recipe quantities add across compatible units without including a default package", () => {
   assert.deepEqual(combineQuantities(undefined, { amount: "20", unit: "g" }), { amount: "20", unit: "g" });
@@ -28,4 +28,13 @@ test("package counts add exactly, so the merged quantity stays valid", () => {
   assert.deepEqual(combineQuantities({ amount: "0.1", unit: "package" }, { amount: "0.2", unit: "package" }), { amount: "0.3", unit: "package" });
   assert.deepEqual(combineQuantities({ amount: "2", unit: "package" }, { amount: "1.5", unit: "package" }), { amount: "3.5", unit: "package" });
   assert.equal(combineQuantities({ amount: "999999", unit: "package" }, { amount: "1", unit: "package" }), null);
+});
+
+test("a pack size is read from the catalogue only when it is a positive amount in g, ml or pieces", () => {
+  assert.deepEqual(productSize({ data: { quantity_amount: "250", quantity_unit: "g" } }), { amount: 250, unit: "g" });
+  assert.deepEqual(productSize({ data: { quantity_amount: "0.5", quantity_unit: "ml" } }), { amount: 0.5, unit: "ml" });
+  for (const data of [{}, { quantity_amount: "0", quantity_unit: "g" }, { quantity_amount: "-3", quantity_unit: "g" },
+    { quantity_amount: "12", quantity_unit: "kg" }, { quantity_amount: "x", quantity_unit: "g" }, { quantity_amount: null, quantity_unit: "g" }])
+    assert.equal(productSize({ data }), null, JSON.stringify(data));
+  assert.equal(microUnits(0.5), 500000n);
 });
