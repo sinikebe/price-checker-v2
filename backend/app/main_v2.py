@@ -27,6 +27,7 @@ from app.api.v2.prices import router as prices_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
+from app.api.v2.server_cache import router as server_cache_router
 from app.api.v2.setup import router as setup_router
 from app.api.v2.stores import router as stores_router
 from app.api.v2.sync import router as sync_router
@@ -116,6 +117,7 @@ ROUTERS = (
     sync_router,
     updates_router,
     host_health_router,
+    server_cache_router,
 )
 
 # These operations use _current_user (directly or through their user helper)

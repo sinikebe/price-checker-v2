@@ -8,12 +8,16 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import clean_server_cache  # noqa: E402
+import state_files  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ["PRICE_CHECKER_V2_DATA_DIR"])
@@ -26,24 +30,25 @@ VERSION_FILES = {
 
 
 def atomic_json(path: Path, value: dict) -> None:
-    descriptor, name = tempfile.mkstemp(prefix=".scheduled-update-", dir=path.parent)
+    # The state directory is writable by the backend container: never follow a link there.
+    state_files.write_json(path, value)
+
+
+@contextmanager
+def locked(path: Path):
+    descriptor = state_files.open_lock(path)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as target:
-            json.dump(value, target)
-            target.flush()
-            os.fsync(target.fileno())
-        os.chmod(name, 0o644)
-        os.replace(name, path)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
     finally:
-        Path(name).unlink(missing_ok=True)
+        os.close(descriptor)
 
 
 def schedule_at(now: datetime) -> tuple[dict, datetime] | None:
-    try:
-        schedule = json.loads((STATE / "update-schedule.json").read_text(encoding="utf-8"))
-    except FileNotFoundError:
+    schedule = state_files.read_json(STATE / "update-schedule.json")
+    if schedule is None:
         return None
-    if not isinstance(schedule, dict) or type(schedule.get("enabled")) is not bool:
+    if type(schedule.get("enabled")) is not bool:
         raise ValueError("Invalid update schedule")
     if not schedule["enabled"]:
         return None
@@ -102,13 +107,16 @@ def main() -> int:
     # This lock serializes timer invocations, including repeated DST minutes.
     with (DATA / "scheduled-update.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            clean_server_cache.maintenance(STATE, DATA)
+        except Exception as exc:  # cleaning is optional: it must never stop an update
+            print(f"Server cache maintenance failed: {exc}", file=sys.stderr)
         request_path = STATE / "update-manual-request.json"
         active_path = STATE / "update-manual-active.json"
         manual = False
         if active_path.exists() or request_path.exists():
             # The API creates this lock before publishing a request.
-            with (STATE / "update-manual.lock").open("a+b") as request_lock:
-                fcntl.flock(request_lock, fcntl.LOCK_EX)
+            with locked(STATE / "update-manual.lock"):
                 if active_path.exists():
                     # A previous worker was interrupted. Do not silently retry an
                     # operation whose completion cannot be established.
@@ -165,8 +173,7 @@ def main() -> int:
             print(f"Server update failed: {exc}", file=sys.stderr)
             code = 1
         if manual:
-            with (STATE / "update-manual.lock").open("a+b") as request_lock:
-                fcntl.flock(request_lock, fcntl.LOCK_EX)
+            with locked(STATE / "update-manual.lock"):
                 atomic_json(STATE / "update-last-run.json", outcome)
                 active_path.unlink()
         else:

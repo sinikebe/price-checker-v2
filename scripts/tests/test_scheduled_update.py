@@ -79,13 +79,29 @@ class ScheduledUpdateTests(unittest.TestCase):
                 patch.object(scheduler, "git", side_effect=["old", "", "new"]) as git, \
                 patch.object(scheduler, "ci_sha", return_value="new"), \
                 patch.object(scheduler, "ci_succeeded", return_value=False), \
+                patch.object(scheduler.clean_server_cache, "maintenance") as maintenance, \
                 patch.object(scheduler.subprocess, "run") as command:
             command.return_value.returncode = 0
             self.assertEqual(scheduler.main(), 1)
             self.assertEqual(command.call_count, 1)  # merge-base only; updater not run
             self.assertIn(("fetch", "origin", "dev"), [item.args for item in git.call_args_list])
+            maintenance.assert_called_once_with(scheduler.STATE, scheduler.DATA)
         status = json.loads((scheduler.STATE / "update-last-run.json").read_text())
         self.assertEqual(status["result"], "failed")
+
+    def test_cache_maintenance_never_stops_the_update_path(self):
+        (scheduler.STATE / "update-scheduler-installed").touch()
+        with patch.object(scheduler.os, "geteuid", return_value=0), \
+                patch.dict(scheduler.os.environ, {"PRICE_CHECKER_V2_ENV": "dev", "PRICE_CHECKER_V2_GIT_BRANCH": "dev"}), \
+                patch.object(scheduler.clean_server_cache, "maintenance", side_effect=RuntimeError("docker is down")):
+            self.assertEqual(scheduler.main(), 0)  # no schedule: nothing due, and no failure
+
+    def test_state_locks_are_not_followed_through_links(self):
+        os.symlink(self.temporary.name + "/created-by-mistake", scheduler.STATE / "update-manual.lock")
+        with self.assertRaises(ValueError):
+            with scheduler.locked(scheduler.STATE / "update-manual.lock"):
+                pass  # pragma: no cover
+        self.assertFalse(Path(self.temporary.name, "created-by-mistake").exists())
 
 
 if __name__ == "__main__":

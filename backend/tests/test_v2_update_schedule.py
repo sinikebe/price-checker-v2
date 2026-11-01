@@ -93,6 +93,7 @@ def test_manual_runner_uses_ci_gate_and_reports_result(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "STATE", state)
     monkeypatch.setattr(runner, "REPO", tmp_path / "source")
     monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(runner.clean_server_cache, "maintenance", lambda *_: None)  # tested on its own
     monkeypatch.setenv("PRICE_CHECKER_V2_ENV", "dev")
     monkeypatch.setenv("PRICE_CHECKER_V2_GIT_BRANCH", "dev")
 
