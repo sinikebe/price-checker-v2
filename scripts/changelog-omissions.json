@@ -559,6 +559,21 @@
       "component": "application",
       "version": "0.1.110",
       "reason": "Icône du prix à l’unité."
+    },
+    {
+      "component": "database",
+      "version": "0.1.38",
+      "reason": "Tables et fonctions des produits retirés de la gamme."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.24",
+      "reason": "Prix du panier mis en cache avec le compte des prix ignorés."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.25",
+      "reason": "Page des prix : mention des produits retirés de la gamme."
     }
   ]
 }

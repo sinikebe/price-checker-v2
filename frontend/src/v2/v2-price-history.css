@@ -16,6 +16,8 @@
 .v2-price-store-invalid { text-decoration: line-through; opacity: .75; }
 .v2-price-store-best { font-size: .76rem; font-weight: 700; color: #285586; }
 .v2-price-store-unavailable { font-size: .78rem; font-weight: 700; color: #9b3640; }
+.v2-price-store-withdrawn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .8rem; color: var(--v2-muted, #617467); }
+.v2-price-store-withdrawn .v2-button, .v2-price-note .v2-button { min-height: 0; padding: 3px 10px; font-size: .78rem; }
 .v2-price-store-date { font-size: .84rem; color: var(--v2-muted, #617467); }
 .v2-price-freshness { justify-self: start; padding: 3px 8px; border-radius: 999px; font-size: .73rem; font-weight: 700; }
 .v2-price-freshness[data-age="recent"] { background: #d8f1e3; color: #175f3d; }

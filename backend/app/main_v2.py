@@ -15,6 +15,7 @@ from app.api.v2.account_data import router as account_data_router
 from app.api.v2.account_security import router as account_security_router
 from app.api.v2.auth import _connect, purge_ephemeral_auth_data
 from app.api.v2.auth import router as auth_router
+from app.api.v2.availability import router as availability_router
 from app.api.v2.basket import router as basket_router
 from app.api.v2.catalogue import router as catalogue_router
 from app.api.v2.connector_stores import router as connector_stores_router, connector_worker
@@ -121,6 +122,7 @@ ROUTERS = (
     products_router,
     catalogue_router,
     basket_router,
+    availability_router,
     connector_stores_router,
     prices_router,
     stores_router,
