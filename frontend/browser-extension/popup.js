@@ -64,7 +64,7 @@
     var box = $("result"); box.textContent = "";
     var summary = { status: answer.status, contentType: answer.contentType, bytes: answer.bytes, challenge: answer.challenge,
       topKeys: answer.parsed && answer.parsed.topKeys, looked: answer.parsed && answer.parsed.looked,
-      matches: (answer.parsed && answer.parsed.matches || []).map(function (m) { return { title: m.title, prices: m.prices, hints: m.hints, url: m.url }; }) };
+      page: answer.page, matches: (answer.parsed && answer.parsed.matches || []).map(function (m) { return { title: m.title, prices: m.prices, hints: m.hints, url: m.url, store: m.store }; }) };
     $("diagText").textContent = JSON.stringify(summary, null, 1); $("diag").hidden = false;
     if (answer.challenge) return say("Carrefour demande une vérification : ouvrez la page dans l’onglet, validez-la, puis réessayez. Rien n’est contourné.", "bad");
     if (!answer.ok) return say(answer.error ? "Échec : " + answer.error : "Carrefour a répondu " + answer.status + ".", "bad");
@@ -74,6 +74,11 @@
     matches.forEach(function (match, index) {
       var card = document.createElement("div"); card.className = "match";
       var title = document.createElement("b"); title.textContent = match.title || "(sans titre)"; card.appendChild(title);
+      if (match.store || match.seller) {
+        var where = document.createElement("div"); where.className = "muted";
+        where.textContent = "Magasin sur la page : " + [match.store, match.seller].filter(Boolean).join(" · ") + (match.available === false ? " · indisponible" : "");
+        card.appendChild(where);
+      }
       if (!match.prices.length) { var none = document.createElement("div"); none.className = "bad"; none.textContent = "Aucun prix reconnu."; card.appendChild(none); }
       match.prices.forEach(function (price, p) {
         var label = document.createElement("label"); var radio = document.createElement("input");
@@ -116,7 +121,7 @@
       var created = await api("/api/v2/prices/products/" + product.id + "/capture-drafts", { method: "POST", body: JSON.stringify({
         ean: match.ean, source_url: match.url || "https://www.carrefour.fr/s?q=" + match.ean,
         price: { retailer: store.retailer, store_name: store.name, city: store.city, postal_code: store.postal_code, sales_channel: "drive",
-          price: price.value, observed_at: new Date().toISOString(), note: "Relevé par l’extension navigateur", store_id: store.id } }) });
+          price: price.value, observed_at: new Date().toISOString(), note: "Relevé par l’extension navigateur", store_id: store.id, captured_store_name: match.store || null } }) });
       say("Proposition n° " + created.id + " créée : à valider dans l’application.", "good");
     } catch (error) {
       say(error.status === 404 ? "Ce code-barres est inconnu du catalogue." : error.message, "bad");

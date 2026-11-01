@@ -112,7 +112,68 @@
     return result;
   }
 
-  var api = { parseSearch: parseSearch, sameEan: sameEan, money: money };
+  /** The address of a product page: /p/<slug>-<ean>. The search gives the slug without the EAN. */
+  function productPageUrl(url, ean) {
+    if (typeof url !== "string" || !digits(ean)) return null;
+    var match = url.match(/^https:\/\/www\.carrefour\.fr(\/p\/[a-z0-9-]+)$/);
+    if (!match) return null;
+    var tail = match[1].match(/-(\d{8,14})$/);
+    return "https://www.carrefour.fr" + (tail && sameEan(tail[1], ean) ? match[1] : match[1] + "-" + digits(ean));
+  }
+
+  function productNodes(value, out, depth) {
+    if (!value || typeof value !== "object" || depth > 6 || out.length > 20) return;
+    if (Array.isArray(value)) { value.forEach(function (item) { productNodes(item, out, depth + 1); }); return; }
+    if (value["@type"] === "Product" || (Array.isArray(value["@type"]) && value["@type"].indexOf("Product") >= 0)) out.push(value);
+    if (value["@graph"]) productNodes(value["@graph"], out, depth + 1);
+  }
+  function offerList(offers) {
+    if (!offers) return [];
+    var list = Array.isArray(offers) ? offers : [offers];
+    var out = [];
+    list.forEach(function (offer) {
+      if (!offer || typeof offer !== "object") return;
+      out.push(offer);
+      if (Array.isArray(offer.offers)) offer.offers.forEach(function (inner) { if (inner && typeof inner === "object") out.push(inner); });
+    });
+    return out;
+  }
+
+  /** The Product data of a product page (schema.org JSON-LD), and the store the page says it is showing. */
+  function parseProductPage(html, ean) {
+    var result = { found: false, title: null, brand: null, url: null, prices: [], price: null, available: null, seller: null, storeSlug: null, storeLabel: null };
+    if (typeof html !== "string") return result;
+    var storeMatch = html.match(/"(?:storeUrl|storePageUrl)"\s*:\s*"\/magasin\/([a-z0-9-]{1,80})"/);
+    if (storeMatch) { result.storeSlug = storeMatch[1]; result.storeLabel = storeMatch[1].replace(/-/g, " "); }
+    var blocks = [];
+    var pattern = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    var match;
+    while ((match = pattern.exec(html)) && blocks.length < 20) { try { blocks.push(JSON.parse(match[1])); } catch (error) { /* skip */ } }
+    var products = [];
+    productNodes(blocks, products, 0);
+    for (var i = 0; i < products.length; i++) {
+      var product = products[i];
+      var gtin = product.gtin13 || product.gtin || product.gtin14 || product.gtin8 || product.sku;
+      if (!sameEan(gtin, ean)) continue;
+      result.found = true;
+      result.title = typeof product.name === "string" ? product.name.slice(0, 300) : null;
+      result.brand = product.brand && typeof product.brand.name === "string" ? product.brand.name.slice(0, 120) : null;
+      result.url = typeof product.url === "string" && /^https:\/\/www\.carrefour\.fr\//.test(product.url) ? product.url : null;
+      offerList(product.offers).forEach(function (offer, index) {
+        var amount = money(offer.price);
+        if (amount !== null) result.prices.push({ path: "JSON-LD de la page", value: amount });
+        if (result.available === null && typeof offer.availability === "string") result.available = !/OutOfStock|SoldOut|Discontinued/i.test(offer.availability);
+        if (!result.seller && offer.seller && typeof offer.seller.name === "string") result.seller = offer.seller.name.slice(0, 100);
+      });
+      var seen = {};
+      result.prices = result.prices.filter(function (price) { if (seen[price.value]) return false; seen[price.value] = true; return true; });
+      result.price = result.prices.length ? result.prices[0].value : null;
+      break;
+    }
+    return result;
+  }
+
+  var api = { parseSearch: parseSearch, parseProductPage: parseProductPage, productPageUrl: productPageUrl, sameEan: sameEan, money: money };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PriceCheckerCarrefour = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
