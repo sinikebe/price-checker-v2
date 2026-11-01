@@ -531,6 +531,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.107",
+      "components": {
+        "basket": {
+          "version": "0.1.26",
+          "notes": [
+            "Dans la répartition du panier, chaque magasin indique l’économie qu’il apporte face aux prochains prix les plus bas ailleurs."
+          ]
+        }
+      }
     }
   ]
 }
