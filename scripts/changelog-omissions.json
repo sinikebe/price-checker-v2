@@ -619,6 +619,16 @@
       "component": "open_prices",
       "version": "0.1.26",
       "reason": "Graphique du catalogue adapté aux produits à plusieurs unités, annoncé dans le composant Produits."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.33",
+      "reason": "Lecture à l’unité par l’extension partagée avec la fiche produit, annoncée dans le composant Produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.28",
+      "reason": "Bouton ajouté à la fiche produit, sans changement du connecteur Open Food Facts."
     }
   ]
 }

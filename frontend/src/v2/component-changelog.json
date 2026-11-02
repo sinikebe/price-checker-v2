@@ -688,6 +688,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.120",
+      "components": {
+        "application": {
+          "version": "0.1.120",
+          "notes": [
+            "Un bouton sur la fiche produit lit le prix Carrefour de ce produit avec l’extension, sans rien ouvrir ni cliquer."
+          ]
+        },
+        "products": {
+          "version": "0.1.55",
+          "notes": [
+            "Sur une fiche, « Relever le prix à Carrefour » met à jour le prix du produit tout de suite, avec l’extension du navigateur."
+          ]
+        }
+      }
     }
   ]
 }
