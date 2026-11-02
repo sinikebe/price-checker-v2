@@ -5,6 +5,7 @@ import V2AccountSecurity from "./V2AccountSecurity";
 import V2AvailabilitySettings from "./V2AvailabilitySettings";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2ExtensionDownload from "./V2ExtensionDownload";
+import V2CreditSettings from "./V2CreditSettings";
 import V2SettingsAccount from "./V2SettingsAccount";
 import V2SettingsGeneral from "./V2SettingsGeneral";
 import V2ServerLogs from "./V2ServerLogs";
@@ -52,7 +53,10 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
         <V2AvailabilitySettings key={`availability-${user.id}`} />
         <V2ExtensionDownload key={`extension-${user.id}`} />
       </>;
-      case "server": return user?.role === "admin" && <V2SettingsServer userId={user.id} />;
+      case "server": return user?.role === "admin" && <>
+        <V2SettingsServer userId={user.id} />
+        <V2CreditSettings key={`credits-${user.id}`} />
+      </>;
       case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
       case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;
     }
