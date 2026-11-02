@@ -664,6 +664,26 @@
       "component": "open_prices",
       "version": "0.1.27",
       "reason": "Prix des groupes servis à part, annoncés dans le composant Produits."
+    },
+    {
+      "component": "database",
+      "version": "0.1.40",
+      "reason": "Colonnes et table des crédits de contribution, annoncées avec eux."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.30",
+      "reason": "Indication de récompense sur la fiche produit, annoncée dans le composant Produits."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.27",
+      "reason": "Adaptation technique aux crédits de contribution."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.28",
+      "reason": "Adaptation technique aux crédits de contribution."
     }
   ]
 }

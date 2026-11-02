@@ -762,6 +762,41 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.125",
+      "components": {
+        "application": {
+          "version": "0.1.125",
+          "notes": [
+            "Contribuer rapporte des crédits : chaque relevé, fiche ou recette validé en donne, sans limite ni date d’expiration."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.31",
+          "notes": [
+            "Paramètres → Compte montre vos crédits du jour, vos crédits de contribution et vos dernières contributions récompensées."
+          ]
+        },
+        "basket": {
+          "version": "0.1.37",
+          "notes": [
+            "Les crédits de contribution prennent le relais quand les crédits du jour sont épuisés, y compris pour le panier."
+          ]
+        },
+        "products": {
+          "version": "0.1.58",
+          "notes": [
+            "Un relevé de prix ou une fiche produit validé rapporte des crédits de contribution ; le formulaire dit combien."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.21",
+          "notes": [
+            "Une recette validée rapporte des crédits de contribution ; le formulaire dit combien."
+          ]
+        }
+      }
     }
   ]
 }
