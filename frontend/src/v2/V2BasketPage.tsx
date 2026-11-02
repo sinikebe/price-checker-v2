@@ -15,7 +15,8 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
+import { buildBasketComparison, emptyBasketFilters, postalDepartment, reactivationGains, readingKey, splitSavings, type BasketFilters, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
+import { readStoresOff, withStoreOff, writeStoresOff } from "./v2-basket-store-off";
 import type { BaseUnit } from "./v2-basket-quantity";
 import { readUnitChoices, withUnitChoice, writeUnitChoices } from "./v2-measures";
 import { snapshotView } from "./v2-basket-snapshot";
@@ -36,6 +37,10 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const [unitState, setUnitState] = useState(() => ({ userId: unitUserId, choices: readUnitChoices(unitUserId) }));
   useEffect(() => { setUnitState(state => state.userId === unitUserId ? state : { userId: unitUserId, choices: readUnitChoices(unitUserId) }); }, [unitUserId]);
   const unitChoices = useMemo<UnitChoices>(() => item => unitState.choices[basketItemKey(item)], [unitState]);
+  // Stores switched off in the split by hand: still in the filters and in the store ranking, kept in this browser.
+  const [offState, setOffState] = useState(() => ({ userId: unitUserId, keys: readStoresOff(unitUserId) }));
+  useEffect(() => { setOffState(state => state.userId === unitUserId ? state : { userId: unitUserId, keys: readStoresOff(unitUserId) }); }, [unitUserId]);
+  const storesOff = useMemo(() => new Set(offState.keys), [offState]);
   const location = useLocation();
   const navigate = useNavigate();
   const sharedLink = location.hash.startsWith("#panier=");
@@ -108,14 +113,31 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);
   const comparison = useMemo(() => view.lines.length
     ? buildBasketComparison(view.lines, view.responses, filters, advanced, new Set(), mode, unitChoices) : null, [view, filters, advanced, mode, unitChoices]);
-  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison, mode, unitChoices) : new Map(),
-    [comparison, view, filters, advanced, mode, unitChoices]);
+  // The split leaves out the stores switched off; the store ranking does not. Only the stores of this
+  // basket's prices matter: one saved for another basket changes nothing here.
+  const presentOff = useMemo(() => new Set([...storesOff].filter(key => [...view.responses.values()]
+    .some(response => response?.latest_by_store.some(row => readingKey(row) === key)))), [storesOff, view]);
+  const split = useMemo(() => comparison && presentOff.size
+    ? buildBasketComparison(view.lines, view.responses, filters, advanced, presentOff, mode, unitChoices) : comparison,
+  [comparison, presentOff, view, filters, advanced, mode, unitChoices]);
+  const savings = useMemo(() => split ? splitSavings(view.lines, view.responses, filters, advanced, split, mode, unitChoices, presentOff) : new Map(),
+    [split, view, filters, advanced, mode, unitChoices, presentOff]);
+  const gains = useMemo(() => split && presentOff.size ? reactivationGains(view.lines, view.responses, filters, advanced, split, presentOff, mode, unitChoices) : new Map(),
+    [split, view, filters, advanced, mode, unitChoices, presentOff]);
+  const setStoreActive = (key: string, active: boolean) => {
+    const keys = withStoreOff(offState.keys, key, !active);
+    setOffState({ userId: unitUserId, keys }); writeStoresOff(unitUserId, keys);
+  };
   const chooseUnit = (item: BasketItem, unit: BaseUnit) => {
     const choices = withUnitChoice(unitState.choices, basketItemKey(item), unit, items.map(basketItemKey));
     setUnitState({ userId: unitUserId, choices }); writeUnitChoices(unitUserId, choices);
   };
   const lineItems = view.lines.map(line => line.item);
   const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
+  const offStores = offState.keys.flatMap(key => {
+    const reading = availableRows.find(row => readingKey(row) === key);
+    return reading ? [{ key, reading, gain: gains.get(key) ?? null }] : [];
+  });
   const storeNames = new Map<number, string>();
   for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
   for (const store of defaultStores) if (!storeNames.has(store.id)) storeNames.set(store.id, store.name);
@@ -197,7 +219,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                 <div className="v2-basket-comparison-heading"><div><h2>{mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité" : advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits)}.</p>}
-                {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} mode={mode} limited={view.limited.length}
+                {comparison && split && <V2BasketResults comparison={comparison} split={split} offStores={offStores} onStoreActive={setStoreActive} items={lineItems} advanced={advanced} mode={mode} limited={view.limited.length}
                   shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} onUnit={chooseUnit} />}
               </>}
             </section>}

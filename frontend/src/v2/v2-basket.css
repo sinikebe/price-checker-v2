@@ -154,6 +154,20 @@ html[data-v2-theme="dark"] .v2-basket-remove { color: #ffb7ac; }
 .v2-basket-split-store-name b, .v2-basket-split-store-total b { color: #214d36; font-size: 1rem; }
 .v2-basket-split-store-name small, .v2-basket-split-store-total small { color: var(--v2-muted, #617467); font-size: .78rem; font-weight: 500; }
 .v2-basket-split-stores .v2-basket-lines { margin-bottom: 10px; }
+.v2-basket-split-stores > li.v2-basket-split-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0 10px; }
+.v2-basket-store-toggle { min-height: 32px; margin-top: 8px; padding: 3px 12px; border: 1px solid rgba(40, 95, 67, .35); border-radius: 999px; background: transparent; color: #2b6a49; font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer; }
+.v2-basket-store-toggle:hover { background: rgba(40, 95, 67, .08); }
+.v2-basket-store-toggle:focus-visible { outline: 2px solid #2b6a49; outline-offset: 2px; }
+.v2-basket-stores-off { margin-top: 10px; padding: 8px 12px; border: 1px dashed rgba(40, 95, 67, .35); border-radius: 10px; }
+.v2-basket-stores-off p { margin: 0 0 4px; color: var(--v2-muted, #617467); font-size: .82rem; }
+.v2-basket-stores-off ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.v2-basket-stores-off li { display: flex; justify-content: space-between; align-items: center; gap: 10px; opacity: .85; }
+.v2-basket-stores-off .v2-basket-store-toggle { margin-top: 0; }
+.v2-basket-store-off-badge { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; background: #eef2ee; color: #4d5f52; font-size: .74rem; font-weight: 650; }
+html[data-v2-theme="dark"] .v2-basket-store-toggle { border-color: rgba(212, 245, 193, .35); color: #b9e8c4; }
+html[data-v2-theme="dark"] .v2-basket-store-toggle:hover { background: rgba(212, 245, 193, .08); }
+html[data-v2-theme="dark"] .v2-basket-stores-off { border-color: rgba(212, 245, 193, .3); }
+html[data-v2-theme="dark"] .v2-basket-store-off-badge { background: #2c3a30; color: #cfe3d3; }
 
 html[data-v2-theme="dark"] .v2-basket-tool { background: #1b3028; color: #d4f5c1; }
 html[data-v2-theme="dark"] .v2-basket-tool[data-active="true"] { border-color: #5f8c6c; background: #294032; color: #e9fadd; }
