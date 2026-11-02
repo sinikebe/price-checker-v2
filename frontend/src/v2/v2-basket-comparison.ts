@@ -1,5 +1,5 @@
 import type { BasketItem, BasketProduct } from "./v2-basket-storage";
-import { baseQuantity, microUnits, pricedQuantity, productSize, purchaseDemand, type BaseUnit } from "./v2-basket-quantity";
+import { baseQuantity, microUnits, pricedQuantity, productSizeIn, productSizes, purchaseDemand, type BaseUnit } from "./v2-basket-quantity";
 
 export type BasketPrice = {
   id: number; price: string; observed_at: string; retailer: string; store_name: string;
@@ -12,8 +12,15 @@ export type BasketLine = { item: BasketItem; candidates: BasketProduct[] };
 export type BasketFilters = { storeIds: number[]; cities: string[]; departments: string[] };
 /** "price": the least to pay for what is needed. "unit": the best price per kg, L or piece, even in a bigger pack. */
 export type CompareMode = "price" | "unit";
-/** What a choice costs per base unit (a gram, a millilitre, a piece), and what is left once the need is covered. */
-export type UnitInfo = { perUnitCents: number; unit: BaseUnit; surplus: number };
+/**
+ * What a choice costs per base unit (a gram, a millilitre, a piece), and what is left once the need is covered.
+ * `available` lists the units the article can be compared in (those its candidates are measured in), and `fixed`
+ * tells that the requested quantity sets the unit, so it cannot be switched.
+ */
+export type UnitInfo = { perUnitCents: number; unit: BaseUnit; surplus: number; available: BaseUnit[]; fixed: boolean };
+/** The unit chosen for an article, when it can be compared in several (none: the default one). */
+export type UnitChoices = (item: BasketItem) => BaseUnit | undefined;
+const noChoice: UnitChoices = () => undefined;
 export type PriceChoice = {
   item: BasketItem; product: BasketProduct; reading: BasketPrice; cents: number; packages: number; usedCents: number; used: boolean;
   unit?: UnitInfo; demand?: { demand: bigint; capacity: bigint };
@@ -92,32 +99,37 @@ const BASE_UNITS: BaseUnit[] = ["g", "ml", "piece"];
 const EPSILON = 1e-9;
 
 /**
- * How a line is compared per unit: the unit of measure its candidates share (the requested one, or the most
- * common one) and the amount needed (the requested amount, or one smallest pack per package asked).
- * Null when no candidate has a known size: the line is then compared on the pack price.
+ * How a line is compared per unit: the unit of measure (what the requested quantity is in, else the chosen one
+ * when its candidates have it, else the one most of them are measured in) and the amount needed (the requested
+ * amount, or one smallest pack per package asked). A product can be measured in several units (a multipack is a
+ * weight and a count), so the unit can be switched. Null when no candidate has a known size in the unit, for
+ * instance a requested quantity in grams for candidates measured in pieces: the line is then compared on the
+ * pack price.
  */
-function unitLine(line: BasketLine, advanced: boolean): { unit: BaseUnit; need: number } | null {
-  const sized = [...new Map(line.candidates.map(product => [product.id, product])).values()]
-    .flatMap(product => { const size = productSize(product); return size ? [size] : []; });
-  if (!sized.length) return null;
+function unitLine(line: BasketLine, advanced: boolean, chosen?: BaseUnit): UnitLine | null {
+  const sizes = [...new Map(line.candidates.map(product => [product.id, product])).values()].map(productSizes);
+  const covers = (unit: BaseUnit) => sizes.filter(list => list.some(size => size.unit === unit)).length;
+  const available = BASE_UNITS.filter(unit => covers(unit) > 0);
+  if (!available.length) return null;
   const requested = advanced && line.item.quantity ? baseQuantity(line.item.quantity) : null;
-  const counts = new Map<BaseUnit, number>();
-  for (const size of sized) counts.set(size.unit, (counts.get(size.unit) ?? 0) + 1);
-  const unit = requested?.unit ?? BASE_UNITS.reduce((best, candidate) => (counts.get(candidate) ?? 0) > (counts.get(best) ?? 0) ? candidate : best);
-  const sameUnit = sized.filter(size => size.unit === unit);
-  if (!sameUnit.length) return null;
+  if (requested && !available.includes(requested.unit)) return null;
+  const unit = requested?.unit
+    ?? (chosen && available.includes(chosen) ? chosen : available.reduce((best, candidate) => covers(candidate) > covers(best) ? candidate : best));
+  const smallest = Math.min(...sizes.flatMap(list => list.filter(size => size.unit === unit).map(size => size.amount)));
   const packs = advanced && line.item.quantity?.unit === "package" ? Number(line.item.quantity.amount) : 1;
-  const need = requested ? requested.amount : packs * Math.min(...sameUnit.map(size => size.amount));
-  return need > 0 && Number.isFinite(need) ? { unit, need } : null;
+  const need = requested ? requested.amount : packs * smallest;
+  return need > 0 && Number.isFinite(need) ? { unit, need, available, fixed: requested !== null } : null;
 }
+type UnitLine = { unit: BaseUnit; need: number; available: BaseUnit[]; fixed: boolean };
 
-function unitQuantity(packageCents: number, size: { amount: number; unit: BaseUnit }, need: number) {
+function unitQuantity(packageCents: number, size: { amount: number; unit: BaseUnit }, line: UnitLine) {
+  const { need } = line;
   const packages = Math.max(1, Math.ceil(Math.round(need * 1000000) / Math.round(size.amount * 1000000)));
   if (!Number.isSafeInteger(packages) || packages > 999999) return null;
   const surplus = Math.max(0, Math.round((packages * size.amount - need) * 1000000) / 1000000);
   return {
     packages, cents: packageCents * packages, usedCents: packageCents * need / size.amount, used: surplus > EPSILON,
-    unit: { perUnitCents: packageCents / size.amount, unit: size.unit, surplus },
+    unit: { perUnitCents: packageCents / size.amount, unit: size.unit, surplus, available: line.available, fixed: line.fixed },
     demand: { demand: microUnits(need), capacity: microUnits(size.amount) },
   };
 }
@@ -133,6 +145,7 @@ export function buildBasketComparison(
   advanced = false,
   excluded: ReadonlySet<string> = new Set(),
   mode: CompareMode = "price",
+  unitChoices: UnitChoices = noChoice,
 ): BasketComparison {
   const stores = new Map<string, StoreQuote>();
   const split: PriceChoice[] = [], missing: BasketItem[] = [], failed: BasketItem[] = [], truncated: BasketItem[] = [];
@@ -148,15 +161,15 @@ export function buildBasketComparison(
       withdrawnSeen.add(product.id); withdrawn += responses.get(product.id)?.withdrawn_count ?? 0;
     }
     const byStore = new Map<string, PriceChoice>();
-    const perUnit = mode === "unit" ? unitLine(line, advanced) : null;
+    const perUnit = mode === "unit" ? unitLine(line, advanced, unitChoices(line.item)) : null;
     const compare = perUnit ? cheaperPerUnit : cheaper;
     for (const product of products) for (const reading of responses.get(product.id)!.latest_by_store) {
       const cents = validPrice(reading);
       if (cents === null || !matchesBasketFilters(reading, filters) || excluded.has(storeKey(reading))) continue;
       let quantity;
       if (perUnit) {
-        const size = productSize(product);
-        quantity = size && size.unit === perUnit.unit ? unitQuantity(cents, size, perUnit.need) : null;
+        const size = productSizeIn(product, perUnit.unit);
+        quantity = size ? unitQuantity(cents, size, perUnit) : null;
       } else quantity = pricedQuantity(line.item, product, cents, advanced);
       if (!quantity) continue;
       const choice: PriceChoice = { item: line.item, product, reading, ...quantity };
@@ -203,10 +216,11 @@ export type StoreSaving = { extraCents: number; unpriced: number };
 export function splitSavings(
   lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
   filters: BasketFilters, advanced: boolean, baseline: BasketComparison, mode: CompareMode = "price",
+  unitChoices: UnitChoices = noChoice, excluded: ReadonlySet<string> = new Set(),
 ): Map<string, StoreSaving> {
   const result = new Map<string, StoreSaving>();
   for (const key of new Set(baseline.split.map(choice => storeKey(choice.reading)))) {
-    const without = buildBasketComparison(lines, responses, filters, advanced, new Set([key]), mode);
+    const without = buildBasketComparison(lines, responses, filters, advanced, new Set([...excluded, key]), mode, unitChoices);
     const stillPriced = new Set(without.split.map(choice => choice.item));
     const kept = baseline.split.filter(choice => stillPriced.has(choice.item));
     // Per unit the saving is on the value of the amounts needed, since the packs bought differ between the two splits.
@@ -218,3 +232,31 @@ export function splitSavings(
   }
   return result;
 }
+
+/**
+ * For each store left out of the split (`excluded`), what putting it back would bring: the split is built
+ * again with it, `extraCents` is how much less the articles already priced would cost (their needed amounts,
+ * per unit), and `unpriced` counts the articles that only this store would price. `current` is the split
+ * without the excluded stores.
+ */
+export function reactivationGains(
+  lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
+  filters: BasketFilters, advanced: boolean, current: BasketComparison, excluded: ReadonlySet<string>,
+  mode: CompareMode = "price", unitChoices: UnitChoices = noChoice,
+): Map<string, StoreSaving> {
+  const result = new Map<string, StoreSaving>();
+  const priced = new Set(current.split.map(choice => choice.item));
+  for (const key of excluded) {
+    const rest = new Set(excluded);
+    rest.delete(key);
+    const back = buildBasketComparison(lines, responses, filters, advanced, rest, mode, unitChoices);
+    const kept = back.split.filter(choice => priced.has(choice.item));
+    const extraCents = mode === "unit"
+      ? Math.max(0, Math.round(current.splitUsedCents - kept.reduce((sum, choice) => sum + choice.usedCents, 0)))
+      : Math.max(0, current.splitCents - purchaseTotalCents(kept, advanced));
+    if (!Number.isFinite(extraCents)) continue;
+    result.set(key, { extraCents, unpriced: back.split.length - kept.length });
+  }
+  return result;
+}
+

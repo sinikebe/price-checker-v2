@@ -620,6 +620,125 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.115",
+      "components": {
+        "application": {
+          "version": "0.1.115",
+          "notes": [
+            "Une extension de navigateur (prototype) lit un prix sur Carrefour avec votre propre session et le propose à l’application."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.116",
+      "components": {
+        "application": {
+          "version": "0.1.116",
+          "notes": [
+            "L’extension de navigateur se télécharge depuis Paramètres → Connecteurs, avec l’adresse de l’instance déjà renseignée."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.117",
+      "components": {
+        "application": {
+          "version": "0.1.117",
+          "notes": [
+            "L’extension de navigateur met à jour un panier en un clic : « Récupérer les prix » lit aussi les prix Carrefour manquants dans votre navigateur."
+          ]
+        },
+        "basket": {
+          "version": "0.1.30",
+          "notes": [
+            "Le panier peut lire, avec l’extension du navigateur, les prix Carrefour manquants ou anciens, sans étape de plus."
+          ]
+        },
+        "products": {
+          "version": "0.1.52",
+          "notes": [
+            "Les prix lus par l’extension sont enregistrés comme ceux d’un connecteur, avec le code-barres exact de la fiche."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.119",
+      "components": {
+        "application": {
+          "version": "0.1.119",
+          "notes": [
+            "Le prix à l’unité du panier passe du kilo à la pièce en un clic quand un produit se mesure des deux façons."
+          ]
+        },
+        "basket": {
+          "version": "0.1.32",
+          "notes": [
+            "Sous un prix à l’unité, des boutons kg, L et pièce choisissent l’unité de comparaison de chaque article."
+          ]
+        },
+        "products": {
+          "version": "0.1.54",
+          "notes": [
+            "Une fiche produit peut avoir plusieurs unités (500 g et 4 pièces) : « 4x125 g » compte ses pièces, et d’autres unités s’ajoutent à la main."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.120",
+      "components": {
+        "application": {
+          "version": "0.1.120",
+          "notes": [
+            "Un bouton sur la fiche produit lit le prix Carrefour de ce produit avec l’extension, sans rien ouvrir ni cliquer."
+          ]
+        },
+        "products": {
+          "version": "0.1.55",
+          "notes": [
+            "Sur une fiche, « Relever le prix à Carrefour » met à jour le prix du produit tout de suite, avec l’extension du navigateur."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.121",
+      "components": {
+        "application": {
+          "version": "0.1.121",
+          "notes": [
+            "Changer les unités d’un produit se fait sur sa fiche, sans créer de nouveau produit."
+          ]
+        },
+        "products": {
+          "version": "0.1.56",
+          "notes": [
+            "Corriger l’unité d’un produit, ou réécrire sa quantité à l’identique, ne crée plus de nouvelle version : il garde son historique de prix."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.122",
+      "components": {
+        "application": {
+          "version": "0.1.122",
+          "notes": [
+            "Dans la répartition du panier, un magasin qui fait peu gagner peut être désactivé d’un clic, sans le retirer des filtres."
+          ]
+        },
+        "basket": {
+          "version": "0.1.34",
+          "notes": [
+            "Désactiver un magasin dans la répartition recalcule le panier sans lui, sur l’appareil ; « Réactiver » dit ce que son retour ferait gagner."
+          ]
+        }
+      }
     }
   ]
 }

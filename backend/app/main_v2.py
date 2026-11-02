@@ -7,7 +7,9 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from importlib.metadata import version as package_version
 
-from fastapi import FastAPI
+import asyncpg
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
@@ -20,6 +22,7 @@ from app.api.v2.basket import router as basket_router
 from app.api.v2.catalogue import router as catalogue_router
 from app.api.v2.connector_stores import router as connector_stores_router, connector_worker
 from app.api.v2.duplicate_merges import router as duplicate_merges_router
+from app.api.v2.extension import router as extension_router
 from app.api.v2.host_health import router as host_health_router
 from app.api.v2.legal import router as legal_router
 from app.api.v2.logs import router as logs_router
@@ -123,6 +126,7 @@ ROUTERS = (
     catalogue_router,
     basket_router,
     availability_router,
+    extension_router,
     connector_stores_router,
     prices_router,
     stores_router,
@@ -192,6 +196,12 @@ for router in ROUTERS:
         }
 for router in ROUTERS:
     app.include_router(router)
+
+
+@app.exception_handler(asyncpg.DataError)
+async def refuse_values_the_database_cannot_hold(_request: Request, _exc: asyncpg.DataError) -> JSONResponse:
+    """An id or number too large for its column (a 64-bit id, say) is a bad request, not a server error."""
+    return JSONResponse(status_code=422, content={"detail": "Valeur hors limites."})
 
 
 @app.get("/health", include_in_schema=False)

@@ -5,11 +5,11 @@ import ts from "typescript";
 
 const quantitySource = readFileSync(new URL("../src/v2/v2-basket-quantity.ts", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.meta.url), "utf8")
-  .replace('import { baseQuantity, microUnits, pricedQuantity, productSize, purchaseDemand, type BaseUnit } from "./v2-basket-quantity";', quantitySource);
+  .replace('import { baseQuantity, microUnits, pricedQuantity, productSizeIn, productSizes, purchaseDemand, type BaseUnit } from "./v2-basket-quantity";', quantitySource);
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { buildBasketComparison, postalDepartment, pricePosition, splitSavings, readingKey } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { buildBasketComparison, postalDepartment, pricePosition, reactivationGains, splitSavings, readingKey } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const product = id => ({ id, revision: 1, data: { name: "Product " + id } });
 const line = (item, ...candidates) => ({ item, candidates });
@@ -378,4 +378,157 @@ test("the prices the server left out for a withdrawn product are counted once pe
   const lines = [line({ kind: "group", name: "Lait" }, products[0], products[1]), line(products[0], products[0])];
   assert.equal(buildBasketComparison(lines, results).withdrawn, 2);
   assert.equal(buildBasketComparison([line(products[1], products[1])], results).withdrawn, 0, "an older answer without the field counts none");
+});
+
+// Several measures per product: the unit of a line can be switched (per kg, per piece).
+const multi = (id, measures, name = "Produit " + id) => ({
+  id, revision: 1, data: { name, quantity_amount: measures[0][0], quantity_unit: measures[0][1],
+    measures: measures.map(([amount, unit]) => ({ amount: String(amount), unit, count_noun: null })) },
+});
+const withChoice = (unit) => () => unit;
+const compareIn = (lines, responses, unit, advanced = false) =>
+  buildBasketComparison(lines, responses, undefined, advanced, new Set(), "unit", withChoice(unit));
+
+function yoghurts() {
+  // 4 x 125 g: 500 g and 4 pieces for 2.00 (4.00 per kg, 0.50 per piece).
+  // 6 x 100 g: 600 g and 6 pieces for 2.10 (3.50 per kg, 0.35 per piece).
+  const four = multi(1, [[500, "g"], [4, "piece"]]), six = multi(2, [[600, "g"], [6, "piece"]]);
+  const lines = [line(group("Yaourt"), four, six)];
+  const responses = new Map([[1, response(reading(1, 10, "2.00"))], [2, response(reading(2, 10, "2.10"))]]);
+  return { four, six, lines, responses };
+}
+
+test("a product measured in grams and pieces is compared in either unit", () => {
+  const { lines, responses, six } = yoghurts();
+  const perKilo = compare(lines, responses, "unit");
+  assert.equal(perKilo.split[0].product.id, six.id);
+  assert.deepEqual([perKilo.split[0].unit.unit, perKilo.split[0].unit.available], ["g", ["g", "piece"]], "the grams come first by default");
+  assert.equal(Math.round(perKilo.split[0].unit.perUnitCents * 1000), 350, "3.50 per kg");
+  const perPiece = compareIn(lines, responses, "piece");
+  assert.equal(perPiece.split[0].product.id, six.id);
+  assert.equal(perPiece.split[0].unit.unit, "piece");
+  assert.equal(Math.round(perPiece.split[0].unit.perUnitCents), 35, "0.35 per piece");
+  assert.equal(perPiece.split[0].unit.fixed, false);
+});
+
+test("switching the unit changes which product is the best value", () => {
+  // A bag of 10 pieces for 1 kg at 3.00 (3.00 per kg, 0.30 per piece);
+  // a pack of 6 pieces for 400 g at 1.50 (3.75 per kg, 0.25 per piece).
+  const bag = multi(1, [[1000, "g"], [10, "piece"]]), pack = multi(2, [[400, "g"], [6, "piece"]]);
+  const lines = [line(group("Pommes"), bag, pack)];
+  const responses = new Map([[1, response(reading(1, 10, "3.00"))], [2, response(reading(2, 10, "1.50"))]]);
+  assert.equal(compareIn(lines, responses, "g").split[0].product.id, bag.id, "per kg the bag wins");
+  assert.equal(compareIn(lines, responses, "piece").split[0].product.id, pack.id, "per piece the pack wins");
+});
+
+test("a product without the chosen unit is left out of that comparison, and a missing choice falls back", () => {
+  const grams = sized(1, 500, "g"), both = multi(2, [[500, "g"], [4, "piece"]]);
+  const lines = [line(group("Mix"), grams, both)];
+  const responses = new Map([[1, response(reading(1, 10, "1.00"))], [2, response(reading(2, 10, "3.00"))]]);
+  assert.equal(compareIn(lines, responses, "piece").split[0].product.id, both.id, "only that product has pieces");
+  assert.deepEqual(compareIn(lines, responses, "piece").split[0].unit.available, ["g", "piece"]);
+  // No candidate is measured in millilitres: the choice is ignored.
+  assert.equal(compareIn(lines, responses, "ml").split[0].unit.unit, "g");
+});
+
+test("a requested quantity fixes the unit, whatever was chosen", () => {
+  const { four, six, responses } = yoghurts();
+  const item = group("Yaourt", { amount: "6", unit: "piece" });
+  const choice = compareIn([line(item, four, six)], responses, "g", true).split[0];
+  assert.equal(choice.unit.unit, "piece");
+  assert.equal(choice.unit.fixed, true);
+  assert.equal(choice.product.id, six.id);
+  const grams = compareIn([line(group("Yaourt", { amount: "1", unit: "kg" }), four, six)], responses, "piece", true).split[0];
+  assert.deepEqual([grams.unit.unit, grams.unit.fixed], ["g", true]);
+});
+
+test("a requested quantity is priced in the unit the product is measured in, not only its main one", () => {
+  // Main measure 4 pieces, also 500 g: 1 kg of it is two packs.
+  const eggs = multi(1, [[4, "piece"], [500, "g"]]);
+  const item = { id: 1, revision: 1, data: eggs.data, quantity: { amount: "1", unit: "kg" } };
+  const responses = new Map([[1, response(reading(1, 10, "2.00"))]]);
+  const price = buildBasketComparison([line(item, eggs)], responses, undefined, true, new Set(), "price");
+  assert.deepEqual([price.split[0].packages, price.splitCents, price.splitUsedCents], [2, 400, 400]);
+  const pieces = { ...item, quantity: { amount: "6", unit: "piece" } };
+  const byPieces = buildBasketComparison([line(pieces, eggs)], responses, undefined, true, new Set(), "price");
+  assert.deepEqual([byPieces.split[0].packages, byPieces.splitCents], [2, 400]);
+});
+
+test("copies saved before measures existed still compare on their single quantity", () => {
+  const old = sized(1, 500, "g");
+  assert.equal(old.data.measures, undefined);
+  const lines = [line(group("Riz"), old)];
+  const responses = new Map([[1, response(reading(1, 10, "1.00"))]]);
+  const choice = compare(lines, responses, "unit").split[0];
+  assert.deepEqual([choice.unit.unit, choice.unit.available, choice.unit.fixed], ["g", ["g"], false]);
+});
+
+test("savings per store follow the chosen unit", () => {
+  const { lines, responses } = yoghurts();
+  const second = new Map([[1, response(reading(1, 10, "2.00"), reading(3, 20, "2.20"))], [2, response(reading(2, 10, "2.40"), reading(4, 20, "2.10"))]]);
+  const choices = withChoice("piece");
+  const baseline = buildBasketComparison(lines, second, undefined, false, new Set(), "unit", choices);
+  const savings = splitSavings(lines, second, undefined, false, baseline, "unit", choices);
+  assert.ok(savings.size > 0);
+  for (const saving of savings.values()) assert.ok(Number.isFinite(saving.extraCents));
+});
+
+// Stores switched off by hand in the split: the split is rebuilt without them, the ranking keeps them.
+function pastaRiceOil() {
+  // Pasta: 1.00 at store 10, 1.20 at store 20. Rice: 2.00 at store 10, 1.50 at store 20. Oil: 5.00 only at store 30.
+  const pasta = product(1), rice = product(2), oil = product(3);
+  const lines = [line(pasta, pasta), line(rice, rice), line(oil, oil)];
+  const responses = new Map([
+    [1, response(reading(1, 10, "1.00"), reading(2, 20, "1.20"))],
+    [2, response(reading(3, 10, "2.00"), reading(4, 20, "1.50"))],
+    [3, response(reading(5, 30, "5.00"))],
+  ]);
+  return { lines, responses };
+}
+
+test("a store switched off leaves the split, its articles go to the next best price, and the ranking keeps it", () => {
+  const { lines, responses } = pastaRiceOil();
+  const all = buildBasketComparison(lines, responses);
+  assert.deepEqual([all.splitCents, new Set(all.split.map(choice => choice.reading.store_id)).size], [100 + 150 + 500, 3]);
+  const off = new Set(["20:in_store"]);
+  const split = buildBasketComparison(lines, responses, undefined, false, off);
+  assert.equal(split.splitCents, 100 + 200 + 500, "rice now comes from store 10");
+  assert.ok(!split.split.some(choice => choice.reading.store_id === 20));
+  assert.ok(all.stores.some(store => store.key === "20:in_store"), "the full comparison still ranks it");
+  // The only store pricing an article: switched off, the article has no price in the split.
+  const noOil = buildBasketComparison(lines, responses, undefined, false, new Set(["30:in_store"]));
+  assert.equal(noOil.missing.length, 1);
+});
+
+test("savings are measured among the stores left on", () => {
+  const { lines, responses } = pastaRiceOil();
+  const off = new Set(["20:in_store"]);
+  const split = buildBasketComparison(lines, responses, undefined, false, off);
+  const savings = splitSavings(lines, responses, undefined, false, split, "price", undefined, off);
+  assert.deepEqual([...savings.keys()].sort(), ["10:in_store", "30:in_store"]);
+  // Without store 10 (and with 20 still off), pasta and rice have no price: store 10 is the only one for them.
+  assert.equal(savings.get("10:in_store").unpriced, 2);
+  assert.equal(savings.get("30:in_store").unpriced, 1);
+});
+
+test("putting a store back says what it would bring", () => {
+  const { lines, responses } = pastaRiceOil();
+  const off = new Set(["20:in_store", "30:in_store"]);
+  const split = buildBasketComparison(lines, responses, undefined, false, off);
+  const gains = reactivationGains(lines, responses, undefined, false, split, off);
+  assert.deepEqual(gains.get("20:in_store"), { extraCents: 50, unpriced: 0 }, "rice 1.50 instead of 2.00");
+  assert.deepEqual(gains.get("30:in_store"), { extraCents: 0, unpriced: 1 }, "the oil has no other price");
+  const none = reactivationGains(lines, responses, undefined, false, buildBasketComparison(lines, responses, undefined, false, new Set(["99:drive"])), new Set(["99:drive"]));
+  assert.deepEqual(none.get("99:drive"), { extraCents: 0, unpriced: 0 }, "an unknown store brings nothing");
+});
+
+test("per unit, putting a store back is measured on the value of the needed amounts", () => {
+  const small = sized(1, 500, "g"), big = sized(2, 1000, "g");
+  const lines = [line(group("Farine", { amount: "500", unit: "g" }), small, big)];
+  const responses = new Map([[1, response(reading(1, 10, "1.50"))], [2, response(reading(2, 20, "2.40"))]]);
+  const off = new Set(["20:in_store"]);
+  const split = buildBasketComparison(lines, responses, undefined, true, off, "unit");
+  assert.equal(split.splitUsedCents, 150);
+  const gains = reactivationGains(lines, responses, undefined, true, split, off, "unit");
+  assert.deepEqual(gains.get("20:in_store"), { extraCents: 30, unpriced: 0 }, "500 g are worth 1.20 there instead of 1.50");
 });

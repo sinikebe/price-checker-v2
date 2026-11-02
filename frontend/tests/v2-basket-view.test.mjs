@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/v2/v2-basket-view.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { savingText, unitPriceText, surplusText } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { reactivationText, savingText, unitPriceText, surplusText } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const plain = text => text.replace(/[  ]/g, " ");
 
 test("a store that lowers the basket says how much, and what share of the price without it", () => {
@@ -50,4 +50,13 @@ test("per unit, the saving is worded on the value of the quantity needed", () =>
   assert.equal(plain(unit.text), "Économie à l’unité : 0,10 € sur la quantité utile (8 %)");
   assert.equal(savingText({ extraCents: 0, unpriced: 0 }, 120, false, "unit").text, "Aucune économie : le même prix à l’unité existe ailleurs");
   assert.equal(plain(savingText({ extraCents: 10, unpriced: 0 }, 120, false).text), "Économie grâce à ce magasin : 0,10 € (8 %)", "the price mode keeps its wording");
+});
+
+test("putting back a store left out says what it brings, or why it matters", () => {
+  assert.equal(reactivationText({ extraCents: 50, unpriced: 0 }).kind, "saving");
+  assert.equal(plain(reactivationText({ extraCents: 50, unpriced: 0 }).text), "Le réactiver ferait gagner 0,50 €");
+  assert.equal(plain(reactivationText({ extraCents: 50, unpriced: 0 }, "unit").text), "Le réactiver ferait gagner 0,50 € sur la quantité utile");
+  assert.deepEqual(reactivationText({ extraCents: 0, unpriced: 0 }), { kind: "none", text: "Le réactiver ne ferait rien gagner" });
+  assert.equal(reactivationText({ extraCents: 0, unpriced: 2 }).text, "Seul magasin avec un prix pour 2 articles");
+  assert.equal(plain(reactivationText({ extraCents: 120, unpriced: 1 }).text), "Seul magasin avec un prix pour 1 article · 1,20 € de moins sur les autres");
 });

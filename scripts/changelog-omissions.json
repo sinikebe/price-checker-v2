@@ -579,6 +579,71 @@
       "component": "application",
       "version": "0.1.113",
       "reason": "Largeur d’une carte des paramètres."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.29",
+      "reason": "Contrôle d’origine des jetons personnels, annoncé avec l’extension."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.25",
+      "reason": "Carte de téléchargement de l’extension dans les paramètres."
+    },
+    {
+      "component": "application",
+      "version": "0.1.118",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.31",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "products",
+      "version": "0.1.53",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.20",
+      "reason": "Lecture des quantités élargie aux lots (poids et pièces), sans changement visible dans les recettes."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.27",
+      "reason": "Nouvelle zone d’unités sur la fiche produit, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.26",
+      "reason": "Graphique du catalogue adapté aux produits à plusieurs unités, annoncé dans le composant Produits."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.33",
+      "reason": "Lecture à l’unité par l’extension partagée avec la fiche produit, annoncée dans le composant Produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.28",
+      "reason": "Bouton ajouté à la fiche produit, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.29",
+      "reason": "Texte d’aide de l’éditeur de fiche, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.123",
+      "reason": "Mise en page sur petit écran des boutons de la répartition."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.35",
+      "reason": "Mise en page sur petit écran des boutons de la répartition."
     }
   ]
 }

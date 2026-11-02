@@ -13,11 +13,33 @@ export function baseQuantity(quantity: BasketQuantity): { amount: number; unit: 
   return { amount: Number(quantity.amount) * factor.factor, unit: factor.unit };
 }
 
-/** The size of one pack of a product, in grams, millilitres or pieces, when the catalogue knows it. */
-export function productSize(product: BasketProduct): { amount: number; unit: BaseUnit } | null {
-  const amount = Number(product.data.quantity_amount);
-  const unit = product.data.quantity_unit;
-  return Number.isFinite(amount) && amount > 0 && (unit === "g" || unit === "ml" || unit === "piece") ? { amount, unit } : null;
+type Size = { amount: number; unit: BaseUnit };
+const isBaseUnit = (unit: unknown): unit is BaseUnit => unit === "g" || unit === "ml" || unit === "piece";
+
+/**
+ * Every size of one pack of a product, one per unit (grams, millilitres, pieces), main one first: the server's
+ * `measures`, or the single quantity of a copy saved before they existed.
+ */
+export function productSizes(product: BasketProduct): Size[] {
+  const listed = Array.isArray(product.data.measures) ? product.data.measures : [];
+  const raw = listed.length ? listed : [{ amount: product.data.quantity_amount, unit: product.data.quantity_unit }];
+  const sizes: Size[] = [];
+  for (const item of raw) {
+    const amount = Number(item.amount);
+    if (Number.isFinite(amount) && amount > 0 && isBaseUnit(item.unit) && !sizes.some(size => size.unit === item.unit))
+      sizes.push({ amount, unit: item.unit });
+  }
+  return sizes;
+}
+/** The main size of one pack of a product, in grams, millilitres or pieces, when the catalogue knows it. */
+export const productSize = (product: BasketProduct): Size | null => productSizes(product)[0] ?? null;
+/** The size of one pack in a given unit, when the catalogue knows it. */
+export const productSizeIn = (product: BasketProduct, unit: BaseUnit): Size | null =>
+  productSizes(product).find(size => size.unit === unit) ?? null;
+/** The amount of one pack in a given unit as written by the server (decimal text), for exact arithmetic. */
+function measureText(product: BasketProduct, unit: BaseUnit): string {
+  const listed = Array.isArray(product.data.measures) ? product.data.measures.find(item => item.unit === unit) : undefined;
+  return listed ? listed.amount : product.data.quantity_unit === unit ? product.data.quantity_amount ?? "" : "";
 }
 export const microUnits = (value: number): bigint => BigInt(Math.round(value * 1000000));
 
@@ -55,8 +77,9 @@ export function purchaseDemand(item: BasketItem, product: BasketProduct, advance
   }
   const factor = factors[requested.unit];
   const amount = decimalMicro(requested.amount);
-  if (!factor || !amount || !size || factor.unit !== product.data.quantity_unit) return null;
-  return { demand: amount * BigInt(factor.factor) * MICRO, capacity: size * MICRO };
+  const inUnit = factor ? decimalMicro(measureText(product, factor.unit)) : null;
+  if (!factor || !amount || !inUnit) return null;
+  return { demand: amount * BigInt(factor.factor) * MICRO, capacity: inUnit * MICRO };
 }
 
 export function pricedQuantity(item: BasketItem, product: BasketProduct, packageCents: number, advanced: boolean) {
@@ -67,8 +90,8 @@ export function pricedQuantity(item: BasketItem, product: BasketProduct, package
     return { packages, cents: packageCents * packages, usedCents: packageCents * Number(requested.amount), used: packages !== Number(requested.amount) };
   }
   const need = baseQuantity(requested);
-  const amount = Number(product.data.quantity_amount);
-  if (!need || !Number.isFinite(amount) || amount <= 0 || need.unit !== product.data.quantity_unit) return null;
+  const amount = need ? productSizeIn(product, need.unit)?.amount : undefined;
+  if (!need || amount === undefined) return null;
   const packages = Math.ceil(Math.round(need.amount * 1000000) / Math.round(amount * 1000000));
   if (!Number.isSafeInteger(packages) || packages <= 0 || packages > 999999) return null;
   return { packages, cents: packageCents * packages, usedCents: packageCents * need.amount / amount, used: true };

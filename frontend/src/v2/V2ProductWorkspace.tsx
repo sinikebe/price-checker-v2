@@ -6,6 +6,7 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
 import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
@@ -14,8 +15,9 @@ import { useV2Basket } from "./V2BasketContext";
 import V2ShareButton from "./V2ShareButton";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
-  type ProductData, type ProductEvent,
+  type MeasureUnit, type ProductData, type ProductEvent,
 } from "./v2-products-api";
+import { formatMeasure, MEASURE_UNITS, measureUnitLabel, readExtraAmount } from "./v2-measures";
 import "./v2-product-workspace.css";
 
 type Mode = "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
@@ -104,6 +106,9 @@ function ListPage({ mode, user, onLogout }: Props) {
   </Frame>;
 }
 
+/** Lists saved by an older version of the app may lack the field. */
+const list = <T,>(value: T[] | undefined): T[] => Array.isArray(value) ? value : [];
+
 function localRead(key: string): { data: ProductData; change_kind: ChangeKind; revision: number | null } | null {
   try {
     const value = localStorage.getItem(key);
@@ -134,6 +139,9 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
   const [allowOffDefault] = useState(() => !localRead(localKey));
   const [tagInput, setTagInput] = useState("");
+  const [extraAmount, setExtraAmount] = useState("");
+  const [extraUnit, setExtraUnit] = useState<MeasureUnit>("piece");
+  const [extraError, setExtraError] = useState("");
   const [retailerInput, setRetailerInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
   useEffect(() => {
@@ -185,12 +193,22 @@ function Editor({ mode, id, user, onLogout }: Props) {
       next = { ...next, off_source: kept.length ? { ...next.off_source, fields: kept } : null };
       if (changed.includes("nutriscore")) next.nutriscore_version = "";
     }
-    if (next.quantity !== data.quantity) next = { ...next, quantity_amount: null, quantity_unit: null, quantity_count_noun: null };
+    if (next.quantity !== data.quantity) next = { ...next, quantity_amount: null, quantity_unit: null, quantity_count_noun: null, measures: [] };
     setData(next); setChangeKind(kind); setDirty(true); localVersion.current += 1;
     try {
       localStorage.setItem(localKey, JSON.stringify({ data: next, change_kind: kind, revision: draft ? baseRevision : null }));
       setLocalError("");
     } catch { setLocalError("Stockage local indisponible : copiez vos informations avant de quitter la page."); }
+  }
+  function addExtraQuantity() {
+    const amount = readExtraAmount(extraAmount, extraUnit);
+    const extras = list(data.extra_quantities);
+    if (!amount) { setExtraError("Indiquez un nombre positif (3 décimales au plus, entier pour des pièces)."); return; }
+    if (data.quantity_unit === extraUnit && !extras.some(item => item.unit === extraUnit)) {
+      setExtraError("Cette unité est déjà donnée par la quantité du produit."); return;
+    }
+    setExtraError(""); setExtraAmount("");
+    persist({ ...data, extra_quantities: [...extras.filter(item => item.unit !== extraUnit), { amount, unit: extraUnit }] }, changeKind);
   }
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -287,12 +305,22 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <label>URL de la fiche <input type="url" value={urlInput} onChange={event => setUrlInput(event.target.value)} maxLength={1000} /></label>
             <button type="button" onClick={() => { const retailer = retailerInput.trim(); const url = urlInput.trim(); if (!retailer || !/^https?:\/\//i.test(url)) return; persist({ ...data, retailer_links: [...data.retailer_links.filter(link => link.retailer.toLocaleLowerCase() !== retailer.toLocaleLowerCase()), { retailer, url, source: "manual" }] }, changeKind); setRetailerInput(""); setUrlInput(""); }}>Ajouter ou remplacer le lien</button>
           </div>
+          <div className="v2-workspace-structured"><h3>Autres unités de mesure</h3>
+            <p>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces. Ajouter ou retirer une unité corrige la fiche existante : aucun nouveau produit n’est créé.</p>
+            <ul>{list(data.extra_quantities).map(extra => <li key={extra.unit}>{formatMeasure(extra)} <button type="button" onClick={() => persist({ ...data, extra_quantities: list(data.extra_quantities).filter(item => item.unit !== extra.unit) }, changeKind)}>Retirer</button></li>)}</ul>
+            <label>Quantité <input inputMode="decimal" value={extraAmount} maxLength={13} onChange={event => { setExtraAmount(event.target.value); setExtraError(""); }} /></label>
+            <label>Unité <select value={extraUnit} onChange={event => { setExtraUnit(event.target.value as MeasureUnit); setExtraError(""); }}>
+              {MEASURE_UNITS.map(unit => <option key={unit} value={unit}>{measureUnitLabel(unit)}</option>)}</select></label>
+            <button type="button" disabled={list(data.extra_quantities).length >= MEASURE_UNITS.length} onClick={addExtraQuantity}>Ajouter l’unité</button>
+            {extraError && <small role="alert">{extraError}</small>}
+          </div>
           <label>Dernier contrôle nutritionnel <input type="datetime-local" value={localDateTime(data.nutrition_checked_at)} onChange={event => persist({ ...data, nutrition_checked_at: event.target.value ? new Date(event.target.value).toISOString() : null }, changeKind)} /></label>
           <small>Cette date est distincte de la récupération de la fiche Open Food Facts.</small>
-          <p>Quantité analysée : {data.quantity_amount && data.quantity_unit ? `${data.quantity_amount} ${data.quantity_unit}${data.quantity_count_noun ? ` (${data.quantity_count_noun})` : ""}` : data.quantity ? "à analyser lors de l’enregistrement" : "à renseigner"}.</p>
+          <p>Quantité analysée : {list(data.measures).length ? list(data.measures).map(formatMeasure).join(" · ") : data.quantity_amount && data.quantity_unit ? `${data.quantity_amount} ${data.quantity_unit}${data.quantity_count_noun ? ` (${data.quantity_count_noun})` : ""}` : data.quantity ? "à analyser lors de l’enregistrement" : "à renseigner"}.</p>
           {(mode === "edit" || draft?.product_id) && <fieldset className="v2-workspace-kind"><legend>Nature de la modification</legend>
             <label><input type="radio" checked={changeKind === "correction"} onChange={() => persist(data, "correction")} /> Correction de la fiche existante</label>
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
+            <small>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</small>
           </fieldset>}
         </fieldset>
         <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
@@ -382,13 +410,15 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {d.group && <p><Link to={"/v2/categories/" + encodeURIComponent(d.group)}>Voir les produits du groupe « {d.group} » →</Link></p>}
         {d.tags.length > 0 && <p><strong>Étiquettes du groupe :</strong> {d.tags.join(" · ")}</p>}
         {d.nutrition_checked_at && <p><strong>Dernier contrôle nutritionnel :</strong> {new Date(d.nutrition_checked_at).toLocaleString("fr-FR")}</p>}
-        {d.quantity_amount && d.quantity_unit && <p><strong>Quantité analysée :</strong> {d.quantity_amount} {d.quantity_unit}{d.quantity_count_noun && ` (${d.quantity_count_noun})`}</p>}
+        {list(d.measures).length > 0 ? <p><strong>Quantité analysée :</strong> {list(d.measures).map(formatMeasure).join(" · ")}</p>
+          : d.quantity_amount && d.quantity_unit && <p><strong>Quantité analysée :</strong> {d.quantity_amount} {d.quantity_unit}{d.quantity_count_noun && ` (${d.quantity_count_noun})`}</p>}
         {d.retailer_links.length > 0 && <section><h3>Fiches par enseigne</h3><ul>{d.retailer_links.map(link => <li key={link.retailer}>{safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">{link.retailer} ↗</a> : link.retailer} · {link.source === "capture" ? "source : capture" : "source : saisie manuelle"}</li>)}</ul></section>}
         {d.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + d.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {d.off_source.code} ↗</a></p>}
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
+    {mode !== "history" && id && !product.successor_id && !product.merged_to_id && <V2ExtensionPriceButton key={`ext:${id}:${user?.id ?? "visitor"}`} productId={id} ean={d.ean} user={user} />}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}

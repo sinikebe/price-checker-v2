@@ -13,11 +13,27 @@ Le bouton **Prix à l’unité** de la barre d’outils change le critère de ch
 
 En prix à l’unité, le total affiché reste ce qu’il faut payer en caisse. Il est accompagné de la **valeur de la quantité utile** (ce que coûtent vos besoins à ce prix à l’unité), du prix à l’unité de chaque choix et du reste qui ne sert pas (« Reste après vos besoins : 4,5 kg »). Les magasins sont classés selon la valeur de la quantité utile, et l’économie de chaque magasin est mesurée sur cette valeur.
 
-Règles : seuls sont comparés les produits dont la taille est connue et exprimée dans la même unité (grammes, millilitres ou pièces) ; c’est l’unité de la quantité demandée, sinon la plus courante parmi les candidats. Sans quantité demandée, le besoin est un plus petit paquet du groupe (multiplié par le nombre de paquets demandé). Un article dont aucun produit n’a de taille connue reste comparé au prix du paquet. Pour un produit unique, les deux critères donnent le même résultat.
+Règles : seuls sont comparés les produits dont la taille est connue et exprimée dans la même unité (grammes, millilitres ou pièces) ; c’est l’unité de la quantité demandée, sinon celle que vous avez choisie pour l’article, sinon la plus courante parmi les candidats (les grammes avant les millilitres, puis les pièces, à égalité). Sans quantité demandée, le besoin est un plus petit paquet du groupe (multiplié par le nombre de paquets demandé). Un article dont aucun produit n’a de taille connue reste comparé au prix du paquet. Pour un produit unique, les deux critères donnent le même résultat.
+
+### Plusieurs unités pour un même produit
+
+Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce. La fiche produit liste ces **mesures** (au plus une par unité). Elles viennent de la quantité saisie (« 4x125 g » vaut 500 g et 4 pièces) et d’**autres unités de mesure** ajoutées à la main sur la fiche (« 6 pièces » pour un produit de 750 g). Un lot écrit « 4x125 g » compte donc déjà ses pièces ; une quantité que le programme ne sait pas lire (« 30 tablettes ») peut recevoir son nombre de pièces de la même façon.
+
+Quand les produits d’un article se mesurent dans plusieurs unités, le prix à l’unité propose de basculer : sous le prix à l’unité, des boutons **kg / L / pièce** choisissent l’unité de comparaison de cet article, et le meilleur produit peut changer (le sachet de 10 pièces au meilleur prix au kilo n’a pas forcément le meilleur prix à la pièce). Le choix est mémorisé dans le navigateur, par compte, et n’est pas inclus dans un panier partagé. Il ne change pas la quantité demandée : une quantité demandée en grammes, en millilitres ou en pièces fixe l’unité, et les boutons ne sont pas proposés. Un produit sans mesure dans l’unité choisie est laissé de côté pour cet article ; sans produit mesuré dans cette unité, le choix est ignoré.
+
+Changer les unités d’un produit ne crée pas de nouveau produit : ajouter ou retirer une unité, corriger l’unité de la quantité (« 500 g » devient « 500 ml ») ou la réécrire à l’identique (« 415 g » et « 415g », « 0,5 L » et « 50 cl ») sont des corrections de la même référence, qui garde son historique de prix. Une autre taille dans la même unité (« 250 g » devient « 220 g ») ou un autre conditionnement reste une nouvelle version, puisque les anciens prix valaient pour l’ancienne taille.
+
+La même règle sert aux quantités demandées : « 1 kg » d’un produit vendu en 4 pièces et mesuré aussi à 500 g demande deux paquets. Le graphique du catalogue en tient compte : un produit apparaît dans le prix au kilo, au litre ou à l’unité dès qu’il a une mesure dans cette unité.
 
 ## Économie par magasin
 
 Dans la répartition entre enseignes, chaque magasin indique ce qu’il apporte : le panier est recalculé sans lui (mêmes filtres, mêmes quantités), chaque article prenant alors le prochain prix le plus bas dans les autres magasins comparés. L’écart entre les deux totaux est l’économie, aussi donnée en pourcentage du total sans ce magasin. Cela aide à décider si un détour par une enseigne en vaut la peine. Un magasin est identifié par son point de vente et son canal (magasin, drive, livraison). Si un article n’a de prix que dans ce magasin, la ligne l’indique au lieu d’une économie, et cet article est laissé hors de la comparaison. Le calcul est local, sans crédit, et suit les filtres et le panier avancé.
+
+### Désactiver un magasin dans la répartition
+
+Chaque magasin de la répartition a un bouton **Désactiver** : il le laisse de côté pour ce panier sans le retirer des filtres. La répartition est recalculée sur l’appareil, sans nouvelle récupération ni crédit : chaque article prend le prochain meilleur prix dans les magasins restés actifs, et les économies sont mesurées entre eux. C’est utile pour écarter un magasin qui fait peu gagner (un détour qui ne vaut pas la peine). Un article que seul ce magasin vendait reste sans prix dans la répartition, et la page le dit.
+
+Les magasins désactivés sont listés sous la répartition avec un bouton **Réactiver** et ce que leur retour ferait gagner (ou les articles qu’ils sont seuls à vendre). Ils restent dans le classement des magasins, marqués « Désactivé dans la répartition ». Le choix est gardé dans le navigateur, par compte, et n’est pas inclus dans un panier partagé.
 
 ## Crédits
 

@@ -1,5 +1,6 @@
 import { cacheApprovedProduct } from "../pwa/cache-writes";
 import type { OffSection } from "./off-types";
+import { productErrorText } from "./v2-product-errors";
 
 export type OffField = "name" | "brand" | "composition" | "quantity" | "ean" | "nutriscore" | "nova";
 export type OffSource = { code: string; checked_at: string; fields: OffField[] };
@@ -10,12 +11,17 @@ export type OffSuggestion = {
   nutriscore_version: string | null;
 };
 export type RetailerLink = { retailer: string; url: string; source: "manual" | "capture" };
+export type MeasureUnit = "g" | "ml" | "piece";
+/** Another way to measure one pack (6 pieces for 750 g); the server derives `measures` from it and the quantity text. */
+export type ExtraQuantity = { amount: string; unit: MeasureUnit };
+export type Measure = { amount: string; unit: MeasureUnit; count_noun: string | null };
 export type ProductData = {
   name: string; brand: string; commercial_name: string; composition: string;
   package: string; quantity: string; ean: string; group: string; tags: string[];
   retailer_links: RetailerLink[]; notes: string;
   nutrition_checked_at: string | null; quantity_amount: string | null;
-  quantity_unit: "g" | "ml" | "piece" | null; quantity_count_noun: string | null;
+  quantity_unit: MeasureUnit | null; quantity_count_noun: string | null;
+  extra_quantities: ExtraQuantity[]; measures: Measure[];
   nutriscore: string; nova: string; nutriscore_version: string;
   off_source: OffSource | null;
 };
@@ -46,13 +52,18 @@ export const emptyProduct = (): ProductData => ({
   name: "", brand: "", commercial_name: "", composition: "", package: "",
   quantity: "", ean: "", group: "", tags: [], retailer_links: [], notes: "",
   nutrition_checked_at: null, quantity_amount: null, quantity_unit: null, quantity_count_noun: null,
+  extra_quantities: [], measures: [],
   nutriscore: "", nova: "",
   nutriscore_version: "", off_source: null,
 });
 export function completeProductData(value: Partial<ProductData>): ProductData {
   const tags = typeof value.tags === "string" ? (value.tags as string).split(",").map(tag => tag.trim()).filter(Boolean)
     : Array.isArray(value.tags) ? value.tags : [];
-  return { ...emptyProduct(), ...value, tags, retailer_links: Array.isArray(value.retailer_links) ? value.retailer_links : [] };
+  return {
+    ...emptyProduct(), ...value, tags, retailer_links: Array.isArray(value.retailer_links) ? value.retailer_links : [],
+    extra_quantities: Array.isArray(value.extra_quantities) ? value.extra_quantities : [],
+    measures: Array.isArray(value.measures) ? value.measures : [],
+  };
 }
 export class ProductApiError extends Error {
   status: number;
@@ -68,7 +79,7 @@ export async function productRequest<T>(path: string, method = "GET", body?: obj
     const data: unknown = await response.json().catch(() => null);
     const detail = data && typeof data === "object" && "detail" in data
       ? (data as { detail: unknown }).detail : null;
-    throw new ProductApiError(typeof detail === "string" ? detail : "L'opération a échoué.", response.status);
+    throw new ProductApiError(productErrorText(detail), response.status);
   }
   const result = await response.json() as T;
   if (method === "POST" && /^\/drafts\/\d+\/approve$/.test(path)) await cacheApprovedProduct(result as Product);

@@ -15,7 +15,7 @@ type Candidate = { id: number; name: string; detail: string; code: string | null
 const labels: Record<string,string> = {
   name: "Nom", brand: "Marque", commercial_name: "Nom commercial", composition: "Composition",
   package: "Conditionnement", quantity: "Quantité", ean: "EAN / GTIN", group: "Groupe",
-  tags: "Étiquettes", retailer_links: "Liens d’enseigne", notes: "Notes",
+  tags: "Étiquettes", extra_quantities: "Autres unités de mesure", retailer_links: "Liens d’enseigne", notes: "Notes",
   nutriscore: "Nutri-Score", nova: "NOVA", nutriscore_version: "Version Nutri-Score",
   nutrition_checked_at: "Contrôle nutritionnel", off_source: "Source OFF",
   city: "Ville", postal_code: "Code postal", latitude: "Latitude", longitude: "Longitude",
