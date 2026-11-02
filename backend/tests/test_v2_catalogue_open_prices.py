@@ -91,7 +91,10 @@ async def test_catalogue_groups_and_store_filter(monkeypatch):
             detail = await client.get("/api/v2/catalogue/categories/" + group)
             assert detail.status_code == 200, detail.text
             assert {item["id"] for item in detail.json()["products"]} == set(ids)
-            assert len(detail.json()["observations"]) == 1
+            assert detail.json()["observations"] == [] and detail.json()["prices_cost"] == 1
+            priced = await client.get("/api/v2/catalogue/prices/category", params={"name": group, "max_cost": 1})
+            assert priced.status_code == 200, priced.text
+            assert len(priced.json()["observations"]) == 1
             matches = (await client.get("/api/v2/catalogue/search",
                                         params={"category": group, "store_id": store})).json()
             assert matches["total"] == 1

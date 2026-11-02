@@ -1022,6 +1022,28 @@ MIGRATIONS = {
             WHERE product_id = p_product AND store_id = p_store AND sales_channel = p_channel
         $fn$;
     """,
+    "0039_price_credits": """
+        -- Credits now pay for every price shown (product, group, ensemble, basket). The
+        -- amounts are set by administrators; the old weekly cap is gone.
+        CREATE TABLE v2_credit_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            daily_grant integer NOT NULL DEFAULT 50 CHECK (daily_grant BETWEEN 0 AND 1000),
+            hold_max integer NOT NULL DEFAULT 100 CHECK (hold_max BETWEEN 1 AND 10000),
+            visitor_daily integer NOT NULL DEFAULT 10 CHECK (visitor_daily BETWEEN 0 AND 1000),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_credit_settings (singleton) VALUES (true);
+        -- Price views of visitors without an account, per network address and Paris day.
+        -- The key is an HMAC of the address with the installation secret, never the address;
+        -- rows older than yesterday are deleted as new ones are written.
+        CREATE TABLE v2_visitor_credits (
+            key char(64) PRIMARY KEY,
+            day date NOT NULL,
+            used integer NOT NULL CHECK (used >= 0)
+        );
+        CREATE INDEX v2_visitor_credits_day_idx ON v2_visitor_credits(day);
+    """,
 }
 
 

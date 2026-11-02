@@ -8,12 +8,14 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _bump_limit, _connect, _current_user, _limit_key, _secure_write
+from app.api.v2.credits import charge
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_catalogue_hierarchy import UNCATEGORIZED
 
 router = APIRouter(prefix="/api/v2/catalogue", tags=["v2-catalogue"])
+MAX_PRICE_COST = 1000  # the highest amount a page of prices may announce
 
 # A catalogue category is the existing comparable group, never a second field.
 CATEGORY = "COALESCE(NULLIF(btrim(p.data->>'group'), ''), 'Sans groupe')"
@@ -321,6 +323,75 @@ async def change_search_settings(payload: SearchSettingsChange, request: Request
         await connection.close()
 
 
+HISTORY_LIMIT = 30  # recent readings per product on group and ensemble pages
+
+
+async def _priced_count(connection, ids: list[int]) -> int:
+    """How many of these products have a price to show: what their prices cost, one credit each.
+
+    The filters are those of _recent_observations (active store, current, available, not under an
+    active correction), so the amount announced is the amount charged.
+    """
+    if not ids:
+        return 0
+    return await connection.fetchval(
+        "SELECT count(DISTINCT o.product_id) FROM v2_price_observations o "
+        "JOIN v2_stores s ON s.id=o.store_id AND s.active "
+        "WHERE o.product_id=ANY($1::bigint[]) AND NOT o.superseded AND o.available "
+        "AND o.correction_status IS DISTINCT FROM 'active'", ids)
+
+
+async def _paid_observations(connection, request: Request, ids: list[int], max_cost: int) -> dict:
+    """The recent prices of these products, for one credit per product shown, never above `max_cost`."""
+    async with connection.transaction():
+        observations = await _recent_observations(connection, ids)
+        cost = len({item["product_id"] for item in observations})
+        if cost > max_cost:
+            raise HTTPException(status_code=409, detail={
+                "code": "cost_changed", "cost": cost,
+                "message": f"Ces prix coûtent maintenant {cost} crédit{'s' if cost > 1 else ''}."})
+        state = await charge(connection, request, cost)
+    return {"observations": observations, "history_limit_per_product": HISTORY_LIMIT, "cost": cost, "credits": state}
+
+
+@router.get("/prices/category")
+async def category_prices(
+    request: Request, response: Response,
+    name: str = Query(..., min_length=1, max_length=100),
+    max_cost: int = Query(..., ge=0, le=MAX_PRICE_COST),
+):
+    """The recent prices of a comparable group: one credit per product shown with prices."""
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        rows = await group_rows(connection, name)
+        if not rows:
+            raise HTTPException(status_code=404, detail="Catégorie introuvable.")
+        return await _paid_observations(connection, request, [row["id"] for row in rows], max_cost)
+    finally:
+        await connection.close()
+
+
+@router.get("/prices/comparison")
+async def comparison_prices(
+    request: Request, response: Response,
+    department: str = Query(..., min_length=1, max_length=80),
+    family: str = Query(..., min_length=1, max_length=80),
+    scope: str = Query(..., min_length=1, max_length=80),
+    max_cost: int = Query(..., ge=0, le=MAX_PRICE_COST),
+):
+    """The recent prices of an ensemble: one credit per product shown with prices."""
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        rows = await scope_rows(connection, department, family, scope)
+        if not rows:
+            raise HTTPException(status_code=404, detail="Ensemble de comparaison introuvable.")
+        return await _paid_observations(connection, request, [row["id"] for row in rows], max_cost)
+    finally:
+        await connection.close()
+
+
 async def _recent_observations(connection, ids: list[int]) -> list[dict]:
     observations = await connection.fetch(
         COMPACT_HISTORY_CTE + """
@@ -402,8 +473,10 @@ async def comparison_scope_detail(
             "comparison_scope": scope,
             "groups": sorted(groups.values(), key=lambda item: item["name"].casefold()),
             "products": [_product(row) for row in rows],
-            "observations": await _recent_observations(connection, [row["id"] for row in rows]),
-            "history_limit_per_product": 30,
+            # Prices cost credits: they come from /prices/comparison, for `prices_cost` credits.
+            "observations": [],
+            "prices_cost": await _priced_count(connection, [row["id"] for row in rows]),
+            "history_limit_per_product": HISTORY_LIMIT,
         }
     finally:
         await connection.close()
@@ -418,7 +491,6 @@ async def category_detail(name: str):
         rows = await group_rows(connection, name)
         if not rows:
             raise HTTPException(status_code=404, detail="Catégorie introuvable.")
-        observations = await _recent_observations(connection, [row["id"] for row in rows])
         classification = await connection.fetchrow(
             "SELECT department,family,comparison_scope,source,revision FROM v2_catalogue_classifications "
             "WHERE group_key=lower($1)", rows[0]["category_name"],
@@ -427,8 +499,10 @@ async def category_detail(name: str):
             "name": rows[0]["category_name"],
             **_classification(classification),
             "products": [_product(row) for row in rows],
-            "observations": observations,
-            "history_limit_per_product": 30,
+            # Prices cost credits: they come from /prices/category, for `prices_cost` credits.
+            "observations": [],
+            "prices_cost": await _priced_count(connection, [row["id"] for row in rows]),
+            "history_limit_per_product": HISTORY_LIMIT,
         }
     finally:
         await connection.close()

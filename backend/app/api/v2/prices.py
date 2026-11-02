@@ -10,10 +10,11 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 import asyncpg
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.credits import charge
 from app.api.v2.off import normalize_barcode
 from app.api.v2.products import ProductData
 from app.api.v2.stores import AliasSource, propose_alias, visible_store
@@ -26,6 +27,8 @@ from app.services.v2_write_limits import (
     check_open_limit,
     check_write_limit,
 )
+
+PRODUCT_PRICES_COST = 1  # one product, one credit
 
 router = APIRouter(prefix="/api/v2/prices", tags=["v2-prices"])
 _PARIS = ZoneInfo("Europe/Paris")
@@ -281,55 +284,64 @@ def _draft(row: asyncpg.Record) -> dict:
 
 
 @router.get("/products/{product_id}")
-async def product_prices(product_id: int):
+async def product_prices(product_id: int, request: Request, response: Response):
+    """The price history of one product, for one credit (see credits.py)."""
+    response.headers["Cache-Control"] = "no-store"
     connection = await _connect()
     try:
         await _product(connection, product_id)
-        rows = await connection.fetch(
-            COMPACT_HISTORY_CTE + """
-            SELECT b.id,b.price,b.observed_at,b.sales_channel,b.source,
-                   b.source_provider,b.available,b.correction_status,b.note,
+        async with connection.transaction():
+            state = await charge(connection, request, PRODUCT_PRICES_COST)
+            return await _product_prices(connection, product_id, state)
+    finally:
+        await connection.close()
+
+
+async def _product_prices(connection, product_id: int, state: dict) -> dict:
+    rows = await connection.fetch(
+        COMPACT_HISTORY_CTE + """
+        SELECT b.id,b.price,b.observed_at,b.sales_channel,b.source,
+               b.source_provider,b.available,b.correction_status,b.note,
+               r.name AS retailer,r.id AS retailer_id,
+               sr.name AS source_retailer,s.name AS store_name,
+               s.id AS store_id,s.city,s.postal_code
+        FROM compact_history b
+        JOIN v2_retailers r ON r.id=b.retailer_id
+        LEFT JOIN v2_retailers sr ON sr.id=b.source_retailer_id
+        JOIN v2_stores s ON s.id=b.store_id
+        ORDER BY b.observed_at DESC,b.id DESC LIMIT 201
+        """,
+        [product_id],
+    )
+    # The chart history is capped, but a store with an older last reading
+    # must not disappear from the current comparison. Keep channels apart.
+    latest_rows = await connection.fetch(
+        """
+        SELECT * FROM (
+            SELECT DISTINCT ON (o.store_id,o.sales_channel)
+                   o.id,o.price,o.observed_at,o.sales_channel,o.source,
+                   o.source_provider,o.available,o.correction_status,o.note,
                    r.name AS retailer,r.id AS retailer_id,
                    sr.name AS source_retailer,s.name AS store_name,
                    s.id AS store_id,s.city,s.postal_code
-            FROM compact_history b
-            JOIN v2_retailers r ON r.id=b.retailer_id
-            LEFT JOIN v2_retailers sr ON sr.id=b.source_retailer_id
-            JOIN v2_stores s ON s.id=b.store_id
-            ORDER BY b.observed_at DESC,b.id DESC LIMIT 201
-            """,
-            [product_id],
-        )
-        # The chart history is capped, but a store with an older last reading
-        # must not disappear from the current comparison. Keep channels apart.
-        latest_rows = await connection.fetch(
-            """
-            SELECT * FROM (
-                SELECT DISTINCT ON (o.store_id,o.sales_channel)
-                       o.id,o.price,o.observed_at,o.sales_channel,o.source,
-                       o.source_provider,o.available,o.correction_status,o.note,
-                       r.name AS retailer,r.id AS retailer_id,
-                       sr.name AS source_retailer,s.name AS store_name,
-                       s.id AS store_id,s.city,s.postal_code
-                FROM v2_price_observations o
-                JOIN v2_retailers r ON r.id=o.retailer_id
-                LEFT JOIN v2_retailers sr ON sr.id=o.source_retailer_id
-                JOIN v2_stores s ON s.id=o.store_id
-                WHERE o.product_id=$1 AND NOT o.superseded AND s.active
-                ORDER BY o.store_id,o.sales_channel,o.observed_at DESC,o.id DESC
-            ) latest
-            ORDER BY latest.observed_at DESC,latest.id DESC LIMIT 201
-            """,
-            product_id,
-        )
-        return {
-            "observations": [_observation(row) for row in rows[:200]],
-            "truncated": len(rows) > 200,
-            "latest_by_store": [_observation(row) for row in latest_rows[:200]],
-            "stores_truncated": len(latest_rows) > 200,
-        }
-    finally:
-        await connection.close()
+            FROM v2_price_observations o
+            JOIN v2_retailers r ON r.id=o.retailer_id
+            LEFT JOIN v2_retailers sr ON sr.id=o.source_retailer_id
+            JOIN v2_stores s ON s.id=o.store_id
+            WHERE o.product_id=$1 AND NOT o.superseded AND s.active
+            ORDER BY o.store_id,o.sales_channel,o.observed_at DESC,o.id DESC
+        ) latest
+        ORDER BY latest.observed_at DESC,latest.id DESC LIMIT 201
+        """,
+        product_id,
+    )
+    return {
+        "observations": [_observation(row) for row in rows[:200]],
+        "truncated": len(rows) > 200,
+        "latest_by_store": [_observation(row) for row in latest_rows[:200]],
+        "stores_truncated": len(latest_rows) > 200,
+        "credits": state,
+    }
 
 
 @router.get("/products/{product_id}/drafts")
