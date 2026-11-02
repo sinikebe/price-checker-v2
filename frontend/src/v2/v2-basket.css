@@ -168,6 +168,11 @@ html[data-v2-theme="dark"] .v2-basket-store-toggle { border-color: rgba(212, 245
 html[data-v2-theme="dark"] .v2-basket-store-toggle:hover { background: rgba(212, 245, 193, .08); }
 html[data-v2-theme="dark"] .v2-basket-stores-off { border-color: rgba(212, 245, 193, .3); }
 html[data-v2-theme="dark"] .v2-basket-store-off-badge { background: #2c3a30; color: #cfe3d3; }
+@media (max-width: 560px) {
+  .v2-basket-split-stores > li.v2-basket-split-row { grid-template-columns: minmax(0, 1fr); }
+  .v2-basket-split-stores > li.v2-basket-split-row > .v2-basket-store-toggle { justify-self: start; margin: 0 0 10px; }
+  .v2-basket-stores-off li { flex-wrap: wrap; }
+}
 
 html[data-v2-theme="dark"] .v2-basket-tool { background: #1b3028; color: #d4f5c1; }
 html[data-v2-theme="dark"] .v2-basket-tool[data-active="true"] { border-color: #5f8c6c; background: #294032; color: #e9fadd; }
