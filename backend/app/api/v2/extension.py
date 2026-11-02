@@ -44,26 +44,36 @@ def _same_ean(left: str, right: str) -> bool:
     return left.lstrip("0") == right.lstrip("0") != ""
 
 
-async def _target_store(connection, adapter: str) -> dict | None:
-    """The one active store of the chain that already has prices: the extension's store to read for."""
-    rows = await connection.fetch(
-        """SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,
-                  (SELECT count(*) FROM v2_price_observations o WHERE o.store_id=s.id AND NOT o.superseded) AS prices
-           FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
-           WHERE s.active AND lower(r.name) LIKE '%' || $1 || '%'
-             AND NOT EXISTS (SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)
-           ORDER BY prices DESC, s.id LIMIT 3""", ADAPTERS[adapter]["keyword"])
-    rows = [row for row in rows if row["prices"] > 0]
+async def _target_store(connection, adapter: str, store_ids: list[int]) -> tuple[dict | None, str | None]:
+    """(store, reason): the one store of the chain to read for.
+
+    The stores the person chose as basket defaults decide when one of them is of the chain. Without that, the
+    chain's stores that hold a price from a capture or a connector count (not those only Open Prices knows,
+    which are all over the country). Exactly one is needed: a guess would file prices under the wrong store.
+    """
+    columns = "s.id,s.name,s.city,s.postal_code,r.name AS retailer"
+    chain = "s.active AND lower(r.name) LIKE '%' || $1 || '%' AND NOT EXISTS (SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)"
+    rows = []
+    if store_ids:
+        rows = await connection.fetch(
+            f"SELECT {columns} FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id WHERE {chain} AND s.id=ANY($2::bigint[]) ORDER BY s.id LIMIT 3",
+            ADAPTERS[adapter]["keyword"], store_ids)
+    if not rows:
+        rows = await connection.fetch(
+            f"""SELECT {columns} FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
+                WHERE {chain} AND EXISTS (SELECT 1 FROM v2_price_observations o WHERE o.store_id=s.id AND NOT o.superseded AND o.source<>'third_party')
+                ORDER BY s.id LIMIT 3""", ADAPTERS[adapter]["keyword"])
     if len(rows) != 1:
-        return None
-    return {key: rows[0][key] for key in ("id", "name", "city", "postal_code", "retailer")}
+        return None, "store_unknown" if not rows else "store_ambiguous"
+    return {key: rows[0][key] for key in ("id", "name", "city", "postal_code", "retailer")}, None
 
 
 class PlanRequest(BaseModel):
     adapter: Adapter
     product_ids: list[int] = Field(min_length=1, max_length=MAX_PLAN_PRODUCTS)
+    store_ids: list[int] = Field(default_factory=list, max_length=50)
 
-    @field_validator("product_ids")
+    @field_validator("product_ids", "store_ids")
     @classmethod
     def bounded(cls, ids: list[int]) -> list[int]:
         if any(not 1 <= value <= MAX_BIGINT for value in ids):
@@ -73,15 +83,17 @@ class PlanRequest(BaseModel):
 
 @router.post("/plan")
 async def plan(payload: PlanRequest, request: Request, response: Response):
-    """The basket products that have no fresh price at the chain's store, in the order given, and that store."""
+    """The basket products that have no fresh price at the chain's store, in the order given, and that store.
+
+    `store_ids` are the stores the person chose as basket defaults; they pick the chain's store when several exist."""
     _secure_write(request)
     response.headers["Cache-Control"] = "no-store"
     connection = await _connect()
     try:
         await _admin(connection, request)
-        store = await _target_store(connection, payload.adapter)
+        store, reason = await _target_store(connection, payload.adapter, payload.store_ids)
         if store is None:
-            return {"store": None, "items": [], "reason": "store_unknown"}
+            return {"store": None, "items": [], "reason": reason}
         rows = await connection.fetch(
             f"""SELECT p.id,p.data->>'ean' AS ean,p.data->>'brand' AS brand,p.data->>'name' AS name
                 FROM unnest($1::bigint[]) WITH ORDINALITY AS wanted(id,position)

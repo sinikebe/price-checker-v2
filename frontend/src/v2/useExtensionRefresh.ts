@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { V2User } from "./v2-auth-api";
+import { readBasketDefaultStores } from "./v2-basket-default-stores";
 import {
-  abortText, detectExtension, readingBody, recordReading, requestPlan, runJob,
+  abortText, detectExtension, planProblem, readingBody, recordReading, requestPlan, runJob,
   type ExtensionInfo, type Plan,
 } from "./v2-extension-bridge";
 
@@ -31,8 +32,8 @@ export function useExtensionRefresh(user: V2User | null) {
     let saved = 0;
     try {
       let plan: Plan;
-      try { plan = await requestPlan(productIds); } catch { return; }
-      if (!plan.store) { setState({ phase: "stopped", message: "Extension : le magasin Carrefour de l’application n’est pas clair (aucun, ou plusieurs avec des prix)." }); return; }
+      try { plan = await requestPlan(productIds, readBasketDefaultStores().map(store => store.id)); } catch { return; }
+      if (!plan.store) { setState({ phase: "stopped", message: "Extension : " + planProblem(plan.reason) }); return; }
       if (!plan.items.length) return;
       const store = plan.store.name;
       setState({ phase: "reading", done: 0, total: plan.items.length, store, needsHuman: false });

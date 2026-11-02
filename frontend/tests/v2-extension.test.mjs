@@ -371,3 +371,10 @@ test("a tab opened for the job is closed when it ends", async () => {
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual([w.calls.created, w.calls.removed], [1, 1]);
 });
+
+
+test("an unclear store is told in words that point to the basket's default stores", () => {
+  assert.match(bridge.planProblem("store_ambiguous"), /plusieurs magasins Carrefour.*magasins par défaut/);
+  assert.match(bridge.planProblem("store_unknown"), /aucun magasin Carrefour.*magasins par défaut/);
+  assert.match(bridge.planProblem(null), /aucun magasin Carrefour/);
+});

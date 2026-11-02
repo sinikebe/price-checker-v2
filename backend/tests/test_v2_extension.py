@@ -111,8 +111,16 @@ async def test_the_plan_lists_what_needs_reading_in_basket_order_and_the_store_t
         await db.execute("INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,price,observed_at,sales_channel) "
                          "VALUES($1,$2,$3,'manual',2,now() - interval '40 days','drive')", products[3], carrefour, second)
         unclear = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": asked})).json()
-        assert unclear == {"store": None, "items": [], "reason": "store_unknown"}
-        for bad in ({"adapter": "carrefour", "product_ids": []}, {"adapter": "carrefour", "product_ids": [0]}, {"adapter": "carrefour", "product_ids": [2**63]},
+        assert unclear == {"store": None, "items": [], "reason": "store_ambiguous"}
+        # The stores the person chose as defaults settle it; other chains' stores in the list change nothing.
+        chosen = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": asked, "store_ids": [second, foreign]})).json()
+        assert chosen["store"]["id"] == second and chosen["reason"] is None
+        both = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": asked, "store_ids": [store, second]})).json()
+        assert both == {"store": None, "items": [], "reason": "store_ambiguous"}
+        only_foreign = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": asked, "store_ids": [foreign]})).json()
+        assert only_foreign["reason"] == "store_ambiguous", "no default of the chain: back to the stores with captured prices"
+        for bad in ({"adapter": "carrefour", "product_ids": [1], "store_ids": [0]}, {"adapter": "carrefour", "product_ids": [1], "store_ids": list(range(1, 52))},
+                    {"adapter": "carrefour", "product_ids": []}, {"adapter": "carrefour", "product_ids": [0]}, {"adapter": "carrefour", "product_ids": [2**63]},
                     {"adapter": "carrefour", "product_ids": list(range(1, extension.MAX_PLAN_PRODUCTS + 2))}, {"adapter": "leclerc", "product_ids": [1]}):
             assert (await client.post("/api/v2/extension/plan", headers=ADMIN, json=bad)).status_code == 422, bad
     assert foreign  # the other chain's store never becomes the target
@@ -211,3 +219,19 @@ def test_the_guard_refuses_a_token_even_for_an_administrator():
             extension._current_user = original
     import asyncio
     asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_stores_that_only_open_prices_knows_are_not_candidates(db, served):
+    carrefour, _o, store, _f, products = await seed(db)
+    for number in range(5):  # Carrefour stores all over the country, known only through Open Prices
+        far = await db.fetchval("INSERT INTO v2_stores(retailer_id,name,city) VALUES($1,$2,'Ailleurs') RETURNING id", carrefour, f"Carrefour {number}")
+        await db.execute("INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,source_provider,price,observed_at,sales_channel) "
+                         "VALUES($1,$2,$3,'third_party','open_prices',2,now(),'in_store')", products[1], carrefour, far)
+    async with served as client:
+        answer = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": products})).json()
+        assert answer["store"]["id"] == store and answer["reason"] is None
+        # Nothing captured at all: no store to read for.
+        await db.execute("DELETE FROM v2_price_observations WHERE source='manual'")
+        none = (await client.post("/api/v2/extension/plan", headers=ADMIN, json={"adapter": "carrefour", "product_ids": products})).json()
+        assert none == {"store": None, "items": [], "reason": "store_unknown"}
