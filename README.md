@@ -4,7 +4,7 @@
 
 Plateforme développée avec l’aide d’outils d’IA.
 
-Catalogue collaboratif de produits, panier et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
+Catalogue collaboratif de produits, panier (personnel ou partagé en direct) et recettes, avec une application web installable et utilisable partiellement hors ligne. Les données nutritionnelles peuvent être consultées depuis [Open Food Facts](https://world.openfoodfacts.org/).
 
 Le projet est en cours de développement. Le code source est public sur [GitHub](https://github.com/sinikebe/price-checker-v2). Les fiches produit affichent une courbe de prix par magasin et canal, ainsi que le dernier relevé de chacun classé par prix et signalé selon sa fraîcheur, avec détails au survol, zoom temporel, déplacement et remise à zéro. Un compte peut proposer un prix, publié après validation administrative. Le catalogue se parcourt par rayon, famille, ensemble facultatif, groupe comparable puis produit. La recherche couvre les références, les groupes et les magasins ; les fiches de groupe et d’ensemble comparent les produits qu’elles réunissent.
 

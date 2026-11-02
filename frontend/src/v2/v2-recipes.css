@@ -50,8 +50,14 @@
 .v2-recipes-visibility legend { padding: 0 6px; color: #244b36; font-weight: 700; }
 .v2-recipes-visibility .v2-recipes-check { display: flex; align-items: start; gap: 10px; color: #3c5245; line-height: 1.45; }
 .v2-recipes-visibility .v2-recipes-check input { margin-top: 4px; }
-.v2-recipes-private { border-color: #c9dccb; background: #f5faf3; }
+.v2-recipes-private { margin-bottom: 18px; border-color: #c9dccb; background: #f5faf3; }
 .v2-recipes-private p:first-child { margin-top: 0; }
 .v2-recipes-private-note { color: #66786c; margin-top: -4px; }
 .v2-recipes-tile .v2-recipes-private-badge, .v2-recipes-private-badge { display: inline-block; width: fit-content; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: #eef4e8; color: #4d6a55; font-size: .85rem; }
 @media(max-width: 600px) { .v2-recipes-main { padding-top: 28px; } .v2-recipes-heading { align-items: start; flex-direction: column; } .v2-recipes-list, .v2-recipes-fields { grid-template-columns: 1fr; } .v2-recipes-search { align-items: start; flex-direction: column; } .v2-recipes-search input { width: 100%; } .v2-recipes-card { padding: 19px; } }
+html[data-v2-theme="dark"] .v2-recipes-private { background: #1d3429; border-color: #4f7a5c; }
+html[data-v2-theme="dark"] .v2-recipes-visibility legend { color: #e3f3df; }
+html[data-v2-theme="dark"] .v2-recipes-visibility .v2-recipes-check,
+html[data-v2-theme="dark"] .v2-recipes-private-note { color: #c3d6c9; }
+html[data-v2-theme="dark"] .v2-recipes-private-badge,
+html[data-v2-theme="dark"] .v2-recipes-tile .v2-recipes-private-badge { background: #294636; color: #caeda5; }

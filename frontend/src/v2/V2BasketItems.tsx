@@ -29,8 +29,10 @@ type Actions = {
 };
 
 /** The articles of the basket: include, compare as, quantity, remove. */
-export default function V2BasketItems({ items, advanced, categories, categoryError, actions }: {
+export default function V2BasketItems({ items, advanced, categories, categoryError, actions, addedBy, sharedName }: {
   items: BasketItem[]; advanced: boolean; categories: Category[] | null; categoryError: boolean; actions: Actions;
+  /** In a shared basket: who added each line. */
+  addedBy?: (item: BasketItem) => string | null; sharedName?: string;
 }) {
   return <section className="v2-basket-panel" id="v2-basket-panel-items" aria-label="Articles du panier">
     <p>Un groupe ou un ensemble compte pour un article.{advanced ? " Indiquez la quantité voulue : le total couvre des paquets entiers, la part utilisée est calculée au prorata." : ""}</p>
@@ -39,7 +41,8 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
       const choices = alternatives(item, categories ?? []);
       return <li className="v2-basket-editor-item" data-disabled={item.disabled ? "true" : "false"} key={itemKey}>
         <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span><Link to={itemHref(item)}>{itemName(item)}</Link>
-          {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}</div>
+          {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}
+          {addedBy?.(item) && <small className="v2-basket-added-by">Ajouté par {addedBy(item)}</small>}</div>
           <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>
         <div className="v2-basket-editor-controls">
           {choices.length > 1 && <label>Choix de comparaison
@@ -52,6 +55,6 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         {advanced && <QuantityEditor key={`${itemKey}:${item.quantity?.amount}:${item.quantity?.unit}`} item={item} onChange={quantity => actions.setQuantity(item, quantity)} />}
       </li>;
     })}</ul>
-    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm("Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
+    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm(sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
   </section>;
 }

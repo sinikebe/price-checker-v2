@@ -1,6 +1,6 @@
 # Panier et crédits
 
-Le panier reste sur l’appareil. Les prix, eux, sont récupérés **à la demande** : un bouton **Comparer les prix** (puis **Actualiser**) envoie le panier au serveur, qui renvoie en une seule requête les produits candidats et le dernier prix de chaque magasin. Cette récupération coûte **1 crédit par article inclus** (un groupe ou un ensemble compte pour un article) ; le bouton affiche le montant avant tout envoi. Les articles exclus ne sont ni envoyés ni comptés.
+Le panier reste sur l’appareil, sauf s’il est partagé en direct (voir [Panier partagé](#panier-partagé)). Les prix, eux, sont récupérés **à la demande** : un bouton **Comparer les prix** (puis **Actualiser**) envoie le panier au serveur, qui renvoie en une seule requête les produits candidats et le dernier prix de chaque magasin. Cette récupération coûte **1 crédit par article inclus** (un groupe ou un ensemble compte pour un article) ; le bouton affiche le montant avant tout envoi. Les articles exclus ne sont ni envoyés ni comptés.
 
 Le dernier relevé est conservé dans le navigateur (par compte) ; la page s’ouvre dessus sans rien demander. Filtrer les magasins, exclure un article, activer le panier avancé ou changer les quantités recalcule le résultat sur l’appareil, sans crédit. Un article ajouté ou remplacé depuis le relevé est signalé comme non inclus jusqu’à la prochaine actualisation.
 
@@ -63,6 +63,19 @@ Les comptes administrateurs n’ont pas de limite de crédits, pour pouvoir test
 
 Sans compte, le panier reste consultable et modifiable, mais ses prix ne peuvent pas être récupérés : l’interface propose de se connecter.
 
+## Panier partagé
+
+Depuis **Partager → Partager en direct**, un compte crée un panier partagé à partir de son panier (ou d’un panier vide). Ce panier est **enregistré sur le serveur, jusqu’à ce que son créateur le supprime ou supprime son compte** : l’interface l’indique avant la création et avant de rejoindre. Le panier personnel, lui, reste sur l’appareil ; **Revenir à mon panier** le retrouve tel qu’il était.
+
+- **Inviter.** Le panier a un lien d’invitation (`/v2/panier#rejoindre=…`, copiable, partageable ou en QR code). Toute personne connectée qui l’ouvre voit qui partage quoi, puis peut **Rejoindre**. Ouvert sans être connecté, le lien est repris après la connexion. Le créateur peut créer un **nouveau lien** : l’ancien cesse de fonctionner, les membres restent. Le lien est un HMAC de l’identifiant du panier et d’un numéro de version, signé avec le secret de l’installation : rien de secret n’est stocké en base.
+- **En direct.** Tant qu’un panier partagé est ouvert, tout ajout depuis le catalogue, une fiche produit ou une recette, et toute modification (quantité, inclusion, retrait) vont dans ce panier. Chaque membre voit les changements des autres en une seconde environ, sans recharger : une lecture attend sur le serveur le changement suivant (25 s au plus, sans connexion à la base pendant l’attente), et reprend aussitôt. La lecture s’arrête quand la page est masquée. Hors connexion, une modification du panier partagé échoue et disparaît de l’écran avec un message ; le panier personnel reste utilisable. Un bandeau indique l’état (« En direct », « Reconnexion… ») et annonce ce que les autres viennent d’ajouter ; la liste des articles dit qui a ajouté chaque ligne.
+- **Prix.** Chaque membre récupère les prix avec ses propres crédits, comme pour son panier ; les magasins désactivés, les unités et les filtres restent des choix personnels de chaque navigateur.
+- **Membres.** Le créateur peut renommer le panier, retirer un membre ou **supprimer le panier pour tous** : la suppression est définitive et ne peut pas être annulée, ce que le site rappelle avant de la confirmer. Un membre peut quitter le panier ; les articles qu’il a ajoutés restent.
+
+Limites : 100 articles par panier partagé, 20 membres, 10 paniers créés et 30 paniers suivis par compte ; 60 modifications et 120 lectures par minute et par compte ; 30 tentatives d’invitation par 10 minutes, par adresse et par compte ; 200 lectures en attente sur le serveur, 4 par compte (au-delà, le navigateur relit après 10 s). Le serveur fonctionne en un seul processus : le réveil des lectures en attente se fait en mémoire, et une lecture qui le manquerait se termine au plus tard après 25 s.
+
+La migration `0042_shared_baskets` crée les tables `v2_shared_baskets`, `v2_shared_basket_members` et `v2_shared_basket_lines`. L’export des données du compte contient ses paniers partagés et leurs lignes (sans le nom des autres membres). La suppression d’un compte supprime les paniers qu’il a créés ; dans les autres, ses lignes restent sans lien vers lui.
+
 ## API
 
 Ces routes demandent une session de navigateur (pas de jeton personnel).
@@ -71,3 +84,13 @@ Ces routes demandent une session de navigateur (pas de jeton personnel).
 - `POST /api/v2/basket/prices` : `{"items": [...]}` avec, par article, `{"kind": "product", "id"}`, `{"kind": "group", "name"}` ou `{"kind": "scope", "department", "family", "name"}`. Réponse : `lines` (dans l’ordre, avec les identifiants de produits candidats), `products`, `prices` et `credits`. Sans crédit, la réponse est `429` avec `Retry-After`.
 
 Une requête porte au plus 100 articles, compare au plus 300 produits par groupe ou ensemble et 600 produits au total, et renvoie au plus 200 magasins par produit ; les limites atteintes sont signalées dans `lines[].truncated` et `prices[].stores_truncated`. Les prix d’un magasin où le produit est retiré de la gamme (voir `availability.md`) sont laissés de côté et comptés dans `prices[].withdrawn_count`. La migration `0036_basket_credits` crée la table des soldes ; une ligne est créée à la première utilisation d’un compte et supprimée avec lui.
+
+Paniers partagés (session de navigateur, origine vérifiée pour les écritures, réponses `Cache-Control: private, no-store`) :
+
+- `GET /api/v2/shared-baskets` : les paniers partagés du compte.
+- `POST /api/v2/shared-baskets` : `{"name", "lines": [{"line", "quantity", "disabled"}]}`, crée un panier partagé ; `line` vaut `{"kind": "product", "product_id"}`, `{"kind": "group", "name"}` ou `{"kind": "scope", "department", "family", "name"}`.
+- `GET /api/v2/shared-baskets/{id}` : le panier (membres, lignes avec le produit actuel, lien d’invitation). Avec `?after=<revision>&wait=true`, la réponse attend un changement jusqu’à 25 s ; `204` signifie « rien de neuf », éventuellement avec `Retry-After`.
+- `POST /api/v2/shared-baskets/{id}/changes` : `{"ops": [...]}` appliquées dans l’ordre, une ligne étant désignée par ce qu’elle est (`line`) : `{"op": "add", "line", "quantity", "disabled"}` (ajoutée une seule fois), `{"op": "remove", "line"}`, `{"op": "update", "line", "quantity"?, "disabled"?}`.
+- `POST /api/v2/shared-baskets/join` : `{"invite", "confirm"}` ; sans `confirm`, décrit le panier sans le rejoindre.
+- `PATCH /api/v2/shared-baskets/{id}` (`{"name"}`), `POST /api/v2/shared-baskets/{id}/invite`, `DELETE /api/v2/shared-baskets/{id}` : réservés au créateur. `DELETE /api/v2/shared-baskets/{id}/members/{user_id}` : quitter (son propre identifiant) ou retirer un membre (créateur).
+

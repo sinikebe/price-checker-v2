@@ -36,6 +36,7 @@ from app.api.v2.recipes import router as recipes_router
 from app.api.v2.server_cache import router as server_cache_router
 from app.api.v2.setup import _ensure_state_dir
 from app.api.v2.setup import router as setup_router
+from app.api.v2.shared_baskets import router as shared_baskets_router
 from app.api.v2.stats import router as stats_router
 from app.api.v2.stores import router as stores_router
 from app.api.v2.sync import router as sync_router
@@ -127,6 +128,7 @@ ROUTERS = (
     products_router,
     catalogue_router,
     basket_router,
+    shared_baskets_router,
     credits_router,
     availability_router,
     extension_router,
