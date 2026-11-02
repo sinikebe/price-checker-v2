@@ -1,10 +1,14 @@
 /** Administrator settings of the credits that pay for prices (pure helpers and the two requests). */
-export type CreditAmounts = { daily_grant: number; hold_max: number; visitor_daily: number };
+export type CreditAmounts = { daily_grant: number; hold_max: number; visitor_daily: number;
+  reward_price: number; reward_product: number; reward_recipe: number };
 export type CreditSettings = CreditAmounts & { revision: number; bounds: Record<keyof CreditAmounts, { min: number; max: number }> };
 export const CREDIT_FIELDS: { key: keyof CreditAmounts; label: string; help: string }[] = [
   { key: "daily_grant", label: "Crédits donnés chaque jour à un compte", help: "Donnés à la première visite du jour (heure de Paris)." },
   { key: "hold_max", label: "Crédits gardés au maximum", help: "Au-delà, les crédits du jour sont perdus." },
   { key: "visitor_daily", label: "Crédits par jour pour un visiteur sans compte", help: "Comptés par adresse réseau, sans report ; 0 pour exiger un compte." },
+  { key: "reward_price", label: "Crédits de contribution par relevé de prix validé", help: "Sans limite ni expiration, utilisés après les crédits du jour ; 0 pour ne rien donner." },
+  { key: "reward_product", label: "Crédits de contribution par fiche produit validée", help: "Création ou modification d’une fiche." },
+  { key: "reward_recipe", label: "Crédits de contribution par recette validée", help: "Nouvelle recette ou modification." },
 ];
 
 /** The amounts typed, or the first field that is not a whole number within its bounds. */
@@ -24,7 +28,10 @@ export function readAmounts(draft: Record<keyof CreditAmounts, string>, settings
 export function creditSummary(amounts: CreditAmounts): string {
   const visitor = amounts.visitor_daily === 0 ? "il faut un compte pour voir les prix"
     : `un visiteur sans compte a ${amounts.visitor_daily} crédit${amounts.visitor_daily > 1 ? "s" : ""} par jour`;
-  return `Un compte reçoit ${amounts.daily_grant} crédit${amounts.daily_grant > 1 ? "s" : ""} par jour et en garde ${amounts.hold_max} au plus ; ${visitor}. Un prix de produit coûte 1 crédit, un groupe ou un ensemble 1 par produit avec un prix, un panier 1 par article.`;
+  const rewards = [["relevé de prix", amounts.reward_price], ["fiche produit", amounts.reward_product], ["recette", amounts.reward_recipe]]
+    .filter(([, value]) => Number(value) > 0).map(([what, value]) => `${value} par ${what}`).join(", ");
+  return `Un compte reçoit ${amounts.daily_grant} crédit${amounts.daily_grant > 1 ? "s" : ""} par jour et en garde ${amounts.hold_max} au plus ; ${visitor}. Un prix de produit coûte 1 crédit, un groupe ou un ensemble 1 par produit avec un prix, un panier 1 par article.`
+    + (rewards ? ` Contributions validées : ${rewards}.` : " Les contributions ne rapportent pas de crédits.");
 }
 
 async function request(method: "GET" | "PUT", body?: object): Promise<CreditSettings> {

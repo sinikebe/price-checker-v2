@@ -7,6 +7,7 @@ import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import { loadWithdrawn, lookAgain, withdrawnAt, withdrawnText, type Withdrawn } from "./v2-availability";
 import { usePaidPrices } from "./usePaidPrices";
 import V2PriceGate from "./V2PriceGate";
+import { rewardHint } from "./v2-basket-credits-api";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -431,6 +432,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
             <small>Ce texte sera vérifié avant publication. N'indiquez ni nom, ni coordonnées, ni donnée personnelle.</small></label>
         </div>
         <button type="submit" className="v2-button v2-button-primary" disabled={busy}>{busy ? "Envoi…" : "Envoyer le relevé"}</button>
+        {rewardHint("price", paid.credits) && <small className="v2-reward-hint">{rewardHint("price", paid.credits)}</small>}
       </form>
     </div>}
     {user && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>

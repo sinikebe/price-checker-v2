@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requestBasketConnectorRefresh } from "./v2-connector-refresh";
 import {
-  NoCreditsError, SignedOutError, creditLabel, fetchBasketPrices, readBasketCredits, shortText,
+  NoCreditsError, SignedOutError, balanceText, fetchBasketPrices, readBasketCredits, shortText, spendable,
   type BasketCredits,
 } from "./v2-basket-credits-api";
 import { readSnapshot, snapshotFromFetch, writeSnapshot, type BasketSnapshot } from "./v2-basket-snapshot";
@@ -62,9 +62,8 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
       if (current.current !== userId) return;
       setSnapshot(next);
       setCredits(result.credits);
-      const left = result.credits.balance;
       setState({ phase: "done", message: "Prix récupérés. " + (result.credits.unlimited ? "Crédits illimités."
-        : left ? creditLabel(left) + " restant" + (left > 1 ? "s" : "") + "." : "Plus de crédit aujourd’hui.") });
+        : spendable(result.credits) ? balanceText(result.credits) + "." : "Plus de crédit aujourd’hui.") });
       const concrete = sent.flatMap((item, index) => "kind" in item ? [] : result.lines[index].product_ids);
       if (concrete.length && !quiet) {
         void requestBasketConnectorRefresh(concrete);

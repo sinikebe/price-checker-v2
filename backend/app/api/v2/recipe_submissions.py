@@ -9,6 +9,7 @@ from pydantic import Field
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.api.v2.recipes import RecipeInput, _decoded, _detail, _replace_ingredients
+from app.services import v2_basket_credits as credits
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_RECIPES,
@@ -217,6 +218,7 @@ async def approve_submission(submission_id: int, request: Request):
                 "reviewer_id=$2,result_recipe_id=$3 WHERE id=$1",
                 submission_id, reviewer["id"], recipe_id,
             )
+            await credits.reward(connection, submission["author_id"], "recipe", submission_id)
         return {"id": submission_id, "status": "approved", "recipe": await _detail(connection, recipe_id)}
     finally:
         await connection.close()

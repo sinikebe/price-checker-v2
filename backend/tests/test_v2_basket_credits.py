@@ -48,8 +48,9 @@ def test_the_amounts_follow_the_settings():
     small = {"daily_grant": 5, "hold_max": 8, "visitor_daily": 0}
     assert credits.refilled(0, None, MONDAY, small) == (5, MONDAY)
     assert credits.refilled(5, MONDAY, date(2026, 11, 3), small)[0] == 8
-    assert credits.public_state(3, MONDAY, small) == {
-        "balance": 3, "daily_grant": 5, "hold_max": 8, "next_grant_on": "2026-11-03", "unlimited": False, "visitor": False}
+    assert credits.public_state(3, MONDAY, small, 4) == {
+        "balance": 3, "bonus": 4, "rewards": {"price": 5, "product": 10, "recipe": 10},
+        "daily_grant": 5, "hold_max": 8, "next_grant_on": "2026-11-03", "unlimited": False, "visitor": False}
     assert credits.visitor_state(2, MONDAY, CFG)["visitor"] is True
 
 
@@ -159,7 +160,8 @@ async def test_an_account_starts_with_the_grant_of_the_day_and_pays_one_credit_p
     async with served as client:
         first = await client.get("/api/v2/basket/credits", headers=acting(ana))
         assert first.status_code == 200 and first.headers["cache-control"] == "no-store"
-        assert first.json() == {"balance": 50, "daily_grant": 50, "hold_max": 100,
+        assert first.json() == {"balance": 50, "bonus": 0, "rewards": {"price": 5, "product": 10, "recipe": 10},
+                                "daily_grant": 50, "hold_max": 100,
                                 "next_grant_on": "2026-11-03", "unlimited": False, "visitor": False}
         body = {"items": [{"kind": "product", "id": products[0]}]}
         fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)

@@ -18,7 +18,9 @@ from app.services import v2_basket_credits as credits
 
 router = APIRouter(prefix="/api/v2/credits", tags=["v2-credits"])
 
-BOUNDS = {"daily_grant": (0, 1000), "hold_max": (1, 10000), "visitor_daily": (0, 1000)}
+BOUNDS = {"daily_grant": (0, 1000), "hold_max": (1, 10000), "visitor_daily": (0, 1000),
+          "reward_price": (0, 1000), "reward_product": (0, 1000), "reward_recipe": (0, 1000)}
+REWARDS_LISTED = 20
 
 
 def _visitor_key(request: Request) -> str:
@@ -44,9 +46,9 @@ async def charge(connection, request: Request, cost: int) -> dict:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
         spent = await credits.spend(connection, user["id"], state, cost)
         if spent is None:
-            _refuse(credits.public_state(state["balance"], state["today"], cfg), cost, now,
+            _refuse(credits.public_state(state["balance"], state["today"], cfg, state["bonus"]), cost, now,
                     "Pas assez de crédits pour afficher ces prix.")
-        return credits.public_state(spent["balance"], spent["today"], cfg)
+        return credits.public_state(spent["balance"], spent["today"], cfg, spent["bonus"])
     remaining = await credits.visitor_spend(connection, _visitor_key(request), cost, now.date(), cfg["visitor_daily"])
     if remaining is None:
         used = await credits.visitor_used(connection, _visitor_key(request), now.date())
@@ -68,7 +70,7 @@ async def viewer_state(connection, request: Request, user, cfg: dict) -> dict:
         return credits.unlimited_state(today, cfg)
     if user is not None:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
-        return credits.public_state(state["balance"], state["today"], cfg)
+        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
     used = await credits.visitor_used(connection, _visitor_key(request), today)
     return credits.visitor_state(max(0, cfg["visitor_daily"] - used), today, cfg)
 
@@ -86,10 +88,34 @@ async def read_credits(request: Request, response: Response):
         await connection.close()
 
 
+@router.get("/rewards")
+async def read_rewards(request: Request, response: Response):
+    """The account's latest contribution credits: what was earned, for what kind of contribution, and when."""
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        user = await _current_user(connection, request)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Connectez-vous.")
+        rows = await connection.fetch(
+            "SELECT kind,credits,created_at FROM v2_credit_rewards WHERE user_id=$1 "
+            "ORDER BY created_at DESC,id DESC LIMIT $2", user["id"], REWARDS_LISTED)
+        total = await connection.fetchval(
+            "SELECT coalesce(sum(credits),0) FROM v2_credit_rewards WHERE user_id=$1", user["id"])
+        return {"rewards": [{"kind": row["kind"], "credits": row["credits"],
+                             "created_at": row["created_at"].isoformat()} for row in rows],
+                "earned_total": total}
+    finally:
+        await connection.close()
+
+
 class CreditSettingsChange(BaseModel):
     daily_grant: int = Field(ge=BOUNDS["daily_grant"][0], le=BOUNDS["daily_grant"][1])
     hold_max: int = Field(ge=BOUNDS["hold_max"][0], le=BOUNDS["hold_max"][1])
     visitor_daily: int = Field(ge=BOUNDS["visitor_daily"][0], le=BOUNDS["visitor_daily"][1])
+    reward_price: int = Field(ge=BOUNDS["reward_price"][0], le=BOUNDS["reward_price"][1])
+    reward_product: int = Field(ge=BOUNDS["reward_product"][0], le=BOUNDS["reward_product"][1])
+    reward_recipe: int = Field(ge=BOUNDS["reward_recipe"][0], le=BOUNDS["reward_recipe"][1])
     expected_revision: int = Field(ge=0)
 
 
@@ -123,9 +149,11 @@ async def change_settings(payload: CreditSettingsChange, request: Request, respo
     try:
         await _require_admin_user(connection, request)
         updated = await connection.fetchval(
-            "UPDATE v2_credit_settings SET daily_grant=$1, hold_max=$2, visitor_daily=$3, revision=revision+1, "
-            "updated_at=now() WHERE singleton AND revision=$4 RETURNING revision",
-            payload.daily_grant, payload.hold_max, payload.visitor_daily, payload.expected_revision)
+            "UPDATE v2_credit_settings SET daily_grant=$1, hold_max=$2, visitor_daily=$3, reward_price=$4, "
+            "reward_product=$5, reward_recipe=$6, revision=revision+1, updated_at=now() "
+            "WHERE singleton AND revision=$7 RETURNING revision",
+            payload.daily_grant, payload.hold_max, payload.visitor_daily, payload.reward_price,
+            payload.reward_product, payload.reward_recipe, payload.expected_revision)
         if updated is None:
             raise HTTPException(status_code=409, detail="Réglages modifiés entre-temps. Rechargez la page.")
         return await _settings(connection)

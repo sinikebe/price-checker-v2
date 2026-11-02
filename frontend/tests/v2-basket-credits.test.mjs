@@ -99,6 +99,8 @@ test("balances and shortfalls are said in plain words, for accounts and visitors
   const next = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   assert.equal(plain(shortText({ ...credits, balance: 2, next_grant_on: next }, 5)),
     "Il faut 5 crédits, il vous en reste 2. Les prochains arrivent demain (50 par jour, 100 au maximum).");
+  assert.equal(plain(shortText({ ...credits, balance: 2, bonus: 1, next_grant_on: next, rewards: { price: 5, product: 10, recipe: 0 } }, 5)),
+    "Il faut 5 crédits, il vous en reste 3. Les prochains arrivent demain (50 par jour, 100 au maximum). Vos contributions validées en rapportent aussi : 5 par relevé de prix, 10 par fiche produit.");
   assert.match(shortText({ ...credits, balance: 0, daily_grant: 10, hold_max: 10, visitor: true, next_grant_on: next }, 1), /Connectez-vous pour avoir des crédits chaque jour/);
   assert.equal(shortText({ ...credits, balance: 0, daily_grant: 0, hold_max: 0, visitor: true }, 1), "Connectez-vous pour voir les prix.");
 });
@@ -127,4 +129,23 @@ test("a paid request says why nothing was shown, and never hides an unexpected a
   globalThis.fetch = async (url) => { seen = url; return answer(200, { ...credits, visitor: true })(); };
   assert.equal((await readCredits()).visitor, true);
   assert.equal(seen, "/api/v2/credits");
+});
+
+test("contribution credits count when the daily ones run out, and are named apart", async () => {
+  const { balanceText, outOfCredits, rewardHint, rewardSummary, spendable } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+  const rewards = { price: 5, product: 10, recipe: 10 };
+  const member = { ...credits, balance: 0, bonus: 30, rewards };
+  assert.equal(spendable(member), 30);
+  assert.equal(outOfCredits(member, 12), false, "30 contribution credits pay for 12");
+  assert.equal(outOfCredits({ ...member, bonus: 2 }, 3), true);
+  assert.equal(balanceText({ ...member, balance: 47 }), "47 crédits du jour et 30 crédits de contribution");
+  assert.equal(balanceText({ ...member, balance: 47, bonus: 0 }), "47 crédits restants");
+  assert.equal(rewardHint("price", member), "Une fois validé par un administrateur, ce relevé vous rapporte 5 crédits de contribution : ils n’expirent pas et servent quand vos crédits du jour sont épuisés.");
+  assert.match(rewardHint("product", member), /^Une fois validée par un administrateur, cette fiche vous rapporte 10 crédits/);
+  assert.match(rewardHint("recipe", member), /cette recette vous rapporte 10 crédits/);
+  assert.equal(rewardHint("price", { ...member, rewards: { ...rewards, price: 0 } }), "", "a kind that earns nothing says nothing");
+  assert.equal(rewardHint("price", { ...member, unlimited: true }), "", "administrators are not counted");
+  assert.equal(rewardHint("price", { ...member, visitor: true }), "", "contributions need an account");
+  assert.equal(rewardHint("price", null), "");
+  assert.equal(rewardSummary({ price: 5, product: 0, recipe: 10 }), "5 par relevé de prix, 10 par recette");
 });
