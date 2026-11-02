@@ -1,6 +1,6 @@
 # V2 data retention — technical behavior
 
-This describes current code, not the final privacy notice. Public products, price observations and recipes have no automatic expiry. Deleting an account removes its private data and author links while retaining published contributions (see [account deletion](account-deletion.md)). Active accounts are not deleted because account inactivity is not measured.
+This describes current code, not the final privacy notice. Public products, price observations and recipes have no automatic expiry. A private recipe (seen by its author only) stays until its author deletes it or deletes the account. Deleting an account removes its private data and author links while retaining published contributions (see [account deletion](account-deletion.md)). Active accounts are not deleted because account inactivity is not measured.
 
 The API runs an hourly, bounded cleanup. Expired sessions and authentication limits use their shorter existing lifetimes. Six months after a moderation decision, it removes approved/rejected product and price drafts, approved/rejected recipe submissions, and resolved reports. It first detaches draft references from published product/price history. Pending review items and open reports remain until a decision. Baskets remain local to each device. Content-withdrawal markers remain, but their free-text reason is replaced with a generic label.
 

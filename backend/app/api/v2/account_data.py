@@ -68,7 +68,7 @@ async def export_account_data(request: Request):
             )
             recipes = await connection.fetch(
                 "SELECT id, title, description, base_servings, prep_minutes, "
-                "cook_minutes, steps, revision, created_at, updated_at "
+                "cook_minutes, steps, revision, private, created_at, updated_at "
                 "FROM v2_recipes WHERE author_id=$1 ORDER BY id", user_id
             )
             ingredients = await connection.fetch(
@@ -169,6 +169,11 @@ async def delete_account(
             if not await verify_second_factor(connection, user["id"], payload.second_factor):
                 raise HTTPException(status_code=401, detail="Code de validation incorrect.")
             user_id = account["id"]
+            # Private recipes are the account's own data: they go with it, with their
+            # ingredients and publication requests.
+            await connection.execute(
+                "DELETE FROM v2_recipes WHERE author_id=$1 AND private", user_id,
+            )
             # Keep published recipes and audit history, without an author link.
             # A revision bump invalidates already cached recipe details in the PWA.
             await connection.execute(

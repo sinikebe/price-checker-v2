@@ -12,11 +12,18 @@ export type RecipeInput = {
   prep_minutes: number | null; cook_minutes: number | null;
   steps: string[]; ingredients: RecipeIngredient[];
 };
+export type RecipePublication = { submission_id: number; status: "pending" | "rejected"; revision: number };
 export type Recipe = RecipeInput & {
   id: number; revision: number;
   created_at: string; updated_at: string;
+  /** Seen by its author only, saved without review; absent from older servers. */
+  private?: boolean;
+  /** For a private recipe: the latest request to publish it that waits or was refused. */
+  publication?: RecipePublication | null;
 };
 export type RecipeSummary = Pick<Recipe, "id" | "title" | "description" | "base_servings" | "prep_minutes" | "cook_minutes" | "updated_at" | "revision"> & { ingredient_count: number };
+export type PrivateRecipeSummary = RecipeSummary & { publication: RecipePublication["status"] | null };
+export type PrivateRecipePage = { items: PrivateRecipeSummary[]; limit: number };
 export type RecipeSubmission = {
   id: number; recipe_id: number | null; result_recipe_id: number | null;
   title: string; status: "pending" | "approved" | "rejected";
@@ -26,8 +33,13 @@ export type RecipeProposal = { submission_id: number; status: "pending"; recipe_
 export type RecipeReview = {
   id: number; recipe_id: number | null; base_revision: number | null;
   author: string; created_at: string; payload: RecipeInput;
+  /** The submission asks to publish its author's private recipe. */
+  publishes_private?: boolean;
 };
 export type RecipePage = { items: RecipeSummary[]; total: number; page: number; page_size: number };
+
+/** Paths under /api/v2/recipes that read or change the signed-in author's private recipes. */
+export const isPrivateRecipePath = (path: string): boolean => path === "/private" || path.startsWith("/private/") || path.startsWith("/private?");
 
 export async function recipeRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
   const response = await fetch("/api/v2/recipes" + path, {
@@ -44,7 +56,10 @@ export async function recipeRequest<T>(path: string, method = "GET", body?: obje
     throw new Error(typeof detail === "string" ? detail : validation ?? "La requête a échoué.");
   }
   const result = response.status === 204 ? undefined : await response.json();
-  if ((method === "DELETE" && /^\/\d+$/.test(path)) || (method !== "GET" && result && typeof result === "object" && "ingredients" in result))
+  // Private recipes never enter the offline copy of public recipes, which every account on
+  // this browser can read.
+  if (!isPrivateRecipePath(path) && ((method === "DELETE" && /^\/\d+$/.test(path))
+    || (method !== "GET" && result && typeof result === "object" && "ingredients" in result)))
     await cacheRecipeWrite(method, path, result as Recipe | undefined);
   return result as T;
 }

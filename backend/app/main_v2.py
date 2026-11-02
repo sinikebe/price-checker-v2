@@ -29,6 +29,7 @@ from app.api.v2.legal import router as legal_router
 from app.api.v2.logs import router as logs_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
+from app.api.v2.private_recipes import router as private_recipes_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
@@ -133,6 +134,8 @@ ROUTERS = (
     prices_router,
     stores_router,
     transfers_router,
+    # Before recipes_router: /api/v2/recipes/private must not be read as a recipe id.
+    private_recipes_router,
     recipes_router,
     recipe_submissions_router,
     sync_router,
@@ -170,6 +173,12 @@ BEARER_OPERATIONS = {
     ("POST", "/api/v2/recipes"),
     ("PUT", "/api/v2/recipes/{recipe_id}"),
     ("DELETE", "/api/v2/recipes/{recipe_id}"),
+    ("GET", "/api/v2/recipes/private"),
+    ("POST", "/api/v2/recipes/private"),
+    ("GET", "/api/v2/recipes/private/{recipe_id}"),
+    ("PUT", "/api/v2/recipes/private/{recipe_id}"),
+    ("DELETE", "/api/v2/recipes/private/{recipe_id}"),
+    ("POST", "/api/v2/recipes/private/{recipe_id}/publish"),
     ("GET", "/api/v2/recipes/submissions/mine"),
     ("GET", "/api/v2/recipes/submissions/{submission_id}"),
     ("PUT", "/api/v2/recipes/submissions/{submission_id}"),

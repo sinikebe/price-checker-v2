@@ -1064,6 +1064,23 @@ MIGRATIONS = {
         );
         CREATE INDEX v2_credit_rewards_user_idx ON v2_credit_rewards(user_id, created_at DESC);
     """,
+    "0041_private_recipes": """
+        -- A private recipe is seen by its author only: saved without review, never listed,
+        -- cached offline or exported with public content. Publishing it goes through review.
+        ALTER TABLE v2_recipes ADD COLUMN private boolean NOT NULL DEFAULT false;
+        CREATE INDEX v2_private_recipes_author_idx ON v2_recipes(author_id, lower(title), id)
+            WHERE private;
+        -- Only public recipes change the revision the PWA watches, so a private save does not
+        -- make every device download the public list again.
+        DROP TRIGGER v2_recipes_pwa_version ON v2_recipes;
+        CREATE TRIGGER v2_recipes_pwa_version_insert AFTER INSERT ON v2_recipes
+            FOR EACH ROW WHEN (NOT NEW.private) EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_recipes_pwa_version_update AFTER UPDATE ON v2_recipes
+            FOR EACH ROW WHEN (NOT OLD.private OR NOT NEW.private)
+            EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_recipes_pwa_version_delete AFTER DELETE ON v2_recipes
+            FOR EACH ROW WHEN (NOT OLD.private) EXECUTE FUNCTION v2_bump_pwa_version();
+    """,
 }
 
 
