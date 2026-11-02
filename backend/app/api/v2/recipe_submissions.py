@@ -130,6 +130,16 @@ async def revise_submission(submission_id: int, payload: SubmissionUpdate, reque
                 await check_open_limit(
                     connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
                 )
+                # One waiting change per recipe and author: reopening a refused one
+                # while another waits would break that rule.
+                if row["recipe_id"] is not None and await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_recipe_submissions WHERE author_id=$1 "
+                    "AND recipe_id=$2 AND status='pending')", user["id"], row["recipe_id"],
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Une autre proposition pour cette recette attend déjà validation.",
+                    )
             if row["recipe_id"] is not None:
                 current = await _target_revision(connection, row["recipe_id"], user["id"])
                 if current != row["base_revision"]:

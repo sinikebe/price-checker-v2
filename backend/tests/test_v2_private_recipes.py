@@ -216,3 +216,35 @@ async def test_private_recipes_are_bounded_per_account(setup, monkeypatch):
     assert refused.status_code == 429
     assert "2 recettes privées" in refused.json()["detail"]
     assert (await client.post(path, json=PAYLOAD, headers=who("other"))).status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_blank_group_names_and_huge_ids_are_refused_before_saving(setup):
+    client, connection, _users = setup
+    path = "/api/v2/recipes/private"
+    blank = {**PAYLOAD, "ingredients": [{**PAYLOAD["ingredients"][0], "group_name": "   "}]}
+    assert (await client.post(path, json=blank, headers=who("author"))).status_code == 422
+    huge = {**PAYLOAD, "ingredients": [{"label": "Riz", "product_id": 2**63, "note": "",
+                                        "optional": False}]}
+    assert (await client.post(path, json=huge, headers=who("author"))).status_code == 422
+    # The public proposal refuses them too, instead of leaving a submission nobody can approve.
+    assert (await client.post("/api/v2/recipes", json=blank, headers=who("author"))).status_code == 422
+    assert await connection.fetchval("SELECT count(*) FROM v2_recipes") == 0
+    assert await connection.fetchval("SELECT count(*) FROM v2_recipe_submissions") == 0
+
+
+@pytest.mark.asyncio
+async def test_a_refused_request_is_not_reopened_while_another_waits(setup):
+    client, _connection, _users = setup
+    path = "/api/v2/recipes/private"
+    recipe_id = (await client.post(path, json=PAYLOAD, headers=who("author"))).json()["id"]
+    refused = (await client.post(f"{path}/{recipe_id}/publish", json={"revision": 1},
+                                 headers=who("author"))).json()["submission_id"]
+    await client.post(f"/api/v2/recipes/submissions/{refused}/reject", headers=who("admin"))
+    waiting = await client.post(f"{path}/{recipe_id}/publish", json={"revision": 1},
+                                headers=who("author"))
+    assert waiting.status_code == 202
+    reopened = await client.put(f"/api/v2/recipes/submissions/{refused}", headers=who("author"),
+                                json={**PAYLOAD, "revision": 1})
+    assert reopened.status_code == 409, reopened.text
+    assert "attend déjà validation" in reopened.json()["detail"]

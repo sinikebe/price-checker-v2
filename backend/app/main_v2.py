@@ -30,7 +30,6 @@ from app.api.v2.logs import router as logs_router
 from app.api.v2.moderation import router as moderation_router
 from app.api.v2.prices import router as prices_router
 from app.api.v2.private_recipes import router as private_recipes_router
-from app.api.v2.private_recipes import router as private_recipes_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router

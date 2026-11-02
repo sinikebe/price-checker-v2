@@ -30,14 +30,15 @@ class IngredientInput(BaseModel):
     unit: Unit | None = None
     note: str = Field(default="", max_length=1000)
     optional: bool = False
-    product_id: int | None = Field(default=None, gt=0)
+    product_id: int | None = Field(default=None, gt=0, le=2**63 - 1)
     group_name: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def validate_target(self):
         self.label = self.label.strip()
         self.note = self.note.strip()
-        self.group_name = self.group_name.strip() if self.group_name else None
+        # A name of spaces only is no group: it would fail the database check later.
+        self.group_name = (self.group_name or "").strip() or None
         if not self.label:
             raise ValueError("Le nom de l'ingrédient est nécessaire.")
         if (self.product_id is None) == (self.group_name is None):
