@@ -722,6 +722,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.122",
+      "components": {
+        "application": {
+          "version": "0.1.122",
+          "notes": [
+            "Dans la répartition du panier, un magasin qui fait peu gagner peut être désactivé d’un clic, sans le retirer des filtres."
+          ]
+        },
+        "basket": {
+          "version": "0.1.34",
+          "notes": [
+            "Désactiver un magasin dans la répartition recalcule le panier sans lui, sur l’appareil ; « Réactiver » dit ce que son retour ferait gagner."
+          ]
+        }
+      }
     }
   ]
 }
