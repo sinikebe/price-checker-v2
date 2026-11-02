@@ -1,17 +1,20 @@
 import V2BasketLines from "./V2BasketLines";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { pricePosition, purchaseTotalCents, type BasketComparison, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
+import type { BaseUnit } from "./v2-basket-quantity";
 import { itemName, money, savingText, storeName, surplusText } from "./v2-basket-view";
 import { withdrawnPricesText } from "./v2-availability";
 
 /** The split across retailers, then the cheapest stores. Everything is computed from the fetched prices. */
-export default function V2BasketResults({ comparison, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings }: {
+export default function V2BasketResults({ comparison, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings, onUnit }: {
   comparison: BasketComparison; items: BasketItem[]; advanced: boolean; mode: CompareMode; limited: number;
   shownCount: number; onShowMore: () => void; openPrices: boolean; savings: Map<string, StoreSaving>;
+  onUnit: (item: BasketItem, unit: BaseUnit) => void;
 }) {
   const lineCount = items.length;
   const unit = mode === "unit";
   const withSurplus = comparison.split.filter(choice => choice.unit && surplusText(choice.unit)).length;
+  const switchable = comparison.split.some(choice => choice.unit && !choice.unit.fixed && choice.unit.available.length > 1);
   const showUsed = advanced || unit;
   const splitStores = new Map<string, PriceChoice[]>();
   for (const choice of comparison.split) {
@@ -58,13 +61,13 @@ export default function V2BasketResults({ comparison, items, advanced, mode, lim
             {note && <span className="v2-basket-saving" data-kind={note.kind}>{note.text}</span>}</span>
             <span className="v2-basket-split-store-total"><b>{money(purchaseTotalCents(choices, advanced))}</b><small>{choices.length} article{choices.length > 1 ? "s" : ""}</small></span></summary>
           {advanced && <p>Les prix par article sont indiqués avant mutualisation ; le total compte chaque paquet partagé une seule fois.</p>}
-          <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} />
+          <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
         </details></li>;
       })}</ul>}
       {splitStores.size > 0 && <small className="v2-basket-saving-help">{unit
         ? "Économie : ce que vaudraient de plus les quantités utiles sans ce magasin, en prenant pour chaque article le prochain meilleur prix à l’unité dans les autres magasins comparés."
         : "Économie : ce que vous dépenseriez de plus sans ce magasin, en prenant pour chaque article le prochain prix le plus bas dans les autres magasins comparés."}</small>}
-      {unit && <p className="v2-basket-unit-note">Le prix à l’unité favorise les grands formats : vous économisez sur la durée, mais vous pouvez acheter plus que nécessaire (5 kg pour 500 g, par exemple). Le total à payer est celui de la caisse ; la valeur de la quantité utile est ce que coûtent vos besoins à ce prix à l’unité.</p>}
+      {unit && <p className="v2-basket-unit-note">Le prix à l’unité favorise les grands formats : vous économisez sur la durée, mais vous pouvez acheter plus que nécessaire (5 kg pour 500 g, par exemple). Le total à payer est celui de la caisse ; la valeur de la quantité utile est ce que coûtent vos besoins à ce prix à l’unité.{switchable ? " Un article mesuré de plusieurs façons (au poids et à la pièce, par exemple) se compare dans l’unité de votre choix : changez-la sous son prix." : ""}</p>}
     </section>
     {comparison.missing.length > 0 && <p className="v2-basket-missing">Sans prix ou quantité de paquet compatible : {missingNames(comparison.missing)}. Aucun total complet n’est calculé.</p>}
     <div className="v2-basket-results-heading"><h3>{visibleStores.length > 1 ? `Les ${Math.min(shownCount, comparison.stores.length)} magasins les moins chers` : "Le magasin le moins cher"}</h3>
@@ -74,7 +77,7 @@ export default function V2BasketResults({ comparison, items, advanced, mode, lim
       return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
         <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{showUsed && <span>{unit ? (complete ? "Valeur de la quantité utile" : "Sous-total de la valeur utile") : (complete ? "Part utilisée" : "Sous-total de la part utilisée")} : {money(store.usedCents)}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{lineCount} articles</span></div></div>
         <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>{advanced && <p>Prix par article avant mutualisation des paquets.</p>}
-          <V2BasketLines choices={store.choices} advanced={advanced} rangeFor={rangeFor} />
+          <V2BasketLines choices={store.choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
           {!complete && <p className="v2-basket-missing">Sans prix ici : {missingNames(items.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))))}.</p>}
         </details>
       </li>;

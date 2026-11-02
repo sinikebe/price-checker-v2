@@ -8,6 +8,7 @@ import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
 import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
 import { productRequest, type Product } from "./v2-products-api";
 import { useV2Basket } from "./V2BasketContext";
+import { productSizeIn } from "./v2-basket-quantity";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import type { BasketGroup, BasketScope } from "./v2-basket-storage";
@@ -76,11 +77,9 @@ const metricUnits: Record<ChartMetric, string> = {
 function productName(product: Product): string {
   return [product.data.brand, product.data.name || "Produit sans nom"].filter(Boolean).join(" ");
 }
-function quantityFor(product: Product): { amount: number; unit: UnitMetric } | null {
-  const amount = Number(product.data.quantity_amount);
-  const unit = product.data.quantity_unit;
-  return Number.isFinite(amount) && amount > 0 && unit && unitMetrics.includes(unit)
-    ? { amount, unit } : null;
+/** The size of one pack in a unit (grams, millilitres, pieces), when the catalogue knows it: a product can have several. */
+function quantityFor(product: Product, unit: UnitMetric): { amount: number; unit: UnitMetric } | null {
+  return productSizeIn(product, unit);
 }
 function matchesSubset(product: Product, subset: string): boolean {
   const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
@@ -210,9 +209,9 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
     if (!product) return [];
     const time = Date.parse(item.observed_at), price = Number(item.price);
     if (!Number.isFinite(time) || !Number.isFinite(price) || price < 0) return [];
-    const quantity = quantityFor(product);
-    if (metric !== "price" && (!quantity || quantity.unit !== metric || price === 0)) return [];
-    const amount = metric === "price" ? price : price * (metric === "piece" ? 1 : 1000) / quantity!.amount;
+    const quantity = metric === "price" ? null : quantityFor(product, metric);
+    if (metric !== "price" && (!quantity || price === 0)) return [];
+    const amount = !quantity ? price : price * (metric === "piece" ? 1 : 1000) / quantity.amount;
     return Number.isFinite(amount) ? [{ ...item, time, amount }] : [];
   });
   if (!points.length) return <p>Aucun prix comparable à tracer pour cette sélection. Choisissez une autre métrique ou d’autres produits.</p>;
@@ -246,9 +245,9 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
     </svg></div>
     <ul className="v2-catalogue-legend">{products.map((product, index) =>
       <li key={product.id}><span style={{ backgroundColor: colors[index % colors.length] }} /><Link to={"/v2/produits/" + product.id}>{productName(product)}</Link>{showGroup && <small> · {product.data.group || "Sans groupe"}</small>}
-        {!points.some(point => point.product_id === product.id) && <small> · {metric !== "price" && quantityFor(product)?.unit !== metric ? "quantité non comparable" : "aucun prix"}</small>}</li>
+        {!points.some(point => point.product_id === product.id) && <small> · {metric !== "price" && !quantityFor(product, metric) ? "quantité non comparable" : "aucun prix"}</small>}</li>
     )}</ul>
-    {metric !== "price" && products.some(product => quantityFor(product)?.unit !== metric) &&
+    {metric !== "price" && products.some(product => !quantityFor(product, metric)) &&
       <p className="v2-catalogue-source">Les produits sans quantité compatible avec {metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.</p>}
     <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} points récents par produit. Les signalements Open Prices consécutifs au même prix sont résumés par le premier et le dernier jour de la période. Ces prix sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
   </div>;
@@ -309,7 +308,7 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
   const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id));
   const availableMetrics = unitMetrics.map(unit => ({
-    unit, count: selectedProducts.filter(product => quantityFor(product)?.unit === unit).length,
+    unit, count: selectedProducts.filter(product => quantityFor(product, unit)).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
   const requestedMetric = params.get("metric");
   const metric: ChartMetric = requestedMetric === "price" || availableMetrics.some(item => item.unit === requestedMetric)

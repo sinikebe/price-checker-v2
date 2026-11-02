@@ -70,6 +70,7 @@ jobs:
       - run: npm run test:search
       - run: npm run test:bookmarklet
       - run: npm run test:extension
+      - run: npm run test:products
       - run: npm run build
 
   deployment:

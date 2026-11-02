@@ -20,7 +20,7 @@ from app.api.v2.off import (
 from app.core.url_validation import validate_clickable_url
 from app.services.off_presenter import build_sections
 from app.services.off_rate_limit import OffRateLimited, retry_after_headers
-from app.services.quantity_parser import parse_quantity
+from app.services.quantity_parser import parse_measures
 from app.services.v2_off_refresh_queue import queue_off_refresh
 from app.services.v2_off_snapshot import (
     OFF_PRODUCT_PAGE,
@@ -73,6 +73,35 @@ class RetailerLink(BaseModel):
         return validate_clickable_url(value.strip(), "url")
 
 
+MeasureUnit = Literal["g", "ml", "piece"]
+# A pack is measured in at most one amount per unit: grams, millilitres, pieces.
+MAX_MEASURES = 3
+
+
+class ExtraQuantity(BaseModel):
+    """Another way to measure one pack, entered by a contributor (e.g. 6 pieces for 750 g)."""
+
+    amount: Decimal = Field(gt=0, lt=Decimal(10) ** 9, max_digits=12, decimal_places=3)
+    unit: MeasureUnit
+
+    @model_validator(mode="after")
+    def normalise(self):
+        # A count of things is a whole number, as the quantity parser requires.
+        if self.unit == "piece" and self.amount != self.amount.to_integral_value():
+            raise ValueError("Un nombre de pièces est un nombre entier.")
+        # Three decimals, like every parsed quantity, so equal amounts compare equal.
+        self.amount = self.amount.quantize(Decimal("0.001"))
+        return self
+
+
+class Measure(BaseModel):
+    """One amount of a pack in grams, millilitres or pieces (read-only projection)."""
+
+    amount: Decimal
+    unit: MeasureUnit
+    count_noun: str | None = None
+
+
 class ProductData(BaseModel):
     name: str = Field(default="", max_length=160)
     brand: str = Field(default="", max_length=100)
@@ -90,9 +119,17 @@ class ProductData(BaseModel):
     nutriscore_version: str = Field(default="", max_length=10)
     # A nutrition check is a separate event from fetching the complete OFF sheet.
     nutrition_checked_at: datetime | None = None
+    # The first of `measures`: what the quantity text says, or the first extra.
     quantity_amount: Decimal | None = None
-    quantity_unit: Literal["g", "ml", "piece"] | None = None
+    quantity_unit: MeasureUnit | None = None
     quantity_count_noun: str | None = None
+    # Other units of the same pack, one per unit, besides the one the text gives.
+    extra_quantities: list[ExtraQuantity] = Field(
+        default_factory=list, max_length=MAX_MEASURES
+    )
+    # Every measure of the pack (the text's, the piece count of a multipack,
+    # then the extras): a projection, never client-controlled.
+    measures: list[Measure] = Field(default_factory=list, max_length=MAX_MEASURES)
     off_source: OffSource | None = None
 
     @field_validator("group")
@@ -127,11 +164,26 @@ class ProductData(BaseModel):
         retailers = [link.retailer.casefold() for link in self.retailer_links]
         if len(retailers) != len(set(retailers)):
             raise ValueError("Une seule fiche produit est permise par enseigne.")
-        parsed = parse_quantity(self.quantity)
+        from_text = parse_measures(self.quantity)
+        extras = self.extra_quantities
+        units = [extra.unit for extra in extras]
+        if len(set(units)) != len(units):
+            raise ValueError("Une seule valeur par unité de mesure.")
+        if from_text and from_text[0].unit in units:
+            raise ValueError("Cette unité est déjà donnée par la quantité.")
+        # The text's own measure first, its derived piece count unless an extra
+        # states the pieces, then the extras in the order they were given.
+        measures = [
+            Measure(amount=item.amount, unit=item.unit, count_noun=item.count_noun)
+            for item in from_text
+            if item is from_text[0] or item.unit not in units
+        ] + [Measure(amount=extra.amount, unit=extra.unit) for extra in extras]
+        self.measures = measures
         # These are a projection, never client-controlled values.
-        self.quantity_amount = parsed.amount if parsed else None
-        self.quantity_unit = parsed.unit if parsed else None
-        self.quantity_count_noun = parsed.count_noun if parsed else None
+        first = measures[0] if measures else None
+        self.quantity_amount = first.amount if first else None
+        self.quantity_unit = first.unit if first else None
+        self.quantity_count_noun = first.count_noun if first else None
         return self
 
 
@@ -207,7 +259,9 @@ def _validate_publish(data: dict):
                 status_code=422, detail=f"Le champ {label} est nécessaire pour publier."
             )
     if data["ean"] and (
-        not data["ean"].isdigit() or len(data["ean"]) not in (8, 12, 13, 14)
+        not data["ean"].isascii()
+        or not data["ean"].isdigit()
+        or len(data["ean"]) not in (8, 12, 13, 14)
     ):
         raise HTTPException(
             status_code=422,

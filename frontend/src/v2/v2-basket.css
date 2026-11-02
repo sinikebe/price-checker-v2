@@ -186,6 +186,15 @@ html[data-v2-theme="dark"] .v2-basket-saving[data-kind="only"] { background: #47
 /* Comparing per unit: the unit price and what stays unused. */
 .v2-basket-reading small.v2-basket-unit-price { color: #1b5a3a; font-weight: 650; }
 .v2-basket-reading small.v2-basket-surplus { color: #8b5400; }
+.v2-basket-unit-switch { display: inline-flex; gap: 0; margin-top: 2px; border: 1px solid #9bc9aa; border-radius: 999px; overflow: hidden; }
+.v2-basket-unit-switch button { min-height: 24px; padding: 1px 10px; border: 0; background: transparent; color: #1b5a3a; font: inherit; font-size: .76rem; font-weight: 650; cursor: pointer; }
+.v2-basket-unit-switch button + button { border-left: 1px solid #9bc9aa; }
+.v2-basket-unit-switch button[aria-pressed="true"] { background: #1b5a3a; color: #fff; cursor: default; }
+.v2-basket-unit-switch button:focus-visible { outline: 2px solid #1b5a3a; outline-offset: -2px; }
+html[data-v2-theme="dark"] .v2-basket-unit-switch { border-color: #4f8a64; }
+html[data-v2-theme="dark"] .v2-basket-unit-switch button { color: #a9e6b7; }
+html[data-v2-theme="dark"] .v2-basket-unit-switch button + button { border-left-color: #4f8a64; }
+html[data-v2-theme="dark"] .v2-basket-unit-switch button[aria-pressed="true"] { background: #a9e6b7; color: #10281a; }
 .v2-basket-unit-note { margin: 12px 0 0; padding: 10px 13px; border-radius: 9px; background: #fff2da; color: #6b4600; font-size: .84rem; }
 html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-unit-price { color: #a9e6b7; }
 html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-surplus { color: #ffd18a; }

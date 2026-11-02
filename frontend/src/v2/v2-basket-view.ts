@@ -1,5 +1,6 @@
 import type { BasketGroup, BasketItem, BasketProduct, BasketScope } from "./v2-basket-storage";
 import type { BasketPrice, CompareMode, StoreSaving, UnitInfo } from "./v2-basket-comparison";
+import type { BaseUnit } from "./v2-basket-quantity";
 
 export type Category = { name: string; department: string; family: string; comparison_scope: string | null };
 
@@ -66,10 +67,12 @@ export const FIRST_STORES = 2;
 export const MORE_STORES = 5;
 
 const amount = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+/** What a unit price is quoted per: kilogram for grams, litre for millilitres, a piece. */
+export const unitName = (unit: BaseUnit): string => unit === "g" ? "kg" : unit === "ml" ? "L" : "pièce";
 /** "2,40 € / kg": the price per kilogram, litre or piece of a choice. */
 export function unitPriceText(unit: UnitInfo): string {
   const scale = unit.unit === "piece" ? 1 : 1000;
-  return `${money(unit.perUnitCents * scale)} / ${unit.unit === "g" ? "kg" : unit.unit === "ml" ? "L" : "pièce"}`;
+  return `${money(unit.perUnitCents * scale)} / ${unitName(unit.unit)}`;
 }
 /** What stays unused once the need is covered, or null when it is negligible. */
 export function surplusText(unit: UnitInfo): string | null {
