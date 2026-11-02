@@ -123,6 +123,8 @@
 .v2-scanner-dialog > .v2-button { width: 100%; }
 @media(max-width: 560px) { .v2-scanner-dialog { padding: 16px; } }
 
+.v2-extension-product { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 18px; }
+.v2-extension-product p { margin: 0; color: #66786c; font-size: .9rem; }
 .v2-workspace-structured { margin-top: 24px; padding: 18px; border: 1px solid #dce8db; border-radius: 14px; }
 .v2-workspace-structured h3 { margin: 0 0 8px; color: #244b36; }
 .v2-workspace-structured p, .v2-workspace-structured small { color: #66786c; }

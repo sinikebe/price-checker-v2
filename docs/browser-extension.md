@@ -7,6 +7,8 @@ Certaines enseignes (Carrefour, Intermarché, Courses U) bloquent les lectures a
 1. **Une fois** : *Paramètres → Connecteurs → Extension de navigateur* → *Télécharger l’extension*, décompresser, puis dans Chrome, Edge ou Brave : `chrome://extensions` → mode développeur → *Charger l’extension non empaquetée* sur le dossier. Sur `carrefour.fr`, choisir son drive.
 2. **À chaque panier** : sur la page du panier, le même bouton *Récupérer les prix* qu’avant. Il récupère les prix, met en file les connecteurs, puis l’extension lit toute seule les prix Carrefour manquants ou anciens (plus de 7 jours), un produit à la fois, et la comparaison se rafraîchit à la fin. Aucun jeton, aucun numéro de magasin, aucune fenêtre à ouvrir.
 
+3. **Un seul produit** : sur la fiche d’un produit (administrateur, extension installée, code-barres valide, version actuelle), le bouton *Relever le prix à Carrefour* lit ce produit tout de suite, de la même façon, puis rafraîchit les prix de la page. Aucune fenêtre ne s’ouvre au premier plan et rien n’est à cliquer sur carrefour.fr. Si le prix date de moins de 7 jours, ou si le produit n’est pas lisible (code-barres invalide, retiré de la gamme à ce magasin), la page l’indique au lieu de ne rien faire. Le magasin est choisi par la même règle que pour le panier.
+
 Si Carrefour demande une vérification, l’extension amène son onglet au premier plan et attend : terminez la vérification, la lecture reprend seule. Elle s’arrête si le magasin choisi sur le site n’est pas celui de l’application, ou après trois lectures ratées de suite.
 
 ## Comment ça marche

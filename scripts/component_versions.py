@@ -192,6 +192,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2ExtensionDownload.tsx", ("application",)),
     ("frontend/src/v2/v2-extension-files.ts", ("application",)),
     ("frontend/src/v2/v2-extension-bridge.ts", ("application", "products", "basket")),
+    ("frontend/src/v2/V2ExtensionPriceButton.tsx", ("application", "products")),
     ("frontend/src/v2/v2-extension-manifest.ts", ("application",)),
     ("frontend/src/v2/useExtensionRefresh.ts", ("application", "basket")),
     ("frontend/src/v2/v2-zip.ts", ("application",)),

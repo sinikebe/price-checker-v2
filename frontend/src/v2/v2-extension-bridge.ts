@@ -54,6 +54,10 @@ export function parseEvent(data: unknown, id: string): ExtensionEvent | null {
   }
 }
 
+/** Said after a click on one product when the server planned nothing to read at the store. */
+export function nothingToReadText(store: string): string {
+  return `Rien à lire à ${store} : le prix date de moins de 7 jours, ou le produit n’a pas de code-barres valide, ou il est retiré de la gamme de ce magasin.`;
+}
 export function abortText(reason: string, plan: Plan, seen?: string | null): string {
   const mine = plan.store ? `${plan.store.name}${plan.store.city ? ` (${plan.store.city})` : ""}` : "le magasin de l’application";
   switch (reason) {
