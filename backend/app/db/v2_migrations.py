@@ -1081,6 +1081,53 @@ MIGRATIONS = {
         CREATE TRIGGER v2_recipes_pwa_version_delete AFTER DELETE ON v2_recipes
             FOR EACH ROW WHEN (NOT OLD.private) EXECUTE FUNCTION v2_bump_pwa_version();
     """,
+    "0042_shared_baskets": """
+        -- A basket shared on purpose by its owner, edited live by the accounts that joined it
+        -- through an invitation link. The personal basket stays on each device. A shared
+        -- basket stays until its owner deletes it or deletes the account (ON DELETE CASCADE).
+        -- The invitation is an HMAC of (id, invite_version) with the installation secret:
+        -- nothing secret is stored, and a new version cancels the previous link.
+        CREATE TABLE v2_shared_baskets (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            owner_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            name varchar(80) NOT NULL CHECK (btrim(name) <> ''),
+            invite_version integer NOT NULL DEFAULT 1 CHECK (invite_version > 0),
+            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_shared_baskets_owner_idx ON v2_shared_baskets(owner_id);
+        -- The owner is a member too.
+        CREATE TABLE v2_shared_basket_members (
+            basket_id bigint NOT NULL REFERENCES v2_shared_baskets(id) ON DELETE CASCADE,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            joined_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (basket_id, user_id)
+        );
+        CREATE INDEX v2_shared_basket_members_user_idx ON v2_shared_basket_members(user_id);
+        CREATE TABLE v2_shared_basket_lines (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            basket_id bigint NOT NULL REFERENCES v2_shared_baskets(id) ON DELETE CASCADE,
+            line_key varchar(400) NOT NULL,
+            kind varchar(8) NOT NULL CHECK (kind IN ('product', 'group', 'scope')),
+            product_id bigint,
+            label varchar(200) NOT NULL CHECK (btrim(label) <> ''),
+            department varchar(80),
+            family varchar(80),
+            quantity jsonb CHECK (quantity IS NULL OR jsonb_typeof(quantity) = 'object'),
+            disabled boolean NOT NULL DEFAULT false,
+            -- Lines a member added stay in the basket after the member leaves or deletes the
+            -- account; only the link to that account goes.
+            added_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (basket_id, line_key),
+            CHECK ((kind = 'product') = (product_id IS NOT NULL)),
+            CHECK ((kind = 'scope') = (department IS NOT NULL AND family IS NOT NULL))
+        );
+        CREATE INDEX v2_shared_basket_lines_added_by_idx ON v2_shared_basket_lines(added_by)
+            WHERE added_by IS NOT NULL;
+    """,
 }
 
 

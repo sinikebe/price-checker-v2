@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.126",
+    "version": "0.1.127",
     "status": "active"
   },
   "products": {
@@ -11,17 +11,17 @@
   },
   "recipes": {
     "label": "Recettes",
-    "version": "0.1.22",
+    "version": "0.1.23",
     "status": "active"
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.37",
+    "version": "0.1.38",
     "status": "active"
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.41",
+    "version": "0.1.42",
     "status": "active"
   },
   "open_food_facts": {
@@ -31,7 +31,7 @@
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.32",
+    "version": "0.1.33",
     "status": "active"
   },
   "pwa": {

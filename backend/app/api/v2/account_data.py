@@ -29,7 +29,7 @@ class AccountDeletion(BaseModel):
     password: SecretStr
     second_factor: str | None = None
 
-_JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload"}
+_JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload", "quantity"}
 
 
 def _rows(rows) -> list[dict]:
@@ -108,6 +108,19 @@ async def export_account_data(request: Request):
                 "SELECT id, kind, content_id, reason, status, created_at, reviewed_at "
                 "FROM v2_content_reports WHERE reporter_id=$1 ORDER BY id", user_id
             )
+            # Shared baskets the account belongs to, with their lines; other members' names
+            # are left out, only whether a line was added by this account.
+            shared_baskets = await connection.fetch(
+                "SELECT b.id, b.name, b.owner_id=$1 AS owner, b.created_at, m.joined_at "
+                "FROM v2_shared_basket_members m JOIN v2_shared_baskets b ON b.id=m.basket_id "
+                "WHERE m.user_id=$1 ORDER BY b.id", user_id
+            )
+            shared_basket_lines = await connection.fetch(
+                "SELECT l.basket_id, l.kind, l.product_id, l.label, l.department, l.family, "
+                "l.quantity, l.disabled, l.added_by=$1 AS added_by_me, l.created_at "
+                "FROM v2_shared_basket_lines l JOIN v2_shared_basket_members m "
+                "ON m.basket_id=l.basket_id AND m.user_id=$1 ORDER BY l.basket_id, l.id", user_id
+            )
         payload = {
             "format": "price-checker-v2-account-export",
             "account": dict(account),
@@ -120,6 +133,8 @@ async def export_account_data(request: Request):
             "store_alias_proposals": _rows(store_alias_proposals),
             "published_prices": _rows(published_prices),
             "reports": _rows(reports),
+            "shared_baskets": _rows(shared_baskets),
+            "shared_basket_lines": _rows(shared_basket_lines),
             "account_security": {"mfa_enabled": mfa_enabled, "api_tokens": _rows(api_tokens)},
         }
         return JSONResponse(

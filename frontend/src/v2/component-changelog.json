@@ -828,6 +828,43 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.127",
+      "components": {
+        "application": {
+          "version": "0.1.127",
+          "notes": [
+            "Un panier peut se partager en direct : les personnes invitées voient aussitôt ce qui y est ajouté."
+          ]
+        },
+        "basket": {
+          "version": "0.1.38",
+          "notes": [
+            "« Partager en direct » crée un panier partagé, enregistré sur le serveur jusqu’à sa suppression par son créateur ou celle de son compte.",
+            "Les membres invités par lien ajoutent, cochent ou retirent des articles ; chacun voit les changements des autres en une seconde, et qui a ajouté quoi.",
+            "Supprimer un panier partagé l’efface pour tous ses membres, définitivement ; « Revenir à mon panier » retrouve le panier personnel."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.33",
+          "notes": [
+            "Vos paniers partagés figurent dans l’export de vos données ; ceux que vous avez créés sont supprimés avec votre compte."
+          ]
+        },
+        "database": {
+          "version": "0.1.42",
+          "notes": [
+            "La mise à jour ajoute les paniers partagés sans toucher aux données existantes."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.23",
+          "notes": [
+            "La carte d’une recette privée est mieux espacée et lisible en thème sombre."
+          ]
+        }
+      }
     }
   ]
 }
