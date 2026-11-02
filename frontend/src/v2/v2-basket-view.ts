@@ -99,3 +99,16 @@ export function savingText(saving: StoreSaving, totalCents: number, singleStore:
     ? `Économie à l’unité : ${money(saving.extraCents)} sur la quantité utile (${percent} %)`
     : `Économie grâce à ce magasin : ${money(saving.extraCents)} (${percent} %)` };
 }
+
+/** What putting back a store left out of the split would bring, in words. */
+export function reactivationText(gain: StoreSaving, mode: CompareMode = "price"): { kind: "saving" | "none" | "only"; text: string } {
+  if (gain.unpriced > 0) {
+    const rest = gain.extraCents > 0 ? ` · ${money(gain.extraCents)} de moins sur les autres` : "";
+    return { kind: "only", text: `Seul magasin avec un prix pour ${gain.unpriced} article${gain.unpriced > 1 ? "s" : ""}${rest}` };
+  }
+  if (gain.extraCents <= 0) return { kind: "none", text: "Le réactiver ne ferait rien gagner" };
+  return { kind: "saving", text: mode === "unit"
+    ? `Le réactiver ferait gagner ${money(gain.extraCents)} sur la quantité utile`
+    : `Le réactiver ferait gagner ${money(gain.extraCents)}` };
+}
+

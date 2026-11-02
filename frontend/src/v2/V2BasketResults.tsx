@@ -1,23 +1,31 @@
 import V2BasketLines from "./V2BasketLines";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { pricePosition, purchaseTotalCents, type BasketComparison, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
+import { pricePosition, purchaseTotalCents, type BasketComparison, type BasketPrice, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
 import type { BaseUnit } from "./v2-basket-quantity";
-import { itemName, money, savingText, storeName, surplusText } from "./v2-basket-view";
+import { itemName, money, reactivationText, savingText, storeName, surplusText } from "./v2-basket-view";
 import { withdrawnPricesText } from "./v2-availability";
 
-/** The split across retailers, then the cheapest stores. Everything is computed from the fetched prices. */
-export default function V2BasketResults({ comparison, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings, onUnit }: {
-  comparison: BasketComparison; items: BasketItem[]; advanced: boolean; mode: CompareMode; limited: number;
+export type OffStore = { key: string; reading: BasketPrice; gain: StoreSaving | null };
+
+/**
+ * The split across retailers, then the cheapest stores. Everything is computed from the fetched prices.
+ * `split` leaves out the stores switched off by hand (`offStores`); `comparison` keeps every store for the ranking.
+ */
+export default function V2BasketResults({ comparison, split, offStores, onStoreActive, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings, onUnit }: {
+  comparison: BasketComparison; split: BasketComparison; offStores: OffStore[]; onStoreActive: (key: string, active: boolean) => void;
+  items: BasketItem[]; advanced: boolean; mode: CompareMode; limited: number;
   shownCount: number; onShowMore: () => void; openPrices: boolean; savings: Map<string, StoreSaving>;
   onUnit: (item: BasketItem, unit: BaseUnit) => void;
 }) {
   const lineCount = items.length;
   const unit = mode === "unit";
-  const withSurplus = comparison.split.filter(choice => choice.unit && surplusText(choice.unit)).length;
-  const switchable = comparison.split.some(choice => choice.unit && !choice.unit.fixed && choice.unit.available.length > 1);
+  const withSurplus = split.split.filter(choice => choice.unit && surplusText(choice.unit)).length;
+  const switchable = split.split.some(choice => choice.unit && !choice.unit.fixed && choice.unit.available.length > 1);
+  const offKeys = new Set(offStores.map(store => store.key));
+  const missingWithoutOff = split.missing.filter(item => !comparison.missing.includes(item));
   const showUsed = advanced || unit;
   const splitStores = new Map<string, PriceChoice[]>();
-  for (const choice of comparison.split) {
+  for (const choice of split.split) {
     const storeKey = choice.reading.store_id + ":" + choice.reading.sales_channel;
     splitStores.set(storeKey, [...(splitStores.get(storeKey) ?? []), choice]);
   }
@@ -47,23 +55,34 @@ export default function V2BasketResults({ comparison, items, advanced, mode, lim
     {comparison.failed.length > 0 && <p className="v2-recipes-error">Prix impossibles à charger pour {comparison.failed.length} article{comparison.failed.length > 1 ? "s" : ""}. Actualisez pour réessayer.</p>}
     {incomplete && <p className="v2-recipes-error">Certains points de vente n’ont pas pu être comparés : limite de taille atteinte. {advanced ? "L’estimation affichée peut être incomplète." : "Le minimum affiché peut être incomplet."}</p>}
     <section className="v2-basket-split-total" aria-label="Répartition des courses entre enseignes" aria-live="polite">
-      <span>{unit ? comparison.missing.length ? "Sous-total à payer des articles avec prix, au meilleur prix à l’unité" : "Total à payer en visant le meilleur prix à l’unité"
-        : comparison.missing.length ? "Sous-total réparti des articles avec prix" : advanced ? "Coût estimé de la sélection répartie" : "Total le moins cher en répartissant les courses"}</span>
-      <strong>{comparison.split.length ? money(comparison.splitCents) : "—"}</strong>
-      {showUsed && comparison.split.length > 0 && <span>{unit ? "Valeur de la quantité utile" : comparison.missing.length ? "Sous-total de la part utilisée" : "Part utilisée au prorata"} : <strong>{money(comparison.splitUsedCents)}</strong></span>}
-      <small>{comparison.split.length}/{lineCount} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente{unit && withSurplus > 0 ? ` · ${withSurplus} article${withSurplus > 1 ? "s" : ""} avec un reste` : ""}</small>
+      <span>{unit ? split.missing.length ? "Sous-total à payer des articles avec prix, au meilleur prix à l’unité" : "Total à payer en visant le meilleur prix à l’unité"
+        : split.missing.length ? "Sous-total réparti des articles avec prix" : advanced ? "Coût estimé de la sélection répartie" : "Total le moins cher en répartissant les courses"}</span>
+      <strong>{split.split.length ? money(split.splitCents) : "—"}</strong>
+      {showUsed && split.split.length > 0 && <span>{unit ? "Valeur de la quantité utile" : split.missing.length ? "Sous-total de la part utilisée" : "Part utilisée au prorata"} : <strong>{money(split.splitUsedCents)}</strong></span>}
+      <small>{split.split.length}/{lineCount} articles avec un prix · {splitStores.size} point{splitStores.size > 1 ? "s" : ""} de vente{offStores.length ? ` · ${offStores.length} désactivé${offStores.length > 1 ? "s" : ""}` : ""}{unit && withSurplus > 0 ? ` · ${withSurplus} article${withSurplus > 1 ? "s" : ""} avec un reste` : ""}</small>
       {splitStores.size > 0 && <ul className="v2-basket-split-stores">{splitRows.map(([storeKey, choices]) => {
         const reading = choices[0].reading;
         const saving = savings.get(storeKey);
-        const note = saving ? savingText(saving, unit ? comparison.splitUsedCents : comparison.splitCents, splitStores.size === 1, mode) : null;
-        return <li key={storeKey}><details className="v2-basket-breakdown">
+        const note = saving ? savingText(saving, unit ? split.splitUsedCents : split.splitCents, splitStores.size === 1, mode) : null;
+        return <li key={storeKey} className="v2-basket-split-row"><details className="v2-basket-breakdown">
           <summary><span className="v2-basket-split-store-name"><b>{reading.retailer}</b><small>{storeName(reading)}</small>
             {note && <span className="v2-basket-saving" data-kind={note.kind}>{note.text}</span>}</span>
             <span className="v2-basket-split-store-total"><b>{money(purchaseTotalCents(choices, advanced))}</b><small>{choices.length} article{choices.length > 1 ? "s" : ""}</small></span></summary>
           {advanced && <p>Les prix par article sont indiqués avant mutualisation ; le total compte chaque paquet partagé une seule fois.</p>}
           <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
-        </details></li>;
+        </details>
+          <button type="button" className="v2-basket-store-toggle" title="Laisser ce magasin de côté dans la répartition de ce panier, sans le retirer des filtres"
+            aria-label={`Désactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`} onClick={() => onStoreActive(storeKey, false)}>Désactiver</button></li>;
       })}</ul>}
+      {offStores.length > 0 && <div className="v2-basket-stores-off"><p>Désactivés dans la répartition de ce panier (toujours dans vos filtres et dans le classement) :</p>
+        <ul>{offStores.map(({ key, reading, gain }) => {
+          const note = gain ? reactivationText(gain, mode) : null;
+          return <li key={key}><span className="v2-basket-split-store-name"><b>{reading.retailer}</b><small>{storeName(reading)}</small>
+            {note && <span className="v2-basket-saving" data-kind={note.kind}>{note.text}</span>}</span>
+            <button type="button" className="v2-basket-store-toggle" aria-label={`Réactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`}
+              onClick={() => onStoreActive(key, true)}>Réactiver</button></li>;
+        })}</ul></div>}
+      {missingWithoutOff.length > 0 && <p className="v2-basket-missing">Sans prix hors des magasins désactivés : {missingNames(missingWithoutOff)}.</p>}
       {splitStores.size > 0 && <small className="v2-basket-saving-help">{unit
         ? "Économie : ce que vaudraient de plus les quantités utiles sans ce magasin, en prenant pour chaque article le prochain meilleur prix à l’unité dans les autres magasins comparés."
         : "Économie : ce que vous dépenseriez de plus sans ce magasin, en prenant pour chaque article le prochain prix le plus bas dans les autres magasins comparés."}</small>}
@@ -74,7 +93,8 @@ export default function V2BasketResults({ comparison, items, advanced, mode, lim
       <p>{unit ? "Paniers complets classés par valeur de la quantité utile ; sous-totaux partiels ensuite." : "Paniers complets classés par prix ; sous-totaux partiels ensuite."}</p></div>
     {visibleStores.length ? <ul className="v2-basket-store-list">{visibleStores.map(store => {
       const complete = store.coverage === lineCount;
-      return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p></div>
+      return <li key={store.key} className="v2-basket-store" data-complete={complete}><div className="v2-basket-store-heading"><div><h4>{store.reading.retailer}</h4><p>{storeName(store.reading)}</p>
+        {offKeys.has(store.key) && <small className="v2-basket-store-off-badge">Désactivé dans la répartition</small>}</div>
         <div className="v2-basket-total" data-price-position={complete ? pricePosition(store.cents, totalRanges.get(store.coverage)?.min ?? store.cents, totalRanges.get(store.coverage)?.max ?? store.cents) : "partial"}><strong>{money(store.cents)}</strong>{showUsed && <span>{unit ? (complete ? "Valeur de la quantité utile" : "Sous-total de la valeur utile") : (complete ? "Part utilisée" : "Sous-total de la part utilisée")} : {money(store.usedCents)}</span>}<span>{complete ? "Panier complet" : "Sous-total partiel"} · {store.coverage}/{lineCount} articles</span></div></div>
         <details className="v2-basket-breakdown"><summary>Voir les {store.coverage} prix</summary>{advanced && <p>Prix par article avant mutualisation des paquets.</p>}
           <V2BasketLines choices={store.choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />

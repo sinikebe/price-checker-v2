@@ -29,6 +29,12 @@ La même règle sert aux quantités demandées : « 1 kg » d’un produit vendu
 
 Dans la répartition entre enseignes, chaque magasin indique ce qu’il apporte : le panier est recalculé sans lui (mêmes filtres, mêmes quantités), chaque article prenant alors le prochain prix le plus bas dans les autres magasins comparés. L’écart entre les deux totaux est l’économie, aussi donnée en pourcentage du total sans ce magasin. Cela aide à décider si un détour par une enseigne en vaut la peine. Un magasin est identifié par son point de vente et son canal (magasin, drive, livraison). Si un article n’a de prix que dans ce magasin, la ligne l’indique au lieu d’une économie, et cet article est laissé hors de la comparaison. Le calcul est local, sans crédit, et suit les filtres et le panier avancé.
 
+### Désactiver un magasin dans la répartition
+
+Chaque magasin de la répartition a un bouton **Désactiver** : il le laisse de côté pour ce panier sans le retirer des filtres. La répartition est recalculée sur l’appareil, sans nouvelle récupération ni crédit : chaque article prend le prochain meilleur prix dans les magasins restés actifs, et les économies sont mesurées entre eux. C’est utile pour écarter un magasin qui fait peu gagner (un détour qui ne vaut pas la peine). Un article que seul ce magasin vendait reste sans prix dans la répartition, et la page le dit.
+
+Les magasins désactivés sont listés sous la répartition avec un bouton **Réactiver** et ce que leur retour ferait gagner (ou les articles qu’ils sont seuls à vendre). Ils restent dans le classement des magasins, marqués « Désactivé dans la répartition ». Le choix est gardé dans le navigateur, par compte, et n’est pas inclus dans un panier partagé.
+
 ## Crédits
 
 Chaque compte reçoit **5 crédits par jour**, dans la limite de **20 crédits accordés par semaine** (du lundi au dimanche) et de **20 crédits détenus** à la fois. Le jour et la semaine sont ceux de Paris. Les crédits non utilisés sont reportés ; un jour sans visite n’en accorde pas de supplémentaires. Une requête refusée ou en erreur ne coûte rien : le crédit est dépensé dans la transaction qui lit les prix, une fois la lecture réussie.

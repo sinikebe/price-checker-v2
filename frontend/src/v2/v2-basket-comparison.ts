@@ -216,11 +216,11 @@ export type StoreSaving = { extraCents: number; unpriced: number };
 export function splitSavings(
   lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
   filters: BasketFilters, advanced: boolean, baseline: BasketComparison, mode: CompareMode = "price",
-  unitChoices: UnitChoices = noChoice,
+  unitChoices: UnitChoices = noChoice, excluded: ReadonlySet<string> = new Set(),
 ): Map<string, StoreSaving> {
   const result = new Map<string, StoreSaving>();
   for (const key of new Set(baseline.split.map(choice => storeKey(choice.reading)))) {
-    const without = buildBasketComparison(lines, responses, filters, advanced, new Set([key]), mode, unitChoices);
+    const without = buildBasketComparison(lines, responses, filters, advanced, new Set([...excluded, key]), mode, unitChoices);
     const stillPriced = new Set(without.split.map(choice => choice.item));
     const kept = baseline.split.filter(choice => stillPriced.has(choice.item));
     // Per unit the saving is on the value of the amounts needed, since the packs bought differ between the two splits.
@@ -232,3 +232,31 @@ export function splitSavings(
   }
   return result;
 }
+
+/**
+ * For each store left out of the split (`excluded`), what putting it back would bring: the split is built
+ * again with it, `extraCents` is how much less the articles already priced would cost (their needed amounts,
+ * per unit), and `unpriced` counts the articles that only this store would price. `current` is the split
+ * without the excluded stores.
+ */
+export function reactivationGains(
+  lines: BasketLine[], responses: Map<number, BasketPriceResponse | null>,
+  filters: BasketFilters, advanced: boolean, current: BasketComparison, excluded: ReadonlySet<string>,
+  mode: CompareMode = "price", unitChoices: UnitChoices = noChoice,
+): Map<string, StoreSaving> {
+  const result = new Map<string, StoreSaving>();
+  const priced = new Set(current.split.map(choice => choice.item));
+  for (const key of excluded) {
+    const rest = new Set(excluded);
+    rest.delete(key);
+    const back = buildBasketComparison(lines, responses, filters, advanced, rest, mode, unitChoices);
+    const kept = back.split.filter(choice => priced.has(choice.item));
+    const extraCents = mode === "unit"
+      ? Math.max(0, Math.round(current.splitUsedCents - kept.reduce((sum, choice) => sum + choice.usedCents, 0)))
+      : Math.max(0, current.splitCents - purchaseTotalCents(kept, advanced));
+    if (!Number.isFinite(extraCents)) continue;
+    result.set(key, { extraCents, unpriced: back.split.length - kept.length });
+  }
+  return result;
+}
+
