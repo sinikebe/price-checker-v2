@@ -604,6 +604,21 @@
       "component": "products",
       "version": "0.1.53",
       "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.20",
+      "reason": "Lecture des quantités élargie aux lots (poids et pièces), sans changement visible dans les recettes."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.27",
+      "reason": "Nouvelle zone d’unités sur la fiche produit, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.26",
+      "reason": "Graphique du catalogue adapté aux produits à plusieurs unités, annoncé dans le composant Produits."
     }
   ]
 }

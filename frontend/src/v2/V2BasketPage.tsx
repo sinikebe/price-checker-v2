@@ -15,7 +15,9 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters, type CompareMode } from "./v2-basket-comparison";
+import { buildBasketComparison, emptyBasketFilters, postalDepartment, splitSavings, type BasketFilters, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
+import type { BaseUnit } from "./v2-basket-quantity";
+import { readUnitChoices, withUnitChoice, writeUnitChoices } from "./v2-measures";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
 import { costNote, creditLabel, nextGrantLabel, outOfCredits } from "./v2-basket-credits-api";
@@ -29,6 +31,11 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const toggleAdvanced = (value: boolean) => { setAdvanced(value); try { localStorage.setItem("v2:basket:advanced", value ? "1" : "0"); } catch { /* current tab still works */ } };
   const [mode, setMode] = useState<CompareMode>(() => { try { return localStorage.getItem("v2:basket:compare") === "unit" ? "unit" : "price"; } catch { return "price"; } });
   const changeMode = (value: CompareMode) => { setMode(value); try { localStorage.setItem("v2:basket:compare", value); } catch { /* current tab still works */ } };
+  // The unit an article is compared in when it can be measured in several (per kg or per piece), kept in this browser.
+  const unitUserId = user?.id ?? null;
+  const [unitState, setUnitState] = useState(() => ({ userId: unitUserId, choices: readUnitChoices(unitUserId) }));
+  useEffect(() => { setUnitState(state => state.userId === unitUserId ? state : { userId: unitUserId, choices: readUnitChoices(unitUserId) }); }, [unitUserId]);
+  const unitChoices = useMemo<UnitChoices>(() => item => unitState.choices[basketItemKey(item)], [unitState]);
   const location = useLocation();
   const navigate = useNavigate();
   const sharedLink = location.hash.startsWith("#panier=");
@@ -100,9 +107,13 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
 
   const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);
   const comparison = useMemo(() => view.lines.length
-    ? buildBasketComparison(view.lines, view.responses, filters, advanced, new Set(), mode) : null, [view, filters, advanced, mode]);
-  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison, mode) : new Map(),
-    [comparison, view, filters, advanced, mode]);
+    ? buildBasketComparison(view.lines, view.responses, filters, advanced, new Set(), mode, unitChoices) : null, [view, filters, advanced, mode, unitChoices]);
+  const savings = useMemo(() => comparison ? splitSavings(view.lines, view.responses, filters, advanced, comparison, mode, unitChoices) : new Map(),
+    [comparison, view, filters, advanced, mode, unitChoices]);
+  const chooseUnit = (item: BasketItem, unit: BaseUnit) => {
+    const choices = withUnitChoice(unitState.choices, basketItemKey(item), unit, items.map(basketItemKey));
+    setUnitState({ userId: unitUserId, choices }); writeUnitChoices(unitUserId, choices);
+  };
   const lineItems = view.lines.map(line => line.item);
   const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
   const storeNames = new Map<number, string>();
@@ -187,7 +198,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits)}.</p>}
                 {comparison && <V2BasketResults comparison={comparison} items={lineItems} advanced={advanced} mode={mode} limited={view.limited.length}
-                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} />}
+                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} onUnit={chooseUnit} />}
               </>}
             </section>}
       </> : <div className="v2-recipes-card"><p>Votre panier est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue.</p></div>}

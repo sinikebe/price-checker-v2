@@ -88,6 +88,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/off-types.ts", ("open_food_facts",)),
     ("frontend/src/v2/off-browser-preview.ts", ("open_food_facts",)),
     ("frontend/src/v2/v2-products-api.ts", ("products", "open_food_facts")),
+    ("frontend/src/v2/v2-product-errors.ts", ("products",)),
+    ("frontend/src/v2/v2-measures.ts", ("products", "basket")),
     ("frontend/src/v2/v2-product-workspace.css", ("products",)),
     ("frontend/src/v2/V2RecipesPage.tsx", ("recipes",)),
     ("frontend/src/v2/V2RecipeReviewPanel.tsx", ("recipes",)),

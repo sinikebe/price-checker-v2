@@ -262,6 +262,27 @@ def parse_quantity(text: str | None) -> ParsedQuantity | None:
     return _parse_single(normalized)
 
 
+def parse_measures(text: str | None) -> list[ParsedQuantity]:
+    """Every measure a quantity text states, the main one first.
+
+    A pack is sold by weight, by volume or by the piece, and a multipack states
+    two of them at once: "4x125g" is 500 g and also four pieces. Both are
+    returned so the shopper can compare it per kilogram or per piece. Anything
+    else is exactly what :func:`parse_quantity` returns (a list of one, or
+    nothing); this never invents a count that the text does not state.
+    """
+    main = parse_quantity(text)
+    if main is None:
+        return []
+    measures = [main]
+    multipack = _MULTIPACK_RE.match(" ".join((text or "").split()))
+    if multipack is not None and main.unit != UNIT_PIECE:
+        count = _finalize(Decimal(multipack.group("count")), UNIT_PIECE, None)
+        if count is not None:
+            measures.append(count)
+    return measures
+
+
 # --------------------------------------------------------------------------- #
 # Read-time derivation
 # --------------------------------------------------------------------------- #

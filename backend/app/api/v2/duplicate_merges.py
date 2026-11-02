@@ -18,7 +18,7 @@ from app.services.v2_visibility import require_visible
 
 router = APIRouter(prefix="/api/v2/moderation", tags=["v2-duplicate-merges"])
 PRODUCT_FIELDS = tuple(key for key in ProductData.model_fields if key not in {
-    "quantity_amount", "quantity_unit", "quantity_count_noun"})
+    "quantity_amount", "quantity_unit", "quantity_count_noun", "measures"})
 STORE_FIELDS = ("name", "city", "postal_code", "latitude", "longitude",
                 "supports_drive", "supports_delivery", "external_store_id",
                 "osm_type", "osm_id")
