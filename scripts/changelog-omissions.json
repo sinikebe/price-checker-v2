@@ -634,6 +634,16 @@
       "component": "open_food_facts",
       "version": "0.1.29",
       "reason": "Texte d’aide de l’éditeur de fiche, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "application",
+      "version": "0.1.123",
+      "reason": "Mise en page sur petit écran des boutons de la répartition."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.35",
+      "reason": "Mise en page sur petit écran des boutons de la répartition."
     }
   ]
 }
