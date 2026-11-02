@@ -89,7 +89,14 @@ async function call<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const requestPlan = (productIds: number[]) => call<Plan>("/api/v2/extension/plan", { adapter: ADAPTER, product_ids: productIds });
+/** `storeIds` are the basket's default stores: they tell the server which of the chain's stores is the person's. */
+export const requestPlan = (productIds: number[], storeIds: number[] = []) =>
+  call<Plan>("/api/v2/extension/plan", { adapter: ADAPTER, product_ids: productIds.slice(0, 200), store_ids: storeIds.slice(0, 50) });
+
+export function planProblem(reason: string | null): string {
+  if (reason === "store_ambiguous") return "plusieurs magasins Carrefour sont possibles : choisissez le vôtre dans les filtres du panier (magasins par défaut).";
+  return "aucun magasin Carrefour de référence : choisissez le vôtre dans les filtres du panier (magasins par défaut).";
+}
 export const recordReading = (body: Record<string, unknown>) => call<{ saved: boolean; reason: string | null }>("/api/v2/extension/readings", body);
 
 /** Hand a job to the extension and follow it until it ends. `cancel` asks it to stop after the current product. */

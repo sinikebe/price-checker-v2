@@ -589,6 +589,21 @@
       "component": "pwa",
       "version": "0.1.25",
       "reason": "Carte de téléchargement de l’extension dans les paramètres."
+    },
+    {
+      "component": "application",
+      "version": "0.1.118",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.31",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
+    },
+    {
+      "component": "products",
+      "version": "0.1.53",
+      "reason": "Choix du magasin Carrefour de l’extension d’après les magasins par défaut."
     }
   ]
 }
