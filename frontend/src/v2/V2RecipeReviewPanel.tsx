@@ -33,7 +33,8 @@ export default function V2RecipeReviewPanel() {
     {items?.length === 0 && <p>Aucune proposition en attente.</p>}
     {items?.map(item => <article key={item.id}>
       <h3>{item.payload.title}</h3>
-      <p>{item.recipe_id ? <>Modification de la <Link to={`/v2/recettes/${item.recipe_id}`}>recette #{item.recipe_id}</Link></> : "Nouvelle recette"} · Proposition de {item.author}</p>
+      <p>{item.recipe_id && item.publishes_private ? "Publication d'une recette privée (visible par son auteur seulement jusqu'ici)"
+        : item.recipe_id ? <>Modification de la <Link to={`/v2/recettes/${item.recipe_id}`}>recette #{item.recipe_id}</Link></> : "Nouvelle recette"} · Proposition de {item.author}</p>
       <details><summary>Examiner le texte et les ingrédients</summary>
         {item.payload.description && <p>{item.payload.description}</p>}
         <p>{item.payload.base_servings} portions · préparation {item.payload.prep_minutes ?? "—"} min · cuisson {item.payload.cook_minutes ?? "—"} min</p>

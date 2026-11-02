@@ -47,11 +47,11 @@ export default function V2App() {
   try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }
   catch { categoryName = undefined; }
   const settings = path.match(/^\/v2\/parametres(?:\/([^/]+))?$/);
-  const recipe = path.match(/^\/v2\/recettes\/(\d+)(?:\/(modifier))?$/);
+  const recipe = path.match(/^\/v2\/recettes\/(privees\/)?(\d+)(?:\/(modifier))?$/);
   const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
   const recipeMode = path === "/v2/recettes" ? "list"
     : path === "/v2/recettes/nouvelle" ? "new"
-    : recipe ? recipe[2] ? "edit" : "detail" : undefined;
+    : recipe ? recipe[3] ? "edit" : "detail" : undefined;
   const workspaceMode = path === "/v2/produits" ? "catalogue"
     : path === "/v2/produits/nouveau" ? "new"
     : path === "/v2/brouillons" ? "mine"
@@ -83,7 +83,8 @@ export default function V2App() {
       basketMode={path === "/v2/panier"}
       storesMode={path === "/v2/magasins" || Boolean(store)}
       storeId={store ? Number(store[1]) : undefined}
-      recipeId={recipe ? Number(recipe[1]) : undefined}
+      recipeId={recipe ? Number(recipe[2]) : undefined}
+      privateRecipe={Boolean(recipe?.[1])}
       categoryName={categoryName}
       workspaceMode={workspaceMode}
       workspaceId={draft ? Number(draft[1]) : product ? Number(product[1]) : undefined}

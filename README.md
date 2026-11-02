@@ -10,7 +10,7 @@ Le projet est en cours de développement. Le code source est public sur [GitHub]
 
 Sur chaque fiche magasin, l’administrateur peut le désactiver temporairement (fiche et prix masqués des résultats publics, données conservées) ou le supprimer définitivement avec ses prix, brouillons et offres associés. La suppression demande de saisir le nom du magasin.
 
-Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen.
+Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen. Une recette peut aussi rester privée : visible par son auteur seul, elle est enregistrée sans examen et ne rapporte pas de crédits, jusqu'à ce que son auteur la propose à la publication.
 
 Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
 

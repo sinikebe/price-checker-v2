@@ -31,6 +31,19 @@ async def _person(connection, request: Request):
     return user
 
 
+async def _target_revision(connection, recipe_id: int, author_id: int, *, lock: bool = False) -> int:
+    """Revision of the recipe a submission changes: a public recipe, or the author's own private one."""
+    row = await connection.fetchrow(
+        "SELECT revision,private,author_id FROM v2_recipes WHERE id=$1"
+        + (" FOR UPDATE" if lock else ""), recipe_id,
+    )
+    if row is None or (row["private"] and row["author_id"] != author_id):
+        raise HTTPException(status_code=404, detail="Contenu introuvable.")
+    if not row["private"]:
+        await require_visible(connection, "recipe", recipe_id)
+    return row["revision"]
+
+
 async def _admin(connection, request: Request):
     user = await _person(connection, request)
     if user["role"] != "admin":
@@ -68,8 +81,9 @@ async def review_queue(
         await _admin(connection, request)
         rows = await connection.fetch(
             "SELECT s.id,s.recipe_id,s.base_revision,s.payload,s.created_at,"
-            "u.username AS author FROM v2_recipe_submissions s "
-            "JOIN v2_users u ON u.id=s.author_id WHERE s.status='pending' "
+            "u.username AS author,coalesce(r.private,false) AS publishes_private "
+            "FROM v2_recipe_submissions s JOIN v2_users u ON u.id=s.author_id "
+            "LEFT JOIN v2_recipes r ON r.id=s.recipe_id WHERE s.status='pending' "
             "ORDER BY s.created_at,s.id LIMIT $1 OFFSET $2",
             limit, offset,
         )
@@ -117,10 +131,7 @@ async def revise_submission(submission_id: int, payload: SubmissionUpdate, reque
                     connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
                 )
             if row["recipe_id"] is not None:
-                await require_visible(connection, "recipe", row["recipe_id"])
-                current = await connection.fetchval(
-                    "SELECT revision FROM v2_recipes WHERE id=$1", row["recipe_id"],
-                )
+                current = await _target_revision(connection, row["recipe_id"], user["id"])
                 if current != row["base_revision"]:
                     raise HTTPException(status_code=409, detail="La recette publiée a changé.")
             await connection.execute(
@@ -194,18 +205,18 @@ async def approve_submission(submission_id: int, request: Request):
                 )
             else:
                 recipe_id = submission["recipe_id"]
-                await require_visible(connection, "recipe", recipe_id)
-                current = await connection.fetchval(
-                    "SELECT revision FROM v2_recipes WHERE id=$1 FOR UPDATE", recipe_id,
+                current = await _target_revision(
+                    connection, recipe_id, submission["author_id"], lock=True,
                 )
                 if current != submission["base_revision"]:
                     raise HTTPException(
                         status_code=409,
                         detail="La recette publiée a changé ; examinez la proposition à nouveau.",
                     )
+                # Approving a private recipe's publication makes it public.
                 await connection.execute(
                     "UPDATE v2_recipes SET title=$1,description=$2,base_servings=$3,"
-                    "prep_minutes=$4,cook_minutes=$5,steps=$6::jsonb,"
+                    "prep_minutes=$4,cook_minutes=$5,steps=$6::jsonb,private=false,"
                     "revision=revision+1,updated_at=now() WHERE id=$7",
                     payload.title, payload.description, payload.base_servings,
                     payload.prep_minutes, payload.cook_minutes,

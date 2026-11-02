@@ -367,7 +367,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesTab?: string;
   preferencesMode?: boolean;
@@ -377,6 +377,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   categoryName?: string;
   recipeMode?: "list" | "detail" | "new" | "edit";
   recipeId?: number;
+  privateRecipe?: boolean;
   basketMode?: boolean;
   captureMode?: "install" | "review";
   completionMode?: boolean;
@@ -482,7 +483,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
   if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} />);
   if (recipeMode) {
-    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />);
+    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} privateRecipe={privateRecipe} user={authStatus.user} onLogout={logout} />);
   }
   if (workspaceMode === "catalogue" || categoryName) return withHostAlert(<V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />);
   if (workspaceMode) {

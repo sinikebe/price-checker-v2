@@ -29,6 +29,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/transfers.py", ("products", "database")),
     ("backend/app/api/v2/recipes.py", ("recipes",)),
     ("backend/app/api/v2/recipe_submissions.py", ("recipes",)),
+    ("backend/app/api/v2/private_recipes.py", ("recipes",)),
     ("backend/app/api/v2/auth.py", ("accounts",)),
     ("backend/app/api/v2/auth_security.py", ("accounts",)),
     ("backend/app/api/v2/account_security.py", ("accounts",)),
