@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
@@ -8,6 +8,7 @@ import V2BasketFilters from "./V2BasketFilters";
 import V2BasketResults from "./V2BasketResults";
 import V2BasketToolbar, { type BasketPanel } from "./V2BasketToolbar";
 import { useBasketPrices } from "./useBasketPrices";
+import { useExtensionRefresh } from "./useExtensionRefresh";
 import { readBasketDefaultStores, writeBasketDefaultStores } from "./v2-basket-default-stores";
 import { currentBasketProduct } from "./v2-basket-product";
 import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryName, sharedEntryQuantity } from "./v2-basket-share";
@@ -68,7 +69,12 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   }
 
   const userId = user?.id ?? null;
-  const { snapshot, credits, state, fetchPrices } = useBasketPrices(userId, items);
+  const refetch = useRef<(quiet?: boolean) => Promise<void>>(async () => undefined);
+  const extension = useExtensionRefresh(user);
+  const startExtension = extension.start;
+  const afterFetch = useCallback((ids: number[]) => { void startExtension(ids, () => { void refetch.current(true); }); }, [startExtension]);
+  const { snapshot, credits, state, fetchPrices } = useBasketPrices(userId, items, afterFetch);
+  refetch.current = fetchPrices;
   const [panel, setPanel] = useState<BasketPanel | null>(null);
   const [defaultStores, setDefaultStores] = useState(readBasketDefaultStores);
   const [filters, setFilters] = useState<BasketFilters>(() => ({
@@ -154,6 +160,9 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
           signedIn={!!user} credits={credits} hasPrices={!!snapshot} fetching={fetching} onFetch={() => void fetchPrices()} />
         <div className="v2-basket-status">
           {fetching && <p role="status">Récupération des prix…</p>}
+          {extension.state.phase === "reading" && <p role="status" className="v2-basket-extension">Extension : lecture des prix {extension.state.store}… {extension.state.done}/{extension.state.total}
+            {extension.state.needsHuman && " — Carrefour demande une vérification : terminez-la dans l’onglet carrefour.fr qui vient de passer au premier plan, la lecture reprendra seule."}</p>}
+          {(extension.state.phase === "done" || extension.state.phase === "stopped") && <p role={extension.state.phase === "stopped" ? "alert" : "status"}>{extension.state.message}</p>}
           {state.phase === "done" && <p role="status">{state.message}</p>}
           {state.phase === "error" && <p role="alert" className="v2-recipes-error">{state.message}{state.signedOut && <> <Link to="/v2/connexion?next=panier">Se connecter</Link></>}</p>}
           {state.phase !== "error" && noCredit && credits && <p role="status">Plus de crédit pour le moment. Le prochain arrive {nextGrantLabel(credits.next_grant_on)}.</p>}

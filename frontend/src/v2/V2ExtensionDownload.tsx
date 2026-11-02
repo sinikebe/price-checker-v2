@@ -24,11 +24,11 @@ export default function V2ExtensionDownload() {
 
   return <section className="v2-settings-card v2-extension-download" aria-labelledby="v2-extension-heading">
     <h2 id="v2-extension-heading">Extension de navigateur (prototype)</h2>
-    <p>Certaines enseignes bloquent les lectures automatiques depuis un serveur. L’extension lit un prix sur le site de l’enseigne, dans votre navigateur, avec votre session et votre magasin choisi, puis le propose à cette instance. Carrefour pour l’instant, une lecture à la fois, déclenchée par vous.</p>
+    <p>Certaines enseignes bloquent les lectures automatiques depuis un serveur. L’extension lit un prix sur le site de l’enseigne, dans votre navigateur, avec votre session et votre magasin choisi, puis le propose à cette instance. Carrefour pour l’instant. Réservé aux administrateurs.</p>
     <ol className="v2-extension-steps">
       <li>Téléchargez l’archive et décompressez-la.</li>
       <li>Dans Chrome, Edge ou Brave : <code>chrome://extensions</code>, mode développeur, puis « Charger l’extension non empaquetée » sur le dossier décompressé.</li>
-      <li>Créez un jeton de portée « contribuer » dans Paramètres → Jetons API, puis renseignez-le dans l’extension avec le numéro du magasin. L’adresse de cette instance est déjà remplie.</li>
+      <li>Choisissez votre drive sur carrefour.fr dans ce navigateur, une fois. C’est tout : sur la page du panier, « Récupérer les prix » lit aussi, tout seul, les prix Carrefour qui manquent, puis rafraîchit la comparaison.</li>
     </ol>
     <div className="v2-settings-actions">
       <button type="button" className="v2-button v2-button-primary" disabled={busy} onClick={() => { void download(); }}>

@@ -642,6 +642,29 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.117",
+      "components": {
+        "application": {
+          "version": "0.1.117",
+          "notes": [
+            "L’extension de navigateur met à jour un panier en un clic : « Récupérer les prix » lit aussi les prix Carrefour manquants dans votre navigateur."
+          ]
+        },
+        "basket": {
+          "version": "0.1.30",
+          "notes": [
+            "Le panier peut lire, avec l’extension du navigateur, les prix Carrefour manquants ou anciens, sans étape de plus."
+          ]
+        },
+        "products": {
+          "version": "0.1.52",
+          "notes": [
+            "Les prix lus par l’extension sont enregistrés comme ceux d’un connecteur, avec le code-barres exact de la fiche."
+          ]
+        }
+      }
     }
   ]
 }

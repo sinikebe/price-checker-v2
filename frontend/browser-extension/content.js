@@ -24,7 +24,7 @@
         return fetch(url.replace("https://www.carrefour.fr", ""), { credentials: "same-origin", redirect: "follow", headers: { accept: "text/html" } }).then(function (page) {
           return page.text().then(function (html) {
             var product = parse.parseProductPage(html.slice(0, 6000000), ean);
-            answer.page = { status: page.status, bytes: html.length, found: product.found, store: product.storeLabel, seller: product.seller, available: product.available };
+            answer.page = { status: page.status, bytes: html.length, found: product.found, store: product.storeLabel, slug: product.storeSlug, seller: product.seller, available: product.available };
             answer.challenge = answer.challenge || page.status === 403 || /Just a moment|cf-mitigated/i.test(html.slice(0, 4000));
             if (product.found) {
               first.title = product.title || first.title;
@@ -32,6 +32,7 @@
               first.prices = product.prices;
               first.price = product.price;
               first.store = product.storeLabel;
+              first.storeSlug = product.storeSlug;
               first.seller = product.seller;
               first.available = product.available;
             } else first.url = url;
