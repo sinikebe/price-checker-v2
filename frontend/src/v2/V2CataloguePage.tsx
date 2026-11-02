@@ -12,6 +12,8 @@ import { productSizeIn } from "./v2-basket-quantity";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import type { BasketGroup, BasketScope } from "./v2-basket-storage";
+import { usePaidPrices } from "./usePaidPrices";
+import V2PriceGate from "./V2PriceGate";
 import "./v2-catalogue.css";
 
 type Classification = {
@@ -58,7 +60,10 @@ function LevelBadge({ level }: { level: Level }) {
 type Store = { id: number; retailer: string; name: string; city: string | null; postal_code: string | null };
 type SearchResult = { items: Product[]; total: number; limit: number; offset: number };
 type Observation = { id: number; product_id: number; price: string; observed_at: string; retailer: string; store_name: string; city: string | null };
-type PriceDetail = { name: string; products: Product[]; observations: Observation[]; history_limit_per_product: number };
+type PriceDetail = { name: string; products: Product[]; observations: Observation[]; history_limit_per_product: number;
+  /** What its prices cost (one credit per product with a price); absent offline. */
+  prices_cost?: number };
+type PaidObservations = Pick<PriceDetail, "observations" | "history_limit_per_product">;
 type CategoryDetail = Classification & PriceDetail;
 type ScopeDetail = PriceDetail & { department: string; family: string; comparison_scope: string; groups: { name: string; product_count: number }[] };
 type Props = { name?: string; user: V2User | null; onLogout: () => Promise<void> };
@@ -300,7 +305,7 @@ function ClassificationEditor({ name, current, onSaved }: {
   </form>;
 }
 
-function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail; showGroup?: boolean }) {
+function ComparisonContent({ detail, showGroup = false, awaitingPrices = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean }) {
   const [params, setParams] = useSearchParams();
   const page = pageNumber(params), size = pageSize(params);
   const subset = params.get("subset") || "";
@@ -354,7 +359,7 @@ function ComparisonContent({ detail, showGroup = false }: { detail: PriceDetail;
           <V2ConnectorQueueIndicator badge={badge} />
         </span>)}</div>}
       {!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
-      <CategoryChart detail={detail} products={selectedProducts} metric={metric} showGroup={showGroup} />
+      {awaitingPrices ? <p className="v2-catalogue-source">Les prix s’affichent ici une fois récupérés.</p> : <CategoryChart detail={detail} products={selectedProducts} metric={metric} showGroup={showGroup} />}
       <h2>Produits</h2>
       <div className="v2-workspace-list">{selectedProducts.slice((page - 1) * size, page * size).map(product =>
         <ProductLink key={product.id} product={product} showGroup={showGroup} />)}</div>
@@ -367,6 +372,11 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
   const basket = useV2Basket();
   const basketGroup: BasketGroup = { kind: "group", name };
   const { data, error } = useCatalogue<CategoryDetail>("/categories/" + encodeURIComponent(name));
+  const groupName = data?.name || name;
+  // Prices cost one credit per product with a price: said on the button, spent only on request.
+  const paid = usePaidPrices<PaidObservations>(user?.id ?? null, "category", data && data.prices_cost !== undefined ? groupName : null,
+    data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/category?" + new URLSearchParams({ name: groupName, max_cost: String(cost) }));
+  const priced = data ? { ...data, observations: paid.data?.observations ?? data.observations } : null;
   const [savedClassification, setSavedClassification] = useState<Classification | null>(null);
   const classification = savedClassification ?? data;
   const products = data?.products ?? [];
@@ -386,7 +396,9 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketGroup) ? basket.remove(basketGroup) : basket.add(basketGroup)}>{basket.has(basketGroup) ? "Retirer ce groupe du panier" : "Ajouter ce groupe au panier"}</button>}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
-      <ComparisonContent detail={data} />
+      {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
+        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
+      <ComparisonContent detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }
@@ -396,6 +408,9 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
   const basketScope: BasketScope = { kind: "scope", name: scope, department, family };
   const query = new URLSearchParams({ department, family, scope });
   const { data, error } = useCatalogue<ScopeDetail>("/comparison?" + query.toString());
+  const paid = usePaidPrices<PaidObservations>(user?.id ?? null, "comparison", data && data.prices_cost !== undefined ? [department, family, scope].join("|") : null,
+    data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/comparison?" + new URLSearchParams({ department, family, scope, max_cost: String(cost) }));
+  const priced = data ? { ...data, observations: paid.data?.observations ?? data.observations } : null;
   return <Frame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>
@@ -413,7 +428,9 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
           <div><LevelBadge level="group" /><strong>{group.name}</strong><small>{group.product_count} produit{group.product_count > 1 ? "s" : ""}</small></div>
           <span>Comparer ce groupe →</span>
         </Link>)}</div>
-      <ComparisonContent detail={data} showGroup />
+      {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
+        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
+      <ComparisonContent detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }

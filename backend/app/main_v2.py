@@ -21,6 +21,7 @@ from app.api.v2.availability import router as availability_router
 from app.api.v2.basket import router as basket_router
 from app.api.v2.catalogue import router as catalogue_router
 from app.api.v2.connector_stores import router as connector_stores_router, connector_worker
+from app.api.v2.credits import router as credits_router
 from app.api.v2.duplicate_merges import router as duplicate_merges_router
 from app.api.v2.extension import router as extension_router
 from app.api.v2.host_health import router as host_health_router
@@ -125,6 +126,7 @@ ROUTERS = (
     products_router,
     catalogue_router,
     basket_router,
+    credits_router,
     availability_router,
     extension_router,
     connector_stores_router,

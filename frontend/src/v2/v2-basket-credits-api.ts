@@ -1,11 +1,16 @@
 import type { BasketItem, BasketProduct } from "./v2-basket-storage";
 import type { BasketPriceResponse } from "./v2-basket-comparison";
 
+/**
+ * Credits pay for every price shown (product page, group or ensemble page, basket). An account
+ * gets `daily_grant` a day and holds at most `hold_max`; a visitor without an account (`visitor`)
+ * has `daily_grant` views a day, with nothing carried over.
+ */
 export type BasketCredits = {
-  balance: number; daily_grant: number; weekly_max: number; hold_max: number;
-  granted_this_week: number; next_grant_on: string;
+  balance: number; daily_grant: number; hold_max: number; next_grant_on: string;
   /** Administrators are not charged; `balance` is then only a placeholder. */
   unlimited?: boolean;
+  visitor?: boolean;
 };
 export type BasketFetchResult = {
   fetched_at: string; credits: BasketCredits;
@@ -13,10 +18,16 @@ export type BasketFetchResult = {
   products: Record<string, BasketProduct>;
   prices: Record<string, BasketPriceResponse>;
 };
-/** The account has no credit left: nothing was spent, and `credits` says when the next one comes. */
+/** Not enough credits for what was asked: nothing was spent, and `credits` says when the next ones come. */
 export class NoCreditsError extends Error {
   credits: BasketCredits;
-  constructor(credits: BasketCredits) { super("Plus de crédit pour récupérer les prix du panier."); this.credits = credits; }
+  cost: number;
+  constructor(credits: BasketCredits, cost = 1, message = "Pas assez de crédits.") { super(message); this.credits = credits; this.cost = cost; }
+}
+/** The prices of the page now cost more than announced: nothing was spent; ask again with `cost`. */
+export class CostChangedError extends Error {
+  cost: number;
+  constructor(cost: number) { super("Le nombre de prix a changé."); this.cost = cost; }
 }
 /** The session is gone: signing in again is needed. */
 export class SignedOutError extends Error {}
@@ -38,7 +49,7 @@ export async function readBasketCredits(signal?: AbortSignal): Promise<BasketCre
   return response.json() as Promise<BasketCredits>;
 }
 
-/** One request and one credit for the candidates and latest prices of every line. */
+/** One request, and one credit per line, for the candidates and latest prices of every line. */
 export async function fetchBasketPrices(items: readonly BasketItem[]): Promise<BasketFetchResult> {
   let response: Response;
   try {
@@ -49,12 +60,43 @@ export async function fetchBasketPrices(items: readonly BasketItem[]): Promise<B
   } catch { throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer."); }
   if (response.status === 401) throw new SignedOutError();
   if (response.status === 429) {
-    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits } } | null;
-    if (body?.detail?.code === "no_credits" && body.detail.credits) throw new NoCreditsError(body.detail.credits);
+    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
+    if (body?.detail?.code === "no_credits" && body.detail.credits) throw new NoCreditsError(body.detail.credits, body.detail.cost ?? items.length, body.detail.message);
     throw new Error("Trop de requêtes. Réessayez dans un instant.");
   }
   if (!response.ok) throw new Error("Impossible de récupérer les prix. Aucun crédit n’a été dépensé.");
   return response.json() as Promise<BasketFetchResult>;
+}
+
+/** The credits of whoever is reading: an account (after today's grant), a visitor, or an administrator. */
+export async function readCredits(signal?: AbortSignal): Promise<BasketCredits> {
+  const response = await fetch("/api/v2/credits", { credentials: "same-origin", cache: "no-store", signal });
+  if (!response.ok) throw new Error("Crédits indisponibles");
+  return response.json() as Promise<BasketCredits>;
+}
+
+/**
+ * A paid price request (GET): its answer, or NoCreditsError / CostChangedError when nothing was spent.
+ * The answer carries the credits left (`credits`).
+ */
+export async function paidFetch<T>(url: string, signal?: AbortSignal): Promise<T & { credits: BasketCredits }> {
+  let response: Response;
+  try {
+    response = await fetch(url, { credentials: "same-origin", cache: "no-store", signal });
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer.");
+  }
+  if (response.status === 429 || response.status === 409) {
+    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
+    const detail = body?.detail;
+    if (detail?.code === "no_credits" && detail.credits) throw new NoCreditsError(detail.credits, detail.cost ?? 1, detail.message);
+    if (detail?.code === "cost_changed" && typeof detail.cost === "number") throw new CostChangedError(detail.cost);
+    throw new Error("Trop de requêtes. Réessayez dans un instant.");
+  }
+  if (response.status === 404) throw new Error("Introuvable.");
+  if (!response.ok) throw new Error("Impossible de récupérer les prix. Aucun crédit n’a été dépensé.");
+  return response.json() as Promise<T & { credits: BasketCredits }>;
 }
 
 const days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
@@ -68,7 +110,21 @@ export function nextGrantLabel(nextGrantOn: string, today: Date = new Date()): s
   return days[new Date(target).getUTCDay()];
 }
 export const creditLabel = (count: number) => count + " crédit" + (count > 1 ? "s" : "");
-/** True when the account is known to have nothing left to spend (never for an administrator). */
-export const outOfCredits = (credits: BasketCredits | null) => credits !== null && !credits.unlimited && credits.balance < 1;
-/** " (1 crédit)" after the action's name, and nothing for an administrator. */
-export const costNote = (credits: BasketCredits | null) => credits?.unlimited ? "" : " (1 crédit)";
+/** True when the reader is known to have fewer than `cost` credits (never for an administrator). */
+export const outOfCredits = (credits: BasketCredits | null, cost = 1) => credits !== null && !credits.unlimited && credits.balance < cost;
+/** " (3 crédits)" after the action's name, and nothing for an administrator. */
+export const costNote = (credits: BasketCredits | null, cost = 1) => credits?.unlimited ? "" : ` (${creditLabel(cost)})`;
+/** "12 crédits restants", "2 crédits restants aujourd’hui sans compte" for a visitor. */
+export function balanceText(credits: BasketCredits): string {
+  if (credits.unlimited) return "Sans limite pour un administrateur";
+  if (credits.visitor) return `${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""} aujourd’hui sans compte`;
+  return `${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""}`;
+}
+/** Why the reader cannot pay `cost`, and what comes next. */
+export function shortText(credits: BasketCredits, cost: number): string {
+  if (credits.visitor) {
+    return credits.daily_grant === 0 ? "Connectez-vous pour voir les prix."
+      : `Il faut ${creditLabel(cost)}, il en reste ${credits.balance} aujourd’hui sans compte. Connectez-vous pour avoir des crédits chaque jour, ou revenez ${nextGrantLabel(credits.next_grant_on)}.`;
+  }
+  return `Il faut ${creditLabel(cost)}, il vous en reste ${credits.balance}. Les prochains arrivent ${nextGrantLabel(credits.next_grant_on)} (${credits.daily_grant} par jour, ${credits.hold_max} au maximum).`;
+}

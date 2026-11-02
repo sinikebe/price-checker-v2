@@ -1,6 +1,6 @@
 # Panier et crédits
 
-Le panier reste sur l’appareil. Les prix, eux, sont récupérés **à la demande** : un bouton **Comparer les prix** (puis **Actualiser**) envoie le panier au serveur, qui renvoie en une seule requête les produits candidats et le dernier prix de chaque magasin. Cette récupération coûte **1 crédit**.
+Le panier reste sur l’appareil. Les prix, eux, sont récupérés **à la demande** : un bouton **Comparer les prix** (puis **Actualiser**) envoie le panier au serveur, qui renvoie en une seule requête les produits candidats et le dernier prix de chaque magasin. Cette récupération coûte **1 crédit par article inclus** (un groupe ou un ensemble compte pour un article) ; le bouton affiche le montant avant tout envoi. Les articles exclus ne sont ni envoyés ni comptés.
 
 Le dernier relevé est conservé dans le navigateur (par compte) ; la page s’ouvre dessus sans rien demander. Filtrer les magasins, exclure un article, activer le panier avancé ou changer les quantités recalcule le résultat sur l’appareil, sans crédit. Un article ajouté ou remplacé depuis le relevé est signalé comme non inclus jusqu’à la prochaine actualisation.
 
@@ -37,9 +37,19 @@ Les magasins désactivés sont listés sous la répartition avec un bouton **Ré
 
 ## Crédits
 
-Chaque compte reçoit **5 crédits par jour**, dans la limite de **20 crédits accordés par semaine** (du lundi au dimanche) et de **20 crédits détenus** à la fois. Le jour et la semaine sont ceux de Paris. Les crédits non utilisés sont reportés ; un jour sans visite n’en accorde pas de supplémentaires. Une requête refusée ou en erreur ne coûte rien : le crédit est dépensé dans la transaction qui lit les prix, une fois la lecture réussie.
+Les prix coûtent des crédits partout où ils sont affichés, pour éviter qu’un robot lise tout le catalogue :
 
-Les comptes administrateurs n’ont pas de limite de crédits, pour pouvoir tester : leurs récupérations ne sont pas décomptées (aucune ligne de solde n’est créée) et la réponse porte `unlimited: true`. Un plafond de 60 récupérations par minute et par compte administrateur reste en place contre une boucle incontrôlée ; il est refusé en `429` sans mention de crédit. Le rôle est lu dans la session côté serveur, jamais dans la requête.
+- **page d’un produit** : 1 crédit ;
+- **page d’un groupe comparable ou d’un ensemble** : 1 crédit par produit qui a un prix (un produit sans prix ne coûte rien) ;
+- **panier** : 1 crédit par article inclus.
+
+Rien n’est dépensé en ouvrant une page : un bouton **Voir les prix · N crédits** annonce le montant et le solde, et les prix ne sont récupérés qu’au clic. Les prix payés restent affichés dans ce navigateur, avec leur date, jusqu’à ce que le lecteur demande **Actualiser les prix** (au même coût). Un nouveau relevé arrivé entre-temps est signalé, sans dépense automatique. Le serveur ne facture jamais plus que le montant annoncé : si le nombre de produits avec un prix a augmenté entre-temps, il refuse (`409`) et la page annonce le nouveau montant.
+
+Chaque compte reçoit **50 crédits par jour** (à sa première visite du jour, heure de Paris) et en garde **100 au plus** : au-delà, les crédits du jour sont perdus. Un jour sans visite n’en accorde pas de supplémentaires. Un **visiteur sans compte** dispose de **10 crédits par jour**, comptés par adresse réseau et sans report ; l’adresse n’est jamais enregistrée (seule une empreinte HMAC avec le secret de l’installation, effacée après deux jours). Ces trois montants se règlent dans *Paramètres → Serveur → Crédits pour voir les prix* ; 0 crédit pour les visiteurs impose un compte pour voir les prix.
+
+Une requête refusée ou en erreur ne coûte rien : les crédits sont dépensés dans la transaction qui lit les prix. Une requête venue d’un autre site avec la session du navigateur est refusée avant toute dépense. Les jetons API personnels dépensent les crédits du compte, comme le site.
+
+Les comptes administrateurs n’ont pas de limite de crédits, pour pouvoir tester : leurs récupérations ne sont pas décomptées (aucune ligne de solde n’est créée), la réponse porte `unlimited: true` et leurs pages affichent les prix sans bouton. Un plafond de 60 récupérations de panier par minute et par compte administrateur reste en place contre une boucle incontrôlée ; il est refusé en `429` sans mention de crédit. Le rôle est lu dans la session côté serveur, jamais dans la requête.
 
 Sans compte, le panier reste consultable et modifiable, mais ses prix ne peuvent pas être récupérés : l’interface propose de se connecter.
 
@@ -47,7 +57,7 @@ Sans compte, le panier reste consultable et modifiable, mais ses prix ne peuvent
 
 Ces routes demandent une session de navigateur (pas de jeton personnel).
 
-- `GET /api/v2/basket/credits` : solde, règles et prochaine date d’attribution.
+- `GET /api/v2/basket/credits` : solde, règles et prochaine date d’attribution (comme `GET /api/v2/credits`, qui répond aussi aux visiteurs sans compte).
 - `POST /api/v2/basket/prices` : `{"items": [...]}` avec, par article, `{"kind": "product", "id"}`, `{"kind": "group", "name"}` ou `{"kind": "scope", "department", "family", "name"}`. Réponse : `lines` (dans l’ordre, avec les identifiants de produits candidats), `products`, `prices` et `credits`. Sans crédit, la réponse est `429` avec `Retry-After`.
 
 Une requête porte au plus 100 articles, compare au plus 300 produits par groupe ou ensemble et 600 produits au total, et renvoie au plus 200 magasins par produit ; les limites atteintes sont signalées dans `lines[].truncated` et `prices[].stores_truncated`. Les prix d’un magasin où le produit est retiré de la gamme (voir `availability.md`) sont laissés de côté et comptés dans `prices[].withdrawn_count`. La migration `0036_basket_credits` crée la table des soldes ; une ligne est créée à la première utilisation d’un compte et supprimée avec lui.

@@ -247,7 +247,8 @@ async def test_open_prices_history_keeps_only_price_run_day_boundaries(monkeypat
         ) as client:
             response = await client.get(f"/api/v2/prices/products/{product_id}")
             category = await client.get(
-                "/api/v2/catalogue/categories/Disposable%20OFF%20history"
+                "/api/v2/catalogue/prices/category",
+                params={"name": "Disposable OFF history", "max_cost": 10},
             )
         assert response.status_code == 200, response.text
         assert category.status_code == 200, category.text

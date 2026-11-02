@@ -40,3 +40,8 @@ test("a multi-digit id removes only its own keys", () => {
   const keys = ["v2:product:new:12", "v2:product:new:1", "v2:product:new:123", "v2:basket:items:12", "v2:basket:items:112"];
   assert.deepEqual(accountLocalKeys(keys, 12), ["v2:product:new:12", "v2:basket:items:12"]);
 });
+
+test("prices paid for by an account go with it, not those of another account or of visitors", async () => {
+  const keys = ["v2:prices:user:3:product:12", "v2:prices:user:3:index", "v2:prices:user:30:product:1", "v2:prices:visitor:product:1"];
+  assert.deepEqual(accountLocalKeys(keys, 3), ["v2:prices:user:3:product:12", "v2:prices:user:3:index"]);
+});

@@ -5,6 +5,8 @@ import type { V2User } from "./v2-auth-api";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import { loadWithdrawn, lookAgain, withdrawnAt, withdrawnText, type Withdrawn } from "./v2-availability";
+import { usePaidPrices } from "./usePaidPrices";
+import V2PriceGate from "./V2PriceGate";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -254,7 +256,11 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
 export default function V2PriceHistory({ productId, user, current }: { productId: number; user: V2User | null; current: boolean }) {
   const queueBadges = useConnectorQueue(current ? [productId] : []);
   const userId = user?.id;
-  const [prices, setPrices] = useState<PricesResponse | null>(null);
+  // Prices cost one credit: shown from this browser when already paid for, fetched on request.
+  const paid = usePaidPrices<PricesResponse>(userId ?? null, "product", String(productId), 1, () => `/api/v2/prices/products/${productId}`);
+  const prices = paid.data;
+  const markNewer = useRef(paid.markNewer);
+  useEffect(() => { markNewer.current = paid.markNewer; });
   const [withdrawn, setWithdrawn] = useState<Withdrawn>({ stores: [], truncated: false });
   const [drafts, setDrafts] = useState<PriceDraft[] | null>(null);
   const [form, setForm] = useState<DraftForm>(initialForm);
@@ -264,8 +270,6 @@ export default function V2PriceHistory({ productId, user, current }: { productId
 
   const refresh = useCallback(async () => {
     try {
-      const nextPrices = await priceRequest<PricesResponse>(`/products/${productId}`);
-      setPrices(nextPrices);
       setWithdrawn(await loadWithdrawn(productId));
       if (userId != null) {
         const nextDrafts = await priceRequest<PriceDraft[]>(`/products/${productId}/drafts`);
@@ -279,7 +283,8 @@ export default function V2PriceHistory({ productId, user, current }: { productId
   }, [productId, userId]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
-    const onPrice = () => { void refresh(); };
+    // A new reading arrived: free details are reloaded; paid prices only on request (or for an administrator).
+    const onPrice = () => { void refresh(); markNewer.current(); };
     window.addEventListener(CONNECTOR_PRICE_REFRESH_EVENT, onPrice);
     return () => window.removeEventListener(CONNECTOR_PRICE_REFRESH_EVENT, onPrice);
   }, [refresh]);
@@ -346,7 +351,9 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         {user?.role === "admin" && <> <button type="button" className="v2-button v2-button-secondary" disabled={busy}
           onClick={() => { void recheck(entry.store_id, entry.sales_channel); }}>Revérifier</button></>}
       </p>)}
-    {!prices && !error && <p>Chargement des prix…</p>}
+    <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy} error={paid.error}
+      newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce produit" />
+    {!prices && paid.credits?.unlimited && !error && <p>Chargement des prix…</p>}
     {prices && (observations.length || prices.latest_by_store.length ? <>
       <div className="v2-price-store-summary" aria-labelledby="v2-price-store-heading">
         <h3 id="v2-price-store-heading">Dernier relevé par magasin et canal</h3>

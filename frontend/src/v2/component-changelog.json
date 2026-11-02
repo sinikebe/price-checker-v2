@@ -739,6 +739,29 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.124",
+      "components": {
+        "application": {
+          "version": "0.1.124",
+          "notes": [
+            "Les prix coûtent des crédits partout : 50 par jour pour un compte (100 gardés au plus), un petit quota pour les visiteurs."
+          ]
+        },
+        "basket": {
+          "version": "0.1.36",
+          "notes": [
+            "Le panier coûte 1 crédit par article inclus, montant affiché sur le bouton ; les articles exclus ne coûtent rien."
+          ]
+        },
+        "products": {
+          "version": "0.1.57",
+          "notes": [
+            "Les fiches produit, groupe et ensemble annoncent le prix en crédits avant de montrer les prix, puis les gardent jusqu’à leur actualisation."
+          ]
+        }
+      }
     }
   ]
 }

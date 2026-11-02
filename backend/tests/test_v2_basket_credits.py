@@ -1,4 +1,4 @@
-"""Basket credits: the grant rules, and one credit per successful fetch of basket prices."""
+"""Credits: the grant rules, and one credit per line for a successful fetch of basket prices."""
 
 from __future__ import annotations
 
@@ -22,44 +22,35 @@ from app.services import v2_basket_credits as credits
 MONDAY = date(2026, 11, 2)
 
 
-def test_a_day_grants_five_and_only_once():
-    assert credits.refilled(0, None, None, 0, MONDAY) == (5, MONDAY, MONDAY, 5)
-    assert credits.refilled(5, MONDAY, MONDAY, 5, MONDAY) == (5, MONDAY, MONDAY, 5)
-    assert credits.refilled(2, MONDAY, MONDAY, 5, MONDAY) == (2, MONDAY, MONDAY, 5)
+CFG = {"daily_grant": 50, "hold_max": 100, "visitor_daily": 10}
 
 
-def test_a_week_grants_twenty_at_most_then_starts_again_on_monday():
-    balance, granted_on, week_start, week_granted = 0, None, None, 0
-    seen = []
-    for offset in range(7):
-        today = date(2026, 11, 2 + offset)
-        balance, granted_on, week_start, week_granted = credits.refilled(
-            balance, granted_on, week_start, week_granted, today)
-        seen.append((balance, week_granted))
-        balance = max(0, balance - 5)  # one account spends five a day
-    assert seen == [(5, 5), (5, 10), (5, 15), (5, 20), (0, 20), (0, 20), (0, 20)]
-    nextweek = credits.refilled(balance, granted_on, week_start, week_granted, date(2026, 11, 9))
-    assert nextweek == (5, date(2026, 11, 9), date(2026, 11, 9), 5)
+def test_a_day_grants_fifty_and_only_once():
+    assert credits.refilled(0, None, MONDAY, CFG) == (50, MONDAY)
+    assert credits.refilled(50, MONDAY, MONDAY, CFG) == (50, MONDAY)
+    assert credits.refilled(2, MONDAY, MONDAY, CFG) == (2, MONDAY)
 
 
-def test_unused_credits_carry_over_up_to_twenty_and_missed_days_grant_nothing():
-    balance, granted_on, week_start, week_granted = credits.refilled(0, None, None, 0, MONDAY)
-    for offset in range(1, 4):
-        balance, granted_on, week_start, week_granted = credits.refilled(
-            balance, granted_on, week_start, week_granted, date(2026, 11, 2 + offset))
-    assert (balance, week_granted) == (20, 20)
-    # Hold limit: nothing more can be granted while twenty are held.
-    assert credits.refilled(20, MONDAY, MONDAY, 0, date(2026, 11, 3))[0] == 20
-    # Three days without any visit do not pile up grants: only that day's five.
-    assert credits.refilled(0, MONDAY, MONDAY, 5, date(2026, 11, 6))[0] == 5
-    # The hold limit trims a grant instead of refusing it.
-    assert credits.refilled(18, MONDAY, MONDAY, 5, date(2026, 11, 3))[0] == 20
+def test_unused_credits_carry_over_up_to_the_limit_and_the_rest_is_lost():
+    balance, granted_on = credits.refilled(0, None, MONDAY, CFG)
+    balance, granted_on = credits.refilled(balance, granted_on, date(2026, 11, 3), CFG)
+    assert balance == 100
+    balance, granted_on = credits.refilled(balance, granted_on, date(2026, 11, 4), CFG)
+    assert balance == 100, "nothing beyond the holding limit"
+    assert credits.refilled(70, MONDAY, date(2026, 11, 3), CFG)[0] == 100, "70 + 50: the extra 20 are lost"
+    # Days without any visit do not pile up grants: only that day's grant.
+    assert credits.refilled(0, MONDAY, date(2026, 11, 9), CFG)[0] == 50
+    # A lower limit set later never takes credits away.
+    assert credits.refilled(150, MONDAY, date(2026, 11, 3), CFG)[0] == 150
 
 
-def test_the_next_grant_is_tomorrow_unless_the_week_is_used_up():
-    assert credits.next_grant_on(date(2026, 11, 3), 10) == date(2026, 11, 4)
-    assert credits.next_grant_on(date(2026, 11, 5), 20) == date(2026, 11, 9)  # Thursday: next Monday
-    assert credits.next_grant_on(date(2026, 11, 8), 20) == date(2026, 11, 9)  # Sunday: tomorrow
+def test_the_amounts_follow_the_settings():
+    small = {"daily_grant": 5, "hold_max": 8, "visitor_daily": 0}
+    assert credits.refilled(0, None, MONDAY, small) == (5, MONDAY)
+    assert credits.refilled(5, MONDAY, date(2026, 11, 3), small)[0] == 8
+    assert credits.public_state(3, MONDAY, small) == {
+        "balance": 3, "daily_grant": 5, "hold_max": 8, "next_grant_on": "2026-11-03", "unlimited": False, "visitor": False}
+    assert credits.visitor_state(2, MONDAY, CFG)["visitor"] is True
 
 
 pytestmark = pytest.mark.skipif(
@@ -141,6 +132,15 @@ async def seed(config):
         await connection.close()
 
 
+async def amounts(config, daily_grant, hold_max, visitor_daily=10):
+    connection = await connect_v2(config)
+    try:
+        await connection.execute(
+            "UPDATE v2_credit_settings SET daily_grant=$1,hold_max=$2,visitor_daily=$3", daily_grant, hold_max, visitor_daily)
+    finally:
+        await connection.close()
+
+
 async def balance(config, user_id):
     connection = await connect_v2(config)
     try:
@@ -154,53 +154,60 @@ def acting(user_id):
 
 
 @pytest.mark.asyncio
-async def test_an_account_starts_with_the_grant_of_the_day_and_pays_one_credit_per_fetch(served, config):
+async def test_an_account_starts_with_the_grant_of_the_day_and_pays_one_credit_per_line(served, config):
     (ana, ben), _stores, products = await seed(config)
     async with served as client:
         first = await client.get("/api/v2/basket/credits", headers=acting(ana))
         assert first.status_code == 200 and first.headers["cache-control"] == "no-store"
-        assert first.json() == {"balance": 5, "daily_grant": 5, "weekly_max": 20, "hold_max": 20,
-                                "granted_this_week": 5, "next_grant_on": "2026-11-03", "unlimited": False}
+        assert first.json() == {"balance": 50, "daily_grant": 50, "hold_max": 100,
+                                "next_grant_on": "2026-11-03", "unlimited": False, "visitor": False}
         body = {"items": [{"kind": "product", "id": products[0]}]}
         fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
         assert fetched.status_code == 200, fetched.text
-        assert fetched.json()["credits"]["balance"] == 4
+        assert (fetched.json()["credits"]["balance"], fetched.json()["cost"]) == (49, 1)
         assert fetched.headers["cache-control"] == "no-store"
+        three = {"items": [{"kind": "product", "id": products[0]}, {"kind": "group", "name": "Lait"},
+                           {"kind": "product", "id": products[2]}]}
+        fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=three)
+        assert (fetched.json()["credits"]["balance"], fetched.json()["cost"]) == (46, 3), "one credit per line, a group counts once"
         # Reading the credits never spends one, and every account has its own.
-        assert (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()["balance"] == 4
-        assert (await client.get("/api/v2/basket/credits", headers=acting(ben))).json()["balance"] == 5
-    assert await balance(config, ana) == 4
+        assert (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()["balance"] == 46
+        assert (await client.get("/api/v2/basket/credits", headers=acting(ben))).json()["balance"] == 50
+    assert await balance(config, ana) == 46
 
 
 @pytest.mark.asyncio
-async def test_a_next_day_grants_again_and_the_week_is_capped(served, config, clock):
+async def test_a_next_day_grants_again_up_to_the_limit(served, config, clock):
     (ana, _ben), _stores, products = await seed(config)
     body = {"items": [{"kind": "product", "id": products[0]}]}
     async with served as client:
-        for day in (2, 3, 4, 5):  # Monday to Thursday, nothing spent: 5, 10, 15, 20
+        seen = []
+        for day in (2, 3, 4):  # nothing spent: 50, 100, still 100
             clock["now"] = clock["now"].replace(day=day)
-            state = (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()
-        assert (state["balance"], state["granted_this_week"]) == (20, 20)
+            seen.append((await client.get("/api/v2/basket/credits", headers=acting(ana))).json()["balance"])
+        assert seen == [50, 100, 100]
         assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 200
-        clock["now"] = clock["now"].replace(day=6)  # Friday: the week is used up
-        friday = (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()
-        assert (friday["balance"], friday["next_grant_on"]) == (19, "2026-11-09")
-        clock["now"] = clock["now"].replace(day=9)  # next Monday: a new week
-        monday = (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()
-        assert (monday["balance"], monday["granted_this_week"]) == (20, 1)
+        clock["now"] = clock["now"].replace(day=5)
+        assert (await client.get("/api/v2/basket/credits", headers=acting(ana))).json()["balance"] == 100, "99 + 50: the rest is lost"
 
 
 @pytest.mark.asyncio
 async def test_without_credit_the_fetch_is_refused_with_the_wait_and_costs_nothing(served, config, clock):
     (ana, _ben), _stores, products = await seed(config)
+    await amounts(config, 5, 20)
     body = {"items": [{"kind": "product", "id": products[0]}]}
     async with served as client:
-        for _ in range(5):
+        for _ in range(4):
             assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 200
+        two = {"items": [{"kind": "product", "id": products[0]}, {"kind": "product", "id": products[1]}]}
+        short = await client.post("/api/v2/basket/prices", headers=acting(ana), json=two)
+        assert short.status_code == 429 and short.json()["detail"]["cost"] == 2, "1 left, 2 needed"
+        assert "2 crédits" in short.json()["detail"]["message"]
+        assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)).status_code == 200
         refused = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
         assert refused.status_code == 429
         detail = refused.json()["detail"]
-        assert detail["code"] == "no_credits"
+        assert detail["code"] == "no_credits" and detail["cost"] == 1
         assert detail["credits"]["balance"] == 0 and detail["credits"]["next_grant_on"] == "2026-11-03"
         assert 14 * 3600 < int(refused.headers["retry-after"]) < 15 * 3600  # until Paris midnight
         assert await balance(config, ana) == 0
@@ -234,7 +241,7 @@ async def test_a_failed_or_invalid_fetch_is_not_charged(served, config, monkeypa
         monkeypatch.setattr(basket, "_gather", broken)
         assert (await client.post("/api/v2/basket/prices", headers=acting(ana), json=ok)).status_code == 500
         monkeypatch.undo()
-    assert await balance(config, ana) in (None, 5)  # nothing was spent
+    assert await balance(config, ana) in (None, 50)  # nothing was spent
 
 
 @pytest.mark.asyncio
@@ -245,7 +252,7 @@ async def test_the_fetch_needs_a_same_origin_write(served, config):
         foreign = await client.post("/api/v2/basket/prices", json=body,
                                     headers={"origin": "https://elsewhere.test", "x-test-user": str(ana)})
         assert foreign.status_code == 403
-    assert await balance(config, ana) in (None, 5)
+    assert await balance(config, ana) in (None, 50)
 
 
 @pytest.mark.asyncio
@@ -347,6 +354,7 @@ async def test_deleting_an_account_removes_its_credits(served, config):
 @pytest.mark.asyncio
 async def test_basket_requests_are_journaled_as_numbers_without_the_account(served, config):
     (ana, _ben), _stores, products = await seed(config)
+    await amounts(config, 10, 20)
     body = {"items": [{"kind": "product", "id": products[0]}, {"kind": "group", "name": "Lait"}]}
     async with served as client:
         for _ in range(5):
@@ -359,8 +367,8 @@ async def test_basket_requests_are_journaled_as_numbers_without_the_account(serv
         await connection.close()
     assert [row["event"] for row in logged] == ["basket.prices.fetched"] * 5 + ["basket.prices.refused"]
     fetched = [json.loads(row["data"]) for row in logged[:5]]
-    assert [entry["credits_left"] for entry in fetched] == [4, 3, 2, 1, 0]
-    assert fetched[0] == {"items": 2, "products": 2, "truncated": False, "credits_left": 4}
+    assert [entry["credits_left"] for entry in fetched] == [8, 6, 4, 2, 0], "two lines, two credits each time"
+    assert fetched[0] == {"items": 2, "products": 2, "truncated": False, "credits_left": 8}
     assert json.loads(logged[5]["data"]) == {"reason": "no_credits"}
     assert all(row["connector"] is None for row in logged)
     assert all(set(json.loads(row["data"])) <= {"items", "products", "truncated", "credits_left", "reason"} for row in logged)
@@ -374,8 +382,8 @@ async def test_an_administrator_has_no_credit_limit_but_a_sanity_cap(served, con
     admin = {**acting(ana), "x-test-role": "admin"}
     async with served as client:
         state = (await client.get("/api/v2/basket/credits", headers=admin)).json()
-        assert state["unlimited"] is True and state["balance"] == 20, "an older page still sees credits and keeps its button"
-        for _ in range(8):  # more than the 5 credits of a day
+        assert state["unlimited"] is True and state["balance"] == 100, "an older page still sees credits and keeps its button"
+        for _ in range(8):
             answer = await client.post("/api/v2/basket/prices", headers=admin, json=body)
             assert answer.status_code == 200, answer.text
             assert answer.json()["credits"]["unlimited"] is True
@@ -385,7 +393,7 @@ async def test_an_administrator_has_no_credit_limit_but_a_sanity_cap(served, con
         assert runaway.status_code == 429 and runaway.headers["retry-after"] == "60"
         assert "crédit" not in runaway.json()["detail"], "a rate cap, not a missing credit"
     assert await balance(config, ana) is None, "no credit is held, spent or granted for an administrator"
-    assert await balance(config, ben) == 4, "a member still pays"
+    assert await balance(config, ben) == 49, "a member still pays"
     connection = await connect_v2(config)
     try:
         logged = [json.loads(row["data"]) for row in await connection.fetch(
@@ -393,12 +401,13 @@ async def test_an_administrator_has_no_credit_limit_but_a_sanity_cap(served, con
     finally:
         await connection.close()
     assert [entry.get("unlimited") for entry in logged] == [True] * 8 + [None]
-    assert "credits_left" not in logged[0] and logged[-1]["credits_left"] == 4
+    assert "credits_left" not in logged[0] and logged[-1]["credits_left"] == 49
 
 
 @pytest.mark.asyncio
 async def test_the_role_comes_from_the_session_not_from_the_request(served, config):
     (ana, _ben), _stores, products = await seed(config)
+    await amounts(config, 5, 20)
     body = {"items": [{"kind": "product", "id": products[0]}]}
     async with served as client:
         for _ in range(5):

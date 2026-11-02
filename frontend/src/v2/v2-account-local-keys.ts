@@ -11,6 +11,7 @@ export function accountLocalKeys(keys: readonly string[], userId: number, exactK
   const prefixes = [
     `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
     `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
+    `v2:prices:user:${id}:`,
   ];
   return keys.filter(key => own.has(key)
     || prefixes.some(prefix => key.startsWith(prefix))

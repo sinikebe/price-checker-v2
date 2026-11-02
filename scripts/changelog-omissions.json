@@ -644,6 +644,26 @@
       "component": "basket",
       "version": "0.1.35",
       "reason": "Mise en page sur petit écran des boutons de la répartition."
+    },
+    {
+      "component": "database",
+      "version": "0.1.39",
+      "reason": "Tables des réglages de crédits et des consultations des visiteurs, annoncées avec les crédits."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.30",
+      "reason": "Les jetons API dépensent les crédits du compte, annoncé avec les crédits."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.26",
+      "reason": "Prix payés gardés dans le navigateur, annoncés dans le composant Produits."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.27",
+      "reason": "Prix des groupes servis à part, annoncés dans le composant Produits."
     }
   ]
 }
