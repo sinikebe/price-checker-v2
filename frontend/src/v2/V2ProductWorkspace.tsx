@@ -18,6 +18,9 @@ import {
   type MeasureUnit, type ProductData, type ProductEvent,
 } from "./v2-products-api";
 import { formatMeasure, MEASURE_UNITS, measureUnitLabel, readExtraAmount } from "./v2-measures";
+import { rewardHint } from "./v2-basket-credits-api";
+import { useCredits } from "./useCredits";
+import "./v2-price-gate.css";
 import "./v2-product-workspace.css";
 
 type Mode = "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
@@ -120,6 +123,7 @@ function localRead(key: string): { data: ProductData; change_kind: ChangeKind; r
 }
 
 function Editor({ mode, id, user, onLogout }: Props) {
+  const credits = useCredits(user?.id ?? null);
   const navigate = useNavigate();
   const location = useLocation();
   const queryBarcode = new URLSearchParams(location.search).get("ean") ?? "";
@@ -347,6 +351,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         </div>}
         <div className="v2-workspace-actions">
           {!readonly && <button className="v2-button v2-button-primary" disabled={busy || conflict || Boolean(successorId)} type="submit">{busy ? "Enregistrement…" : "Enregistrer le brouillon sur le serveur"}</button>}
+          {!readonly && rewardHint("product", credits) && <small className="v2-reward-hint">{rewardHint("product", credits)}</small>}
           {draft?.status === "draft" && user?.role === "admin" && <><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty || Boolean(successorId)} onClick={() => { void approve(); }}>Valider et publier</button><button className="v2-button v2-button-secondary" type="button" disabled={busy || dirty} onClick={() => { void reject(); }}>Rejeter</button></>}
         </div>
         {dirty && draft && user?.role === "admin" && <p>Enregistrez vos changements locaux avant de valider.</p>}

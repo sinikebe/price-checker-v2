@@ -6,12 +6,19 @@ import type { BasketPriceResponse } from "./v2-basket-comparison";
  * gets `daily_grant` a day and holds at most `hold_max`; a visitor without an account (`visitor`)
  * has `daily_grant` views a day, with nothing carried over.
  */
+export type RewardAmounts = { price: number; product: number; recipe: number };
 export type BasketCredits = {
   balance: number; daily_grant: number; hold_max: number; next_grant_on: string;
+  /** Contribution credits: earned by validated contributions, no limit, no expiry, spent after the daily ones. */
+  bonus?: number;
+  /** What each kind of validated contribution earns. */
+  rewards?: RewardAmounts;
   /** Administrators are not charged; `balance` is then only a placeholder. */
   unlimited?: boolean;
   visitor?: boolean;
 };
+/** Everything the reader can spend: the daily credits, then the contribution credits. */
+export const spendable = (credits: BasketCredits) => credits.balance + (credits.bonus ?? 0);
 export type BasketFetchResult = {
   fetched_at: string; credits: BasketCredits;
   lines: { product_ids: number[]; truncated: boolean }[];
@@ -111,14 +118,29 @@ export function nextGrantLabel(nextGrantOn: string, today: Date = new Date()): s
 }
 export const creditLabel = (count: number) => count + " crédit" + (count > 1 ? "s" : "");
 /** True when the reader is known to have fewer than `cost` credits (never for an administrator). */
-export const outOfCredits = (credits: BasketCredits | null, cost = 1) => credits !== null && !credits.unlimited && credits.balance < cost;
+export const outOfCredits = (credits: BasketCredits | null, cost = 1) => credits !== null && !credits.unlimited && spendable(credits) < cost;
 /** " (3 crédits)" after the action's name, and nothing for an administrator. */
 export const costNote = (credits: BasketCredits | null, cost = 1) => credits?.unlimited ? "" : ` (${creditLabel(cost)})`;
-/** "12 crédits restants", "2 crédits restants aujourd’hui sans compte" for a visitor. */
+/** "12 crédits restants", "12 crédits du jour et 30 crédits de contribution", or a visitor's credits of the day. */
 export function balanceText(credits: BasketCredits): string {
   if (credits.unlimited) return "Sans limite pour un administrateur";
   if (credits.visitor) return `${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""} aujourd’hui sans compte`;
+  const bonus = credits.bonus ?? 0;
+  if (bonus > 0) return `${creditLabel(credits.balance)} du jour et ${creditLabel(bonus)} de contribution`;
   return `${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""}`;
+}
+const REWARD_WORDS: Record<keyof RewardAmounts, string> = { price: "relevé de prix", product: "fiche produit", recipe: "recette" };
+/** "Une fois validé par un administrateur, ce relevé vous rapporte 5 crédits de contribution." Empty when it earns nothing. */
+export function rewardHint(kind: keyof RewardAmounts, credits: BasketCredits | null): string {
+  const amount = credits?.rewards?.[kind] ?? 0;
+  if (!credits || credits.unlimited || credits.visitor || amount <= 0) return "";
+  const what = kind === "price" ? "ce relevé" : kind === "product" ? "cette fiche" : "cette recette";
+  return `Une fois ${kind === "price" ? "validé" : "validée"} par un administrateur, ${what} vous rapporte ${creditLabel(amount)} de contribution : ils n’expirent pas et servent quand vos crédits du jour sont épuisés.`;
+}
+/** "5 par relevé de prix, 10 par fiche produit, 10 par recette", without the kinds that earn nothing. */
+export function rewardSummary(rewards: RewardAmounts): string {
+  return (Object.keys(REWARD_WORDS) as (keyof RewardAmounts)[]).filter(kind => rewards[kind] > 0)
+    .map(kind => `${rewards[kind]} par ${REWARD_WORDS[kind]}`).join(", ");
 }
 /** Why the reader cannot pay `cost`, and what comes next. */
 export function shortText(credits: BasketCredits, cost: number): string {
@@ -126,5 +148,7 @@ export function shortText(credits: BasketCredits, cost: number): string {
     return credits.daily_grant === 0 ? "Connectez-vous pour voir les prix."
       : `Il faut ${creditLabel(cost)}, il en reste ${credits.balance} aujourd’hui sans compte. Connectez-vous pour avoir des crédits chaque jour, ou revenez ${nextGrantLabel(credits.next_grant_on)}.`;
   }
-  return `Il faut ${creditLabel(cost)}, il vous en reste ${credits.balance}. Les prochains arrivent ${nextGrantLabel(credits.next_grant_on)} (${credits.daily_grant} par jour, ${credits.hold_max} au maximum).`;
+  const earn = credits.rewards && rewardSummary(credits.rewards);
+  return `Il faut ${creditLabel(cost)}, il vous en reste ${spendable(credits)}. Les prochains arrivent ${nextGrantLabel(credits.next_grant_on)} (${credits.daily_grant} par jour, ${credits.hold_max} au maximum).`
+    + (earn ? ` Vos contributions validées en rapportent aussi : ${earn}.` : "");
 }

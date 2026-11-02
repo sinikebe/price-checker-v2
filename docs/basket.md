@@ -47,6 +47,16 @@ Rien n’est dépensé en ouvrant une page : un bouton **Voir les prix · N cré
 
 Chaque compte reçoit **50 crédits par jour** (à sa première visite du jour, heure de Paris) et en garde **100 au plus** : au-delà, les crédits du jour sont perdus. Un jour sans visite n’en accorde pas de supplémentaires. Un **visiteur sans compte** dispose de **10 crédits par jour**, comptés par adresse réseau et sans report ; l’adresse n’est jamais enregistrée (seule une empreinte HMAC avec le secret de l’installation, effacée après deux jours). Ces trois montants se règlent dans *Paramètres → Serveur → Crédits pour voir les prix* ; 0 crédit pour les visiteurs impose un compte pour voir les prix.
 
+### Crédits de contribution
+
+Contribuer rapporte des crédits, une fois la contribution **validée par un administrateur** : par défaut **5 par relevé de prix**, **10 par fiche produit** (création ou modification) et **10 par recette**. Ces crédits de contribution :
+
+- n’ont **pas de limite** et ne comptent pas dans les 100 crédits gardés au plus ;
+- **n’expirent pas** ;
+- ne servent **que lorsque les crédits du jour sont épuisés** (les crédits du jour sont toujours dépensés en premier).
+
+Chaque contribution n’est récompensée qu’une fois, au moment de sa validation ; une contribution refusée ne rapporte rien. Les formulaires (relevé de prix, fiche produit, recette) disent combien leur validation rapportera. *Paramètres → Compte → Vos crédits* montre les deux soldes, la façon d’en gagner et les dernières contributions récompensées. Les montants se règlent avec les autres dans *Paramètres → Serveur* (0 pour qu’un type de contribution ne rapporte rien). Les administrateurs, qui ne sont pas comptés, n’en reçoivent pas.
+
 Une requête refusée ou en erreur ne coûte rien : les crédits sont dépensés dans la transaction qui lit les prix. Une requête venue d’un autre site avec la session du navigateur est refusée avant toute dépense. Les jetons API personnels dépensent les crédits du compte, comme le site.
 
 Les comptes administrateurs n’ont pas de limite de crédits, pour pouvoir tester : leurs récupérations ne sont pas décomptées (aucune ligne de solde n’est créée), la réponse porte `unlimited: true` et leurs pages affichent les prix sans bouton. Un plafond de 60 récupérations de panier par minute et par compte administrateur reste en place contre une boucle incontrôlée ; il est refusé en `429` sans mention de crédit. Le rôle est lu dans la session côté serveur, jamais dans la requête.

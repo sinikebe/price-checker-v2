@@ -21,7 +21,7 @@ import type { BaseUnit } from "./v2-basket-quantity";
 import { readUnitChoices, withUnitChoice, writeUnitChoices } from "./v2-measures";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
-import { costNote, creditLabel, outOfCredits, shortText } from "./v2-basket-credits-api";
+import { balanceText, costNote, creditLabel, outOfCredits, shortText } from "./v2-basket-credits-api";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
@@ -215,7 +215,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             : <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
               {!snapshot ? <>
                 <h2>Comparer les prix</h2>
-                <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
+                <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${balanceText(credits)})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
               </> : <>
                 <div className="v2-basket-comparison-heading"><div><h2>{mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité" : advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>

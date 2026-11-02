@@ -12,6 +12,9 @@ import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
 import { useV2Basket } from "./V2BasketContext";
 import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
+import { rewardHint } from "./v2-basket-credits-api";
+import { useCredits } from "./useCredits";
+import "./v2-price-gate.css";
 
 type Mode = "list" | "detail" | "new" | "edit";
 type Props = { mode: Mode; id?: number; user: V2User | null; onLogout: () => Promise<void> };
@@ -223,6 +226,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [loading, setLoading] = useState(mode === "edit");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const credits = useCredits(userId ?? null);
   const [dirty, setDirty] = useState(Boolean(local));
   const [storageError, setStorageError] = useState("");
   const [conflict, setConflict] = useState("");
@@ -302,6 +306,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
           <label>Quantité<input type="number" min="0.001" step="0.001" value={item.amount ?? ""} onChange={event => ingredient(index, { amount: event.target.value || null })} /></label><label>Unité<select value={item.unit ?? ""} onChange={event => ingredient(index, { unit: event.target.value as RecipeUnit || null })}><option value="">À préciser</option>{units.map(unit => <option key={unit} value={unit}>{unit === "piece" ? "pièce(s)" : unit}</option>)}</select></label><label>Note<input value={item.note} onChange={event => ingredient(index, { note: event.target.value })} /></label><label className="v2-recipes-check"><input type="checkbox" checked={item.optional} onChange={event => ingredient(index, { optional: event.target.checked })} />Facultatif</label></div></div>)}
         <button type="button" className="v2-button v2-button-secondary" onClick={() => change({ ...form, ingredients: [...form.ingredients, blankIngredient()] })}>+ Ajouter un ingrédient</button></section>
       <section className="v2-recipes-card"><h2>Étapes</h2>{form.steps.map((step, index) => <div className="v2-recipes-step-edit" key={index}><label>Étape {index + 1}<textarea required value={step} onChange={event => change({ ...form, steps: form.steps.map((current, position) => position === index ? event.target.value : current) })} /></label><div><button type="button" aria-label={`Monter étape ${index + 1}`} disabled={index === 0} onClick={() => change({ ...form, steps: move(form.steps, index, -1) })}>↑</button><button type="button" aria-label={`Descendre étape ${index + 1}`} disabled={index === form.steps.length - 1} onClick={() => change({ ...form, steps: move(form.steps, index, 1) })}>↓</button><button type="button" disabled={form.steps.length === 1} onClick={() => change({ ...form, steps: form.steps.filter((_, position) => position !== index) })}>Retirer</button></div></div>)}<button type="button" className="v2-button v2-button-secondary" onClick={() => change({ ...form, steps: [...form.steps, ""] })}>+ Ajouter une étape</button></section>
+      {rewardHint("recipe", credits) && <p className="v2-reward-hint">{rewardHint("recipe", credits)}</p>}
       <div className="v2-recipes-actions"><button type="submit" className="v2-button v2-button-primary">{busy ? "Enregistrement…" : "Envoyer pour validation"}</button><Link className="v2-button v2-button-secondary" to={cancelTo} onClick={event => { if (busy || (dirty && !window.confirm("Abandonner les modifications non enregistrées ?"))) event.preventDefault(); }}>Annuler</Link></div>
     </fieldset></form>}
   </Frame>;

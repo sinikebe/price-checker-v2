@@ -1,4 +1,4 @@
-import { balanceText, creditLabel, shortText, type BasketCredits } from "./v2-basket-credits-api";
+import { balanceText, creditLabel, shortText, spendable, type BasketCredits } from "./v2-basket-credits-api";
 import "./v2-price-gate.css";
 
 const when = (value: string) => new Date(value).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -13,7 +13,7 @@ export default function V2PriceGate({ cost, credits, fetchedAt, busy, error, new
 }) {
   if (credits?.unlimited) return error ? <p className="v2-price-gate" role="alert">{error}</p> : null;
   if (cost === 0 && !fetchedAt) return <p className="v2-price-gate" role="status">Aucun prix relevé pour {subject} pour le moment.</p>;
-  const short = credits !== null && credits.balance < cost;
+  const short = credits !== null && spendable(credits) < cost;
   return <div className="v2-price-gate" role="group" aria-label="Prix payants en crédits">
     <p>{fetchedAt
       ? <>Prix récupérés le {when(fetchedAt)}{newer ? " · un nouveau relevé est arrivé" : ""}. Les actualiser coûte <strong>{creditLabel(cost)}</strong>.</>

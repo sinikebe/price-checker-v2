@@ -6,3 +6,5 @@ html[data-v2-theme="dark"] .v2-price-gate { border-color: rgba(212, 245, 193, .2
 html[data-v2-theme="dark"] .v2-price-gate p { color: #cfe3d3; }
 html[data-v2-theme="dark"] .v2-price-gate p[role="alert"] { color: #ffb4a8; }
 html[data-v2-theme="dark"] .v2-price-gate strong { color: #a9e6b7; }
+.v2-reward-hint { display: block; margin-top: 6px; color: #2b6a49; font-size: .85rem; }
+html[data-v2-theme="dark"] .v2-reward-hint { color: #a9e6b7; }
