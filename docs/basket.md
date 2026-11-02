@@ -21,6 +21,8 @@ Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la p
 
 Quand les produits d’un article se mesurent dans plusieurs unités, le prix à l’unité propose de basculer : sous le prix à l’unité, des boutons **kg / L / pièce** choisissent l’unité de comparaison de cet article, et le meilleur produit peut changer (le sachet de 10 pièces au meilleur prix au kilo n’a pas forcément le meilleur prix à la pièce). Le choix est mémorisé dans le navigateur, par compte, et n’est pas inclus dans un panier partagé. Il ne change pas la quantité demandée : une quantité demandée en grammes, en millilitres ou en pièces fixe l’unité, et les boutons ne sont pas proposés. Un produit sans mesure dans l’unité choisie est laissé de côté pour cet article ; sans produit mesuré dans cette unité, le choix est ignoré.
 
+Changer les unités d’un produit ne crée pas de nouveau produit : ajouter ou retirer une unité, corriger l’unité de la quantité (« 500 g » devient « 500 ml ») ou la réécrire à l’identique (« 415 g » et « 415g », « 0,5 L » et « 50 cl ») sont des corrections de la même référence, qui garde son historique de prix. Une autre taille dans la même unité (« 250 g » devient « 220 g ») ou un autre conditionnement reste une nouvelle version, puisque les anciens prix valaient pour l’ancienne taille.
+
 La même règle sert aux quantités demandées : « 1 kg » d’un produit vendu en 4 pièces et mesuré aussi à 500 g demande deux paquets. Le graphique du catalogue en tient compte : un produit apparaît dans le prix au kilo, au litre ou à l’unité dès qu’il a une mesure dans cette unité.
 
 ## Économie par magasin

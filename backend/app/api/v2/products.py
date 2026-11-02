@@ -247,6 +247,23 @@ async def _user(connection, request):
     return user
 
 
+def _pack_size_changed(before: str, after: str) -> bool:
+    """Whether a new quantity text describes another pack than the old one.
+
+    The same amount in the same unit is the same pack however it is written
+    ("415 g", "415g", "0,5 L" and "50 cl"). A different amount in the same unit
+    is another pack: its earlier prices were for the old size, so it is a new
+    version. A different unit, or a text that was not readable before or after,
+    is a unit being fixed or added on the same pack, not a new reference.
+    """
+    if before.strip() == after.strip():
+        return False
+    old, new = parse_measures(before), parse_measures(after)
+    if not old or not new or old[0].unit != new[0].unit:
+        return False
+    return old[0].amount != new[0].amount
+
+
 def _validate_publish(data: dict):
     for key, label in (
         ("name", "nom"),
@@ -624,12 +641,18 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     )
                 before = _decoded(existing["data"])
                 # Filling a previously blank composition documents the existing
-                # reference; changing an established recipe creates a new version.
-                material = any(
-                    before.get(key, "").strip() != data[key].strip()
-                    for key in ("package", "quantity")
-                ) or bool(before.get("composition", "").strip()) and (
-                    before["composition"].strip() != data["composition"].strip()
+                # reference; changing an established recipe or pack size creates
+                # a new version. Writing the same pack differently, or fixing its
+                # unit, stays a correction of the same reference.
+                material = (
+                    before.get("package", "").strip() != data["package"].strip()
+                    or _pack_size_changed(
+                        before.get("quantity", ""), data["quantity"]
+                    )
+                    or bool(before.get("composition", "").strip())
+                    and (
+                        before["composition"].strip() != data["composition"].strip()
+                    )
                 )
                 if material and draft["change_kind"] != "new_version":
                     raise HTTPException(
