@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 from conftest import REAL_VISITOR_KEY
 
-from app.api.v2 import catalogue, prices
+from app.api.v2 import catalogue, prices, products as products_api
 from app.api.v2 import credits as credits_api
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
@@ -57,7 +57,7 @@ def clock(monkeypatch):
 def connected(monkeypatch, config, clock):
     async def connect():
         return await connect_v2(config)
-    for module in (prices, catalogue, credits_api):
+    for module in (prices, catalogue, credits_api, products_api):
         monkeypatch.setattr(module, "_connect", connect)
     return config
 
@@ -123,7 +123,8 @@ async def test_a_product_page_costs_one_credit_and_a_missing_product_nothing(con
         assert (await http.get(f"/api/v2/prices/products/{products[0]}")).json()["credits"]["balance"] == 48, "each fetch is paid"
         assert (await http.get("/api/v2/prices/products/999999")).status_code == 404
         state = (await http.get("/api/v2/credits")).json()
-        assert state == {"balance": 48, "daily_grant": 50, "hold_max": 100, "next_grant_on": "2026-11-03",
+        assert state == {"balance": 48, "bonus": 0, "rewards": {"price": 5, "product": 10, "recipe": 10},
+                         "daily_grant": 50, "hold_max": 100, "next_grant_on": "2026-11-03",
                          "unlimited": False, "visitor": False}
     assert await balance(config, ana) == 48
 
@@ -214,7 +215,8 @@ async def test_administrators_are_not_counted_and_set_the_amounts(connected):
         settings = (await http.get("/api/v2/credits/settings")).json()
         assert (settings["daily_grant"], settings["hold_max"], settings["visitor_daily"]) == (50, 100, 10)
         assert settings["bounds"]["hold_max"] == {"min": 1, "max": 10000}
-        change = {"daily_grant": 20, "hold_max": 30, "visitor_daily": 0, "expected_revision": settings["revision"]}
+        change = {"daily_grant": 20, "hold_max": 30, "visitor_daily": 0, "reward_price": 5, "reward_product": 10,
+                  "reward_recipe": 10, "expected_revision": settings["revision"]}
         saved = await http.put("/api/v2/credits/settings", json=change, headers={"origin": "https://test"})
         assert saved.status_code == 200 and saved.json()["daily_grant"] == 20
         stale = await http.put("/api/v2/credits/settings", json=change, headers={"origin": "https://test"})
@@ -248,3 +250,107 @@ async def test_a_page_from_another_site_cannot_spend_credits(connected):
                                headers={"origin": "https://elsewhere.test"})
         assert cross.status_code == 403
     assert await balance(config, ana) is None
+
+
+# --- Contribution credits ----------------------------------------------------------------------
+
+def test_daily_credits_go_first_then_contribution_credits():
+    # The SQL of `spend`, checked through its arithmetic: what is left of each part.
+    def spend(balance, bonus, cost):
+        if balance + bonus < cost:
+            return None
+        used = min(balance, cost)
+        return balance - used, bonus - (cost - used)
+    assert spend(5, 30, 3) == (2, 30), "the daily credits pay first"
+    assert spend(2, 30, 5) == (0, 27), "then the contribution credits"
+    assert spend(0, 3, 4) is None, "not enough in all: nothing spent"
+
+
+@pytest.mark.asyncio
+async def test_a_validated_price_earns_contribution_credits_once_and_they_are_spent_last(connected):
+    config = connected
+    products = await seed(config)
+    await amounts(config, daily_grant=2, hold_max=2)
+    ana, ana_cookies = await session(config, "ana")
+    root, root_cookies = await session(config, "root", "admin")
+    retailer, store = (await sql(config, "SELECT retailer_id,id FROM v2_stores LIMIT 1"))[0].values()
+    draft = (await sql(config, "INSERT INTO v2_price_drafts(author_id,product_id,retailer_id,store_id,entry_kind,price,observed_at) "
+                       "VALUES($1,$2,$3,$4,'manual',2.30,now()) RETURNING id", ana, products[2], retailer, store))[0]["id"]
+    async with client() as http:
+        http.cookies.update(root_cookies)
+        approved = await http.post(f"/api/v2/prices/drafts/{draft}/approve", headers={"origin": "https://test"})
+        assert approved.status_code == 200, approved.text
+        again = await http.post(f"/api/v2/prices/drafts/{draft}/approve", headers={"origin": "https://test"})
+        assert again.status_code == 404, "a contribution is validated once, and rewarded once"
+    rows = await sql(config, "SELECT bonus,balance FROM v2_basket_credits WHERE user_id=$1", ana)
+    assert rows[0]["bonus"] == 5
+    async with client() as http:
+        http.cookies.update(ana_cookies)
+        state = (await http.get("/api/v2/credits")).json()
+        assert (state["balance"], state["bonus"], state["rewards"]) == (2, 5, {"price": 5, "product": 10, "recipe": 10})
+        for expected in ((1, 5), (0, 5), (0, 4)):
+            answer = await http.get(f"/api/v2/prices/products/{products[0]}")
+            assert (answer.json()["credits"]["balance"], answer.json()["credits"]["bonus"]) == expected
+        listed = (await http.get("/api/v2/credits/rewards")).json()
+        assert listed["earned_total"] == 5 and [(item["kind"], item["credits"]) for item in listed["rewards"]] == [("price", 5)]
+    async with client() as http:
+        assert (await http.get("/api/v2/credits/rewards")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_contribution_credits_have_no_limit_never_expire_and_are_not_given_to_administrators(connected, clock):
+    config = connected
+    ana, _ = await session(config, "ana")
+    root, _ = await session(config, "root", "admin")
+    connection = await connect_v2(config)
+    try:
+        async with connection.transaction():
+            for contribution in range(1, 31):  # 30 recipes of 10 credits: far beyond the holding limit
+                assert await credits.reward(connection, ana, "recipe", contribution) == 10
+            assert await credits.reward(connection, ana, "recipe", 1) == 0, "the same contribution is rewarded once"
+            assert await credits.reward(connection, ana, "product", 1) == 10, "another kind is another contribution"
+            assert await credits.reward(connection, root, "price", 99) == 0, "administrators are not counted"
+            assert await credits.reward(connection, ana, "unknown", 5) == 0
+    finally:
+        await connection.close()
+    assert (await sql(config, "SELECT bonus FROM v2_basket_credits WHERE user_id=$1", ana))[0]["bonus"] == 310
+    assert not await sql(config, "SELECT 1 FROM v2_basket_credits WHERE user_id=$1", root)
+    clock["now"] = clock["now"].replace(month=12)  # a month later: still there, and the daily grant stays capped apart
+    connection = await connect_v2(config)
+    try:
+        async with connection.transaction():
+            state = await credits.lock_and_refill(connection, ana, await credits.settings(connection))
+    finally:
+        await connection.close()
+    assert (state["balance"], state["bonus"]) == (50, 310)
+    await sql(config, "DELETE FROM v2_users WHERE id=$1", ana)
+    assert not await sql(config, "SELECT 1 FROM v2_credit_rewards"), "they go with the account"
+
+
+@pytest.mark.asyncio
+async def test_a_validated_product_earns_credits_and_the_amounts_are_settings(connected):
+    config = connected
+    ana, _ = await session(config, "ana")
+    root, root_cookies = await session(config, "root", "admin")
+    data = {"name": "Riz", "brand": "Test", "package": "Sachet", "quantity": "1 kg"}
+    draft = (await sql(config, "INSERT INTO v2_product_drafts(author_id,data) VALUES($1,$2::jsonb) RETURNING id",
+                       ana, json.dumps(data)))[0]["id"]
+    async with client() as http:
+        http.cookies.update(root_cookies)
+        settings = (await http.get("/api/v2/credits/settings")).json()
+        assert (settings["reward_price"], settings["reward_product"], settings["reward_recipe"]) == (5, 10, 10)
+        change = {key: settings[key] for key in ("daily_grant", "hold_max", "visitor_daily")}
+        change |= {"reward_price": 2, "reward_product": 7, "reward_recipe": 0, "expected_revision": settings["revision"]}
+        assert (await http.put("/api/v2/credits/settings", json=change, headers={"origin": "https://test"})).status_code == 200
+        bad = await http.put("/api/v2/credits/settings", json={**change, "reward_price": 1001, "expected_revision": settings["revision"] + 1},
+                             headers={"origin": "https://test"})
+        assert bad.status_code == 422
+        approved = await http.post(f"/api/v2/products/drafts/{draft}/approve", json={"revision": 1}, headers={"origin": "https://test"})
+        assert approved.status_code == 200, approved.text
+    assert (await sql(config, "SELECT bonus FROM v2_basket_credits WHERE user_id=$1", ana))[0]["bonus"] == 7
+    connection = await connect_v2(config)
+    try:
+        async with connection.transaction():
+            assert await credits.reward(connection, ana, "recipe", 4) == 0, "0: recipes earn nothing now"
+    finally:
+        await connection.close()

@@ -20,6 +20,7 @@ from app.api.v2.off import (
 from app.core.url_validation import validate_clickable_url
 from app.services.off_presenter import build_sections
 from app.services.off_rate_limit import OffRateLimited, retry_after_headers
+from app.services import v2_basket_credits as credits
 from app.services.quantity_parser import parse_measures
 from app.services.v2_off_refresh_queue import queue_off_refresh
 from app.services.v2_off_snapshot import (
@@ -739,6 +740,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                 "approved_by=$1,result_product_id=$2,updated_at=now() WHERE id=$3",
                 user["id"], product["id"], draft_id,
             )
+            await credits.reward(connection, draft["author_id"], "product", draft_id)
             # A linked price remains private and pending after publication of
             # its product; its own reviewer must still approve it separately.
             await connection.execute(

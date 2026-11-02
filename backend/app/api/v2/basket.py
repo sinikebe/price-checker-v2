@@ -188,7 +188,7 @@ async def read_credits(request: Request, response: Response):
             return credits.unlimited_state(credits.paris_now().date(), cfg)
         async with connection.transaction():
             state = await credits.lock_and_refill(connection, user["id"], cfg)
-        return credits.public_state(state["balance"], state["today"], cfg)
+        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
     finally:
         await connection.close()
 
@@ -221,13 +221,13 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
             cfg = await credits.settings(connection)
             state = await credits.lock_and_refill(connection, user["id"], cfg)
             result = None
-            if state["balance"] >= cost:
+            if state["balance"] + state["bonus"] >= cost:
                 result = await _gather(connection, payload.items)
                 state = await credits.spend(connection, user["id"], state, cost)
                 await logbook.log_event(
                     connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
                     truncated=any(line["truncated"] for line in result["lines"]), credits_left=state["balance"])
-        public = credits.public_state(state["balance"], state["today"], cfg)
+        public = credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
         if result is None:
             await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
             wait = credits.seconds_until(date.fromisoformat(public["next_grant_on"]), state["now"])
