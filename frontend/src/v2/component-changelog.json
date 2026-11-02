@@ -797,6 +797,37 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.126",
+      "components": {
+        "application": {
+          "version": "0.1.126",
+          "notes": [
+            "Une recette peut rester privée : vous seul la voyez, sans validation."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.22",
+          "notes": [
+            "Choisissez « Privée » en ajoutant une recette : elle est enregistrée tout de suite, visible par vous seul, et ne rapporte pas de crédits.",
+            "« Mes recettes privées » les regroupe sur la page Recettes ; vous les modifiez sans attendre de validation.",
+            "Une recette privée peut être proposée à la publication : une fois validée, elle devient publique et rapporte des crédits."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.32",
+          "notes": [
+            "Vos recettes privées figurent dans l’export de vos données et sont supprimées avec votre compte."
+          ]
+        },
+        "database": {
+          "version": "0.1.41",
+          "notes": [
+            "La mise à jour ajoute les recettes privées sans toucher aux recettes déjà publiées."
+          ]
+        }
+      }
     }
   ]
 }

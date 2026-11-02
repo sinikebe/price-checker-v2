@@ -684,6 +684,11 @@
       "component": "open_prices",
       "version": "0.1.28",
       "reason": "Adaptation technique aux crédits de contribution."
+    },
+    {
+      "component": "products",
+      "version": "0.1.59",
+      "reason": "Règle de visibilité partagée avec les recettes, sans changement pour les produits."
     }
   ]
 }
