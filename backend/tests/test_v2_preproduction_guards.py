@@ -401,3 +401,81 @@ async def test_first_composition_is_correction_but_recipe_change_is_version(isol
             assert "Nouvelle version" in rejected.json()["detail"]
     finally:
         await connection.close()
+
+
+async def _approve_edit(client, connection, admin_id, product_id, base, edited, revision):
+    # One open draft per author and product: drop the one a refused edit left.
+    await connection.execute(
+        "DELETE FROM v2_product_drafts WHERE product_id=$1 AND author_id=$2 AND status='draft'",
+        product_id, admin_id,
+    )
+    draft = await connection.fetchval(
+        "INSERT INTO v2_product_drafts(product_id,author_id,data,base_revision,change_kind) "
+        "VALUES($1,$2,$3::jsonb,$4,'correction') RETURNING id",
+        product_id, admin_id, json.dumps({**base, **edited}), revision,
+    )
+    return await client.post(
+        f"/api/v2/products/drafts/{draft}/approve", json={"revision": 1},
+    )
+
+
+@pytest.mark.asyncio
+async def test_units_are_updated_in_place_but_a_new_pack_size_is_a_version(isolated_db):
+    config = isolated_db
+    admin_id, token = await _admin_session(config)
+    connection = await connect_v2(config)
+    try:
+        base = {"name": "Yaourt", "brand": "Marque", "package": "Pot",
+                "quantity": "4x125 g", "ean": "3017620422003", "composition": "Lait"}
+        product = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id", json.dumps(base),
+        )
+        transport = httpx.ASGITransport(app=app, client=("192.0.2.7", 443))
+        async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
+            client.cookies.set("pc_v2_session", token, path="/api/v2")
+            revision = 1
+
+            async def edit(**changes):
+                nonlocal revision
+                response = await _approve_edit(
+                    client, connection, admin_id, product, base, changes, revision)
+                if response.status_code == 200:
+                    revision += 1
+                return response
+
+            # Another unit of the same pack: a correction of the same reference.
+            added = await edit(extra_quantities=[{"amount": "5", "unit": "piece"}])
+            assert added.status_code == 200, added.text
+            assert added.json()["id"] == product
+            assert [(m["amount"], m["unit"]) for m in added.json()["data"]["measures"]] == [
+                ("500.000", "g"), ("5.000", "piece")]
+
+            # The same pack written differently is the same pack.
+            rewritten = await edit(quantity="500g")
+            assert rewritten.status_code == 200, rewritten.text
+            assert rewritten.json()["id"] == product
+            base = {**base, "quantity": "500g"}
+
+            # Fixing the unit (g -> ml) keeps the reference.
+            fixed = await edit(quantity="500 ml")
+            assert fixed.status_code == 200, fixed.text
+            assert fixed.json()["data"]["quantity_unit"] == "ml"
+            base = {**base, "quantity": "500 ml"}
+
+            # A different amount in the same unit is another pack: a new version.
+            smaller = await edit(quantity="400 ml")
+            assert smaller.status_code == 422, smaller.text
+            assert "Nouvelle version" in smaller.json()["detail"]
+            # And so is another package.
+            repackaged = await edit(package="Bouteille")
+            assert repackaged.status_code == 422, repackaged.text
+
+            assert await connection.fetchval(
+                "SELECT count(*) FROM v2_products WHERE predecessor_id=$1", product) == 0
+            assert await connection.fetchval(
+                "SELECT revision FROM v2_products WHERE id=$1", product) == revision
+            events = await connection.fetch(
+                "SELECT event_type FROM v2_product_events WHERE product_id=$1 ORDER BY id", product)
+            assert [row["event_type"] for row in events] == ["correction"] * 3
+    finally:
+        await connection.close()

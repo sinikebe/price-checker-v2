@@ -629,6 +629,11 @@
       "component": "open_food_facts",
       "version": "0.1.28",
       "reason": "Bouton ajouté à la fiche produit, sans changement du connecteur Open Food Facts."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.29",
+      "reason": "Texte d’aide de l’éditeur de fiche, sans changement du connecteur Open Food Facts."
     }
   ]
 }

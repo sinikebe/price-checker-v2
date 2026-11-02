@@ -705,6 +705,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.121",
+      "components": {
+        "application": {
+          "version": "0.1.121",
+          "notes": [
+            "Changer les unités d’un produit se fait sur sa fiche, sans créer de nouveau produit."
+          ]
+        },
+        "products": {
+          "version": "0.1.56",
+          "notes": [
+            "Corriger l’unité d’un produit, ou réécrire sa quantité à l’identique, ne crée plus de nouvelle version : il garde son historique de prix."
+          ]
+        }
+      }
     }
   ]
 }

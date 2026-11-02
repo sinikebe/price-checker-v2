@@ -306,7 +306,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <button type="button" onClick={() => { const retailer = retailerInput.trim(); const url = urlInput.trim(); if (!retailer || !/^https?:\/\//i.test(url)) return; persist({ ...data, retailer_links: [...data.retailer_links.filter(link => link.retailer.toLocaleLowerCase() !== retailer.toLocaleLowerCase()), { retailer, url, source: "manual" }] }, changeKind); setRetailerInput(""); setUrlInput(""); }}>Ajouter ou remplacer le lien</button>
           </div>
           <div className="v2-workspace-structured"><h3>Autres unités de mesure</h3>
-            <p>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces.</p>
+            <p>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces. Ajouter ou retirer une unité corrige la fiche existante : aucun nouveau produit n’est créé.</p>
             <ul>{list(data.extra_quantities).map(extra => <li key={extra.unit}>{formatMeasure(extra)} <button type="button" onClick={() => persist({ ...data, extra_quantities: list(data.extra_quantities).filter(item => item.unit !== extra.unit) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Quantité <input inputMode="decimal" value={extraAmount} maxLength={13} onChange={event => { setExtraAmount(event.target.value); setExtraError(""); }} /></label>
             <label>Unité <select value={extraUnit} onChange={event => { setExtraUnit(event.target.value as MeasureUnit); setExtraError(""); }}>
@@ -320,6 +320,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
           {(mode === "edit" || draft?.product_id) && <fieldset className="v2-workspace-kind"><legend>Nature de la modification</legend>
             <label><input type="radio" checked={changeKind === "correction"} onChange={() => persist(data, "correction")} /> Correction de la fiche existante</label>
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
+            <small>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</small>
           </fieldset>}
         </fieldset>
         <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
