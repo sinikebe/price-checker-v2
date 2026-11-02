@@ -15,7 +15,7 @@ export type PriceFetch =
   | { phase: "error"; message: string; signedOut?: boolean };
 
 /** The prices of a basket are fetched on request only, for one credit; the last result is kept. */
-export function useBasketPrices(userId: number | null, items: readonly BasketItem[]) {
+export function useBasketPrices(userId: number | null, items: readonly BasketItem[], afterFetch?: (productIds: number[]) => void) {
   const [owner, setOwner] = useState(userId);
   const [snapshot, setSnapshot] = useState<BasketSnapshot | null>(() => userId ? readSnapshot(userId) : null);
   const [credits, setCredits] = useState<BasketCredits | null>(null);
@@ -39,7 +39,7 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
     return () => controller.abort();
   }, [userId]);
 
-  const fetchPrices = useCallback(async () => {
+  const fetchPrices = useCallback(async (quiet = false) => {
     if (!userId || busy.current || !items.length) return;
     if (!navigator.onLine) {
       setState({ phase: "error", message: "Hors ligne : les prix ne peuvent pas être récupérés. Aucun crédit n’a été dépensé." });
@@ -59,7 +59,10 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
       setState({ phase: "done", message: "Prix récupérés. " + (result.credits.unlimited ? "Crédits illimités."
         : left ? creditLabel(left) + " restant" + (left > 1 ? "s" : "") + "." : "Plus de crédit aujourd’hui.") });
       const concrete = sent.flatMap((item, index) => "kind" in item ? [] : result.lines[index].product_ids);
-      if (concrete.length) void requestBasketConnectorRefresh(concrete);
+      if (concrete.length && !quiet) {
+        void requestBasketConnectorRefresh(concrete);
+        afterFetch?.(concrete);
+      }
     } catch (error) {
       if (current.current !== userId) return;
       if (error instanceof NoCreditsError) {
@@ -72,7 +75,7 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
         readBasketCredits().then(value => { if (current.current === userId) setCredits(value); }).catch(() => { /* keep the last balance */ });
       }
     } finally { busy.current = false; }
-  }, [userId, items]);
+  }, [userId, items, afterFetch]);
 
   return { snapshot, credits, state, fetchPrices };
 }

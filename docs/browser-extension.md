@@ -1,31 +1,23 @@
-# Extension de navigateur (prototype)
+# Extension de navigateur : mettre à jour le panier en un clic
 
-Certaines enseignes (Carrefour, Intermarché, Courses U) bloquent les lectures automatiques depuis un serveur. L’extension fait la lecture **dans votre navigateur**, sur le site de l’enseigne, avec **votre session et votre magasin choisi** : c’est une visite ordinaire, rien n’est contourné. Elle propose ensuite le prix à votre instance.
+Certaines enseignes (Carrefour, Intermarché, Courses U) bloquent les lectures automatiques depuis un serveur. L’extension fait la lecture **dans votre navigateur**, sur le site de l’enseigne, avec **votre session et votre magasin choisi** : c’est une visite ordinaire, rien n’est contourné. Réservée aux administrateurs. Carrefour pour l’instant.
 
-État : prototype, Carrefour uniquement, une lecture à la fois, déclenchée par vous.
+## En pratique
 
-## Installer
+1. **Une fois** : *Paramètres → Connecteurs → Extension de navigateur* → *Télécharger l’extension*, décompresser, puis dans Chrome, Edge ou Brave : `chrome://extensions` → mode développeur → *Charger l’extension non empaquetée* sur le dossier. Sur `carrefour.fr`, choisir son drive.
+2. **À chaque panier** : sur la page du panier, le même bouton *Récupérer les prix* qu’avant. Il récupère les prix, met en file les connecteurs, puis l’extension lit toute seule les prix Carrefour manquants ou anciens (plus de 7 jours), un produit à la fois, et la comparaison se rafraîchit à la fin. Aucun jeton, aucun numéro de magasin, aucune fenêtre à ouvrir.
 
-1. Administrateurs : **Paramètres → Connecteurs → Extension de navigateur** → *Télécharger l’extension*. L’archive est préparée dans le navigateur à partir des fichiers de l’application et contient l’adresse de l’instance, que l’extension reprend toute seule. (Les sources sont dans `frontend/browser-extension/`.)
-2. Décompresser, puis dans Chrome, Edge ou Brave : `chrome://extensions` → activer le mode développeur → *Charger l’extension non empaquetée* → choisir le dossier décompressé.
-3. Dans l’application : **Paramètres → Jetons API** → créer un jeton de portée **contribuer**.
-4. Cliquer sur l’icône de l’extension et renseigner le jeton et le numéro du magasin (celui de la page du magasin dans l’application). Le navigateur demande l’autorisation de joindre votre instance, et seulement elle.
+Si Carrefour demande une vérification, l’extension amène son onglet au premier plan et attend : terminez la vérification, la lecture reprend seule. Elle s’arrête si le magasin choisi sur le site n’est pas celui de l’application, ou après trois lectures ratées de suite.
 
-## Utiliser
+## Comment ça marche
 
-1. Ouvrir `carrefour.fr` dans l’onglet actif et choisir votre drive.
-2. Dans la fenêtre de l’extension, saisir ou confirmer l’EAN (repris de l’adresse de l’onglet s’il y figure), puis *Lire le prix*.
-3. Comparer le prix proposé avec celui de la page, puis *Proposer ce prix*. Il arrive comme proposition à valider, avec la même relecture que les autres captures.
+- **L’archive est faite pour votre instance.** Le manifeste qu’elle contient ajoute l’adresse de l’instance aux pages que l’extension lit (une adresse précise : https, ou http sur la machine locale, sans joker). Un petit script y fait le lien entre la page du panier et l’extension par des messages locaux de la fenêtre ; il n’accepte qu’un travail vérifié champ par champ (jusqu’à 60 produits, des numéros et des codes-barres, une ville).
+- **Qui décide quoi.** La page demande au serveur (`POST /api/v2/extension/plan`) quels produits du panier n’ont pas de prix récent au magasin de l’enseigne, et quel est ce magasin (le seul de l’enseigne qui a déjà des prix ; sinon rien n’est lu). L’extension lit chaque fiche : la recherche du site donne l’adresse, la fiche donne le prix (données structurées schema.org), la disponibilité et le magasin affiché. La page enregistre chaque résultat (`POST /api/v2/extension/readings`).
+- **Garde-fous du serveur.** Navigateur et session administrateur seulement (jamais un jeton), origine contrôlée, 600 relevés par heure. Le magasin doit appartenir à l’enseigne lue ; le code-barres doit être celui du produit ; le prix est borné, à deux décimales ; l’adresse de la fiche doit être celle du site. Un prix récent déjà présent n’est pas remplacé.
+- **Un produit absent** (la recherche répond normalement mais sans ce code-barres, et le magasin a déjà été confirmé par un prix pendant ce travail) est noté « retiré de la gamme » **à ce magasin seulement**, comme pour les connecteurs ; il n’est relu qu’après le délai réglé dans *Produits retirés de la gamme*.
+- **Rythme.** Une pause de 6 à 12 secondes entre deux produits, une seule lecture à la fois, dans l’onglet Carrefour que vous avez déjà ouvert (sinon un onglet en arrière-plan, refermé ensuite).
+- **Prix enregistrés** comme ceux d’un connecteur (source « connecteur », fournisseur `carrefour`, canal drive), avec le code-barres exact lu sur la fiche, et visibles dans le journal.
 
-Si Carrefour demande une vérification, l’extension s’arrête : validez la page vous-même puis recommencez.
+## Le panneau de l’extension
 
-## Ce qu’elle fait et ne fait pas
-
-- Elle ne s’exécute que sur `www.carrefour.fr` et ne demande l’accès qu’à votre instance. Aucun script distant, aucune télémétrie.
-- Le jeton est gardé dans le stockage local de l’extension, jamais envoyé ailleurs que vers votre instance.
-- La lecture est une requête de la page elle-même (`/s?q=<EAN>`) ; la réponse n’est pas documentée par l’enseigne, donc l’extension affiche **tous les prix qu’elle reconnaît et leur emplacement** et ne choisit rien à votre place. Les détails techniques de la fenêtre permettent de corriger l’analyse si le site change.
-- Les prix par kilo, les anciens prix et les promotions ne sont pas pris pour le prix du rayon.
-
-## Côté serveur
-
-Une requête qui porte un jeton personnel (en-tête `Authorization: Bearer`) n’est pas soumise au contrôle d’origine des sessions par cookie : le navigateur n’envoie jamais de jeton de lui-même, donc un autre site ne peut pas la provoquer. Un jeton limité à la lecture ne peut rien écrire, et un jeton ne porte jamais de droits d’administrateur ou de modérateur.
+La fenêtre de l’icône reste utilisable seule (adresse, jeton « contribuer » et numéro de magasin) pour lire un produit à la main et le proposer comme capture à valider ; elle n’est pas nécessaire au mode automatique.
