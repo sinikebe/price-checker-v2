@@ -665,6 +665,29 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.119",
+      "components": {
+        "application": {
+          "version": "0.1.119",
+          "notes": [
+            "Le prix à l’unité du panier passe du kilo à la pièce en un clic quand un produit se mesure des deux façons."
+          ]
+        },
+        "basket": {
+          "version": "0.1.32",
+          "notes": [
+            "Sous un prix à l’unité, des boutons kg, L et pièce choisissent l’unité de comparaison de chaque article."
+          ]
+        },
+        "products": {
+          "version": "0.1.54",
+          "notes": [
+            "Une fiche produit peut avoir plusieurs unités (500 g et 4 pièces) : « 4x125 g » compte ses pièces, et d’autres unités s’ajoutent à la main."
+          ]
+        }
+      }
     }
   ]
 }
