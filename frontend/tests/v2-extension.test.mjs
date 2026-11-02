@@ -253,6 +253,7 @@ test("the stop reasons are told in words, with the store the page showed", () =>
   assert.match(bridge.abortText("wrong_store", PLAN, "city sartrouville"), /city sartrouville.*Carrefour City Maisons-Laffitte \(Maisons-Laffitte\)/);
   assert.match(bridge.abortText("errors", PLAN), /Trois lectures/);
   assert.match(bridge.abortText("anything", PLAN), /interrompu/);
+  assert.match(bridge.nothingToReadText("Carrefour City Maisons-Laffitte"), /^Rien à lire à Carrefour City Maisons-Laffitte : le prix date de moins de 7 jours/);
 });
 
 test("the copy handed out by an instance also reads that instance's pages, and nothing else is added", () => {

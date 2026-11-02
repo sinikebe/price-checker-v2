@@ -6,6 +6,7 @@ import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
 import V2PriceHistory from "./V2PriceHistory";
+import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
 import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
@@ -416,6 +417,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
+    {mode !== "history" && id && !product.successor_id && !product.merged_to_id && <V2ExtensionPriceButton key={`ext:${id}:${user?.id ?? "visitor"}`} productId={id} ean={d.ean} user={user} />}
     {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
