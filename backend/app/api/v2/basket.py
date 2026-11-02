@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -183,18 +183,19 @@ async def read_credits(request: Request, response: Response):
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        cfg = await credits.settings(connection)
         if user["role"] == "admin":
-            return credits.unlimited_state(credits.paris_now().date())
+            return credits.unlimited_state(credits.paris_now().date(), cfg)
         async with connection.transaction():
-            state = await credits.lock_and_refill(connection, user["id"])
-        return credits.public_state(state["balance"], state["week_granted"], state["today"])
+            state = await credits.lock_and_refill(connection, user["id"], cfg)
+        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
     finally:
         await connection.close()
 
 
 @router.post("/prices")
 async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, response: Response):
-    """The candidates and latest prices of every basket line, for one credit.
+    """The candidates and latest prices of every basket line, for one credit per line.
 
     A refused or failed request costs nothing: the credit is spent in the
     same transaction as the reading, once it succeeded. Administrators are not
@@ -214,25 +215,26 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
             await logbook.log_event(
                 connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
                 truncated=any(line["truncated"] for line in result["lines"]), unlimited=True)
-            return {**result, "credits": credits.unlimited_state(credits.paris_now().date())}
+            return {**result, "credits": credits.unlimited_state(credits.paris_now().date(), await credits.settings(connection))}
+        cost = len(payload.items)
         async with connection.transaction():
-            state = await credits.lock_and_refill(connection, user["id"])
+            cfg = await credits.settings(connection)
+            state = await credits.lock_and_refill(connection, user["id"], cfg)
             result = None
-            if state["balance"] >= 1:
+            if state["balance"] + state["bonus"] >= cost:
                 result = await _gather(connection, payload.items)
-                state = await credits.spend_one(connection, user["id"], state)
+                state = await credits.spend(connection, user["id"], state, cost)
                 await logbook.log_event(
                     connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
                     truncated=any(line["truncated"] for line in result["lines"]), credits_left=state["balance"])
-        public = credits.public_state(state["balance"], state["week_granted"], state["today"])
+        public = credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
         if result is None:
             await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
-            wait = credits.seconds_until(
-                credits.next_grant_on(state["today"], state["week_granted"]), state["now"])
+            wait = credits.seconds_until(date.fromisoformat(public["next_grant_on"]), state["now"])
             raise HTTPException(
                 status_code=429, headers={"Retry-After": str(wait)},
-                detail={"code": "no_credits", "credits": public,
-                        "message": "Plus de crédit pour récupérer les prix du panier."})
-        return {**result, "credits": public}
+                detail={"code": "no_credits", "credits": public, "cost": cost,
+                        "message": f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier."})
+        return {**result, "credits": public, "cost": cost}
     finally:
         await connection.close()

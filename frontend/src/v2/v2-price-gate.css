@@ -1,0 +1,10 @@
+.v2-price-gate { display: grid; justify-items: start; gap: 8px; margin: 14px 0; padding: 12px 14px; border: 1px solid #cfe2d2; border-radius: 12px; background: #f3f9f2; }
+.v2-price-gate p { margin: 0; color: #35513f; font-size: .92rem; }
+.v2-price-gate p[role="alert"] { color: #8a2f25; }
+.v2-price-gate strong { color: #1b5a3a; }
+html[data-v2-theme="dark"] .v2-price-gate { border-color: rgba(212, 245, 193, .25); background: #1f2a22; }
+html[data-v2-theme="dark"] .v2-price-gate p { color: #cfe3d3; }
+html[data-v2-theme="dark"] .v2-price-gate p[role="alert"] { color: #ffb4a8; }
+html[data-v2-theme="dark"] .v2-price-gate strong { color: #a9e6b7; }
+.v2-reward-hint { display: block; margin-top: 6px; color: #2b6a49; font-size: .85rem; }
+html[data-v2-theme="dark"] .v2-reward-hint { color: #a9e6b7; }

@@ -118,3 +118,10 @@ html[data-v2-theme="dark"] .v2-security-form :is(input,select) { --v2-input-back
 .v2-connector-settings form > label input[type="number"] { max-width: 14rem; }
 .v2-search-settings { grid-column: 1 / -1; }
 .v2-search-settings input[type="number"] { max-width: 9rem; }
+.v2-credits-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
+.v2-credits-figures > div { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: 14px; }
+.v2-credits-figures dt { font-weight: 650; }
+.v2-credits-figures dd { margin: 0; font-size: 1.8rem; font-weight: 750; color: #1b5a3a; }
+.v2-credits-figures small, .v2-credits-account > small { color: var(--v2-muted, #617467); }
+.v2-credits-rewards { display: grid; gap: 4px; margin: 6px 0; padding-left: 18px; }
+html[data-v2-theme="dark"] .v2-credits-figures dd { color: #a9e6b7; }

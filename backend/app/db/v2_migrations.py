@@ -1022,6 +1022,48 @@ MIGRATIONS = {
             WHERE product_id = p_product AND store_id = p_store AND sales_channel = p_channel
         $fn$;
     """,
+    "0039_price_credits": """
+        -- Credits now pay for every price shown (product, group, ensemble, basket). The
+        -- amounts are set by administrators; the old weekly cap is gone.
+        CREATE TABLE v2_credit_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            daily_grant integer NOT NULL DEFAULT 50 CHECK (daily_grant BETWEEN 0 AND 1000),
+            hold_max integer NOT NULL DEFAULT 100 CHECK (hold_max BETWEEN 1 AND 10000),
+            visitor_daily integer NOT NULL DEFAULT 10 CHECK (visitor_daily BETWEEN 0 AND 1000),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_credit_settings (singleton) VALUES (true);
+        -- Price views of visitors without an account, per network address and Paris day.
+        -- The key is an HMAC of the address with the installation secret, never the address;
+        -- rows older than yesterday are deleted as new ones are written.
+        CREATE TABLE v2_visitor_credits (
+            key char(64) PRIMARY KEY,
+            day date NOT NULL,
+            used integer NOT NULL CHECK (used >= 0)
+        );
+        CREATE INDEX v2_visitor_credits_day_idx ON v2_visitor_credits(day);
+    """,
+    "0040_contribution_credits": """
+        -- Credits earned by contributions an administrator validated: no holding limit, no expiry,
+        -- spent only once the daily credits are used up.
+        ALTER TABLE v2_basket_credits ADD COLUMN bonus integer NOT NULL DEFAULT 0 CHECK (bonus >= 0);
+        ALTER TABLE v2_credit_settings
+            ADD COLUMN reward_price integer NOT NULL DEFAULT 5 CHECK (reward_price BETWEEN 0 AND 1000),
+            ADD COLUMN reward_product integer NOT NULL DEFAULT 10 CHECK (reward_product BETWEEN 0 AND 1000),
+            ADD COLUMN reward_recipe integer NOT NULL DEFAULT 10 CHECK (reward_recipe BETWEEN 0 AND 1000);
+        -- One reward per validated contribution: what was earned, for what kind, and when.
+        CREATE TABLE v2_credit_rewards (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            kind varchar(16) NOT NULL CHECK (kind IN ('price', 'product', 'recipe')),
+            contribution_id bigint NOT NULL,
+            credits integer NOT NULL CHECK (credits > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (kind, contribution_id)
+        );
+        CREATE INDEX v2_credit_rewards_user_idx ON v2_credit_rewards(user_id, created_at DESC);
+    """,
 }
 
 

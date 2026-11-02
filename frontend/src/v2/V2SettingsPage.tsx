@@ -5,6 +5,8 @@ import V2AccountSecurity from "./V2AccountSecurity";
 import V2AvailabilitySettings from "./V2AvailabilitySettings";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2ExtensionDownload from "./V2ExtensionDownload";
+import V2CreditSettings from "./V2CreditSettings";
+import V2CreditsAccount from "./V2CreditsAccount";
 import V2SettingsAccount from "./V2SettingsAccount";
 import V2SettingsGeneral from "./V2SettingsGeneral";
 import V2ServerLogs from "./V2ServerLogs";
@@ -40,19 +42,22 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
   function panel(id: SettingsTabId, active: boolean): ReactNode {
     switch (id) {
       case "general": return <V2SettingsGeneral />;
-      case "account": return user && <V2SettingsAccount user={user} onDeleted={cleared => {
+      case "account": return user && <><V2CreditsAccount key={`credits-account-${user.id}`} /><V2SettingsAccount user={user} onDeleted={cleared => {
         setDeleteNotice(cleared
           ? "Compte supprimé. Vos contenus publiés restent visibles sans votre pseudo."
           : "Compte supprimé sur le serveur. Effacez aussi les données de ce site dans votre navigateur : le nettoyage local n’a pas abouti.");
         onAccountDeleted();
-      }} />;
+      }} /></>;
       case "security": return user && <V2AccountSecurity key={user.id} />;
       case "connectors": return user?.role === "admin" && <>
         <V2ConnectorStores key={`stores-${user.id}`} />
         <V2AvailabilitySettings key={`availability-${user.id}`} />
         <V2ExtensionDownload key={`extension-${user.id}`} />
       </>;
-      case "server": return user?.role === "admin" && <V2SettingsServer userId={user.id} />;
+      case "server": return user?.role === "admin" && <>
+        <V2SettingsServer userId={user.id} />
+        <V2CreditSettings key={`credits-${user.id}`} />
+      </>;
       case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
       case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;
     }

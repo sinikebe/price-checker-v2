@@ -129,11 +129,17 @@ async def test_migration_prefill_and_admin_correction(monkeypatch, isolated_conf
         assert scope.status_code == 200, scope.text
         assert len(scope.json()["groups"]) == 3
         assert len(scope.json()["products"]) == 3
-        assert len(scope.json()["observations"]) == 3
+        # Prices cost credits: the page says how many, a separate request spends them.
+        assert scope.json()["observations"] == [] and scope.json()["prices_cost"] == 3
+        priced = await client.get(scope_url.replace("/comparison?", "/prices/comparison?") + "&max_cost=3")
+        assert priced.status_code == 200, priced.text
+        assert len(priced.json()["observations"]) == 3 and priced.json()["cost"] == 3
         assert (await client.get(scope_url.replace("Boissons", "Entretien"))).status_code == 404
         single = await client.get("/api/v2/catalogue/categories/Pur%20jus%20d%27orange")
         assert len(single.json()["products"]) == 1
-        assert len(single.json()["observations"]) == 1
+        assert single.json()["observations"] == [] and single.json()["prices_cost"] == 1
+        single_prices = await client.get("/api/v2/catalogue/prices/category", params={"name": "Pur jus d'orange", "max_cost": 1})
+        assert len(single_prices.json()["observations"]) == 1
         detail = await client.get("/api/v2/catalogue/categories/Chips%20paysanne")
         assert detail.status_code == 200, detail.text
         assert detail.json()["family"] == "Chips"

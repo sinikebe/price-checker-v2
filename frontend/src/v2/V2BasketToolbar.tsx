@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CreditIcon, FilterIcon, ListIcon, QuantityIcon, RefreshIcon, ShareIcon, UnitPriceIcon } from "./V2SiteIcons";
-import { creditLabel, nextGrantLabel, outOfCredits, type BasketCredits } from "./v2-basket-credits-api";
+import { creditLabel, nextGrantLabel, outOfCredits, spendable, type BasketCredits } from "./v2-basket-credits-api";
 
 export type BasketPanel = "items" | "filters" | "share";
 
@@ -19,16 +19,17 @@ function Tool({ icon, label, detail, active, disabled, title, expanded, pressed,
 
 /** Icon buttons for the basket tools, and the paid action that fetches the prices. */
 export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount, advanced, onAdvanced, unitMode, onUnitMode, filterCount, filtersAvailable,
-  signedIn, credits, hasPrices, fetching, onFetch }: {
+  signedIn, credits, cost, hasPrices, fetching, onFetch }: {
   panel: BasketPanel | null; onPanel: (panel: BasketPanel | null) => void; itemCount: number; activeCount: number;
   advanced: boolean; onAdvanced: (value: boolean) => void; unitMode: boolean; onUnitMode: (value: boolean) => void; filterCount: number; filtersAvailable: boolean;
-  signedIn: boolean; credits: BasketCredits | null; hasPrices: boolean; fetching: boolean; onFetch: () => void;
+  signedIn: boolean; credits: BasketCredits | null; cost: number; hasPrices: boolean; fetching: boolean; onFetch: () => void;
 }) {
-  const empty = outOfCredits(credits);
+  const empty = outOfCredits(credits, cost);
   const unlimited = credits?.unlimited === true;
   const creditTitle = unlimited ? "Crédits illimités pour les administrateurs."
     : credits
-      ? `${creditLabel(credits.balance)} restant${credits.balance > 1 ? "s" : ""}. ${credits.daily_grant} par jour, ${credits.weekly_max} par semaine au maximum.`
+      ? `${creditLabel(credits.balance)} du jour (${credits.daily_grant} par jour, ${credits.hold_max} au maximum)`
+        + ((credits.bonus ?? 0) > 0 ? ` et ${creditLabel(credits.bonus ?? 0)} de contribution, utilisés quand ceux du jour sont épuisés.` : ".")
       : "Chaque compte reçoit des crédits chaque jour.";
   return <div className="v2-basket-toolbar" role="group" aria-label="Outils du panier">
     <div className="v2-basket-tools">
@@ -49,10 +50,11 @@ export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount
     </div>
     {signedIn ? <div className="v2-basket-fetch">
       <span className="v2-basket-credits" title={creditTitle} data-empty={empty}><CreditIcon /><span>{unlimited ? <>∞<span className="v2-basket-credits-word"> crédits illimités</span></>
-        : credits ? <>{credits.balance}<span className="v2-basket-credits-word"> crédit{credits.balance > 1 ? "s" : ""}</span></> : "Crédits"}</span></span>
+        : credits ? <>{spendable(credits)}<span className="v2-basket-credits-word"> crédit{spendable(credits) > 1 ? "s" : ""}</span></> : "Crédits"}</span></span>
       <button type="button" className="v2-button v2-button-primary" disabled={fetching || empty} onClick={onFetch}
-        title={empty && credits ? `Plus de crédit. Prochain crédit ${nextGrantLabel(credits.next_grant_on)}.` : unlimited ? "Récupérer les prix actuels : sans limite pour un administrateur" : "Récupérer les prix actuels : 1 crédit"}>
-        <RefreshIcon />{fetching ? "Récupération…" : hasPrices ? "Actualiser" : "Comparer les prix"}<small>{unlimited ? "illimité" : "1 crédit"}</small>
+        title={empty && credits ? `Il faut ${creditLabel(cost)}, il en reste ${spendable(credits)}. Les prochains arrivent ${nextGrantLabel(credits.next_grant_on)}.`
+          : unlimited ? "Récupérer les prix actuels : sans limite pour un administrateur" : `Récupérer les prix actuels : ${creditLabel(cost)} (1 par article inclus)`}>
+        <RefreshIcon />{fetching ? "Récupération…" : hasPrices ? "Actualiser" : "Comparer les prix"}<small>{unlimited ? "illimité" : creditLabel(cost)}</small>
       </button>
     </div> : <Link className="v2-button v2-button-primary" to="/v2/connexion?next=panier">Se connecter pour comparer</Link>}
   </div>;
