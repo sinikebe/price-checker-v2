@@ -33,6 +33,7 @@ from app.api.v2.private_recipes import router as private_recipes_router
 from app.api.v2.products import router as products_router
 from app.api.v2.recipe_submissions import router as recipe_submissions_router
 from app.api.v2.recipes import router as recipes_router
+from app.api.v2.saved_lists import router as saved_lists_router
 from app.api.v2.server_cache import router as server_cache_router
 from app.api.v2.setup import _ensure_state_dir
 from app.api.v2.setup import router as setup_router
@@ -129,6 +130,7 @@ ROUTERS = (
     catalogue_router,
     basket_router,
     shared_baskets_router,
+    saved_lists_router,
     credits_router,
     availability_router,
     extension_router,

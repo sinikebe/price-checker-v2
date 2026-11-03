@@ -198,3 +198,38 @@ export function queueOps(queue: readonly LocalOp[], ops: readonly LocalOp[]): Lo
   }
   return result;
 }
+
+/**
+ * The last known state of a shared basket and the changes not sent yet, kept in this browser so the
+ * basket opens and changes offline; the changes are sent when the connection is back. The keys end
+ * with the account id, so they go with the account's local data.
+ */
+export const sharedStateKey = (basketId: number, userId: number) => `v2:basket:shared-state:${basketId}:${userId}`;
+export const sharedQueueKey = (basketId: number, userId: number) => `v2:basket:shared-queue:${basketId}:${userId}`;
+const OPS = new Set(["add", "remove", "update", "settings"]);
+export function readSharedCache(basketId: number | null, userId: number | null): { basket: SharedBasket | null; queue: LocalOp[] } {
+  if (!basketId || !userId) return { basket: null, queue: [] };
+  let basket: SharedBasket | null = null, queue: LocalOp[] = [];
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(sharedStateKey(basketId, userId)) ?? "null");
+    if (value && typeof value === "object" && (value as SharedBasket).id === basketId && Array.isArray((value as SharedBasket).lines)
+      && Array.isArray((value as SharedBasket).members) && typeof (value as SharedBasket).revision === "number") basket = value as SharedBasket;
+  } catch { /* no usable copy */ }
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(sharedQueueKey(basketId, userId)) ?? "[]");
+    if (Array.isArray(value)) queue = value.filter((op): op is LocalOp => !!op && typeof op === "object" && OPS.has((op as LocalOp).op)).slice(0, 1000);
+  } catch { /* nothing waiting */ }
+  return { basket, queue };
+}
+export function writeSharedState(userId: number, basket: SharedBasket) {
+  try { localStorage.setItem(sharedStateKey(basket.id, userId), JSON.stringify(basket)); } catch { /* the page still works online */ }
+}
+export function writeSharedQueue(basketId: number, userId: number, ops: readonly LocalOp[]) {
+  try {
+    if (ops.length) localStorage.setItem(sharedQueueKey(basketId, userId), JSON.stringify(ops));
+    else localStorage.removeItem(sharedQueueKey(basketId, userId));
+  } catch { /* the changes are still sent from this page */ }
+}
+export function forgetSharedCache(basketId: number, userId: number) {
+  try { localStorage.removeItem(sharedStateKey(basketId, userId)); localStorage.removeItem(sharedQueueKey(basketId, userId)); } catch { /* nothing kept */ }
+}

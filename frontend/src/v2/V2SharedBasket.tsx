@@ -8,7 +8,7 @@ import { SHARED_BASKET_PATH, STORAGE_NOTICE, inviteUrl, keepPendingInvite, type 
 import "./v2-share.css";
 import "./v2-shared-basket.css";
 
-const STATUS = { connecting: "Connexion…", live: "En direct", retrying: "Reconnexion…" } as const;
+const STATUS = { connecting: "Connexion…", live: "En direct", retrying: "Reconnexion…", offline: "Hors ligne" } as const;
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
 
 
@@ -34,6 +34,9 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
       </div>
     </div>
     <p className="v2-shared-activity" role="status" aria-live="polite">{shared.activity}</p>
+    {(shared.status === "offline" || shared.waiting > 0) && <p className="v2-shared-offline" role="status">
+      {shared.status === "offline" ? "Hors connexion : le panier reste utilisable ; vos modifications sont gardées sur cet appareil et partent dès le retour de la connexion." : "Envoi des modifications…"}
+      {shared.waiting > 0 && ` ${shared.waiting} modification${shared.waiting > 1 ? "s" : ""} en attente.`}</p>}
     {shared.error && <p role="alert" className="v2-recipes-error">{shared.error}</p>}
     {shared.unavailable.length > 0 && <div className="v2-shared-unavailable" role="status">
       <p>Retiré du catalogue depuis son ajout, donc sans prix :</p>

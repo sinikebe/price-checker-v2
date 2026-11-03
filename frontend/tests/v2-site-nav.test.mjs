@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-site-nav.ts", import.meta.url)
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
+const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, listsLabel, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
 test("the dock has the five main sections, each with a distinct address", () => {
@@ -22,6 +22,10 @@ test("the shared basket gets its own dock entry once the account follows one", (
   assert.equal(new Set(dockItems(true).map(item => item.to)).size, 6);
   assert.equal(sharedBasketLabel(0), "Panier partagé, vide");
   assert.equal(sharedBasketLabel(3), "Panier partagé, 3 articles");
+  assert.deepEqual(dockItems(false, true).map(item => item.id).slice(-1), ["lists"], "saved lists for a signed-in account");
+  assert.deepEqual(dockItems(true, true).map(item => item.id).slice(-2), ["shared", "lists"]);
+  assert.equal(new Set(dockItems(true, true).map(item => item.to)).size, 7);
+  assert.equal(listsLabel(2), "Listes enregistrées, 2 listes");
 });
 
 test("every page maps to the right dock item", () => {
@@ -31,7 +35,7 @@ test("every page maps to the right dock item", () => {
     ["/v2/categories/Lait", "products"], ["/v2/magasins", "stores"], ["/v2/magasins/7", "stores"],
     ["/v2/recettes", "recipes"], ["/v2/recettes/nouvelle", "recipes"], ["/v2/panier", "basket"],
     ["/v2/panier/partage", "shared"], ["/v2/panier/partage/", "shared"], ["/v2/panier/partage/liste", "shared"],
-    ["/v2/panier/liste", "basket"],
+    ["/v2/panier/liste", "basket"], ["/v2/listes", "lists"], ["/v2/listes/0b7a1c2e-4d5f-4a6b-8c7d-9e0f1a2b3c4d", "lists"],
   ];
   for (const [path, id] of cases) assert.equal(activeDockId(path), id, path);
 });

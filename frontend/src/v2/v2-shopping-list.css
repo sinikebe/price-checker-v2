@@ -26,6 +26,14 @@
 .v2-list-line-help span { flex: 1 1 100%; }
 .v2-list-line-help a { font-weight: 700; color: #2f6a45; }
 .v2-list-entry { display: inline-flex; margin-top: 8px; }
+.v2-list-save { display: grid; gap: 10px; padding: 16px 18px; border: 1px solid #c9dccb; border-radius: 14px; background: #f5faf3; }
+.v2-list-save label { display: grid; gap: 5px; font-weight: 700; }
+.v2-list-save input { min-height: 42px; padding: 8px 11px; border: 1px solid #c5d6c8; border-radius: 9px; font: inherit; background: white; color: inherit; }
+.v2-list-saved { margin: 0; padding: 10px 14px; border-radius: 10px; background: #eef4e8; }
+.v2-saved-lists { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.v2-saved-lists .v2-recipes-tile { display: grid; gap: 4px; height: 100%; box-sizing: border-box; text-decoration: none; }
+.v2-list-delete { display: grid; gap: 10px; margin-top: 8px; }
+.v2-list-delete .v2-shared-danger { justify-self: start; }
 .v2-basket-list-link { min-height: 36px; padding: 6px 10px; font-weight: 700; color: #2f6a45; }
 @media (max-width: 600px) {
   .v2-list-section { padding: 15px; }
@@ -47,3 +55,6 @@ html[data-v2-theme="dark"] .v2-list-missing > p,
 html[data-v2-theme="dark"] .v2-list-line-help { color: #f3dcb6; }
 html[data-v2-theme="dark"] .v2-list-line-help a,
 html[data-v2-theme="dark"] .v2-basket-list-link { color: #a5dfaa; }
+html[data-v2-theme="dark"] .v2-list-save { background: #1d3429; border-color: #4f7a5c; }
+html[data-v2-theme="dark"] .v2-list-save input { background: #14231f; border-color: #355248; }
+html[data-v2-theme="dark"] .v2-list-saved { background: #243b31; }

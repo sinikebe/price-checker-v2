@@ -1134,6 +1134,23 @@ MIGRATIONS = {
         ALTER TABLE v2_shared_baskets ADD COLUMN settings jsonb NOT NULL DEFAULT '{}'::jsonb
             CHECK (jsonb_typeof(settings) = 'object');
     """,
+    "0044_saved_lists": """
+        -- Shopping lists an account saved, to find them on its devices and offline. Kept until the
+        -- account deletes them or deletes the account. `list_id` is chosen by the browser, so a list
+        -- saved offline is stored once when it is sent, however many times it is retried.
+        CREATE TABLE v2_saved_lists (
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            list_id uuid NOT NULL,
+            name varchar(80) NOT NULL CHECK (btrim(name) <> ''),
+            content jsonb NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+            checked jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(checked) = 'array'),
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, list_id)
+        );
+        CREATE INDEX v2_saved_lists_recent_idx ON v2_saved_lists(user_id, updated_at DESC);
+    """,
 }
 
 

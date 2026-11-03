@@ -5,6 +5,7 @@ import { addedProductIds, requestBasketConnectorRefresh } from "./v2-connector-r
 import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
 import { useSharedBasket, type SharedBasketControls } from "./useSharedBasket";
+import { useSavedLists, type SavedListsControls } from "./useSavedLists";
 
 /** What can be done with one basket: the personal one, or the shared one. */
 export type BasketApi = {
@@ -27,6 +28,10 @@ type BasketValue = BasketApi & {
   shared: SharedBasketControls;
   /** The same actions on the shared basket, or null when this account follows none. */
   sharedBasket: BasketApi | null;
+  /** The shopping lists this account saved (kept with the account, copied for offline use). */
+  lists: SavedListsControls;
+  /** The account the baskets belong to in this browser, or null for a visitor. */
+  userId: number | null;
 };
 const Context = createContext<BasketValue | null>(null);
 
@@ -88,6 +93,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
   const [local, setLocal] = useState(readV2Basket);
   const [userId, setUserId] = useState(activeBasketUser);
   const shared = useSharedBasket(userId);
+  const lists = useSavedLists(userId);
   const localRef = useRef(local);
   useEffect(() => { localRef.current = local; }, [local]);
   useEffect(() => {
@@ -105,7 +111,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/refs
   const personal = basketApi(local, currentLocal, writeLocal);
   const sharedBasket = shared.sharedId !== null ? basketApi(shared.items, shared.view, shared.edit) : null;
-  return <Context.Provider value={{ ...personal, setUser: activateBasketUser, shared, sharedBasket }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ...personal, setUser: activateBasketUser, shared, sharedBasket, lists, userId }}>{children}</Context.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

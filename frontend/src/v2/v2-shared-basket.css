@@ -11,6 +11,8 @@
 .v2-shared-status[data-status="retrying"]::before { background: #d08a2f; }
 .v2-shared-activity { min-height: 1.4em; margin-top: 10px !important; font-weight: 600; color: #2f6a45 !important; }
 .v2-shared-activity:empty { min-height: 0; margin-top: 0 !important; }
+.v2-shared-offline { margin-top: 8px !important; padding: 8px 12px; border-radius: 10px; background: #eef1f4; color: #3d4b57 !important; }
+.v2-shared-status[data-status="offline"] { color: #5a6570; }
 .v2-shared-unavailable { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff6e8; }
 .v2-shared-unavailable ul { margin: 6px 0 0; padding-left: 18px; }
 .v2-shared-unavailable li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -60,3 +62,5 @@ html[data-v2-theme="dark"] .v2-shared-invite-link input { background: #14231f; b
 html[data-v2-theme="dark"] .v2-shared-list li,
 html[data-v2-theme="dark"] .v2-shared-members li { border-color: #355248; }
 html[data-v2-theme="dark"] .v2-shared-notice { background: #243b31; }
+html[data-v2-theme="dark"] .v2-shared-offline { background: #2a3238; color: #d3dde4 !important; }
+html[data-v2-theme="dark"] .v2-shared-status[data-status="offline"] { color: #b9c4cc; }

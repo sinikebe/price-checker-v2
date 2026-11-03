@@ -199,7 +199,8 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
             : <>
               {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Pas encore dans le relevé de prix : {view.stale.map(itemName).join(", ")}. <Link to={basePath}>Actualisez les prix</Link> pour les placer dans un magasin.</p>}
               <V2ShoppingList comparison={comparison} split={split} items={view.lines.map(line => line.item)} store={store} advanced={advanced}
-                checked={display.checked} onChecked={display.setChecked} backTo={basePath} sharedName={sharing ? shared.basket?.name : undefined} />
+                checked={display.checked} onChecked={display.setChecked} backTo={basePath} sharedName={sharing ? shared.basket?.name : undefined}
+                fetchedAt={snapshot.fetchedAt} onSave={user ? (name, content, checked) => "/v2/listes/" + context.lists.save(name, content, checked) : undefined} />
             </>}
       </main>
     </div>;
