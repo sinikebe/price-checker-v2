@@ -17,7 +17,8 @@ export type SharedLine = {
 export type SharedMember = { id: number; username: string; owner: boolean };
 export type SharedBasket = {
   id: number; name: string; revision: number; role: "owner" | "member"; owner: string | null;
-  invite: string; members: SharedMember[]; lines: SharedLine[]; limits: { lines: number; members: number };
+  /** Never kept in the browser copy (it lets anyone join): null until the server sends it. */
+  invite: string | null; members: SharedMember[]; lines: SharedLine[]; limits: { lines: number; members: number };
   /** Absent from the first servers with shared baskets: read with sharedSettings(). */
   settings?: Partial<SharedSettings>;
 };
@@ -224,7 +225,8 @@ export function readSharedCache(basketId: number | null, userId: number | null):
   return { basket, queue };
 }
 export function writeSharedState(userId: number, basket: SharedBasket) {
-  try { localStorage.setItem(sharedStateKey(basket.id, userId), JSON.stringify(basket)); } catch { /* the page still works online */ }
+  // The invitation link grants membership: it is never written to the browser's storage.
+  try { localStorage.setItem(sharedStateKey(basket.id, userId), JSON.stringify({ ...basket, invite: null })); } catch { /* the page still works online */ }
 }
 export function writeSharedQueue(basketId: number, userId: number, ops: readonly LocalOp[]) {
   try {

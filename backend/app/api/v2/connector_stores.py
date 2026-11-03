@@ -31,6 +31,8 @@ CLIENT_REFRESH_REQUESTS_PER_HOUR = 6
 # Price pages request readings on view, also anonymously. They draw on their own,
 # smaller budgets so that browsing can never use up what a basket is entitled to.
 PAGE_REFRESH_REQUESTS_PER_HOUR = 6
+PAGE_VIEWS_PER_MINUTE = 30  # price pages asking for a refresh, per client, before any connector code runs
+STATUS_HOOK_SECONDS = 5  # a connector's status hook answers within this, or the page shows it unavailable
 CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR = 3
 
 
@@ -481,8 +483,8 @@ async def page_product_statuses(connection, connector_id: str, product_ids: list
     if not callable(hook):
         return {key: {"status": "unsupported", "rank": None} for key in fallback}
     try:
-        raw = await hook(connection, product_ids)
-    except Exception:  # connector code is third-party: a price page must still load
+        raw = await asyncio.wait_for(hook(connection, product_ids), STATUS_HOOK_SECONDS)
+    except Exception:  # connector code is third-party (or too slow): a price page must still load
         logger.exception("Connector %s status hook failed", connector_id)
         return {key: {"status": "unavailable", "rank": None} for key in fallback}
     if not isinstance(raw, dict):
@@ -571,7 +573,9 @@ async def request_basket_refresh(
 async def connector_product_statuses(
     connector_id: str, payload: BasketRefreshBatch, request: Request
 ):
+    """The reading status of products (queued, being read): administrators only."""
     _secure_write(request)
+    await _require_admin(request)
     ids = list(dict.fromkeys(payload.product_ids))
     if any(product_id <= 0 for product_id in ids):
         raise HTTPException(status_code=422, detail="Produit invalide.")
@@ -593,6 +597,10 @@ async def request_page_refresh(
         raise HTTPException(status_code=422, detail="Produit invalide.")
     connection = await _connect()
     try:
+        # Bounded per client before any connector code runs (the status hook below included).
+        views = await _bump_limit(connection, _limit_key("connector-page-view", request), 60)
+        if views > PAGE_VIEWS_PER_MINUTE:
+            return {"products": {str(product_id): {"status": "rate_limited", "rank": None} for product_id in ids}}
         before = await page_product_statuses(connection, connector_id, ids)
         candidates = [product_id for product_id in ids
                       if before[str(product_id)]["status"] == "eligible"]

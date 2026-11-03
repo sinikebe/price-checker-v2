@@ -128,7 +128,8 @@ test("a shared basket and its unsent changes are kept in the browser, for offlin
   writeSharedState(5, basket);
   const ops = [...diffOps([], [milk], keyOf), { op: "settings", patch: { advanced: true } }];
   writeSharedQueue(9, 5, ops);
-  assert.deepEqual(readSharedCache(9, 5), { basket, queue: JSON.parse(JSON.stringify(ops)) });
+  assert.deepEqual(readSharedCache(9, 5), { basket: { ...basket, invite: null }, queue: JSON.parse(JSON.stringify(ops)) });
+  assert.ok(!store.get(sharedStateKey(9, 5)).includes("9-x"), "the invitation link is never stored");
   assert.deepEqual(readSharedCache(9, 6), { basket: null, queue: [] }, "another account has none");
   assert.deepEqual(readSharedCache(null, 5), { basket: null, queue: [] });
   assert.ok([sharedStateKey(9, 5), sharedQueueKey(9, 5)].every(key => key.startsWith("v2:basket:") && key.endsWith(":5")));

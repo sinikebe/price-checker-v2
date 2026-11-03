@@ -305,13 +305,13 @@ function ClassificationEditor({ name, current, onSaved }: {
   </form>;
 }
 
-function ComparisonContent({ detail, showGroup = false, awaitingPrices = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean }) {
+function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, admin = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean; admin?: boolean }) {
   const [params, setParams] = useSearchParams();
   const page = pageNumber(params), size = pageSize(params);
   const subset = params.get("subset") || "";
   const products = detail.products;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
-  const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id));
+  const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id), admin);
   const availableMetrics = unitMetrics.map(unit => ({
     unit, count: selectedProducts.filter(product => quantityFor(product, unit)).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
@@ -397,7 +397,7 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
-      <ComparisonContent detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
+      <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }
@@ -428,7 +428,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
         </Link>)}</div>
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
-      <ComparisonContent detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
+      <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }
