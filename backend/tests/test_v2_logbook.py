@@ -45,6 +45,7 @@ SAMPLES = {
     "basket.prices.refused": ({"reason": "no_credits"}, None),
     "basket.demo.saved": ({"items": 18, "products": 25}, None),
     "basket.demo.removed": ({}, None),
+    "legal.document.updated": ({"document": "conditions", "bytes": 3715}, None),
 }
 
 

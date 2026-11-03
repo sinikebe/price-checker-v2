@@ -9,6 +9,7 @@ const text = (value: unknown) => typeof value === "string" ? value : "";
 
 const ORIGIN: Record<string, string> = { basket: "panier", single: "fiche produit", page: "page de prix" };
 const CHANNEL: Record<string, string> = { in_store: "en magasin", drive: "drive", delivery: "livraison" };
+const LEGAL: Record<string, string> = { mentions: "mentions légales", confidentialite: "confidentialité", conditions: "conditions d’utilisation" };
 const METRIC: Record<string, string> = { cpu: "processeur", memory: "mémoire", disk: "stockage" };
 const UPDATE_REASON: Record<string, string> = {
   ci_not_passed: "la CI n’a pas validé la version", not_fast_forward: "la branche ne progresse pas en ligne droite",
@@ -73,6 +74,7 @@ export function describeLog(item: LogItem): string {
     case "basket.prices.refused": return "Récupération des prix du panier refusée : plus de crédit.";
     case "basket.demo.saved": return `Panier de démonstration enregistré : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit comparé", "produits comparés")}.`;
     case "basket.demo.removed": return "Panier de démonstration retiré : l’accueil montre de nouveau l’exemple intégré.";
+    case "legal.document.updated": return `Document légal remplacé : ${LEGAL[text(d.document)] ?? text(d.document)} (${(number(d.bytes) / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Ko).`;
     default: return `${item.event} ${Object.entries(d).map(([key, value]) => `${key}=${String(value)}`).join(" ")}`.trim();
   }
 }
