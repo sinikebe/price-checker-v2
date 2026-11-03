@@ -6,8 +6,8 @@ import ts from "typescript";
 const source = readFileSync(new URL("../src/v2/v2-shared-basket.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const {
-  activityText, applyOps, diffOps, inviteFromHash, keepPendingInvite, lineRef, newFromOthers, readSharedId,
-  sharedItems, takePendingInvite, wireOps, writeSharedId,
+  DEFAULT_SETTINGS, activityText, applyOps, applySettings, diffOps, inviteFromHash, inviteUrl, keepPendingInvite, lineRef,
+  newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId,
 } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 // The same key as the browser basket (basketItemKey in v2-basket-storage.ts).
@@ -103,4 +103,20 @@ test("invitation links and the shared basket open in this browser", () => {
   assert.equal(readSharedId(5), null);
   assert.doesNotThrow(() => writeSharedId(5, 1));
   delete globalThis.localStorage; delete globalThis.sessionStorage;
+});
+
+test("settings every member shares: defaults, changes shown at once, one request for quick changes", () => {
+  assert.deepEqual(sharedSettings(null), DEFAULT_SETTINGS);
+  assert.deepEqual(sharedSettings({ settings: { compare: "unit", filters: { storeIds: [4] } } }),
+    { ...DEFAULT_SETTINGS, compare: "unit", filters: { storeIds: [4], cities: [], departments: [] } }, "older or partial settings get the defaults");
+  const ops = [{ op: "settings", patch: { advanced: true } }, { op: "settings", patch: { stores_off: ["12:drive"] } }];
+  assert.deepEqual(applySettings(DEFAULT_SETTINGS, ops), { ...DEFAULT_SETTINGS, advanced: true, stores_off: ["12:drive"] });
+  // Settings changes never touch the lines.
+  assert.deepEqual(applyOps([pasta], ops, keyOf), [pasta]);
+  // Quick settings changes join while not sent; an article change keeps its place in between.
+  const add = diffOps([], [milk], keyOf)[0];
+  assert.deepEqual(queueOps([], ops), [{ op: "settings", patch: { advanced: true, stores_off: ["12:drive"] } }]);
+  assert.deepEqual(queueOps([ops[0]], [add, ops[1]]).map(op => op.op), ["settings", "add", "settings"]);
+  assert.deepEqual(wireOps([ops[0]]), [{ op: "settings", advanced: true }]);
+  assert.equal(inviteUrl("https://x.test", "3-abcdefghijklmnopqrstuv"), "https://x.test/v2/panier/partage#rejoindre=3-abcdefghijklmnopqrstuv");
 });

@@ -367,7 +367,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, sharedBasketMode = false, shoppingListMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesTab?: string;
   preferencesMode?: boolean;
@@ -379,6 +379,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   recipeId?: number;
   privateRecipe?: boolean;
   basketMode?: boolean;
+  sharedBasketMode?: boolean;
+  shoppingListMode?: boolean;
   captureMode?: "install" | "review";
   completionMode?: boolean;
   storesMode?: boolean;
@@ -481,7 +483,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
   if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
-  if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} />);
+  if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} sharedMode={sharedBasketMode} listMode={shoppingListMode} />);
   if (recipeMode) {
     return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} privateRecipe={privateRecipe} user={authStatus.user} onLogout={logout} />);
   }

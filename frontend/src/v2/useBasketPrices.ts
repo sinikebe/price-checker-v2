@@ -22,19 +22,21 @@ export function fetchedItems<T extends BasketItem>(items: readonly T[]): T[] {
 export const basketFetchCost = (items: readonly BasketItem[]) => fetchedItems(items).length;
 
 /** The prices of a basket are fetched on request only, for one credit per line; the last result is kept. */
-export function useBasketPrices(userId: number | null, items: readonly BasketItem[], afterFetch?: (productIds: number[]) => void) {
-  const [owner, setOwner] = useState(userId);
-  const [snapshot, setSnapshot] = useState<BasketSnapshot | null>(() => userId ? readSnapshot(userId) : null);
+export function useBasketPrices(userId: number | null, items: readonly BasketItem[], afterFetch?: (productIds: number[]) => void, basketId?: number) {
+  const scope = `${userId ?? ""}:${basketId ?? ""}`;
+  const [owner, setOwner] = useState(scope);
+  const [snapshot, setSnapshot] = useState<BasketSnapshot | null>(() => userId ? readSnapshot(userId, basketId) : null);
   const [credits, setCredits] = useState<BasketCredits | null>(null);
   const [state, setState] = useState<PriceFetch>({ phase: "idle" });
-  if (owner !== userId) {
-    setOwner(userId);
-    setSnapshot(userId ? readSnapshot(userId) : null);
-    setCredits(null);
+  if (owner !== scope) {
+    setOwner(scope);
+    setSnapshot(userId ? readSnapshot(userId, basketId) : null);
+    if (owner.split(":")[0] !== String(userId ?? "")) setCredits(null);
     setState({ phase: "idle" });
   }
-  const current = useRef(userId);
-  useEffect(() => { current.current = userId; }, [userId]);
+  // A result that arrives after the account or the basket changed is stored, but not shown.
+  const current = useRef(scope);
+  useEffect(() => { current.current = scope; }, [scope]);
   const busy = useRef(false);
 
   useEffect(() => {
@@ -57,9 +59,9 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
     const sent = fetchedItems(items);
     try {
       const result = await fetchBasketPrices(sent);
-      const next = snapshotFromFetch(userId, sent, result);
+      const next = snapshotFromFetch(userId, sent, result, basketId);
       writeSnapshot(next);
-      if (current.current !== userId) return;
+      if (current.current !== scope) return;
       setSnapshot(next);
       setCredits(result.credits);
       setState({ phase: "done", message: "Prix récupérés. " + (result.credits.unlimited ? "Crédits illimités."
@@ -70,7 +72,7 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
         afterFetch?.(concrete);
       }
     } catch (error) {
-      if (current.current !== userId) return;
+      if (current.current !== scope) return;
       if (error instanceof NoCreditsError) {
         setCredits(error.credits);
         setState({ phase: "error", message: shortText(error.credits, error.cost) });
@@ -78,10 +80,10 @@ export function useBasketPrices(userId: number | null, items: readonly BasketIte
         setState({ phase: "error", signedOut: true, message: "Votre session a expiré. Reconnectez-vous pour récupérer les prix." });
       } else {
         setState({ phase: "error", message: error instanceof Error && error.message ? error.message : "Impossible de récupérer les prix. Aucun crédit n’a été dépensé." });
-        readBasketCredits().then(value => { if (current.current === userId) setCredits(value); }).catch(() => { /* keep the last balance */ });
+        readBasketCredits().then(value => { if (current.current === scope) setCredits(value); }).catch(() => { /* keep the last balance */ });
       }
     } finally { busy.current = false; }
-  }, [userId, items, afterFetch]);
+  }, [userId, items, afterFetch, basketId, scope]);
 
   return { snapshot, credits, state, fetchPrices };
 }

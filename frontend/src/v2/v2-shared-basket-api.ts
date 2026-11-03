@@ -1,4 +1,4 @@
-import type { InvitePreview, SharedBasket, SharedSummary, WireOp } from "./v2-shared-basket";
+import type { InvitePreview, SharedBasket, SharedSettings, SharedSummary, WireOp } from "./v2-shared-basket";
 
 const BASE = "/api/v2/shared-baskets";
 
@@ -24,8 +24,8 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
 }
 
 export const listSharedBaskets = () => request<{ baskets: SharedSummary[]; limits: { owned: number; joined: number } }>("");
-export const createSharedBasket = (name: string, lines: WireOp[]) =>
-  request<SharedBasket>("", "POST", { name, lines: lines.flatMap(op => op.op === "add" ? [{ line: op.line, quantity: op.quantity, disabled: op.disabled }] : []) });
+export const createSharedBasket = (name: string, lines: WireOp[], settings?: Partial<SharedSettings>) =>
+  request<SharedBasket>("", "POST", { name, settings, lines: lines.flatMap(op => op.op === "add" ? [{ line: op.line, quantity: op.quantity, disabled: op.disabled }] : []) });
 export const readSharedBasket = (id: number, signal?: AbortSignal) => request<SharedBasket>(`/${id}`, "GET", undefined, signal);
 export const changeSharedBasket = (id: number, ops: WireOp[]) => request<SharedBasket>(`/${id}/changes`, "POST", { ops });
 export const renameSharedBasket = (id: number, name: string) => request<SharedBasket>(`/${id}`, "PATCH", { name });

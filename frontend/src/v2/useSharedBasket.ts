@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   SharedBasketError, changeSharedBasket, createSharedBasket, deleteSharedBasket, joinSharedBasket,
-  readSharedBasket, removeSharedMember, renameSharedBasket, renewSharedInvite, waitSharedBasket,
+  listSharedBaskets, readSharedBasket, removeSharedMember, renameSharedBasket, renewSharedInvite, waitSharedBasket,
 } from "./v2-shared-basket-api";
 import {
-  MAX_OPS, activityText, applyOps, diffOps, newFromOthers, readSharedId, sharedItems, wireOps, writeSharedId,
-  type LocalOp, type SharedBasket,
+  MAX_OPS, activityText, applyOps, applySettings, diffOps, newFromOthers, queueOps, readSharedId, sharedItems,
+  sharedSettings, wireOps, writeSharedId, type LocalOp, type SharedBasket, type SharedSettings,
 } from "./v2-shared-basket";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 
@@ -102,6 +102,20 @@ export function useSharedBasket(userId: number | null) {
     return () => controller.abort();
   }, [sharedId, accept, forget]);
 
+  // A shared basket created or joined on another device is found once per session, so its dock
+  // entry shows here too.
+  useEffect(() => {
+    if (!userId || sharedId) return;
+    const flag = `v2:basket:shared-looked:${userId}`;
+    try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag, "1"); } catch { return; }
+    let active = true;
+    listSharedBaskets().then(result => {
+      const latest = result.baskets[0];
+      if (active && latest && !readSharedId(userId)) { writeSharedId(userId, latest.id); setSharedId(latest.id); }
+    }).catch(() => { /* the list stays reachable from the basket page */ });
+    return () => { active = false; };
+  }, [userId, sharedId]);
+
   const flush = useCallback(async () => {
     if (sending.current) return;
     sending.current = true;
@@ -122,15 +136,21 @@ export function useSharedBasket(userId: number | null) {
   const current = basket?.id === sharedId ? basket : null;
   const base = useMemo(() => current ? sharedItems(current.lines) : null, [current]);
   const items = useMemo(() => applyOps(base?.items ?? [], pending, basketItemKey), [base, pending]);
+  const settings = useMemo(() => applySettings(sharedSettings(current), pending), [current, pending]);
   const lineByKey = useMemo(() => new Map((base?.items ?? []).map((item, index) => [basketItemKey(item), base!.lines[index]])), [base]);
 
   /** Turn the basket into `next`: the difference is shown now and sent to the server. */
   const edit = useCallback((next: BasketItem[]) => {
     const ops = diffOps(view(), next, basketItemKey);
     if (!ops.length) return;
-    queue.current.push(...ops); sync();
+    queue.current = queueOps(queue.current, ops); sync();
     void flush();
   }, [flush, sync, view]);
+  /** Change settings every member sees (filters, quantities, price or unit price, stores off, units). */
+  const setSettings = useCallback((patch: Partial<SharedSettings>) => {
+    queue.current = queueOps(queue.current, [{ op: "settings", patch }]); sync();
+    void flush();
+  }, [flush, sync]);
 
   const open = useCallback((id: number | null) => {
     if (!userId) return;
@@ -150,7 +170,7 @@ export function useSharedBasket(userId: number | null) {
   }, [forget]);
 
   return {
-    sharedId, basket: current, items, view, lines: base?.lines ?? [], unavailable: base?.unavailable ?? [],
+    sharedId, basket: current, items, view, settings, setSettings, lines: base?.lines ?? [], unavailable: base?.unavailable ?? [],
     status: (!current ? "connecting" : live ? "live" : "retrying") as SharedStatus,
     error, notice, activity, edit, open,
     clearNotice: () => setNotice(""),
@@ -161,11 +181,11 @@ export function useSharedBasket(userId: number | null) {
     },
     /** Remove a product line that can no longer be shown (withdrawn from the catalogue since). */
     dropUnavailable(productId: number) {
-      queue.current.push({ op: "remove", line: { kind: "product", product_id: productId }, key: "product:" + productId }); sync();
+      queue.current = queueOps(queue.current, [{ op: "remove", line: { kind: "product", product_id: productId }, key: "product:" + productId }]); sync();
       void flush();
     },
-    async create(name: string, from: BasketItem[]) {
-      const created = await act(() => createSharedBasket(name, wireOps(diffOps([], from, basketItemKey))), false);
+    async create(name: string, from: BasketItem[], startSettings?: Partial<SharedSettings>) {
+      const created = await act(() => createSharedBasket(name, wireOps(diffOps([], from, basketItemKey)), startSettings), false);
       if (created) { open(created.id); accept(created); }
       return created;
     },

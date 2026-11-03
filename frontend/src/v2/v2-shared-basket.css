@@ -27,6 +27,8 @@
 .v2-shared-start > h3:first-child, .v2-shared-invite > h3:first-child { margin-top: 0; }
 .v2-shared-create { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 10px 0; }
 .v2-shared-create label { flex: 1 1 220px; }
+.v2-shared-create .v2-shared-copy { display: flex; flex: 1 1 100%; align-items: center; gap: 8px; font-weight: 600; }
+.v2-shared-copy input { width: auto; min-height: 0; }
 .v2-shared-hint { font-size: .88rem; color: var(--v2-muted, #617467); }
 .v2-shared-list, .v2-shared-members { margin: 6px 0 0; padding: 0; list-style: none; }
 .v2-shared-list li, .v2-shared-members li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid #e3ece3; overflow-wrap: anywhere; }

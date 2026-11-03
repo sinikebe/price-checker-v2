@@ -112,7 +112,7 @@ test("a page is reported by its kind, never by its address", () => {
     "/v2/produits/12/modifier": "product_edit", "/v2/produits/nouveau": "product_edit", "/v2/brouillons/4": "product_edit",
     "/v2/categories/Lait%20demi": "category", "/v2/magasins": "stores", "/v2/magasins/9": "store", "/v2/recettes": "recipes",
     "/v2/recettes/3": "recipe", "/v2/recettes/nouvelle": "recipe", "/v2/recettes/privees/3": "recipe",
-    "/v2/recettes/privees/3/modifier": "recipe", "/v2/panier": "basket", "/v2/parametres/serveur": "settings",
+    "/v2/recettes/privees/3/modifier": "recipe", "/v2/panier": "basket", "/v2/panier/partage": "basket", "/v2/panier/liste": "basket", "/v2/panier/partage/liste": "basket", "/v2/parametres/serveur": "settings",
     "/v2/settings/database": "settings", "/v2/capture": "capture", "/v2/a-completer": "completion", "/v2/connexion": "auth",
     "/v2/inscription": "auth", "/v2/versions": "versions", "/v2/changelog/products": "changelog", "/v2/mentions-legales": "legal",
     "/v2/panier/": "basket", "/v2/inconnu": "other", "/v2/produits/12/jean.dupont@example.org": "other",

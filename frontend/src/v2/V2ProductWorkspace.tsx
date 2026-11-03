@@ -11,7 +11,7 @@ import V2PriceDraftInbox from "./V2PriceDraftInbox";
 import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
 import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
-import { useV2Basket } from "./V2BasketContext";
+import V2BasketAddButtons from "./V2BasketAddButtons";
 import V2ShareButton from "./V2ShareButton";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -380,7 +380,6 @@ function Editor({ mode, id, user, onLogout }: Props) {
 }
 
 function Detail({ mode, id, user, onLogout }: Props) {
-  const basket = useV2Basket();
   const { data: product, error } = useCollection<Product>("/" + id);
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
@@ -392,7 +391,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>
       <V2ShareButton title={[d.brand, d.name].filter(Boolean).join(" ")} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
       <p>{d.commercial_name || d.quantity}</p></div>
-      <div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => product && (basket.has(product.id) ? basket.remove(product.id) : basket.add(product))}>{basket.has(product.id) ? "Retirer du panier" : "Ajouter au panier"}</button><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
+      <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
     <nav className="v2-workspace-subnav"><Link to={"/v2/produits/" + id}>Fiche</Link><Link to={"/v2/produits/" + id + "/historique"}>Historique</Link></nav>
     {mode === "history" ? <div className="v2-workspace-card"><h2>Historique des modifications</h2>

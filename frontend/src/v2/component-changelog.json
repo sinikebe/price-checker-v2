@@ -865,6 +865,50 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.128",
+      "components": {
+        "application": {
+          "version": "0.1.128",
+          "notes": [
+            "Le panier partagé a sa propre entrée dans la barre du bas, à côté de votre panier.",
+            "Chaque panier a sa liste de courses, magasin par magasin, à cocher en rayon."
+          ]
+        },
+        "basket": {
+          "version": "0.1.39",
+          "notes": [
+            "Panier personnel et panier partagé existent côte à côte ; les réglages du panier partagé sont les mêmes pour tous ses membres, en direct.",
+            "« Liste de courses » : la répartition la moins chère par magasin, ou tout le panier dans un magasin, avec en tête ce qui n’y a pas de prix.",
+            "Les articles cochés de la liste d’un panier partagé le sont pour tous ses membres."
+          ]
+        },
+        "products": {
+          "version": "0.1.60",
+          "notes": [
+            "Une fiche produit, un groupe ou un ensemble s’ajoute à votre panier ou au panier partagé."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.24",
+          "notes": [
+            "Les ingrédients d’une recette s’ajoutent à votre panier ou au panier partagé."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.34",
+          "notes": [
+            "Un panier partagé créé ou rejoint sur un autre appareil apparaît après la connexion."
+          ]
+        },
+        "database": {
+          "version": "0.1.43",
+          "notes": [
+            "La mise à jour ajoute les réglages communs des paniers partagés."
+          ]
+        }
+      }
     }
   ]
 }
