@@ -49,13 +49,14 @@ export function useSavedLists(userId: number | null) {
           else { await deleteList(op.id); keep(serverRef.current.filter(list => list.id !== op.id)); }
           queue.current.shift(); setOffline(false); setError("");
         } catch (reason) {
-          if (!(reason instanceof ListError) || reason.status === 429 || reason.status >= 500) {
-            if (!(reason instanceof ListError)) setOffline(true); else setError(message(reason));
+          if (!(reason instanceof ListError) || reason.status === 401 || reason.status === 429 || reason.status >= 500) {
+            // No answer, signed out, or not now: the change waits for the next try.
+            if (!(reason instanceof ListError)) setOffline(true);
+            else setError(reason.status === 401 ? "Votre session a expiré : reconnectez-vous, vos changements seront envoyés ensuite." : message(reason));
             break;
           }
           // Refused (too many lists, a list gone): the change is dropped and the server copy wins.
           queue.current.shift(); setError(message(reason));
-          if (reason.status === 401) break;
         } finally { sync(); }
       }
     } finally { sending.current = false; }

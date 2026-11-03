@@ -154,10 +154,11 @@ export function useSharedBasket(userId: number | null) {
           inflight.current = []; accept(next); setError("");
         } catch (reason) {
           if (reason instanceof SharedBasketError && reason.status === 404) { forget(GONE); return; }
-          if (!(reason instanceof SharedBasketError) || reason.status === 429 || reason.status >= 500) {
-            // No answer, or not now: keep the changes, in order, for the next try.
+          if (!(reason instanceof SharedBasketError) || reason.status === 401 || reason.status === 429 || reason.status >= 500) {
+            // No answer, signed out, or not now: keep the changes, in order, for the next try.
             queue.current = [...inflight.current, ...queue.current]; inflight.current = [];
-            if (!(reason instanceof SharedBasketError)) setOffline(true); else setError(message(reason));
+            if (!(reason instanceof SharedBasketError)) setOffline(true);
+            else setError(reason.status === 401 ? "Votre session a expiré : reconnectez-vous, vos modifications seront envoyées ensuite." : message(reason));
             break;
           }
           // Refused: the server state wins and the change disappears from the screen.
