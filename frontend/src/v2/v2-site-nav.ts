@@ -19,7 +19,7 @@ export function dockItems(followsShared: boolean): readonly DockItem[] {
 }
 
 /** Pages that belong to a dock item but sit under another section's path, or none at all. */
-const NOT_IN_DOCK = ["/v2/produits/nouveau"];
+const NOT_IN_DOCK = ["/v2/produits/nouveau", "/v2/panier/demo"];
 
 /** The dock item the page belongs to, or null for pages reached from the profile menu. */
 export function activeDockId(pathname: string): DockId | null {
@@ -120,7 +120,7 @@ export function backTarget(pathname: string): string | null {
   const path = normalize(pathname);
   if (path === "/" || path === "/v2") return null;
   if (path.startsWith("/v2/categories/")) return "/v2/produits";
-  if (path === "/v2/capture/installer") return "/v2";
+  if (path === "/v2/capture/installer" || path === "/v2/panier/demo") return "/v2";
   const parts = path.split("/").filter(Boolean);
   return parts.length <= 2 ? "/v2" : "/" + parts.slice(0, -1).join("/");
 }

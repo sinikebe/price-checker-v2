@@ -4,14 +4,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
 import { useBasketView } from "./useBasketView";
 import V2BasketShare from "./V2BasketShare";
+import V2DemoBasketSave from "./V2DemoBasketSave";
 import { SharedBanner, SharedInvite, SharedJoin, SharedStart } from "./V2SharedBasket";
 import { SHARED_BASKET_PATH, inviteFromHash, takePendingInvite } from "./v2-shared-basket";
 import V2BasketItems from "./V2BasketItems";
 import V2ShoppingList from "./V2ShoppingList";
-import { shoppingListPath, type ListView } from "./v2-shopping-list";
+import { listSetting, shoppingListPath, type ListView } from "./v2-shopping-list";
 import V2BasketFilters from "./V2BasketFilters";
 import V2BasketResults from "./V2BasketResults";
-import V2BasketToolbar, { type BasketPanel } from "./V2BasketToolbar";
+import V2BasketToolbar, { V2BasketFetch, type BasketPanel } from "./V2BasketToolbar";
 import { basketFetchCost, useBasketPrices } from "./useBasketPrices";
 import { useExtensionRefresh } from "./useExtensionRefresh";
 import { readBasketDefaultStores, writeBasketDefaultStores } from "./v2-basket-default-stores";
@@ -20,12 +21,11 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, postalDepartment, reactivationGains, readingKey, splitSavings, type UnitChoices } from "./v2-basket-comparison";
+import { useBasketComparison } from "./useBasketComparison";
 import { withStoreOff } from "./v2-basket-store-off";
 import type { BaseUnit } from "./v2-basket-quantity";
 import { withUnitChoice } from "./v2-measures";
-import { snapshotView } from "./v2-basket-snapshot";
-import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
+import { FIRST_STORES, MORE_STORES, comparisonTitle, fetchedLabel, itemName, type Category } from "./v2-basket-view";
 import { balanceText, costNote, creditLabel, outOfCredits, shortText } from "./v2-basket-credits-api";
 import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
@@ -51,9 +51,6 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   const { advanced, mode, filters, setFilters } = display;
   const toggleAdvanced = display.setAdvanced;
   const changeMode = display.setMode;
-  const unitChoices = useMemo<UnitChoices>(() => item => display.units[basketItemKey(item)], [display.units]);
-  // Stores switched off in the split by hand: still in the filters and in the store ranking.
-  const storesOff = useMemo(() => new Set(display.storesOff), [display.storesOff]);
   const location = useLocation();
   const navigate = useNavigate();
   const sharedLink = location.hash.startsWith("#panier=");
@@ -130,38 +127,15 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
     return () => controller.abort();
   }, [hasComparable, panel]);
 
-  const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);
-  const comparison = useMemo(() => view.lines.length
-    ? buildBasketComparison(view.lines, view.responses, filters, advanced, new Set(), mode, unitChoices) : null, [view, filters, advanced, mode, unitChoices]);
-  // The split leaves out the stores switched off; the store ranking does not. Only the stores of this
-  // basket's prices matter: one saved for another basket changes nothing here.
-  const presentOff = useMemo(() => new Set([...storesOff].filter(key => [...view.responses.values()]
-    .some(response => response?.latest_by_store.some(row => readingKey(row) === key)))), [storesOff, view]);
-  const split = useMemo(() => comparison && presentOff.size
-    ? buildBasketComparison(view.lines, view.responses, filters, advanced, presentOff, mode, unitChoices) : comparison,
-  [comparison, presentOff, view, filters, advanced, mode, unitChoices]);
-  const savings = useMemo(() => split ? splitSavings(view.lines, view.responses, filters, advanced, split, mode, unitChoices, presentOff) : new Map(),
-    [split, view, filters, advanced, mode, unitChoices, presentOff]);
-  const gains = useMemo(() => split && presentOff.size ? reactivationGains(view.lines, view.responses, filters, advanced, split, presentOff, mode, unitChoices) : new Map(),
-    [split, view, filters, advanced, mode, unitChoices, presentOff]);
+  // Stores switched off in the split by hand stay in the filters and in the store ranking.
+  const { view, comparison, split, savings, lineItems, availableRows, offStores, storeNames, cityOptions, departmentOptions, hasOpenPrices, filterCount } =
+    useBasketComparison(snapshot, activeItems, display);
   const setStoreActive = (key: string, active: boolean) => display.setStoresOff(withStoreOff(display.storesOff, key, !active));
   const chooseUnit = (item: BasketItem, unit: BaseUnit) =>
     display.setUnits(withUnitChoice(display.units, basketItemKey(item), unit, items.map(basketItemKey)));
-  const lineItems = view.lines.map(line => line.item);
-  const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
-  const offStores = display.storesOff.flatMap(key => {
-    const reading = availableRows.find(row => readingKey(row) === key);
-    return reading ? [{ key, reading, gain: gains.get(key) ?? null }] : [];
-  });
-  const storeNames = new Map<number, string>();
-  for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
   for (const store of defaultStores) if (!storeNames.has(store.id)) storeNames.set(store.id, store.name);
   const storeOptions = [...new Set([...storeNames.keys(), ...filters.storeIds])]
     .sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
-  const cityOptions = [...new Set(availableRows.map(row => row.city?.trim()).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
-  const departmentOptions = [...new Set(availableRows.map(row => postalDepartment(row.postal_code)).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
-  const hasOpenPrices = comparison?.stores.some(store => store.choices.some(choice => choice.reading.source_provider === "open_prices")) ?? false;
-  const filterCount = filters.storeIds.length + filters.cities.length + filters.departments.length;
   const defaultsMatch = filters.storeIds.length === defaultStores.length
     && filters.storeIds.every(id => defaultStores.some(store => store.id === id));
   const defaults = {
@@ -238,7 +212,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
       {items.length ? <>
         <V2BasketToolbar panel={panel} onPanel={setPanel} itemCount={items.length} activeCount={activeItems.length}
           advanced={advanced} onAdvanced={toggleAdvanced} unitMode={mode === "unit"} onUnitMode={value => changeMode(value ? "unit" : "price")} filterCount={filterCount} filtersAvailable={!!comparison}
-          signedIn={!!user} credits={credits} cost={fetchCost} hasPrices={!!snapshot} fetching={fetching} onFetch={() => void fetchPrices()} />
+          action={<V2BasketFetch signedIn={!!user} credits={credits} cost={fetchCost} hasPrices={!!snapshot} fetching={fetching} onFetch={() => void fetchPrices()} />} />
         <div className="v2-basket-status">
           {fetching && <p role="status">Récupération des prix…</p>}
           {extension.state.phase === "reading" && <p role="status" className="v2-basket-extension">Extension : lecture des prix {extension.state.store}… {extension.state.done}/{extension.state.total}
@@ -252,7 +226,8 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           {sharing ? <SharedInvite shared={shared} user={user} /> : <SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault />}
           <h3 className="v2-shared-copy-title">Envoyer une copie</h3>
           <p className="v2-shared-hint">Une copie figée du panier, sans compte et sans rien enregistrer sur le serveur.</p>
-          <V2BasketShare items={items} url={shareUrl} /></div>}
+          <V2BasketShare items={items} url={shareUrl} />
+          {user?.role === "admin" && <V2DemoBasketSave items={items} settings={{ ...personalSettings, list_mode: listSetting(display.listView) }} />}</div>}
         {panel === "items" && <V2BasketItems items={items} advanced={advanced} categories={categories} categoryError={categoryError}
           actions={{ setEnabled, setQuantity, replace, remove, clear }}
           addedBy={sharing ? shared.addedBy : undefined} sharedName={shared.basket?.name} />}
@@ -269,7 +244,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
                 <h2>Comparer les prix</h2>
                 <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${balanceText(credits)})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
               </> : <>
-                <div className="v2-basket-comparison-heading"><div><h2>{mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité" : advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
+                <div className="v2-basket-comparison-heading"><div><h2>{comparisonTitle(mode, advanced)}</h2>
                   <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>
                   <button type="button" className="v2-button v2-button-secondary v2-list-entry" onClick={() => openList({ kind: "stores" })}>Liste de courses →</button>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits, fetchCost)}.</p>}

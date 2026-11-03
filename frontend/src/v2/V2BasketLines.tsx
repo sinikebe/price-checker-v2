@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import V2BasketLink from "./V2BasketLink";
 import { pricePosition, type PriceChoice } from "./v2-basket-comparison";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import type { BaseUnit } from "./v2-basket-quantity";
@@ -32,10 +32,10 @@ function DatedPrice({ choice, range, onUnit }: { choice: PriceChoice; range: { m
 }
 
 function ChoiceLabel({ choice, advanced }: { choice: PriceChoice; advanced: boolean }) {
-  return <span className="v2-basket-choice"><Link to={itemHref(choice.item)}>{itemName(choice.item)}</Link>
+  return <span className="v2-basket-choice"><V2BasketLink to={itemHref(choice.item)}>{itemName(choice.item)}</V2BasketLink>
     {advanced && choice.item.quantity && <small>Demandé : {quantityText(choice.item.quantity)}</small>}
-    {!("kind" in choice.item) && choice.product.id !== choice.item.id && <small>Référence actuelle : <Link to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</Link></small>}
-    {"kind" in choice.item && <small>Choix : <Link to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</Link>
+    {!("kind" in choice.item) && choice.product.id !== choice.item.id && <small>Référence actuelle : <V2BasketLink to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</V2BasketLink></small>}
+    {"kind" in choice.item && <small>Choix : <V2BasketLink to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</V2BasketLink>
       {choice.product.data.quantity && " · " + choice.product.data.quantity}</small>}</span>;
 }
 

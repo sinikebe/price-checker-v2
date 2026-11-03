@@ -1155,6 +1155,17 @@ MIGRATIONS = {
         -- A shopping list is now always the live view of a basket: saved copies are no longer kept.
         DROP TABLE v2_saved_lists;
     """,
+    "0046_demo_basket": """
+        -- The demo basket of the home page, saved by an administrator from a basket: its articles, its
+        -- settings and the prices read when it was saved, shown to anyone. One row at most; without
+        -- it, the app shows its own fictional example. Nothing in it points to an account.
+        CREATE TABLE v2_demo_basket (
+            id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            title varchar(80) NOT NULL CHECK (btrim(title) <> ''),
+            content jsonb NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+            saved_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
 }
 
 

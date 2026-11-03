@@ -62,6 +62,12 @@ export function storeName(row: BasketPrice) {
 export const quantityText = (quantity: NonNullable<BasketItem["quantity"]>) =>
   quantity.amount + " " + (quantity.unit === "package" ? "paquet(s)" : quantity.unit === "piece" ? "pièce(s)" : quantity.unit);
 
+/** The title of a basket's results, from its settings. */
+export function comparisonTitle(mode: CompareMode, advanced: boolean): string {
+  return mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité"
+    : advanced ? "Estimation des achats" : "Meilleur prix";
+}
+
 /** Stores listed at first, and added by each "see more". */
 export const FIRST_STORES = 2;
 export const MORE_STORES = 5;
