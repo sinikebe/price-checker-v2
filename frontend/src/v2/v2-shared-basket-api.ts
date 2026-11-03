@@ -1,4 +1,5 @@
-import type { InvitePreview, SharedBasket, SharedSettings, SharedSummary, WireOp } from "./v2-shared-basket";
+import type { InvitePreview, SharedBasket, SharedPrices, SharedSettings, SharedSummary, SharedView, WireOp } from "./v2-shared-basket";
+import { NoCreditsError, SignedOutError, type BasketCredits } from "./v2-basket-credits-api";
 
 const BASE = "/api/v2/shared-baskets";
 
@@ -45,3 +46,29 @@ export async function waitSharedBasket(id: number, revision: number, signal: Abo
   if (!response.ok) throw new SharedBasketError("Le panier partagé ne répond pas.", response.status);
   return { basket: await response.json() as SharedBasket, retryAfter: 0 };
 }
+
+/** The prices a member fetched for the basket (null: never fetched). */
+export const readSharedBasketPrices = (id: number, signal?: AbortSignal) => request<{ prices: SharedPrices | null }>(`/${id}/prices`, "GET", undefined, signal);
+
+/** Fetch the basket's prices with this account's credits (one per included article): every member then sees them. */
+export async function fetchSharedBasketPrices(id: number, cost: number): Promise<{ prices: SharedPrices; credits: BasketCredits; cost: number }> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}/${id}/prices`, { method: "POST", credentials: "same-origin", cache: "no-store" });
+  } catch { throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer."); }
+  if (response.status === 401) throw new SignedOutError();
+  if (response.status === 429) {
+    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
+    if (body?.detail?.code === "no_credits" && body.detail.credits) throw new NoCreditsError(body.detail.credits, body.detail.cost ?? cost, body.detail.message);
+    throw new Error("Trop de requêtes. Réessayez dans un instant.");
+  }
+  if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null);
+    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
+    throw new SharedBasketError(typeof detail === "string" ? detail : "Impossible de récupérer les prix. Aucun crédit n’a été dépensé.", response.status);
+  }
+  return response.json() as Promise<{ prices: SharedPrices; credits: BasketCredits; cost: number }>;
+}
+
+/** A shared basket through its link, without an account: read only. */
+export const viewSharedBasket = (invite: string, signal?: AbortSignal) => request<SharedView>("/view", "POST", { invite }, signal);

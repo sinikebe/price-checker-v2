@@ -225,3 +225,27 @@ html[data-v2-theme="dark"] .v2-basket-unit-note { background: #47351f; color: #f
 .v2-basket-tool:disabled, .v2-list-modes:disabled label { opacity: .5; cursor: not-allowed; }
 .v2-shared-synced { color: var(--v2-muted, #617467); }
 html[data-v2-theme="dark"] .v2-basket-offline-note { border-color: #6b5530; background: #3a3020; color: #f3dcb6; }
+
+/* Free text: articles not in the catalogue yet, and their replacement. */
+.v2-basket-text-add { display: grid; gap: 6px; margin: 0 0 16px; }
+.v2-basket-text-add label { display: grid; gap: 6px; font-weight: 700; }
+.v2-basket-text-add-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-basket-text-add input { flex: 1 1 240px; min-height: 42px; padding: 8px 12px; border: 1px solid #c5d6c8; border-radius: 10px; font: inherit; background: #fff; color: inherit; }
+.v2-basket-text-add small { color: var(--v2-muted, #617467); }
+.v2-basket-text-add p { margin: 0; }
+.v2-basket-replace { display: grid; gap: 8px; margin-top: 10px; padding: 12px 14px; border: 1px dashed #9cc0a6; border-radius: 12px; background: #f7faf4; }
+.v2-basket-replace label { display: grid; gap: 5px; font-weight: 700; }
+.v2-basket-replace input { min-height: 40px; padding: 7px 11px; border: 1px solid #c5d6c8; border-radius: 9px; font: inherit; background: #fff; color: inherit; }
+.v2-basket-replace h4 { margin: 6px 0 0; font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; color: #328359; }
+.v2-basket-replace ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.v2-basket-replace li button { display: grid; gap: 2px; width: 100%; padding: 8px 11px; border: 1px solid #dce8db; border-radius: 10px; background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.v2-basket-replace li button:hover:not(:disabled) { border-color: #6dbb77; }
+.v2-basket-replace li button:disabled { opacity: .55; cursor: not-allowed; }
+.v2-basket-replace li small, .v2-basket-replace-note { color: var(--v2-muted, #617467); font-size: .85rem; }
+.v2-basket-replace-note { margin: 0; }
+.v2-basket-replace > .v2-basket-remove { justify-self: start; }
+.v2-basket-replace-open { min-height: 38px; padding: 6px 12px; font-size: .86rem; }
+html[data-v2-theme="dark"] .v2-basket-text-add input, html[data-v2-theme="dark"] .v2-basket-replace input,
+html[data-v2-theme="dark"] .v2-basket-replace li button { background: #14231f; border-color: #355248; }
+html[data-v2-theme="dark"] .v2-basket-replace { background: #1e3a2e; border-color: #517164; }
+html[data-v2-theme="dark"] .v2-basket-replace h4 { color: #a5dfaa; }

@@ -141,7 +141,8 @@ EVENTS: dict[str, Event] = {
     "connector.worker.failed": Event("connector", "error", {"error": pattern(r"[A-Za-z][A-Za-z0-9_]{0,59}")}, connector=True),
     "basket.prices.fetched": Event("basket", "info", {
         "items": integer(0, 1000), "products": integer(0, 100_000), "truncated": boolean(),
-        "credits_left": integer(0, 1000), "unlimited": boolean()}, frozenset({"credits_left", "unlimited"})),
+        "credits_left": integer(0, 1000), "unlimited": boolean(), "shared": boolean()},
+        frozenset({"credits_left", "unlimited", "shared"})),
     "basket.prices.refused": Event("basket", "info", {"reason": choice("no_credits")}),
     "basket.demo.saved": Event("basket", "info", {"items": integer(0, 1000), "products": integer(0, 100_000)}),
     "basket.demo.removed": Event("basket", "info"),
