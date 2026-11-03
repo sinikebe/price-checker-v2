@@ -689,6 +689,16 @@
       "component": "products",
       "version": "0.1.59",
       "reason": "Règle de visibilité partagée avec les recettes, sans changement pour les produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.31",
+      "reason": "Bouton d’ajout au panier de la fiche produit, sans changement pour Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.29",
+      "reason": "Boutons d’ajout au panier des pages de groupe, sans changement pour Open Prices."
     }
   ]
 }
