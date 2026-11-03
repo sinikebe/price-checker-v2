@@ -7,7 +7,7 @@ import V2CatalogueSearch from "./V2CatalogueSearch";
 import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
 import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
 import { productRequest, type Product } from "./v2-products-api";
-import { useV2Basket } from "./V2BasketContext";
+import V2BasketAddButtons from "./V2BasketAddButtons";
 import { productSizeIn } from "./v2-basket-quantity";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
@@ -305,13 +305,13 @@ function ClassificationEditor({ name, current, onSaved }: {
   </form>;
 }
 
-function ComparisonContent({ detail, showGroup = false, awaitingPrices = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean }) {
+function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, admin = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean; admin?: boolean }) {
   const [params, setParams] = useSearchParams();
   const page = pageNumber(params), size = pageSize(params);
   const subset = params.get("subset") || "";
   const products = detail.products;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
-  const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id));
+  const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id), admin);
   const availableMetrics = unitMetrics.map(unit => ({
     unit, count: selectedProducts.filter(product => quantityFor(product, unit)).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
@@ -369,7 +369,6 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false }
 }
 
 function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
-  const basket = useV2Basket();
   const basketGroup: BasketGroup = { kind: "group", name };
   const { data, error } = useCatalogue<CategoryDetail>("/categories/" + encodeURIComponent(name));
   const groupName = data?.name || name;
@@ -393,18 +392,17 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
     <div className="v2-workspace-heading"><div><LevelBadge level="group" />
       <div className="v2-share-title-row"><h1>{data?.name || name}<span>.</span></h1>
       {data && <V2ShareButton title={"Groupe comparable · " + (data.name || name)} url={window.location.origin + "/v2/categories/" + encodeURIComponent(data.name || name)} />}</div><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
-      {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketGroup) ? basket.remove(basketGroup) : basket.add(basketGroup)}>{basket.has(basketGroup) ? "Retirer ce groupe du panier" : "Ajouter ce groupe au panier"}</button>}</div>
+      {data && <V2BasketAddButtons item={basketGroup} what="group" />}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
-      <ComparisonContent detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
+      <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }
 
 function ScopePage({ department, family, scope, user, onLogout }: Props & { department: string; family: string; scope: string }) {
-  const basket = useV2Basket();
   const basketScope: BasketScope = { kind: "scope", name: scope, department, family };
   const query = new URLSearchParams({ department, family, scope });
   const { data, error } = useCatalogue<ScopeDetail>("/comparison?" + query.toString());
@@ -420,7 +418,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
     <div className="v2-workspace-heading"><div><LevelBadge level="scope" />
       <div className="v2-share-title-row"><h1>{scope}<span>.</span></h1>
       {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div><p>Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis.</p></div>
-      {data && <button type="button" className="v2-button v2-button-primary" onClick={() => basket.has(basketScope) ? basket.remove(basketScope) : basket.add(basketScope)}>{basket.has(basketScope) ? "Retirer cet ensemble du panier" : "Ajouter cet ensemble au panier"}</button>}</div>
+      {data && <V2BasketAddButtons item={basketScope} what="scope" />}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       <h2>Groupes comparables inclus</h2>
       <div className="v2-workspace-list">{data.groups.map(group =>
@@ -430,7 +428,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
         </Link>)}</div>
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
-      <ComparisonContent detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
+      <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
   </Frame>;
 }

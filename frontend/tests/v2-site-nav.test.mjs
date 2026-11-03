@@ -7,12 +7,21 @@ const source = readFileSync(new URL("../src/v2/v2-site-nav.ts", import.meta.url)
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, initials, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
+const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
 test("the dock has the five main sections, each with a distinct address", () => {
   assert.deepEqual(DOCK_ITEMS.map(item => item.id), ["home", "products", "stores", "recipes", "basket"]);
   assert.equal(new Set(DOCK_ITEMS.map(item => item.to)).size, DOCK_ITEMS.length);
+});
+
+test("the shared basket gets its own dock entry once the account follows one", () => {
+  assert.deepEqual(dockItems(false).map(item => item.id), ["home", "products", "stores", "recipes", "basket"]);
+  assert.deepEqual(dockItems(true).map(item => item.id), ["home", "products", "stores", "recipes", "basket", "shared"]);
+  assert.equal(dockItems(true).at(-1).to, "/v2/panier/partage");
+  assert.equal(new Set(dockItems(true).map(item => item.to)).size, 6);
+  assert.equal(sharedBasketLabel(0), "Panier partagé, vide");
+  assert.equal(sharedBasketLabel(3), "Panier partagé, 3 articles");
 });
 
 test("every page maps to the right dock item", () => {
@@ -21,13 +30,16 @@ test("every page maps to the right dock item", () => {
     ["/v2/produits", "products"], ["/v2/produits/12", "products"], ["/v2/produits/12/historique", "products"],
     ["/v2/categories/Lait", "products"], ["/v2/magasins", "stores"], ["/v2/magasins/7", "stores"],
     ["/v2/recettes", "recipes"], ["/v2/recettes/nouvelle", "recipes"], ["/v2/panier", "basket"],
+    ["/v2/panier/partage", "shared"], ["/v2/panier/partage/", "shared"], ["/v2/panier/partage/liste", "shared"],
+    ["/v2/panier/liste", "basket"],
   ];
   for (const [path, id] of cases) assert.equal(activeDockId(path), id, path);
 });
 
 test("pages reached from the profile menu highlight no dock item", () => {
   for (const path of ["/v2/produits/nouveau", "/v2/brouillons", "/v2/moderation", "/v2/a-completer", "/v2/capture",
-    "/v2/capture/installer", "/v2/parametres", "/v2/parametres/securite", "/v2/connexion", "/v2/produitsx", "/v2/recettesx"])
+    "/v2/capture/installer", "/v2/parametres", "/v2/parametres/securite", "/v2/connexion", "/v2/produitsx", "/v2/recettesx",
+    "/v2/panier/demo", "/v2/panier/demo/liste"])
     assert.equal(activeDockId(path), null, path);
 });
 
@@ -108,6 +120,7 @@ test("the back button has no target on the home page and goes up one level elsew
     ["/v2/magasins/7", "/v2/magasins"], ["/v2/brouillons/3", "/v2/brouillons"], ["/v2/parametres/securite", "/v2/parametres"],
     ["/v2/categories/Lait", "/v2/produits"], ["/v2/categories/P%C3%A2tes%2Friz", "/v2/produits"],
     ["/v2/capture/installer", "/v2"], ["/v2/produits/12/", "/v2/produits"],
+    ["/v2/panier/demo", "/v2"], ["/v2/panier/demo/liste", "/v2/panier/demo"],
   ];
   for (const [path, parent] of cases) assert.equal(backTarget(path), parent, path);
 });

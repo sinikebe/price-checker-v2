@@ -115,6 +115,14 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             "INSERT INTO v2_recipes(author_id,title,base_servings,steps) "
             "VALUES($1,'Other recipe',2,'[\"Mix\"]'::jsonb)", other_id,
         )
+        private_recipe_id = await connection.fetchval(
+            "INSERT INTO v2_recipes(author_id,title,base_servings,steps,private) "
+            "VALUES($1,'My own recipe',2,'[\"Mix\"]'::jsonb,true) RETURNING id", user_id,
+        )
+        await connection.execute(
+            "INSERT INTO v2_recipe_ingredients(recipe_id,position,label,group_name) "
+            "VALUES($1,0,'Salt','Salt')", private_recipe_id,
+        )
         await connection.execute(
             "INSERT INTO v2_retailers(code,name) VALUES('ci','CI')"
         )
@@ -155,6 +163,10 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             "INSERT INTO v2_recipe_submissions(author_id,payload) VALUES($1,$2::jsonb)",
             user_id, json.dumps({"title": "Pending private recipe"}),
         )
+        await connection.execute(
+            "INSERT INTO v2_recipe_submissions(author_id,recipe_id,base_revision,payload) "
+            "VALUES($1,$2,1,'{}'::jsonb)", user_id, private_recipe_id,
+        )
         transport = httpx.ASGITransport(app=app, client=("192.0.2.20", 443))
         async with httpx.AsyncClient(transport=transport, base_url="https://test") as client:
             client.cookies.set("pc_v2_session", first_token, path="/api/v2")
@@ -171,6 +183,7 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
             exported = await client.get("/api/v2/account/export")
             assert exported.status_code == 200
             assert exported.json()["recipe_submissions"][0]["payload"]["title"] == "Pending private recipe"
+            assert [recipe["private"] for recipe in exported.json()["recipes"]] == [False, True]
             wrong = await client.request(
                 "DELETE", "/api/v2/account", json={"password": "incorrect"}
             )
@@ -218,6 +231,16 @@ async def test_delete_account_preserves_anonymous_public_content(isolated_db):
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_recipe_submissions WHERE author_id=$1", user_id
         ) == 0
+        # A private recipe is the account's own data: it does not outlive it.
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_recipes WHERE id=$1", private_recipe_id
+        ) == 0
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_recipe_ingredients WHERE recipe_id=$1", private_recipe_id
+        ) == 0
+        assert await connection.fetchval(
+            "SELECT count(*) FROM v2_recipes WHERE author_id=$1", other_id
+        ) == 1
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_content_reports WHERE reporter_id=$1", user_id
         ) == 0

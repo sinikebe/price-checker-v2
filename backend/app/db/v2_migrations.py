@@ -1064,6 +1064,108 @@ MIGRATIONS = {
         );
         CREATE INDEX v2_credit_rewards_user_idx ON v2_credit_rewards(user_id, created_at DESC);
     """,
+    "0041_private_recipes": """
+        -- A private recipe is seen by its author only: saved without review, never listed,
+        -- cached offline or exported with public content. Publishing it goes through review.
+        ALTER TABLE v2_recipes ADD COLUMN private boolean NOT NULL DEFAULT false;
+        CREATE INDEX v2_private_recipes_author_idx ON v2_recipes(author_id, lower(title), id)
+            WHERE private;
+        -- Only public recipes change the revision the PWA watches, so a private save does not
+        -- make every device download the public list again.
+        DROP TRIGGER v2_recipes_pwa_version ON v2_recipes;
+        CREATE TRIGGER v2_recipes_pwa_version_insert AFTER INSERT ON v2_recipes
+            FOR EACH ROW WHEN (NOT NEW.private) EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_recipes_pwa_version_update AFTER UPDATE ON v2_recipes
+            FOR EACH ROW WHEN (NOT OLD.private OR NOT NEW.private)
+            EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_recipes_pwa_version_delete AFTER DELETE ON v2_recipes
+            FOR EACH ROW WHEN (NOT OLD.private) EXECUTE FUNCTION v2_bump_pwa_version();
+    """,
+    "0042_shared_baskets": """
+        -- A basket shared on purpose by its owner, edited live by the accounts that joined it
+        -- through an invitation link. The personal basket stays on each device. A shared
+        -- basket stays until its owner deletes it or deletes the account (ON DELETE CASCADE).
+        -- The invitation is an HMAC of (id, invite_version) with the installation secret:
+        -- nothing secret is stored, and a new version cancels the previous link.
+        CREATE TABLE v2_shared_baskets (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            owner_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            name varchar(80) NOT NULL CHECK (btrim(name) <> ''),
+            invite_version integer NOT NULL DEFAULT 1 CHECK (invite_version > 0),
+            revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_shared_baskets_owner_idx ON v2_shared_baskets(owner_id);
+        -- The owner is a member too.
+        CREATE TABLE v2_shared_basket_members (
+            basket_id bigint NOT NULL REFERENCES v2_shared_baskets(id) ON DELETE CASCADE,
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            joined_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (basket_id, user_id)
+        );
+        CREATE INDEX v2_shared_basket_members_user_idx ON v2_shared_basket_members(user_id);
+        CREATE TABLE v2_shared_basket_lines (
+            id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            basket_id bigint NOT NULL REFERENCES v2_shared_baskets(id) ON DELETE CASCADE,
+            line_key varchar(400) NOT NULL,
+            kind varchar(8) NOT NULL CHECK (kind IN ('product', 'group', 'scope')),
+            product_id bigint,
+            label varchar(200) NOT NULL CHECK (btrim(label) <> ''),
+            department varchar(80),
+            family varchar(80),
+            quantity jsonb CHECK (quantity IS NULL OR jsonb_typeof(quantity) = 'object'),
+            disabled boolean NOT NULL DEFAULT false,
+            -- Lines a member added stay in the basket after the member leaves or deletes the
+            -- account; only the link to that account goes.
+            added_by bigint REFERENCES v2_users(id) ON DELETE SET NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            UNIQUE (basket_id, line_key),
+            CHECK ((kind = 'product') = (product_id IS NOT NULL)),
+            CHECK ((kind = 'scope') = (department IS NOT NULL AND family IS NOT NULL))
+        );
+        CREATE INDEX v2_shared_basket_lines_added_by_idx ON v2_shared_basket_lines(added_by)
+            WHERE added_by IS NOT NULL;
+    """,
+    "0043_shared_basket_settings": """
+        -- What every member sees the same way: store filters, quantities, price or unit price,
+        -- stores switched off and the unit of each article. Validated by the API.
+        ALTER TABLE v2_shared_baskets ADD COLUMN settings jsonb NOT NULL DEFAULT '{}'::jsonb
+            CHECK (jsonb_typeof(settings) = 'object');
+    """,
+    "0044_saved_lists": """
+        -- Shopping lists an account saved, to find them on its devices and offline. Kept until the
+        -- account deletes them or deletes the account. `list_id` is chosen by the browser, so a list
+        -- saved offline is stored once when it is sent, however many times it is retried.
+        CREATE TABLE v2_saved_lists (
+            user_id bigint NOT NULL REFERENCES v2_users(id) ON DELETE CASCADE,
+            list_id uuid NOT NULL,
+            name varchar(80) NOT NULL CHECK (btrim(name) <> ''),
+            content jsonb NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+            checked jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(checked) = 'array'),
+            revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (user_id, list_id)
+        );
+        CREATE INDEX v2_saved_lists_recent_idx ON v2_saved_lists(user_id, updated_at DESC);
+    """,
+    "0045_drop_saved_lists": """
+        -- A shopping list is now always the live view of a basket: saved copies are no longer kept.
+        DROP TABLE v2_saved_lists;
+    """,
+    "0046_demo_basket": """
+        -- The demo basket of the home page, saved by an administrator from a basket: its articles, its
+        -- settings and the prices read when it was saved, shown to anyone. One row at most; without
+        -- it, the app shows its own fictional example. Nothing in it points to an account.
+        CREATE TABLE v2_demo_basket (
+            id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+            title varchar(80) NOT NULL CHECK (btrim(title) <> ''),
+            content jsonb NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+            saved_at timestamptz NOT NULL DEFAULT now()
+        );
+    """,
 }
 
 

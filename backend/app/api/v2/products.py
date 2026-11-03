@@ -34,6 +34,7 @@ from app.services.v2_write_limits import (
     MAX_PRODUCT_DRAFTS,
     check_open_limit,
     check_write_limit,
+    lock_account_writes,
 )
 
 router = APIRouter(prefix="/api/v2/products", tags=["v2-products"])
@@ -450,8 +451,9 @@ async def create_draft(payload: DraftCreate, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_product_drafts",
                 maximum=MAX_PRODUCT_DRAFTS,
@@ -510,8 +512,9 @@ async def update_draft(draft_id: int, payload: DraftUpdate, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             row = await connection.fetchrow(
                 "UPDATE v2_product_drafts SET data=$1::jsonb, change_kind=$2, "
                 "revision=revision+1, updated_at=now() WHERE id=$3 AND author_id=$4 "

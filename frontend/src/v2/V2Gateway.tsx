@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { logoutLocalKeys, unsentAtLogout } from "./v2-account-local-keys";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
@@ -10,6 +11,7 @@ import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2CataloguePage from "./V2CataloguePage";
 import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
+import V2BasketDemoPage from "./V2BasketDemoPage";
 import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
 import V2StoresPage from "./V2StoresPage";
@@ -367,7 +369,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, basketMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, sharedBasketMode = false, demoBasketMode = false, shoppingListMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesTab?: string;
   preferencesMode?: boolean;
@@ -377,7 +379,12 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   categoryName?: string;
   recipeMode?: "list" | "detail" | "new" | "edit";
   recipeId?: number;
+  privateRecipe?: boolean;
   basketMode?: boolean;
+  sharedBasketMode?: boolean;
+  /** The demo basket of the home page. */
+  demoBasketMode?: boolean;
+  shoppingListMode?: boolean;
   captureMode?: "install" | "review";
   completionMode?: boolean;
   storesMode?: boolean;
@@ -431,8 +438,24 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }
 
   async function logout() {
+    const userId = authStatus?.user?.id ?? null;
+    if (userId) {
+      // Signing out erases the account's private data from this device: say what was never sent.
+      let unsent = { changes: 0, drafts: 0 };
+      try { unsent = unsentAtLogout(localStorage, userId); } catch { /* storage unavailable: nothing kept */ }
+      const lost = [unsent.changes ? `${unsent.changes} modification${unsent.changes > 1 ? "s" : ""} du panier partagé pas encore envoyée${unsent.changes > 1 ? "s" : ""}` : null,
+        unsent.drafts ? `${unsent.drafts} brouillon${unsent.drafts > 1 ? "s" : ""} non envoyé${unsent.drafts > 1 ? "s" : ""}` : null].filter(Boolean);
+      if (lost.length && !window.confirm(`Se déconnecter efface de cet appareil : ${lost.join(" et ")}. Se déconnecter quand même ?`)) return;
+    }
     try {
       await authRequest<void>("logout", "POST");
+      if (userId) {
+        try {
+          for (const key of logoutLocalKeys(Object.keys(localStorage), userId)) localStorage.removeItem(key);
+          sessionStorage.removeItem("v2:basket:pending-invite");
+          sessionStorage.removeItem(`v2:basket:shared-looked:${userId}`);
+        } catch { /* storage unavailable: nothing was kept */ }
+      }
       setAuthStatus((previous) => previous ? { ...previous, user: null } : previous);
       // Other tabs recheck the session instead of showing a signed-in page.
       try { localStorage.setItem("v2:auth:changed", String(Date.now())); } catch { /* the other tabs update on their next request */ }
@@ -480,9 +503,10 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
   if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
-  if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} />);
+  if (basketMode) return withHostAlert(demoBasketMode ? <V2BasketDemoPage user={authStatus.user} onLogout={logout} listMode={shoppingListMode} />
+    : <V2BasketPage user={authStatus.user} onLogout={logout} sharedMode={sharedBasketMode} listMode={shoppingListMode} />);
   if (recipeMode) {
-    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} user={authStatus.user} onLogout={logout} />);
+    return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} privateRecipe={privateRecipe} user={authStatus.user} onLogout={logout} />);
   }
   if (workspaceMode === "catalogue" || categoryName) return withHostAlert(<V2CataloguePage name={categoryName} user={authStatus.user} onLogout={logout} />);
   if (workspaceMode) {

@@ -1,6 +1,6 @@
 /** Pure logic of the site navigation: the bottom dock and the profile menu (no React, so it can be unit-tested). */
 
-export type DockId = "home" | "products" | "stores" | "recipes" | "basket";
+export type DockId = "home" | "products" | "stores" | "recipes" | "basket" | "shared";
 export type DockItem = { id: DockId; label: string; to: string };
 
 export const DOCK_ITEMS: readonly DockItem[] = [
@@ -10,9 +10,16 @@ export const DOCK_ITEMS: readonly DockItem[] = [
   { id: "recipes", label: "Recettes", to: "/v2/recettes" },
   { id: "basket", label: "Panier", to: "/v2/panier" },
 ];
+/** The shared basket, next to the personal one, for an account that follows one. */
+export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
+
+/** The dock entries for this viewer: the shared basket shows once the account follows one. */
+export function dockItems(followsShared: boolean): readonly DockItem[] {
+  return followsShared ? [...DOCK_ITEMS, SHARED_DOCK_ITEM] : DOCK_ITEMS;
+}
 
 /** Pages that belong to a dock item but sit under another section's path, or none at all. */
-const NOT_IN_DOCK = ["/v2/produits/nouveau"];
+const NOT_IN_DOCK = ["/v2/produits/nouveau", "/v2/panier/demo"];
 
 /** The dock item the page belongs to, or null for pages reached from the profile menu. */
 export function activeDockId(pathname: string): DockId | null {
@@ -23,6 +30,7 @@ export function activeDockId(pathname: string): DockId | null {
   if (within("/v2/produits") || within("/v2/categories")) return "products";
   if (within("/v2/magasins")) return "stores";
   if (within("/v2/recettes")) return "recipes";
+  if (within("/v2/panier/partage")) return "shared";
   if (within("/v2/panier")) return "basket";
   return null;
 }
@@ -97,6 +105,10 @@ export function nextMenuIndex(current: number, key: string, count: number): numb
 export function basketLabel(count: number): string {
   return count === 0 ? "Panier, vide" : count === 1 ? "Panier, 1 article" : `Panier, ${count} articles`;
 }
+/** The accessible name of the shared basket entry in the dock. */
+export function sharedBasketLabel(count: number): string {
+  return count === 0 ? "Panier partagé, vide" : count === 1 ? "Panier partagé, 1 article" : `Panier partagé, ${count} articles`;
+}
 
 const normalize = (pathname: string) => pathname.replace(/\/+$/, "") || "/";
 
@@ -108,7 +120,7 @@ export function backTarget(pathname: string): string | null {
   const path = normalize(pathname);
   if (path === "/" || path === "/v2") return null;
   if (path.startsWith("/v2/categories/")) return "/v2/produits";
-  if (path === "/v2/capture/installer") return "/v2";
+  if (path === "/v2/capture/installer" || path === "/v2/panier/demo") return "/v2";
   const parts = path.split("/").filter(Boolean);
   return parts.length <= 2 ? "/v2" : "/" + parts.slice(0, -1).join("/");
 }

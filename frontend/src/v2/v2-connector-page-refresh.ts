@@ -15,7 +15,11 @@ async function statuses(connector: InstalledConnector, ids: number[], refresh: b
   return (await response.json() as { products: Record<string, ProductStatus> }).products;
 }
 
-export function useConnectorQueue(productIds: number[]): QueueBadge[] {
+/**
+ * A price page asks the enabled connectors to refresh its products (each connector decides, within
+ * its budgets). Only administrators see the reading status and follow it until the price arrives.
+ */
+export function useConnectorQueue(productIds: number[], admin = false): QueueBadge[] {
   const key = [...new Set(productIds)].filter(id => Number.isSafeInteger(id) && id > 0).join(",");
   const [state, setState] = useState<{ key: string; badges: QueueBadge[] }>({ key: "", badges: [] });
   useEffect(() => {
@@ -46,6 +50,7 @@ export function useConnectorQueue(productIds: number[]): QueueBadge[] {
       const completed = next.some(item =>
         readingFinished(previous.get(`${item.connectorId}:${item.productId}`), item.status));
       previous = new Map(next.map(item => [`${item.connectorId}:${item.productId}`, item.status]));
+      if (!admin) return;
       setState({ key, badges: next.filter(item => isActiveStatus(item.status)) });
       if (completed) window.dispatchEvent(new Event(CONNECTOR_PRICE_REFRESH_EVENT));
       if (next.some(item => isActiveStatus(item.status)))
@@ -53,7 +58,7 @@ export function useConnectorQueue(productIds: number[]): QueueBadge[] {
     }
     void check(true);
     return () => { active = false; if (timer) clearTimeout(timer); };
-  }, [key]);
+  }, [key, admin]);
   return state.key === key ? state.badges : [];
 }
 

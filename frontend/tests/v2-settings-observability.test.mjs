@@ -103,7 +103,7 @@ test("figures are formatted for French readers and partial periods are noticed",
   assert.equal(partialPeriod({ since: "2026-11-01T00:00:00Z", recording_since: "2026-11-01T06:00:00Z" }), true);
   assert.equal(partialPeriod({ since: "2026-11-01T00:00:00Z", recording_since: "2026-10-20T00:00:00Z" }), false);
   assert.equal(partialPeriod({ since: "2026-11-01T00:00:00Z", recording_since: null }), true);
-  assert.ok(CONTRIBUTION_LABELS.prices_connector && PAGE_LABELS.basket);
+  assert.ok(CONTRIBUTION_LABELS.prices_connector && PAGE_LABELS.basket && PAGE_LABELS.basket_demo);
 });
 
 test("a page is reported by its kind, never by its address", () => {
@@ -111,7 +111,8 @@ test("a page is reported by its kind, never by its address", () => {
     "/": "home", "/v2": "home", "/v2/produits": "products", "/v2/produits/12": "product", "/v2/produits/12/historique": "product",
     "/v2/produits/12/modifier": "product_edit", "/v2/produits/nouveau": "product_edit", "/v2/brouillons/4": "product_edit",
     "/v2/categories/Lait%20demi": "category", "/v2/magasins": "stores", "/v2/magasins/9": "store", "/v2/recettes": "recipes",
-    "/v2/recettes/3": "recipe", "/v2/recettes/nouvelle": "recipe", "/v2/panier": "basket", "/v2/parametres/serveur": "settings",
+    "/v2/recettes/3": "recipe", "/v2/recettes/nouvelle": "recipe", "/v2/recettes/privees/3": "recipe",
+    "/v2/recettes/privees/3/modifier": "recipe", "/v2/panier": "basket", "/v2/panier/partage": "basket", "/v2/panier/liste": "basket", "/v2/panier/partage/liste": "basket", "/v2/panier/demo": "basket_demo", "/v2/panier/demo/liste": "basket_demo", "/v2/parametres/serveur": "settings",
     "/v2/settings/database": "settings", "/v2/capture": "capture", "/v2/a-completer": "completion", "/v2/connexion": "auth",
     "/v2/inscription": "auth", "/v2/versions": "versions", "/v2/changelog/products": "changelog", "/v2/mentions-legales": "legal",
     "/v2/panier/": "basket", "/v2/inconnu": "other", "/v2/produits/12/jean.dupont@example.org": "other",

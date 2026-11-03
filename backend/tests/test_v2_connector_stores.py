@@ -177,7 +177,9 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 transport=httpx.ASGITransport(app=app, client=("10.0.0.8", 12345)),
                 base_url="https://testserver",
             ) as page_viewer:
-                state = await page_viewer.post(status_url, headers=write, json={"product_ids": [1, 2]})
+                # The reading status is for administrators only.
+                assert (await page_viewer.post(status_url, headers=write, json={"product_ids": [1, 2]})).status_code == 403
+                state = await client.post(status_url, headers=write, json={"product_ids": [1, 2]})
                 assert state.status_code == 200, state.text
                 assert state.json()["products"]["1"]["status"] == "eligible"
                 page = await page_viewer.post(page_url, headers=write, json={"product_ids": [1, 2]})
@@ -187,7 +189,29 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
                 assert (await page_viewer.post(page_url, headers=write, json={"product_ids": [0]})).status_code == 422
             connection = await test_connect()
             try:
-                assert await connection.fetchval("SELECT sum(attempts) FROM v2_auth_limits") == 2
+                # One page view counted for the client, then the client and shared refresh budgets.
+                assert await connection.fetchval("SELECT sum(attempts) FROM v2_auth_limits") == 3
+                await connection.execute("DELETE FROM v2_auth_limits")
+            finally:
+                await connection.close()
+            # Past the per-client page view limit, no connector code runs at all.
+            calls = []
+            original_statuses = api.page_product_statuses
+
+            async def counted(*args, **kwargs):
+                calls.append(1)
+                return await original_statuses(*args, **kwargs)
+            monkeypatch.setattr(api, "page_product_statuses", counted)
+            monkeypatch.setattr(api, "PAGE_VIEWS_PER_MINUTE", 1)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("10.0.9.9", 1)),
+                                         base_url="https://testserver") as viewer:
+                await viewer.post(page_url, headers=write, json={"product_ids": [2]})
+                limited = await viewer.post(page_url, headers=write, json={"product_ids": [2]})
+            assert limited.json()["products"]["2"]["status"] == "rate_limited" and len(calls) == 1
+            monkeypatch.setattr(api, "page_product_statuses", original_statuses)
+            monkeypatch.setattr(api, "PAGE_VIEWS_PER_MINUTE", 30)
+            connection = await test_connect()
+            try:
                 await connection.execute("DELETE FROM v2_auth_limits")
             finally:
                 await connection.close()
@@ -420,6 +444,17 @@ async def test_page_status_degrades_when_the_connector_hook_fails(monkeypatch):
     api, connection = _module(monkeypatch, product_statuses=product_statuses)
     assert await api.page_product_statuses(connection, "demo", [1, 2]) == {
         "1": {"status": "unavailable", "rank": None}, "2": {"status": "unavailable", "rank": None}}
+
+
+@pytest.mark.asyncio
+async def test_page_status_degrades_when_the_connector_hook_is_too_slow(monkeypatch):
+    import asyncio
+
+    async def product_statuses(_connection, _ids):
+        await asyncio.sleep(1)
+    api, connection = _module(monkeypatch, product_statuses=product_statuses)
+    monkeypatch.setattr(api, "STATUS_HOOK_SECONDS", 0.05)
+    assert await api.page_product_statuses(connection, "demo", [1]) == {"1": {"status": "unavailable", "rank": None}}
 
 
 @pytest.mark.asyncio

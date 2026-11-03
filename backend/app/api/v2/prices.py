@@ -27,6 +27,7 @@ from app.services.v2_write_limits import (
     MAX_PRODUCT_DRAFTS,
     check_open_limit,
     check_write_limit,
+    lock_account_writes,
 )
 
 PRODUCT_PRICES_COST = 1  # one product, one credit
@@ -462,8 +463,9 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
             )
@@ -549,8 +551,9 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_price_drafts",
                 maximum=MAX_PRICE_DRAFTS,
@@ -588,8 +591,9 @@ async def create_published_capture_draft(
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
             )

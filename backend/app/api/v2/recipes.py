@@ -16,6 +16,7 @@ from app.services.v2_write_limits import (
     MAX_RECIPES,
     check_open_limit,
     check_write_limit,
+    lock_account_writes,
 )
 
 router = APIRouter(prefix="/api/v2/recipes", tags=["v2-recipes"])
@@ -30,14 +31,15 @@ class IngredientInput(BaseModel):
     unit: Unit | None = None
     note: str = Field(default="", max_length=1000)
     optional: bool = False
-    product_id: int | None = Field(default=None, gt=0)
+    product_id: int | None = Field(default=None, gt=0, le=2**63 - 1)
     group_name: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def validate_target(self):
         self.label = self.label.strip()
         self.note = self.note.strip()
-        self.group_name = self.group_name.strip() if self.group_name else None
+        # A name of spaces only is no group: it would fail the database check later.
+        self.group_name = (self.group_name or "").strip() or None
         if not self.label:
             raise ValueError("Le nom de l'ingrédient est nécessaire.")
         if (self.product_id is None) == (self.group_name is None):
@@ -85,8 +87,10 @@ def _decoded(value):
     return json.loads(value) if isinstance(value, str) else value
 
 
-async def _detail(connection, recipe_id: int):
-    await require_visible(connection, "recipe", recipe_id)
+async def _detail(connection, recipe_id: int, *, public: bool = True):
+    """A recipe with its ingredients. A private one is read only by its own routes (public=False)."""
+    if public:
+        await require_visible(connection, "recipe", recipe_id)
     recipe = await connection.fetchrow(
         "SELECT * FROM v2_recipes WHERE id=$1",
         recipe_id,
@@ -110,6 +114,7 @@ async def _detail(connection, recipe_id: int):
         "cook_minutes": recipe["cook_minutes"],
         "steps": _decoded(recipe["steps"]),
         "revision": recipe["revision"],
+        "private": recipe["private"],
         "created_at": recipe["created_at"].astimezone(_PARIS).date().isoformat(),
         "updated_at": recipe["updated_at"].astimezone(_PARIS).date().isoformat(),
         "ingredients": [
@@ -180,8 +185,8 @@ async def list_recipes(
             + "%"
         )
         total = await connection.fetchval(
-            "SELECT count(*) FROM v2_recipes r WHERE r.title ILIKE $1 ESCAPE '\\'"
-            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "SELECT count(*) FROM v2_recipes r WHERE r.title ILIKE $1 ESCAPE '\\' "
+            "AND NOT r.private AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
             "WHERE w.kind='recipe' AND w.content_id=r.id)", pattern
         )
         rows = await connection.fetch(
@@ -189,7 +194,7 @@ async def list_recipes(
             "r.prep_minutes, r.cook_minutes, r.updated_at, r.revision, "
             "count(i.id)::int AS ingredient_count FROM v2_recipes r "
             "LEFT JOIN v2_recipe_ingredients i ON i.recipe_id=r.id "
-            "WHERE r.title ILIKE $1 ESCAPE '\\' "
+            "WHERE r.title ILIKE $1 ESCAPE '\\' AND NOT r.private "
             "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
             "WHERE w.kind='recipe' AND w.content_id=r.id) "
             "GROUP BY r.id ORDER BY lower(r.title), r.id LIMIT $2 OFFSET $3",
@@ -245,8 +250,9 @@ async def create_recipe(payload: RecipeInput, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
             )
@@ -267,8 +273,9 @@ async def update_recipe(recipe_id: int, payload: RecipeUpdate, request: Request)
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await require_visible(connection, "recipe", recipe_id)
             existing = await connection.fetchrow(
                 "SELECT author_id,revision FROM v2_recipes WHERE id=$1 FOR UPDATE",
@@ -308,8 +315,9 @@ async def delete_recipe(recipe_id: int, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        # A private recipe is deleted through its own route, by its author only.
         row = await connection.fetchrow(
-            "SELECT author_id FROM v2_recipes WHERE id=$1", recipe_id
+            "SELECT author_id FROM v2_recipes WHERE id=$1 AND NOT private", recipe_id
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Recette introuvable.")

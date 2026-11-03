@@ -47,11 +47,11 @@ export default function V2App() {
   try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }
   catch { categoryName = undefined; }
   const settings = path.match(/^\/v2\/parametres(?:\/([^/]+))?$/);
-  const recipe = path.match(/^\/v2\/recettes\/(\d+)(?:\/(modifier))?$/);
+  const recipe = path.match(/^\/v2\/recettes\/(privees\/)?(\d+)(?:\/(modifier))?$/);
   const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
   const recipeMode = path === "/v2/recettes" ? "list"
     : path === "/v2/recettes/nouvelle" ? "new"
-    : recipe ? recipe[2] ? "edit" : "detail" : undefined;
+    : recipe ? recipe[3] ? "edit" : "detail" : undefined;
   const workspaceMode = path === "/v2/produits" ? "catalogue"
     : path === "/v2/produits/nouveau" ? "new"
     : path === "/v2/brouillons" ? "mine"
@@ -71,7 +71,7 @@ export default function V2App() {
   if (changelogComponent) return withFooter(<V2ChangelogPage componentId={changelogComponent[1]} />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || path === "/v2/panier" || path === "/v2/magasins" || store) {
+    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || /^\/v2\/panier(?:\/partage|\/demo)?(?:\/liste)?$/.test(path) || path === "/v2/magasins" || store) {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
       preferencesMode={Boolean(settings)}
@@ -80,10 +80,14 @@ export default function V2App() {
       recipeMode={recipeMode}
       captureMode={captureMode}
       completionMode={path === "/v2/a-completer"}
-      basketMode={path === "/v2/panier"}
+      basketMode={/^\/v2\/panier(?:\/partage|\/demo)?(?:\/liste)?$/.test(path)}
+      sharedBasketMode={path.startsWith("/v2/panier/partage")}
+      demoBasketMode={path.startsWith("/v2/panier/demo")}
+      shoppingListMode={path.endsWith("/liste")}
       storesMode={path === "/v2/magasins" || Boolean(store)}
       storeId={store ? Number(store[1]) : undefined}
-      recipeId={recipe ? Number(recipe[1]) : undefined}
+      recipeId={recipe ? Number(recipe[2]) : undefined}
+      privateRecipe={Boolean(recipe?.[1])}
       categoryName={categoryName}
       workspaceMode={workspaceMode}
       workspaceId={draft ? Number(draft[1]) : product ? Number(product[1]) : undefined}

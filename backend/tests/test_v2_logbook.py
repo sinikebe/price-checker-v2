@@ -43,6 +43,8 @@ SAMPLES = {
     "connector.worker.failed": ({"error": "TimeoutError"}, "auchan_houilles"),
     "basket.prices.fetched": ({"items": 1, "products": 2, "truncated": False, "credits_left": 4}, None),
     "basket.prices.refused": ({"reason": "no_credits"}, None),
+    "basket.demo.saved": ({"items": 18, "products": 25}, None),
+    "basket.demo.removed": ({}, None),
 }
 
 

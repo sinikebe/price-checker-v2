@@ -684,6 +684,46 @@
       "component": "open_prices",
       "version": "0.1.28",
       "reason": "Adaptation technique aux crédits de contribution."
+    },
+    {
+      "component": "products",
+      "version": "0.1.59",
+      "reason": "Règle de visibilité partagée avec les recettes, sans changement pour les produits."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.31",
+      "reason": "Bouton d’ajout au panier de la fiche produit, sans changement pour Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.29",
+      "reason": "Boutons d’ajout au panier des pages de groupe, sans changement pour Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.46",
+      "reason": "Comptage interne des limites de modifications, sans changement de schéma."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.32",
+      "reason": "Comptage interne des limites de modifications, sans changement pour Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.30",
+      "reason": "Comptage interne des limites et état des connecteurs, sans changement pour Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.47",
+      "reason": "Table du panier de démonstration enregistré par un administrateur."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.38",
+      "reason": "Aiguillage de la page de démonstration, sans changement pour les comptes."
     }
   ]
 }

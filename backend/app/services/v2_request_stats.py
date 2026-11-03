@@ -23,11 +23,11 @@ IGNORED_ROUTES = frozenset({"/api/v2/stats", "/api/v2/stats/page", "/api/v2/logs
 # The pages the app can report. Anything else is refused: a page name is never free text.
 PAGES = (
     "home", "products", "product", "product_edit", "category", "stores", "store", "recipes",
-    "recipe", "basket", "settings", "capture", "completion", "auth", "versions", "changelog", "legal", "other",
+    "recipe", "basket", "basket_demo", "settings", "capture", "completion", "auth", "versions", "changelog", "legal", "other",
 )
 PERIODS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7), "30d": timedelta(days=30)}
 GROUPS = (
-    ("basket", "/api/v2/basket"), ("prices", "/api/v2/prices"), ("products", "/api/v2/products"),
+    ("basket", "/api/v2/basket"), ("basket", "/api/v2/demo-basket"), ("prices", "/api/v2/prices"), ("products", "/api/v2/products"),
     ("catalogue", "/api/v2/catalogue"), ("recipes", "/api/v2/recipes"), ("stores", "/api/v2/stores"),
     ("accounts", "/api/v2/auth"), ("accounts", "/api/v2/account"), ("connectors", "/api/v2/connector-stores"),
 )
