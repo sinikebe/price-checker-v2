@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
 import V2HostHealth from "./V2HostHealth";
+import V2LegalDocuments from "./V2LegalDocuments";
 import V2SearchSettings from "./V2SearchSettings";
 import V2ServerCache from "./V2ServerCache";
 import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2TransferPanel from "./V2TransferPanel";
 
-/** Administrator-only: the instance itself (host health, disk space and cache, server updates, catalogue search, data transfer, hostname and database). */
+/** Administrator-only: the instance itself (host health, disk space and cache, server updates, catalogue search, data transfer, legal documents, hostname and database). */
 export default function V2SettingsServer({ userId }: { userId: number }) {
   return <>
     <V2HostHealth />
@@ -13,6 +14,7 @@ export default function V2SettingsServer({ userId }: { userId: number }) {
     <V2ServerUpdateSchedule key={userId} />
     <V2SearchSettings key={`search-${userId}`} />
     <V2TransferPanel key={`transfer-${userId}`} />
+    <V2LegalDocuments key={`legal-${userId}`} />
     <section className="v2-settings-card" aria-labelledby="v2-server-heading">
       <h2 id="v2-server-heading">Serveur</h2>
       <p>Nom d’hôte et configuration PostgreSQL de cette instance.</p>

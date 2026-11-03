@@ -27,3 +27,23 @@ html[data-v2-theme="dark"] .v2-legal-nav a[aria-current="page"] { background: #2
 
 .v2-legal-content > h2 { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--v2-line); }
 .v2-legal-content > h2:first-child { margin-top: 0; padding-top: 0; border: 0; }
+
+/* Settings → Serveur: replacing the documents from a file. */
+.v2-legal-documents-list { display: grid; gap: 10px; margin: 0 0 16px; padding: 0; list-style: none; }
+.v2-legal-documents-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  padding: 12px 14px; border: 1px solid var(--v2-line); border-radius: 14px; }
+.v2-legal-documents-list li > div { display: grid; gap: 2px; min-width: 0; }
+.v2-legal-documents-list small { color: var(--v2-muted); }
+.v2-legal-documents-list a { color: #246846; font-size: .86rem; font-weight: 700; text-decoration: underline; }
+.v2-legal-documents-list label { position: relative; cursor: pointer; }
+.v2-legal-documents-list label:focus-within { outline: 3px solid #20795e; outline-offset: 3px; }
+/* The file field stays in the page for keyboards and screen readers, under its visible button. */
+.v2-legal-file { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.v2-legal-preview { margin-bottom: 16px; padding: 14px 16px; border: 1px dashed #9cc0a6; border-radius: 14px; background: #f7faf4; }
+.v2-legal-preview > p { margin-bottom: 10px; }
+.v2-legal-preview-body { max-height: 360px; overflow: auto; margin-bottom: 12px; padding: 12px 14px; border-radius: 10px; background: #fff; }
+.v2-legal-preview-body h1 { margin: 0 0 12px; font-size: 1.5rem; }
+.v2-legal-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+html[data-v2-theme="dark"] .v2-legal-documents-list a { color: #aee1a8; }
+html[data-v2-theme="dark"] .v2-legal-preview { background: #1e3a2e; border-color: #517164; }
+html[data-v2-theme="dark"] .v2-legal-preview-body { background: #14231f; }
