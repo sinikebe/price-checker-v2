@@ -1,0 +1,49 @@
+.v2-shopping-list { display: grid; gap: 16px; }
+.v2-list-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-list-note { margin: 0; color: var(--v2-muted, #617467); }
+.v2-list-section { padding: 18px 20px; border: 1px solid #dce8db; border-radius: 16px; background: white; }
+.v2-list-section header { display: flex; justify-content: space-between; align-items: start; gap: 12px; margin-bottom: 8px; }
+.v2-list-section h2 { margin: 0; color: #244b36; font-size: 1.25rem; }
+.v2-list-section header p { margin: 2px 0 0; color: #66786c; }
+.v2-list-section-total { display: grid; justify-items: end; text-align: right; }
+.v2-list-section-total strong { font-size: 1.15rem; color: #244b36; }
+.v2-list-section-total small { color: #66786c; }
+.v2-list-section ul { margin: 0; padding: 0; list-style: none; }
+.v2-list-line { border-top: 1px solid #e8eee8; }
+.v2-list-line label { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; min-height: 52px; padding: 8px 0; cursor: pointer; }
+.v2-list-line input { width: 24px; height: 24px; margin: 0; accent-color: #2f8061; }
+.v2-list-line-text { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.v2-list-line-text small { color: #66786c; }
+.v2-list-line-price { font-weight: 700; white-space: nowrap; }
+.v2-list-line[data-checked="true"] .v2-list-line-text strong,
+.v2-list-line[data-checked="true"] .v2-list-line-price { text-decoration: line-through; color: #8a9a8f; }
+.v2-list-missing { margin: 0 0 10px; padding: 10px 12px; border-radius: 12px; background: #fff6e8; }
+.v2-list-section.v2-list-missing { padding: 18px 20px; border-color: #ecd3a8; }
+.v2-list-missing h3 { margin: 0 0 4px; color: #7a4f12; font-size: 1rem; }
+.v2-list-missing > p { margin: 4px 0 8px; color: #5b4423; }
+.v2-list-missing .v2-list-line { border-color: #f0dfc2; }
+.v2-list-line-help { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 0 10px 36px; font-size: .9rem; color: #5b4423; }
+.v2-list-line-help span { flex: 1 1 100%; }
+.v2-list-line-help a { font-weight: 700; color: #2f6a45; }
+.v2-list-entry { display: inline-flex; margin-top: 8px; }
+.v2-basket-list-link { min-height: 36px; padding: 6px 10px; font-weight: 700; color: #2f6a45; }
+@media (max-width: 600px) {
+  .v2-list-section { padding: 15px; }
+  .v2-list-toolbar .v2-button { flex: 1 1 auto; }
+}
+html[data-v2-theme="dark"] .v2-list-section { background: #1b2d28; border-color: var(--v2-line); }
+html[data-v2-theme="dark"] .v2-list-section h2,
+html[data-v2-theme="dark"] .v2-list-section-total strong { color: #e3f3df; }
+html[data-v2-theme="dark"] .v2-list-section header p,
+html[data-v2-theme="dark"] .v2-list-section-total small,
+html[data-v2-theme="dark"] .v2-list-line-text small { color: #b0c5b8; }
+html[data-v2-theme="dark"] .v2-list-line { border-color: #355248; }
+html[data-v2-theme="dark"] .v2-list-line[data-checked="true"] .v2-list-line-text strong,
+html[data-v2-theme="dark"] .v2-list-line[data-checked="true"] .v2-list-line-price { color: #7f958a; }
+html[data-v2-theme="dark"] .v2-list-missing,
+html[data-v2-theme="dark"] .v2-list-section.v2-list-missing { background: #3a3020; border-color: #6b5530; }
+html[data-v2-theme="dark"] .v2-list-missing h3,
+html[data-v2-theme="dark"] .v2-list-missing > p,
+html[data-v2-theme="dark"] .v2-list-line-help { color: #f3dcb6; }
+html[data-v2-theme="dark"] .v2-list-line-help a,
+html[data-v2-theme="dark"] .v2-basket-list-link { color: #a5dfaa; }

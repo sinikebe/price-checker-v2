@@ -342,19 +342,21 @@ async def test_settings_are_shared_by_every_member(setup):
     state = created.json()
     assert state["settings"] == {"advanced": True, "compare": "price",
                                  "filters": {"storeIds": [4], "cities": [], "departments": ["78"]},
-                                 "stores_off": [], "units": {}}
+                                 "stores_off": [], "units": {}, "checked": []}
     basket_id = state["id"]
     await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": state["invite"], "confirm": True})
     changed = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [
         {"op": "settings", "compare": "unit", "stores_off": ["12:drive", "3:in_store"]},
         {"op": "settings", "units": {f"product:{products['Lait']}": "piece"}},
+        {"op": "settings", "checked": [f"product:{products['Lait']}"]},
     ]})
     assert changed.status_code == 200, changed.text
     seen = (await client.get(f"{PATH}/{basket_id}", headers=who("alice"))).json()
     assert seen["settings"] == {"advanced": True, "compare": "unit",
                                 "filters": {"storeIds": [4], "cities": [], "departments": ["78"]},
                                 "stores_off": ["12:drive", "3:in_store"],
-                                "units": {f"product:{products['Lait']}": "piece"}}
+                                "units": {f"product:{products['Lait']}": "piece"},
+                                "checked": [f"product:{products['Lait']}"]}
     assert seen["revision"] == changed.json()["revision"] == state["revision"] + 2
     # The same settings again change nothing, so nobody reads again.
     same = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"),
@@ -362,7 +364,7 @@ async def test_settings_are_shared_by_every_member(setup):
     assert same.json()["revision"] == seen["revision"]
     for bad in ({"compare": "cheapest"}, {"stores_off": ["12:bike"]}, {"units": {"x": "kg"}},
                 {"filters": {"storeIds": [0]}}, {"filters": {"departments": ["Paris"]}},
-                {"stores_off": [f"{n + 1}:drive" for n in range(51)]}):
+                {"stores_off": [f"{n + 1}:drive" for n in range(51)]}, {"checked": ["x" * 401]}):
         refused = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"),
                                     json={"ops": [{"op": "settings", **bad}]})
         assert refused.status_code == 422, bad

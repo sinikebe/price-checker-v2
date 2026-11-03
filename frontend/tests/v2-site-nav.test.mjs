@@ -30,7 +30,8 @@ test("every page maps to the right dock item", () => {
     ["/v2/produits", "products"], ["/v2/produits/12", "products"], ["/v2/produits/12/historique", "products"],
     ["/v2/categories/Lait", "products"], ["/v2/magasins", "stores"], ["/v2/magasins/7", "stores"],
     ["/v2/recettes", "recipes"], ["/v2/recettes/nouvelle", "recipes"], ["/v2/panier", "basket"],
-    ["/v2/panier/partage", "shared"], ["/v2/panier/partage/", "shared"],
+    ["/v2/panier/partage", "shared"], ["/v2/panier/partage/", "shared"], ["/v2/panier/partage/liste", "shared"],
+    ["/v2/panier/liste", "basket"],
   ];
   for (const [path, id] of cases) assert.equal(activeDockId(path), id, path);
 });

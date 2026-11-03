@@ -174,6 +174,8 @@ class Settings(BaseModel):
     filters: Filters | None = None
     stores_off: list[StoreKey] | None = Field(default=None, max_length=50)
     units: dict[UnitKey, Literal["g", "ml", "piece"]] | None = Field(default=None, max_length=MAX_LINES)
+    # Articles ticked in the shopping list, so the one shopping sees what the others picked up.
+    checked: list[UnitKey] | None = Field(default=None, max_length=MAX_LINES)
 
     def patch(self) -> dict:
         return self.model_dump(mode="json", exclude={"op"}, exclude_none=True)
@@ -181,7 +183,7 @@ class Settings(BaseModel):
 
 DEFAULT_SETTINGS = {"advanced": False, "compare": "price",
                     "filters": {"storeIds": [], "cities": [], "departments": []},
-                    "stores_off": [], "units": {}}
+                    "stores_off": [], "units": {}, "checked": []}
 
 
 class SettingsOp(Settings):

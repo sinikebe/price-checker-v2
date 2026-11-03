@@ -7,6 +7,8 @@ import V2BasketShare from "./V2BasketShare";
 import { SharedBanner, SharedInvite, SharedJoin, SharedStart } from "./V2SharedBasket";
 import { SHARED_BASKET_PATH, inviteFromHash, takePendingInvite } from "./v2-shared-basket";
 import V2BasketItems from "./V2BasketItems";
+import V2ShoppingList from "./V2ShoppingList";
+import { listStore, shoppingListPath } from "./v2-shopping-list";
 import V2BasketFilters from "./V2BasketFilters";
 import V2BasketResults from "./V2BasketResults";
 import V2BasketToolbar, { type BasketPanel } from "./V2BasketToolbar";
@@ -32,7 +34,11 @@ import "./v2-basket.css";
 const NO_ITEMS: BasketItem[] = [];
 
 /** The personal basket (/v2/panier, on this device) or the shared one (/v2/panier/partage, live for every member). */
-export default function V2BasketPage({ user, onLogout, sharedMode = false }: { user: V2User | null; onLogout: () => Promise<void>; sharedMode?: boolean }) {
+export default function V2BasketPage({ user, onLogout, sharedMode = false, listMode = false }: {
+  user: V2User | null; onLogout: () => Promise<void>; sharedMode?: boolean;
+  /** The shopping list of this basket (/liste), built from the prices already fetched. */
+  listMode?: boolean;
+}) {
   const context = useV2Basket();
   const { shared } = context;
   const basket = sharedMode ? context.sharedBasket : context;
@@ -179,6 +185,25 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false }: { u
   const fetchCost = basketFetchCost(items);
   const noCredit = outOfCredits(credits, fetchCost);
 
+  const basePath = sharedMode ? SHARED_BASKET_PATH : "/v2/panier";
+  if (listMode) {
+    const store = listStore(location.search);
+    return <div className="v2-home v2-recipes">
+      <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
+      <V2SiteHeader user={user} onLogout={onLogout} />
+      <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
+        <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">{sharedMode ? "PANIER PARTAGÉ" : "VOS COURSES"}</span><h1>Liste de courses<span>.</span></h1>
+          <p>{store ? "Tout le panier dans ce magasin ; ce qui n’y a pas de prix vient en premier." : "Répartie par magasin, selon la répartition la moins chère."}</p></div></div>
+        {sharedMode && !basket ? <div className="v2-recipes-card"><p>Aucun panier partagé ouvert. <Link to={SHARED_BASKET_PATH}>Ouvrir ou créer un panier partagé</Link>.</p></div>
+          : !snapshot || !comparison || !split ? <div className="v2-recipes-card"><p>La liste se construit avec les prix récupérés pour ce panier. <Link to={basePath}>Comparez d’abord les prix</Link>.</p></div>
+            : <>
+              {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Pas encore dans le relevé de prix : {view.stale.map(itemName).join(", ")}. <Link to={basePath}>Actualisez les prix</Link> pour les placer dans un magasin.</p>}
+              <V2ShoppingList comparison={comparison} split={split} items={view.lines.map(line => line.item)} store={store} advanced={advanced}
+                checked={display.checked} onChecked={display.setChecked} backTo={basePath} sharedName={sharing ? shared.basket?.name : undefined} />
+            </>}
+      </main>
+    </div>;
+  }
   // A shared basket created from the personal one starts with its settings too.
   const personalSettings = { advanced: display.advanced, compare: display.mode, filters: display.filters, stores_off: display.storesOff, units: display.units };
 
@@ -240,10 +265,12 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false }: { u
                 <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${balanceText(credits)})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
               </> : <>
                 <div className="v2-basket-comparison-heading"><div><h2>{mode === "unit" ? advanced ? "Estimation des achats au meilleur prix à l’unité" : "Meilleur prix à l’unité" : advanced ? "Estimation des achats" : "Meilleur prix"}</h2>
-                  <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
+                  <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}. Déplacement et frais de livraison exclus.</p>
+                  <Link className="v2-button v2-button-secondary v2-list-entry" to={shoppingListPath(basePath)}>Liste de courses →</Link>{advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>
                 {view.stale.length > 0 && <p className="v2-basket-stale" role="status">Non inclus dans ce relevé : {view.stale.map(itemName).join(", ")}. Actualisez les prix pour les comparer{costNote(credits, fetchCost)}.</p>}
                 {comparison && split && <V2BasketResults comparison={comparison} split={split} offStores={offStores} onStoreActive={setStoreActive} items={lineItems} advanced={advanced} mode={mode} limited={view.limited.length}
-                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} onUnit={chooseUnit} />}
+                  shownCount={shownCount} onShowMore={() => setShown({ key: listKey, count: shownCount + MORE_STORES })} openPrices={hasOpenPrices} savings={savings} onUnit={chooseUnit}
+                  listPath={(key, splitPart) => shoppingListPath(basePath, { key, split: splitPart })} />}
               </>}
             </section>}
       </> : sharing ? <div className="v2-recipes-card"><p>Ce panier partagé est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue : ses membres le verront aussitôt.</p></div>

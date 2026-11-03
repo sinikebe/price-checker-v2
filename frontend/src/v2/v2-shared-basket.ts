@@ -35,9 +35,11 @@ export type LineRef =
 export type SharedSettings = {
   advanced: boolean; compare: CompareMode; filters: BasketFilters;
   stores_off: string[]; units: Record<string, BaseUnit>;
+  /** Articles ticked in the shopping list (basket keys). */
+  checked: string[];
 };
 export const DEFAULT_SETTINGS: SharedSettings = {
-  advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {},
+  advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {}, checked: [],
 };
 export type LocalOp =
   | { op: "settings"; patch: Partial<SharedSettings> }
