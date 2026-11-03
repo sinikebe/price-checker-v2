@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/v2/v2-shopping-list.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { listStore, shoppingListPath, splitList, splitStoreList, storeList, withChecked } =
+const { listSetting, listViewOf, shoppingListPath, splitList, storeChoices, storeList, withChecked } =
   await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const keyOf = item => "kind" in item ? `${item.kind}:${item.name.toLocaleLowerCase("fr")}` : `product:${item.id}`;
@@ -40,7 +40,6 @@ test("the whole list follows the split, one section per store, the biggest share
   assert.deepEqual(sections.map(section => [section.reading.retailer, section.lines.map(line => line.key), section.cents]),
     [["Leclerc", ["product:1", "product:3"], 390], ["Auchan", ["group:pâtes"], 150]]);
   assert.deepEqual(unpriced.map(line => line.key), ["group:riz"], "what no compared store prices");
-  assert.deepEqual(splitStoreList(split, "1:in_store", keyOf).lines.map(line => line.key), ["group:pâtes"], "a store's share of the split");
 });
 
 test("ticks: on and off, once each, only for articles still in the basket", () => {
@@ -54,11 +53,15 @@ test("ticks: on and off, once each, only for articles still in the basket", () =
   assert.deepEqual(withChecked([], "product:99", true, keys), [], "an article not in the basket is not ticked");
 });
 
-test("list addresses for the whole split or one store", () => {
-  assert.equal(shoppingListPath("/v2/panier"), "/v2/panier/liste");
-  assert.equal(shoppingListPath("/v2/panier/partage", { key: "2:drive" }), "/v2/panier/partage/liste?magasin=2%3Adrive");
-  assert.equal(shoppingListPath("/v2/panier", { key: "1:in_store", split: true }), "/v2/panier/liste?magasin=1%3Ain_store&repartition=1");
-  assert.deepEqual(listStore("?magasin=2%3Adrive"), { key: "2:drive", split: false });
-  assert.deepEqual(listStore("?magasin=1:in_store&repartition=1"), { key: "1:in_store", split: true });
-  for (const bad of ["", "?magasin=x", "?magasin=0:drive", "?magasin=2:bike"]) assert.equal(listStore(bad), null, bad);
+test("the list mode kept with the basket: all articles, the split, or one store", () => {
+  assert.equal(shoppingListPath("/v2/panier/partage"), "/v2/panier/partage/liste");
+  for (const view of [{ kind: "all" }, { kind: "stores" }, { kind: "store", key: "2:drive" }]) assert.deepEqual(listViewOf(listSetting(view)), view);
+  assert.equal(listSetting({ kind: "store", key: "2:drive" }), "store:2:drive");
+  assert.equal(listSetting({ kind: "stores" }), "split");
+  for (const bad of [undefined, null, "", "store:", "store:0:drive", "store:2:bike", "cheapest", 3]) assert.deepEqual(listViewOf(bad), { kind: "all" }, String(bad));
+});
+
+test("one store for the whole list: compared stores only, without those switched off", () => {
+  assert.deepEqual(storeChoices(comparison.stores, []).map(store => store.key), ["1:in_store", "2:drive"]);
+  assert.deepEqual(storeChoices(comparison.stores, ["2:drive"]).map(store => store.key), ["1:in_store"]);
 });

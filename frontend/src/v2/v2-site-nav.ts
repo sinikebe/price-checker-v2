@@ -1,6 +1,6 @@
 /** Pure logic of the site navigation: the bottom dock and the profile menu (no React, so it can be unit-tested). */
 
-export type DockId = "home" | "products" | "stores" | "recipes" | "basket" | "shared" | "lists";
+export type DockId = "home" | "products" | "stores" | "recipes" | "basket" | "shared";
 export type DockItem = { id: DockId; label: string; to: string };
 
 export const DOCK_ITEMS: readonly DockItem[] = [
@@ -13,12 +13,9 @@ export const DOCK_ITEMS: readonly DockItem[] = [
 /** The shared basket, next to the personal one, for an account that follows one. */
 export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
 
-/** The saved shopping lists, for a signed-in account. */
-export const LISTS_DOCK_ITEM: DockItem = { id: "lists", label: "Listes", to: "/v2/listes" };
-
-/** The dock entries for this viewer: the shared basket once the account follows one, the saved lists for an account. */
-export function dockItems(followsShared: boolean, signedIn = false): readonly DockItem[] {
-  return [...DOCK_ITEMS, ...(followsShared ? [SHARED_DOCK_ITEM] : []), ...(signedIn ? [LISTS_DOCK_ITEM] : [])];
+/** The dock entries for this viewer: the shared basket shows once the account follows one. */
+export function dockItems(followsShared: boolean): readonly DockItem[] {
+  return followsShared ? [...DOCK_ITEMS, SHARED_DOCK_ITEM] : DOCK_ITEMS;
 }
 
 /** Pages that belong to a dock item but sit under another section's path, or none at all. */
@@ -34,7 +31,6 @@ export function activeDockId(pathname: string): DockId | null {
   if (within("/v2/magasins")) return "stores";
   if (within("/v2/recettes")) return "recipes";
   if (within("/v2/panier/partage")) return "shared";
-  if (within("/v2/listes")) return "lists";
   if (within("/v2/panier")) return "basket";
   return null;
 }
@@ -108,10 +104,6 @@ export function nextMenuIndex(current: number, key: string, count: number): numb
 /** The accessible name of the basket entry in the dock. */
 export function basketLabel(count: number): string {
   return count === 0 ? "Panier, vide" : count === 1 ? "Panier, 1 article" : `Panier, ${count} articles`;
-}
-/** The accessible name of the saved lists entry in the dock. */
-export function listsLabel(count: number): string {
-  return count === 0 ? "Listes enregistrées, aucune" : count === 1 ? "Listes enregistrées, 1 liste" : `Listes enregistrées, ${count} listes`;
 }
 /** The accessible name of the shared basket entry in the dock. */
 export function sharedBasketLabel(count: number): string {

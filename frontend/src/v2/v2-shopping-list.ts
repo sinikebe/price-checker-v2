@@ -46,11 +46,6 @@ export function splitList(split: BasketComparison, items: readonly BasketItem[],
   };
 }
 
-/** The part of the split bought at one store (a store row of the split). */
-export function splitStoreList(split: BasketComparison, key: string, keyOf: KeyOf): ListSection | null {
-  return splitList(split, [], keyOf).sections.find(section => section.key === key) ?? null;
-}
-
 /** Ticking or unticking an article; ticks of articles no longer in the basket are dropped. */
 export function withChecked(checked: readonly string[], key: string, on: boolean, keep: Iterable<string>): string[] {
   const kept = new Set(keep);
@@ -59,16 +54,25 @@ export function withChecked(checked: readonly string[], key: string, on: boolean
   return next.slice(0, 100);
 }
 
-/** The address of the shopping list, for the whole split or one store (`repartition`: only its share of the split). */
-export function shoppingListPath(basketPath: string, store?: { key: string; split?: boolean }): string {
-  if (!store) return basketPath + "/liste";
-  const query = new URLSearchParams({ magasin: store.key, ...(store.split ? { repartition: "1" } : {}) });
-  return `${basketPath}/liste?${query.toString()}`;
+/** Which list of a basket: all its articles (no price needed), the split across stores, or one store. */
+export type ListView = { kind: "all" } | { kind: "stores" } | { kind: "store"; key: string };
+const STORE = /^[1-9][0-9]{0,18}:(?:in_store|drive|delivery)$/;
+
+/** The address of a basket's list. */
+export const shoppingListPath = (basketPath: string) => basketPath + "/liste";
+
+/** The list mode as the basket keeps it ("all", "split", "store:<store>:<channel>"), and back. */
+export function listSetting(view: ListView): string {
+  return view.kind === "all" ? "all" : view.kind === "stores" ? "split" : "store:" + view.key;
+}
+export function listViewOf(setting: unknown): ListView {
+  if (setting === "split") return { kind: "stores" };
+  if (typeof setting === "string" && setting.startsWith("store:") && STORE.test(setting.slice(6))) return { kind: "store", key: setting.slice(6) };
+  return { kind: "all" };
 }
 
-/** The store asked for by the list address, when it is a store and sales channel key. */
-export function listStore(search: string): { key: string; split: boolean } | null {
-  const query = new URLSearchParams(search);
-  const key = query.get("magasin") ?? "";
-  return /^[1-9][0-9]{0,18}:(?:in_store|drive|delivery)$/.test(key) ? { key, split: query.get("repartition") === "1" } : null;
+/** The stores one can shop the whole list in: compared (store filters applied) and not switched off. */
+export function storeChoices<T extends { key: string }>(stores: readonly T[], storesOff: readonly string[]): T[] {
+  const off = new Set(storesOff);
+  return stores.filter(store => !off.has(store.key));
 }

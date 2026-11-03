@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import V2BasketLines from "./V2BasketLines";
+import type { ListView } from "./v2-shopping-list";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { pricePosition, purchaseTotalCents, type BasketComparison, type BasketPrice, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
 import type { BaseUnit } from "./v2-basket-quantity";
@@ -12,13 +12,13 @@ export type OffStore = { key: string; reading: BasketPrice; gain: StoreSaving | 
  * The split across retailers, then the cheapest stores. Everything is computed from the fetched prices.
  * `split` leaves out the stores switched off by hand (`offStores`); `comparison` keeps every store for the ranking.
  */
-export default function V2BasketResults({ comparison, split, offStores, onStoreActive, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings, onUnit, listPath }: {
+export default function V2BasketResults({ comparison, split, offStores, onStoreActive, items, advanced, mode, limited, shownCount, onShowMore, openPrices, savings, onUnit, onList }: {
   comparison: BasketComparison; split: BasketComparison; offStores: OffStore[]; onStoreActive: (key: string, active: boolean) => void;
   items: BasketItem[]; advanced: boolean; mode: CompareMode; limited: number;
   shownCount: number; onShowMore: () => void; openPrices: boolean; savings: Map<string, StoreSaving>;
   onUnit: (item: BasketItem, unit: BaseUnit) => void;
-  /** The shopping list of one store: the whole basket there, or only its share of the split. */
-  listPath: (storeKey: string, splitPart: boolean) => string;
+  /** Open the basket's list in a mode: the split (at a store's section), or the whole basket in one store. */
+  onList: (mode: ListView, anchor?: string) => void;
 }) {
   const lineCount = items.length;
   const unit = mode === "unit";
@@ -73,7 +73,7 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
             <span className="v2-basket-split-store-total"><b>{money(purchaseTotalCents(choices, advanced))}</b><small>{choices.length} article{choices.length > 1 ? "s" : ""}</small></span></summary>
           {advanced && <p>Les prix par article sont indiqués avant mutualisation ; le total compte chaque paquet partagé une seule fois.</p>}
           <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
-          <Link className="v2-basket-list-link" to={listPath(storeKey, true)}>Liste de courses pour ce magasin →</Link>
+          <button type="button" className="v2-basket-list-link" onClick={() => onList({ kind: "stores" }, `magasin-${storeKey}`)}>Liste de courses répartie →</button>
         </details>
           <button type="button" className="v2-basket-store-toggle" title="Laisser ce magasin de côté dans la répartition de ce panier, sans le retirer des filtres"
             aria-label={`Désactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`} onClick={() => onStoreActive(storeKey, false)}>Désactiver</button></li>;
@@ -104,7 +104,7 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
           <V2BasketLines choices={store.choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
           {!complete && <p className="v2-basket-missing">Sans prix ici : {missingNames(items.filter(item => !store.choices.some(choice => basketItemKey(choice.item) === basketItemKey(item))))}.</p>}
         </details>
-        <Link className="v2-basket-list-link" to={listPath(store.key, false)}>Liste de courses dans ce magasin →</Link>
+        <button type="button" className="v2-basket-list-link" onClick={() => onList({ kind: "store", key: store.key })}>Liste de courses dans ce magasin →</button>
       </li>;
     })}</ul> : <p>Aucun prix comparable ne correspond à ce panier et à ces filtres.</p>}
     {comparison.stores.length > shownCount && <button type="button" className="v2-button v2-button-secondary v2-basket-load-more" onClick={onShowMore}>Voir d’autres magasins ({comparison.stores.length - shownCount})</button>}

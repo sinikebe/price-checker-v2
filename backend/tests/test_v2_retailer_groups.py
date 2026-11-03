@@ -83,7 +83,8 @@ async def test_retailer_group_backfill_management_and_directory(monkeypatch):
                 "0035_search_settings", "0036_basket_credits", "0037_logs_and_stats",
                 "0038_store_product_status", "0039_price_credits",
                 "0040_contribution_credits", "0041_private_recipes",
-                "0042_shared_baskets", "0043_shared_basket_settings", "0044_saved_lists"
+                "0042_shared_baskets", "0043_shared_basket_settings", "0044_saved_lists",
+                "0045_drop_saved_lists"
             ]
         connection = await connect_v2(config)
         try:

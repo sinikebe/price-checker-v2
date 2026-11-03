@@ -9,8 +9,6 @@ export const HomeIcon = () => <Icon><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5
 export const ProductsIcon = () => <Icon><rect x="4" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" /></Icon>;
 export const StoreIcon = () => <Icon><path d="M4 9.5 5.5 4h13L20 9.5" /><path d="M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0" /><path d="M5.5 12.5V20h13v-7.5" /><path d="M10 20v-4.5h4V20" /></Icon>;
 export const RecipesIcon = () => <Icon><path d="M12 6.5C10.3 5.2 8 4.7 4.5 4.8v13c3.5-.1 5.8.4 7.5 1.7 1.7-1.3 4-1.8 7.5-1.7v-13C16 4.7 13.7 5.2 12 6.5Z" /><path d="M12 6.5v13" /></Icon>;
-/** A clipboard with ticks: the saved shopping lists. */
-export const SavedListIcon = () => <Icon><path d="M9 4.5h6M8.5 3.5h7v2.5h-7z" /><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v12A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-12A1.5 1.5 0 0 0 17.5 5H16" /><path d="m8.2 11 1.3 1.3 2.3-2.4M8.2 15.6l1.3 1.3 2.3-2.4M13.8 11.5h2.4M13.8 16.1h2.4" /></Icon>;
 /** A cart with a second person: the shared basket. */
 export const SharedCartIcon = () => <Icon><path d="M2.5 5H5l1.8 9.5h8.4l1.7-6.5H6.2" /><circle cx="8.3" cy="18.8" r="1.2" /><circle cx="14.4" cy="18.8" r="1.2" /><circle cx="19.3" cy="9.3" r="1.9" /><path d="M16.4 15.6c.5-1.9 1.5-3 2.9-3s2.4 1.1 2.7 3" /></Icon>;
 export const CartIcon = () => <Icon><path d="M3.5 4.5H6l2 10.5h9.5l2-7.5H7.2" /><circle cx="9.5" cy="19.2" r="1.3" /><circle cx="17" cy="19.2" r="1.3" /></Icon>;
