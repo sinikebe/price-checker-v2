@@ -699,6 +699,21 @@
       "component": "open_prices",
       "version": "0.1.29",
       "reason": "Boutons d’ajout au panier des pages de groupe, sans changement pour Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.46",
+      "reason": "Comptage interne des limites de modifications, sans changement de schéma."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.32",
+      "reason": "Comptage interne des limites de modifications, sans changement pour Open Food Facts."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.30",
+      "reason": "Comptage interne des limites et état des connecteurs, sans changement pour Open Prices."
     }
   ]
 }
