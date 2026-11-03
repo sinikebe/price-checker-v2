@@ -1,3 +1,8 @@
 .pwa-controls{position:fixed;z-index:1000;left:50%;bottom:16px;transform:translateX(-50%);max-width:calc(100vw - 24px);display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;padding:12px 16px;border-radius:14px;background:#163d32;color:#fff;box-shadow:0 6px 26px #0004;font:500 14px system-ui,sans-serif;text-align:center}
 .pwa-controls button{border:1px solid #b9db70;background:#b9db70;color:#163d32;border-radius:8px;padding:8px 11px;font:inherit;cursor:pointer}
 .pwa-controls button+button{background:transparent;color:#fff}
+/* Above the bottom dock (14px from the bottom, 62px high) where there is one, and the page keeps room for both. */
+body.v2-has-dock .pwa-controls{bottom:calc(88px + env(safe-area-inset-bottom, 0px))}
+body.v2-has-dock:has(.pwa-controls){padding-bottom:calc(160px + env(safe-area-inset-bottom, 0px))}
+/* When a phone keyboard hides the dock, the banner goes back down. */
+@media (max-width:700px){body.v2-has-dock:has(input:focus,textarea:focus,select:focus) .pwa-controls{bottom:16px}}
