@@ -714,6 +714,16 @@
       "component": "open_prices",
       "version": "0.1.30",
       "reason": "Comptage interne des limites et état des connecteurs, sans changement pour Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.47",
+      "reason": "Table du panier de démonstration enregistré par un administrateur."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.38",
+      "reason": "Aiguillage de la page de démonstration, sans changement pour les comptes."
     }
   ]
 }

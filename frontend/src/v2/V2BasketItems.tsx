@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import V2BasketLink from "./V2BasketLink";
 import { basketItemKey, validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
 import { alternatives, itemHref, itemKind, itemName, type Category } from "./v2-basket-view";
 
@@ -40,7 +40,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
       const itemKey = basketItemKey(item);
       const choices = alternatives(item, categories ?? []);
       return <li className="v2-basket-editor-item" data-disabled={item.disabled ? "true" : "false"} key={itemKey}>
-        <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span><Link to={itemHref(item)}>{itemName(item)}</Link>
+        <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span><V2BasketLink to={itemHref(item)}>{itemName(item)}</V2BasketLink>
           {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}
           {addedBy?.(item) && <small className="v2-basket-added-by">Ajouté par {addedBy(item)}</small>}</div>
           <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>

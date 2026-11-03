@@ -38,7 +38,8 @@ test("every page maps to the right dock item", () => {
 
 test("pages reached from the profile menu highlight no dock item", () => {
   for (const path of ["/v2/produits/nouveau", "/v2/brouillons", "/v2/moderation", "/v2/a-completer", "/v2/capture",
-    "/v2/capture/installer", "/v2/parametres", "/v2/parametres/securite", "/v2/connexion", "/v2/produitsx", "/v2/recettesx"])
+    "/v2/capture/installer", "/v2/parametres", "/v2/parametres/securite", "/v2/connexion", "/v2/produitsx", "/v2/recettesx",
+    "/v2/panier/demo", "/v2/panier/demo/liste"])
     assert.equal(activeDockId(path), null, path);
 });
 
@@ -119,6 +120,7 @@ test("the back button has no target on the home page and goes up one level elsew
     ["/v2/magasins/7", "/v2/magasins"], ["/v2/brouillons/3", "/v2/brouillons"], ["/v2/parametres/securite", "/v2/parametres"],
     ["/v2/categories/Lait", "/v2/produits"], ["/v2/categories/P%C3%A2tes%2Friz", "/v2/produits"],
     ["/v2/capture/installer", "/v2"], ["/v2/produits/12/", "/v2/produits"],
+    ["/v2/panier/demo", "/v2"], ["/v2/panier/demo/liste", "/v2/panier/demo"],
   ];
   for (const [path, parent] of cases) assert.equal(backTarget(path), parent, path);
 });

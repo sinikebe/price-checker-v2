@@ -29,7 +29,7 @@ export const CONTRIBUTION_LABELS: Record<string, string> = {
 };
 export const PAGE_LABELS: Record<string, string> = {
   home: "Accueil", products: "Produits", product: "Fiche produit", product_edit: "Édition de produit", category: "Groupe de produits",
-  stores: "Magasins", store: "Fiche magasin", recipes: "Recettes", recipe: "Recette", basket: "Panier", settings: "Paramètres",
+  stores: "Magasins", store: "Fiche magasin", recipes: "Recettes", recipe: "Recette", basket: "Panier", basket_demo: "Panier de démonstration", settings: "Paramètres",
   capture: "Capture de prix", completion: "À compléter", auth: "Connexion et inscription", versions: "Versions",
   changelog: "Nouveautés", legal: "Mentions légales", other: "Autres pages",
 };

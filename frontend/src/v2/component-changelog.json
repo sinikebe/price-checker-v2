@@ -1013,6 +1013,24 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.132",
+      "components": {
+        "application": {
+          "version": "0.1.132",
+          "notes": [
+            "L’accueil raconte un mois de courses, du panier à la liste, et mène à un panier de démonstration à essayer sans compte."
+          ]
+        },
+        "basket": {
+          "version": "0.1.43",
+          "notes": [
+            "Le panier de démonstration se manipule entièrement : quantités, prix à l’unité, filtres, magasins désactivés et liste, sans compte ni crédit.",
+            "Un administrateur peut faire de son panier, avec ses prix du moment, le panier de démonstration de l’accueil."
+          ]
+        }
+      }
     }
   ]
 }

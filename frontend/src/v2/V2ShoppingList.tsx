@@ -1,4 +1,6 @@
+import { useContext } from "react";
 import { Link } from "react-router-dom";
+import { BasketLinksContext } from "./v2-basket-links";
 import { purchaseTotalCents, type BasketComparison } from "./v2-basket-comparison";
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
@@ -27,6 +29,7 @@ function lineDetail(line: ListLine, advanced: boolean): string {
 function Line({ line, advanced, checked, onCheck }: { line: ListLine; advanced: boolean; checked: boolean; onCheck: (on: boolean) => void }) {
   const choice = line.choice;
   const detail = lineDetail(line, advanced);
+  const linked = useContext(BasketLinksContext);
   return <li className="v2-list-line" data-checked={checked} data-missing={!choice}>
     <label>
       <input type="checkbox" checked={checked} onChange={event => onCheck(event.target.checked)} />
@@ -36,8 +39,8 @@ function Line({ line, advanced, checked, onCheck }: { line: ListLine; advanced: 
     </label>
     {!choice && <div className="v2-list-line-help">
       <span>Pas de prix ici : cherchez une alternative en rayon et relevez son prix.</span>
-      <Link to={alternativesHref(line.item)}>Voir les alternatives et leurs prix</Link>
-      {!("kind" in line.item) && <Link to={"/v2/produits/" + line.item.id}>Relever le prix de ce produit</Link>}
+      {linked && <Link to={alternativesHref(line.item)}>Voir les alternatives et leurs prix</Link>}
+      {linked && !("kind" in line.item) && <Link to={"/v2/produits/" + line.item.id}>Relever le prix de ce produit</Link>}
     </div>}
   </li>;
 }

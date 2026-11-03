@@ -5,6 +5,7 @@ import { useV2Basket } from "./V2BasketContext";
 import V2SiteHeader from "./V2SiteHeader";
 import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
+import V2HomeDemo from "./V2HomeDemo";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
 
@@ -103,7 +104,7 @@ export default function V2HomePage({ user, onLogout }: {
                   onClick={() => { void installApp(); }}>Installer l’application</button>}
               </div>
               {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
-              <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course.</p>
+              <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course. <a className="v2-hero-demo-link" href="#demonstration">Voir un panier en exemple</a>.</p>
               <p className="v2-hero-note">Vous développez une intégration ? <a href="/api/v2/docs">Consulter la documentation API</a>.</p>
             </div>
 
@@ -176,6 +177,8 @@ export default function V2HomePage({ user, onLogout }: {
             </Link>
           </div>
         </section>
+
+        <V2HomeDemo />
 
         <section className="v2-discover v2-wrap" aria-labelledby="v2-discover-heading">
           <div className="v2-discover-copy">

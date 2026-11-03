@@ -71,6 +71,8 @@ export function describeLog(item: LogItem): string {
     case "connector.worker.failed": return `Erreur dans le connecteur (${text(d.error)}).`;
     case "basket.prices.fetched": return `Prix du panier récupérés : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit", "produits")}${d.truncated ? " (limite de taille atteinte)" : ""} ; ${d.unlimited ? "compte sans limite de crédits" : `${plural(number(d.credits_left), "crédit restant", "crédits restants")} sur ce compte`}.`;
     case "basket.prices.refused": return "Récupération des prix du panier refusée : plus de crédit.";
+    case "basket.demo.saved": return `Panier de démonstration enregistré : ${plural(number(d.items), "article", "articles")}, ${plural(number(d.products), "produit comparé", "produits comparés")}.`;
+    case "basket.demo.removed": return "Panier de démonstration retiré : l’accueil montre de nouveau l’exemple intégré.";
     default: return `${item.event} ${Object.entries(d).map(([key, value]) => `${key}=${String(value)}`).join(" ")}`.trim();
   }
 }

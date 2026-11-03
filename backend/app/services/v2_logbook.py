@@ -143,6 +143,8 @@ EVENTS: dict[str, Event] = {
         "items": integer(0, 1000), "products": integer(0, 100_000), "truncated": boolean(),
         "credits_left": integer(0, 1000), "unlimited": boolean()}, frozenset({"credits_left", "unlimited"})),
     "basket.prices.refused": Event("basket", "info", {"reason": choice("no_credits")}),
+    "basket.demo.saved": Event("basket", "info", {"items": integer(0, 1000), "products": integer(0, 100_000)}),
+    "basket.demo.removed": Event("basket", "info"),
 }
 
 _ENQUEUE_OUTCOMES = {"queued", "fresh", "cooldown", "rate_limited"}
