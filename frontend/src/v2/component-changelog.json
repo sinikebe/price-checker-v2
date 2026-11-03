@@ -1031,6 +1031,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.133",
+      "components": {
+        "application": {
+          "version": "0.1.133",
+          "notes": [
+            "Les administrateurs peuvent remplacer les mentions légales, la confidentialité et les conditions d’utilisation depuis un fichier, après un aperçu."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.39",
+          "notes": [
+            "Le décompte des prix consultés sans compte est effacé le surlendemain au plus tard, même sans nouvelle visite."
+          ]
+        }
+      }
     }
   ]
 }

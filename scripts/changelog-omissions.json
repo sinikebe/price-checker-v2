@@ -724,6 +724,11 @@
       "component": "accounts",
       "version": "0.1.38",
       "reason": "Aiguillage de la page de démonstration, sans changement pour les comptes."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.26",
+      "reason": "Carte d’administration ajoutée aux réglages du serveur, sans changement de déploiement."
     }
   ]
 }
