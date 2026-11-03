@@ -16,6 +16,8 @@ import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
 import V2StoresPage from "./V2StoresPage";
 import { useV2Basket } from "./V2BasketContext";
+import { offlineUser, rememberOfflineUser } from "./v2-offline-user";
+import { activeBasketUser } from "./v2-basket-storage";
 import "./v2-home.css";
 import "./v2-setup.css";
 
@@ -410,10 +412,19 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     if (!status?.configured) return;
     let active = true;
     authRequest<V2AuthStatus>("status")
-      .then((data) => { if (active) setAuthStatus(data); })
-      .catch((reason: unknown) => { if (active) { if (!navigator.onLine || reason instanceof TypeError || status.app_env === "offline") setAuthStatus({ admin_initialized: true, user: null }); else setError(errorMessage(reason)); } });
+      .then((data) => { if (active) { if (data.user) rememberOfflineUser(data.user); setAuthStatus(data); } })
+      // Offline, the account last signed in here stays known, so its baskets, prices and lists open.
+      .catch((reason: unknown) => { if (active) { if (!navigator.onLine || reason instanceof TypeError || status.app_env === "offline") setAuthStatus({ admin_initialized: true, user: offlineUser(activeBasketUser()) }); else setError(errorMessage(reason)); } });
     return () => { active = false; };
   }, [status?.configured, status?.app_env, attempt]);
+
+  // Opened offline: ask the server again as soon as the connection is back (the session may have ended).
+  useEffect(() => {
+    if (status?.app_env !== "offline") return;
+    const back = () => setAttempt(value => value + 1);
+    window.addEventListener("online", back);
+    return () => window.removeEventListener("online", back);
+  }, [status?.app_env]);
 
   useEffect(() => {
     if (!status?.configured || !authStatus) return;

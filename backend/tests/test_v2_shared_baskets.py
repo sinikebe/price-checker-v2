@@ -376,6 +376,31 @@ async def test_settings_are_shared_by_every_member(setup):
 
 
 @pytest.mark.asyncio
+async def test_ticks_from_several_members_add_up(setup, monkeypatch):
+    client, _connection, _users, products = setup
+    state = await create(client, products)
+    basket_id = state["id"]
+    await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": state["invite"], "confirm": True})
+    lait, pates = f"product:{products['Lait']}", "group:pâtes"
+    # Alice ticks the milk; Bob, back online later, sends the ticks he made meanwhile.
+    first = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": True}]})
+    assert first.status_code == 200 and first.json()["settings"]["checked"] == [lait]
+    late = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"),
+                             json={"ops": [{"op": "tick", "key": pates, "on": True}, {"op": "tick", "key": lait, "on": True}]})
+    assert late.json()["settings"]["checked"] == [lait, pates], "nobody's ticks are lost"
+    assert late.json()["revision"] == first.json()["revision"] + 1, "an article ticked twice changes nothing more"
+    off = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": False}]})
+    assert off.json()["settings"]["checked"] == [pates]
+    again = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": False}]})
+    assert again.json()["revision"] == off.json()["revision"], "unticking an article not ticked changes nothing"
+    monkeypatch.setattr(shared_baskets, "MAX_LINES", 1)
+    full = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [{"op": "tick", "key": lait, "on": True}]})
+    assert full.json()["settings"]["checked"] == [pates], "the ticks stay bounded"
+    for bad in ({"key": "", "on": True}, {"key": "x" * 401, "on": True}, {"key": lait}):
+        assert (await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [{"op": "tick", **bad}]})).status_code == 422, bad
+
+
+@pytest.mark.asyncio
 async def test_refused_changes_still_count_toward_the_write_limit(setup, monkeypatch):
     client, _connection, _users, products = setup
     state = await create(client, products)

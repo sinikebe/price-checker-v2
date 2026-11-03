@@ -4,8 +4,8 @@ import {
   listSharedBaskets, readSharedBasket, removeSharedMember, renameSharedBasket, renewSharedInvite, waitSharedBasket,
 } from "./v2-shared-basket-api";
 import {
-  MAX_OPS, activityText, applyOps, applySettings, diffOps, forgetSharedCache, newFromOthers, queueOps, readSharedCache, readSharedId,
-  sharedItems, sharedSettings, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedSettings,
+  MAX_OPS, activityText, allowedOffline, applyOps, applySettings, diffOps, forgetSharedCache, newFromOthers, queueOps, readSharedCache, readSharedId,
+  sharedItems, sharedSettings, tickOps, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedSettings,
 } from "./v2-shared-basket";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 
@@ -33,9 +33,9 @@ const message = (error: unknown) => error instanceof Error && error.message ? er
 /**
  * The shared basket this account has open in this browser, kept live: a read waits on the server
  * for the next change, edits show at once and are sent in order. Nothing runs while no shared
- * basket is open, and reading pauses while the page is hidden. Its last state and the changes not
- * sent yet are kept in the browser: it opens and changes offline, and the changes leave as soon as
- * the connection is back.
+ * basket is open, and reading pauses while the page is hidden. Its last state, the moment the server
+ * last confirmed it and the changes not sent yet are kept in the browser: it opens offline, read
+ * only except the ticks of its list, which leave as soon as the connection is back.
  */
 export function useSharedBasket(userId: number | null) {
   const [owner, setOwner] = useState(userId);
@@ -43,6 +43,7 @@ export function useSharedBasket(userId: number | null) {
   // What the browser kept for this basket, applied to the refs below by an effect.
   const [loaded, setLoaded] = useState(() => readSharedCache(sharedId, userId));
   const [basket, setBasket] = useState<SharedBasket | null>(loaded.basket);
+  const [syncedAt, setSyncedAt] = useState<string | null>(loaded.basket?.synced_at ?? null);
   const [live, setLive] = useState(true);
   const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
   const [error, setError] = useState("");
@@ -52,7 +53,7 @@ export function useSharedBasket(userId: number | null) {
   const [pending, setPending] = useState<LocalOp[]>(loaded.queue);
   if (owner !== userId) {
     const id = readSharedId(userId), cache = readSharedCache(id, userId);
-    setOwner(userId); setSharedId(id); setLoaded(cache); setBasket(cache.basket); setPending(cache.queue); setError(""); setActivity("");
+    setOwner(userId); setSharedId(id); setLoaded(cache); setBasket(cache.basket); setSyncedAt(cache.basket?.synced_at ?? null); setPending(cache.queue); setError(""); setActivity("");
   }
   const basketRef = useRef<SharedBasket | null>(null);
   const queue = useRef<LocalOp[]>([]);
@@ -78,14 +79,21 @@ export function useSharedBasket(userId: number | null) {
     if (current && next.revision < current.revision) return;
     const fresh = newFromOthers(current?.lines ?? null, next.lines);
     if (fresh.length) setActivity(activityText(fresh));
-    basketRef.current = next; setBasket(next); setOffline(false);
-    if (userId) writeSharedState(userId, next);
+    const now = new Date().toISOString();
+    basketRef.current = next; setBasket(next); setOffline(false); setSyncedAt(now);
+    if (userId) writeSharedState(userId, next, now);
+  }, [userId]);
+  /** The server said nothing changed: the copy kept here is up to date as of now. */
+  const confirmed = useCallback(() => {
+    const now = new Date().toISOString(), current = basketRef.current;
+    setSyncedAt(now);
+    if (userId && current) writeSharedState(userId, current, now);
   }, [userId]);
   /** Switch to another basket (or none), starting from what the browser kept for it. */
   const load = useCallback((id: number | null) => {
     const cache = readSharedCache(id, userId);
     basketRef.current = cache.basket; queue.current = [...cache.queue]; inflight.current = []; idRef.current = id;
-    setLoaded(cache); setBasket(cache.basket); setPending(cache.queue); setSharedId(id);
+    setLoaded(cache); setBasket(cache.basket); setSyncedAt(cache.basket?.synced_at ?? null); setPending(cache.queue); setSharedId(id);
   }, [userId]);
   const forget = useCallback((text: string) => {
     if (userId) { writeSharedId(userId, null); if (idRef.current) forgetSharedCache(idRef.current, userId); }
@@ -106,6 +114,7 @@ export function useSharedBasket(userId: number | null) {
             const { basket: next, retryAfter } = await waitSharedBasket(sharedId, current.revision, signal);
             if (next) accept(next);
             else if (retryAfter) await pause(retryAfter * 1000, signal);
+            else confirmed();
           }
           failures = 0; setLive(true);
           // Back online after changes made offline: send them now.
@@ -124,7 +133,7 @@ export function useSharedBasket(userId: number | null) {
       }
     })();
     return () => controller.abort();
-  }, [sharedId, accept, forget]);
+  }, [sharedId, accept, confirmed, forget]);
 
   // A shared basket created or joined on another device is found once per session, so its dock
   // entry shows here too.
@@ -183,18 +192,28 @@ export function useSharedBasket(userId: number | null) {
   const settings = useMemo(() => applySettings(sharedSettings(current), pending), [current, pending]);
   const lineByKey = useMemo(() => new Map((base?.items ?? []).map((item, index) => [basketItemKey(item), base!.lines[index]])), [base]);
 
+  /** Show changes now and send them; offline, only ticks are taken (the screen offers nothing else). */
+  const send = useCallback((ops: LocalOp[]) => {
+    const taken = navigator.onLine ? ops : ops.filter(allowedOffline);
+    if (taken.length < ops.length) setError("Hors connexion : seules les coches de la liste peuvent changer. Réessayez au retour de la connexion.");
+    if (!taken.length) return;
+    queue.current = queueOps(queue.current, taken); sync();
+    void flush();
+  }, [flush, sync]);
   /** Turn the basket into `next`: the difference is shown now and sent to the server. */
   const edit = useCallback((next: BasketItem[]) => {
     const ops = diffOps(view(), next, basketItemKey);
-    if (!ops.length) return;
-    queue.current = queueOps(queue.current, ops); sync();
-    void flush();
-  }, [flush, sync, view]);
+    if (ops.length) send(ops);
+  }, [send, view]);
   /** Change settings every member sees (filters, quantities, price or unit price, stores off, units). */
-  const setSettings = useCallback((patch: Partial<SharedSettings>) => {
-    queue.current = queueOps(queue.current, [{ op: "settings", patch }]); sync();
-    void flush();
-  }, [flush, sync]);
+  const setSettings = useCallback((patch: Partial<SharedSettings>) => send([{ op: "settings", patch }]), [send]);
+  /** Tick the list: one change per article, so ticks made elsewhere meanwhile are kept. Works offline. */
+  const setChecked = useCallback((next: string[]) => {
+    const known = basketRef.current?.id === idRef.current ? basketRef.current : null;
+    const now = applySettings(sharedSettings(known), [...inflight.current, ...queue.current]).checked;
+    const ops = tickOps(now, next);
+    if (ops.length) send(ops);
+  }, [send]);
 
   const open = useCallback((id: number | null) => {
     if (!userId) return;
@@ -214,7 +233,9 @@ export function useSharedBasket(userId: number | null) {
   }, [forget]);
 
   return {
-    sharedId, basket: current, items, view, settings, setSettings, lines: base?.lines ?? [], unavailable: base?.unavailable ?? [],
+    sharedId, basket: current, items, view, settings, setSettings, setChecked, lines: base?.lines ?? [], unavailable: base?.unavailable ?? [],
+    /** When the server last confirmed the basket shown (ISO date), kept for offline use. */
+    syncedAt,
     status: (offline ? "offline" : !current ? "connecting" : live ? "live" : "retrying") as SharedStatus,
     /** Changes kept in the browser, not confirmed by the server yet. */
     waiting: pending.length,
@@ -227,8 +248,7 @@ export function useSharedBasket(userId: number | null) {
     },
     /** Remove a product line that can no longer be shown (withdrawn from the catalogue since). */
     dropUnavailable(productId: number) {
-      queue.current = queueOps(queue.current, [{ op: "remove", line: { kind: "product", product_id: productId }, key: "product:" + productId }]); sync();
-      void flush();
+      send([{ op: "remove", line: { kind: "product", product_id: productId }, key: "product:" + productId }]);
     },
     async create(name: string, from: BasketItem[], startSettings?: Partial<SharedSettings>) {
       const created = await act(() => createSharedBasket(name, wireOps(diffOps([], from, basketItemKey)), startSettings), false);

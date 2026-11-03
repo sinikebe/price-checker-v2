@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-shared-basket.ts", import.meta
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const {
   DEFAULT_SETTINGS, activityText, forgetSharedCache, readSharedCache, sharedQueueKey, sharedStateKey, writeSharedQueue, writeSharedState, applyOps, applySettings, diffOps, inviteFromHash, inviteUrl, keepPendingInvite, lineRef,
-  newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId,
+  newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId, tickOps, allowedOffline,
 } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 // The same key as the browser basket (basketItemKey in v2-basket-storage.ts).
@@ -141,5 +141,36 @@ test("a shared basket and its unsent changes are kept in the browser, for offlin
   assert.equal(store.has(sharedQueueKey(9, 5)), false);
   forgetSharedCache(9, 5);
   assert.equal(store.size, 0);
+  delete globalThis.localStorage;
+});
+
+
+test("ticks: one change per article, applied at once, the last one kept while waiting, the only change allowed offline", () => {
+  assert.deepEqual(tickOps(["a", "b"], ["b", "c"]), [{ op: "tick", key: "a", on: false }, { op: "tick", key: "c", on: true }]);
+  assert.deepEqual(tickOps(["a"], ["a"]), []);
+  const settings = { ...DEFAULT_SETTINGS, checked: ["a", "b"] };
+  assert.deepEqual(applySettings(settings, [{ op: "tick", key: "c", on: true }, { op: "tick", key: "a", on: false }, { op: "tick", key: "c", on: true }]).checked, ["b", "c"]);
+  let queue = queueOps([], [{ op: "tick", key: "a", on: true }, { op: "settings", patch: { advanced: true } }]);
+  queue = queueOps(queue, [{ op: "tick", key: "a", on: false }]);
+  assert.deepEqual(queue, [{ op: "settings", patch: { advanced: true } }, { op: "tick", key: "a", on: false }], "the latest tick of an article replaces the one waiting");
+  assert.deepEqual(wireOps([{ op: "tick", key: "group:pâtes", on: true }]), [{ op: "tick", key: "group:pâtes", on: true }]);
+  assert.deepEqual(applyOps([{ kind: "group", name: "Pâtes" }], [{ op: "tick", key: "group:pâtes", on: true }], item => "group:" + item.name.toLocaleLowerCase("fr")),
+    [{ kind: "group", name: "Pâtes" }], "a tick changes no article");
+  assert.equal(allowedOffline({ op: "tick", key: "a", on: true }), true);
+  for (const op of [{ op: "settings", patch: {} }, { op: "add", line: { kind: "group", name: "x" }, quantity: null, disabled: false, item: { kind: "group", name: "x" } },
+    { op: "remove", line: { kind: "group", name: "x" }, key: "group:x" }, { op: "update", line: { kind: "group", name: "x" }, key: "group:x", disabled: true }])
+    assert.equal(allowedOffline(op), false, op.op);
+});
+
+test("the browser copy keeps when the server last confirmed it, and the ticks waiting to be sent", () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: key => store.delete(key) };
+  const basket = { id: 4, name: "B", revision: 2, role: "member", owner: "ana", invite: "4-secret", members: [], lines: [], limits: { lines: 100, members: 20 } };
+  writeSharedState(9, basket, "2026-11-03T12:00:00.000Z");
+  writeSharedQueue(4, 9, [{ op: "tick", key: "group:pâtes", on: true }]);
+  const cache = readSharedCache(4, 9);
+  assert.equal(cache.basket.synced_at, "2026-11-03T12:00:00.000Z");
+  assert.equal(cache.basket.invite, null, "the invitation is still never kept");
+  assert.deepEqual(cache.queue, [{ op: "tick", key: "group:pâtes", on: true }]);
   delete globalThis.localStorage;
 });

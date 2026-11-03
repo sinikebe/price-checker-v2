@@ -73,3 +73,10 @@ test("what signing out would erase without it ever being sent", () => {
   assert.deepEqual(unsentAtLogout(storage, 5), { changes: 2, drafts: 2 });
   assert.deepEqual(unsentAtLogout(storage, 7), { changes: 0, drafts: 0 });
 });
+
+
+test("the account kept for offline use goes with the account, at sign-out and at deletion", () => {
+  const keys = ["v2:auth:offline-user:7", "v2:auth:offline-user:70", "v2:basket:user:7"];
+  assert.deepEqual(logoutLocalKeys(keys, 7), ["v2:auth:offline-user:7"]);
+  assert.ok(accountLocalKeys(keys, 7).includes("v2:auth:offline-user:7") && !accountLocalKeys(keys, 7).includes("v2:auth:offline-user:70"));
+});

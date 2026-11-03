@@ -1059,6 +1059,42 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.135",
+      "components": {
+        "application": {
+          "version": "0.1.135",
+          "notes": [
+            "Hors connexion, l’application s’ouvre avec le dernier compte connecté et reste en lecture seule, sauf les coches des listes de courses."
+          ]
+        },
+        "basket": {
+          "version": "0.1.44",
+          "notes": [
+            "Hors connexion, les paniers et leurs listes se consultent et se cochent ; le reste attend le retour de la connexion.",
+            "Le panier partagé indique sa dernière synchronisation, et les coches faites hors connexion s’ajoutent à celles des autres membres."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.26",
+          "notes": [
+            "Hors connexion, l’ajout des ingrédients d’une recette au panier attend le retour de la connexion."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.40",
+          "notes": [
+            "Le compte reste reconnu hors connexion sur l’appareil où il s’est connecté ; se déconnecter l’efface de cet appareil."
+          ]
+        },
+        "pwa": {
+          "version": "0.1.30",
+          "notes": [
+            "Le bandeau hors ligne indique que l’application est en lecture seule, sauf les coches des listes."
+          ]
+        }
+      }
     }
   ]
 }

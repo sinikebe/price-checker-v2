@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import V2BasketLink from "./V2BasketLink";
+import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketItemKey, validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
 import { alternatives, itemHref, itemKind, itemName, type Category } from "./v2-basket-view";
 
 function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value: BasketQuantity) => void }) {
+  const readOnly = useContext(BasketReadOnlyContext);
   const initial = item.quantity ?? { amount: "1", unit: "package" as const };
   const [amount, setAmount] = useState(initial.amount);
   const [unit, setUnit] = useState<BasketQuantity["unit"]>(initial.unit);
@@ -13,10 +15,10 @@ function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value
     if (!validBasketQuantity(value)) { setError(true); return; }
     setError(false); onChange(value);
   }
-  return <div className="v2-basket-quantity"><label>Quantité demandée<input aria-label={`Quantité demandée pour ${itemName(item)}`} type="number" min="0.000001" max="999999" step="any" value={amount} onChange={event => { setAmount(event.target.value); setError(false); }} /></label>
-    <label>Unité<select aria-label={`Unité pour ${itemName(item)}`} value={unit} onChange={event => setUnit(event.target.value as BasketQuantity["unit"])}>
+  return <div className="v2-basket-quantity"><label>Quantité demandée<input aria-label={`Quantité demandée pour ${itemName(item)}`} type="number" min="0.000001" max="999999" step="any" value={amount} disabled={readOnly} onChange={event => { setAmount(event.target.value); setError(false); }} /></label>
+    <label>Unité<select aria-label={`Unité pour ${itemName(item)}`} value={unit} disabled={readOnly} onChange={event => setUnit(event.target.value as BasketQuantity["unit"])}>
       <option value="package">paquet(s)</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="cl">cl</option><option value="l">l</option><option value="piece">pièce(s)</option>
-    </select></label><button type="button" className="v2-button v2-button-secondary" onClick={() => save(amount, unit)}>Appliquer</button>
+    </select></label><button type="button" className="v2-button v2-button-secondary" disabled={readOnly} onClick={() => save(amount, unit)}>Appliquer</button>
     {error && <small role="alert">Quantité positive requise (6 décimales maximum).</small>}</div>;
 }
 
@@ -34,7 +36,9 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
   /** In a shared basket: who added each line. */
   addedBy?: (item: BasketItem) => string | null; sharedName?: string;
 }) {
+  const readOnly = useContext(BasketReadOnlyContext);
   return <section className="v2-basket-panel" id="v2-basket-panel-items" aria-label="Articles du panier">
+    {readOnly && <p className="v2-basket-offline-note">Hors connexion : les articles se modifient au retour de la connexion.</p>}
     <p>Un groupe ou un ensemble compte pour un article.{advanced ? " Indiquez la quantité voulue : le total couvre des paquets entiers, la part utilisée est calculée au prorata." : ""}</p>
     <ul className="v2-basket-editor-list">{items.map(item => {
       const itemKey = basketItemKey(item);
@@ -43,18 +47,18 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span><V2BasketLink to={itemHref(item)}>{itemName(item)}</V2BasketLink>
           {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}
           {addedBy?.(item) && <small className="v2-basket-added-by">Ajouté par {addedBy(item)}</small>}</div>
-          <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>
+          <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} disabled={readOnly} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>
         <div className="v2-basket-editor-controls">
           {choices.length > 1 && <label>Choix de comparaison
-            <select value={itemKey} onChange={event => { const selected = choices.find(choice => basketItemKey(choice) === event.target.value); if (selected) actions.replace(item, selected); }}>
+            <select value={itemKey} disabled={readOnly} onChange={event => { const selected = choices.find(choice => basketItemKey(choice) === event.target.value); if (selected) actions.replace(item, selected); }}>
               {choices.map(choice => <option key={basketItemKey(choice)} value={basketItemKey(choice)} disabled={basketItemKey(choice) !== itemKey && items.some(saved => basketItemKey(saved) === basketItemKey(choice))}>{itemKind(choice)} · {choice.name}</option>)}
             </select></label>}
           {"kind" in item && categoryError && <small>Autres choix indisponibles hors ligne.</small>}
-          <button type="button" className="v2-basket-remove" onClick={() => actions.remove(item)}>Retirer</button>
+          <button type="button" className="v2-basket-remove" disabled={readOnly} onClick={() => actions.remove(item)}>Retirer</button>
         </div>
         {advanced && <QuantityEditor key={`${itemKey}:${item.quantity?.amount}:${item.quantity?.unit}`} item={item} onChange={quantity => actions.setQuantity(item, quantity)} />}
       </li>;
     })}</ul>
-    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" onClick={() => { if (window.confirm(sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
+    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" disabled={readOnly} onClick={() => { if (window.confirm(sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
   </section>;
 }
