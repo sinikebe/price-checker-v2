@@ -4,6 +4,7 @@ import { readBasketDefaultStores } from "./v2-basket-default-stores";
 import { readStoresOff, writeStoresOff } from "./v2-basket-store-off";
 import { readUnitChoices, writeUnitChoices, type UnitChoiceMap } from "./v2-measures";
 import type { SharedSettings } from "./v2-shared-basket";
+import { listSetting, listViewOf, type ListView } from "./v2-shopping-list";
 
 export type BasketView = {
   advanced: boolean; setAdvanced: (value: boolean) => void;
@@ -13,12 +14,16 @@ export type BasketView = {
   filters: BasketFilters; setFilters: (value: BasketFilters) => void;
   /** Articles ticked in the shopping list. */
   checked: string[]; setChecked: (value: string[]) => void;
+  /** The list: all articles, split across stores, or one store (shared live in a shared basket). */
+  listView: ListView; setListView: (value: ListView) => void;
 };
 type SharedView = { settings: SharedSettings; setSettings: (patch: Partial<SharedSettings>) => void };
 
 function readFlag(key: string, on: string): boolean { try { return localStorage.getItem(key) === on; } catch { return false; } }
 function writeValue(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* this page still works */ } }
 const checkedKey = (userId: number | null) => `v2:basket:checked:${userId ?? "anonymous"}`;
+const listModeKey = (userId: number | null) => `v2:basket:list-mode:${userId ?? "anonymous"}`;
+function readListMode(userId: number | null): string { try { return localStorage.getItem(listModeKey(userId)) ?? "all"; } catch { return "all"; } }
 /** The ticked articles kept in this browser: basket keys, once each, at most 100. */
 export function readChecked(userId: number | null): string[] {
   try {
@@ -41,6 +46,8 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
   if (offState.userId !== userId) setOffState({ userId, keys: readStoresOff(userId) });
   const [checkedState, setCheckedState] = useState(() => ({ userId, keys: readChecked(userId) }));
   if (checkedState.userId !== userId) setCheckedState({ userId, keys: readChecked(userId) });
+  const [listState, setListState] = useState(() => ({ userId, mode: readListMode(userId) }));
+  if (listState.userId !== userId) setListState({ userId, mode: readListMode(userId) });
   const [filters, setFilters] = useState<BasketFilters>(() => ({ ...emptyBasketFilters, storeIds: readBasketDefaultStores().map(store => store.id) }));
   if (shared) return {
     advanced: shared.settings.advanced, setAdvanced: value => shared.setSettings({ advanced: value }),
@@ -49,6 +56,7 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
     storesOff: shared.settings.stores_off, setStoresOff: value => shared.setSettings({ stores_off: value }),
     filters: shared.settings.filters, setFilters: value => shared.setSettings({ filters: value }),
     checked: shared.settings.checked, setChecked: value => shared.setSettings({ checked: value.slice(0, 100) }),
+    listView: listViewOf(shared.settings.list_mode), setListView: value => shared.setSettings({ list_mode: listSetting(value) }),
   };
   return {
     advanced, setAdvanced: value => { setAdvancedState(value); writeValue("v2:basket:advanced", value ? "1" : "0"); },
@@ -57,5 +65,6 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
     storesOff: offState.keys, setStoresOff: value => { setOffState({ userId, keys: value }); writeStoresOff(userId, value); },
     filters, setFilters,
     checked: checkedState.keys, setChecked: value => { const keys = value.slice(0, 100); setCheckedState({ userId, keys }); writeValue(checkedKey(userId), JSON.stringify(keys)); },
+    listView: listViewOf(listState.mode), setListView: value => { const mode = listSetting(value); setListState({ userId, mode }); writeValue(listModeKey(userId), mode); },
   };
 }

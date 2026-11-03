@@ -10,7 +10,6 @@ import V2ProductWorkspace from "./V2ProductWorkspace";
 import V2CataloguePage from "./V2CataloguePage";
 import V2RecipesPage from "./V2RecipesPage";
 import V2BasketPage from "./V2BasketPage";
-import V2SavedListsPage from "./V2SavedListsPage";
 import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
 import V2StoresPage from "./V2StoresPage";
@@ -368,7 +367,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
   );
 }
 
-export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, sharedBasketMode = false, shoppingListMode = false, savedListsMode = false, savedListId, captureMode, completionMode = false, storesMode = false, storeId }: {
+export default function V2Gateway({ settingsMode = false, preferencesMode = false, preferencesTab, authMode, workspaceMode, workspaceId, categoryName, recipeMode, recipeId, privateRecipe = false, basketMode = false, sharedBasketMode = false, shoppingListMode = false, captureMode, completionMode = false, storesMode = false, storeId }: {
   settingsMode?: boolean;
   preferencesTab?: string;
   preferencesMode?: boolean;
@@ -382,8 +381,6 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   basketMode?: boolean;
   sharedBasketMode?: boolean;
   shoppingListMode?: boolean;
-  savedListsMode?: boolean;
-  savedListId?: string;
   captureMode?: "install" | "review";
   completionMode?: boolean;
   storesMode?: boolean;
@@ -486,7 +483,6 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
   if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
-  if (savedListsMode) return withHostAlert(<V2SavedListsPage user={authStatus.user} onLogout={logout} listId={savedListId} />);
   if (basketMode) return withHostAlert(<V2BasketPage user={authStatus.user} onLogout={logout} sharedMode={sharedBasketMode} listMode={shoppingListMode} />);
   if (recipeMode) {
     return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} privateRecipe={privateRecipe} user={authStatus.user} onLogout={logout} />);

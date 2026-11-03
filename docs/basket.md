@@ -82,19 +82,13 @@ La migration `0042_shared_baskets` crée les tables `v2_shared_baskets`, `v2_sha
 
 ## Liste de courses
 
-Depuis les résultats d’un panier (personnel ou partagé), **Liste de courses** ouvre `/v2/panier/liste` (ou `/v2/panier/partage/liste`) : la répartition la moins chère, magasin par magasin, avec ce qu’il faut prendre dans chacun, son prix et le total du magasin. Les articles qu’aucun magasin comparé ne propose viennent en premier, à chercher sur place.
+Chaque panier (personnel ou partagé) a sa vue **Liste de courses** (`/v2/panier/liste`, `/v2/panier/partage/liste`), ouverte depuis le haut du panier ou depuis ses résultats. Ce n’est pas une copie : la liste suit le panier, et pour un panier partagé, elle change en direct pour tous ses membres. Elle a trois modes, gardés avec le panier (dans le navigateur pour le panier personnel, pour tous les membres en direct pour un panier partagé : n’importe quel membre peut changer de mode) :
 
-Depuis la carte d’un magasin du classement, la liste montre tout le panier dans ce magasin (`?magasin=<magasin>:<canal>`). Les articles sans prix dans ce magasin viennent **en tête**, avec un lien vers leurs alternatives (le groupe comparable, avec ses prix) et, pour un produit, vers sa fiche pour relever son prix sur place. Depuis une ligne de la répartition, la liste se limite à la part de ce magasin (`&repartition=1`).
+- **Tous les articles** : les articles inclus du panier, à cocher, avec leur quantité quand le panier avancé est actif. Ce mode n’a besoin d’aucun prix : il fonctionne avant toute comparaison et hors connexion.
+- **Répartie entre les magasins** : la répartition la moins chère, magasin par magasin, avec ce qu’il faut prendre dans chacun, son prix et le total du magasin. Les articles qu’aucun magasin comparé ne propose viennent en premier, à chercher sur place.
+- **Tout dans un magasin** : tout le panier dans le magasin choisi (la carte d’un magasin du classement ouvre la liste dans ce mode). Les articles sans prix dans ce magasin viennent **en tête**, avec un lien vers leurs alternatives (le groupe comparable, avec ses prix) et, pour un produit, vers sa fiche pour relever son prix sur place.
 
-La liste se construit avec les prix déjà récupérés et gardés sur l’appareil : elle fonctionne hors connexion, ne coûte aucun crédit et ne fait aucune requête de prix. Un article ajouté depuis le dernier relevé est signalé, à actualiser. Chaque article se coche quand il est pris : dans le navigateur pour le panier personnel, pour tous les membres en direct pour un panier partagé ; **Tout décocher** repart de zéro.
-
-## Listes enregistrées
-
-Depuis une liste de courses, **Enregistrer la liste** en garde une copie figée (magasins, articles, prix et coches du moment), sous un nom à choisir. Elle est **enregistrée sur le serveur avec le compte, jusqu’à ce qu’il la supprime ou supprime son compte**, ce que le formulaire indique, et copiée dans le navigateur pour la consulter et la cocher hors connexion. Les changements faits hors connexion (enregistrement, coches, nom, suppression) partent dès le retour de la connexion ; l’identifiant de la liste est choisi par le navigateur, si bien qu’un envoi répété ne crée jamais de double.
-
-L’entrée **Listes** de la barre du bas (comptes connectés) ouvre `/v2/listes` : les listes enregistrées, la plus récente en premier, puis chaque liste (`/v2/listes/<id>`) à cocher, renommer, **remettre dans mon panier** ou **dans le panier partagé** (les articles absents y sont ajoutés avec leur quantité), ou supprimer. La suppression est définitive et ne peut pas être annulée, ce que le site rappelle avant de la confirmer.
-
-Limites : 30 listes par compte, 300 lignes par liste, 60 changements par minute. La migration `0044_saved_lists` crée la table `v2_saved_lists` ; les listes figurent dans l’export des données du compte et sont supprimées avec lui.
+Les deux modes par magasin suivent les **filtres de magasins** du panier et laissent de côté les **magasins désactivés** : un magasin désactivé n’est plus proposé pour « Tout dans un magasin », et s’il était choisi, la liste le signale. Ils se construisent avec les prix déjà récupérés et gardés sur l’appareil : ils fonctionnent hors connexion, ne coûtent aucun crédit et ne font aucune requête de prix ; un article ajouté depuis le dernier relevé est signalé, à actualiser. Chaque article se coche quand il est pris (pour tous les membres d’un panier partagé) ; **Tout décocher** repart de zéro.
 
 ## API
 
@@ -110,14 +104,6 @@ Paniers partagés (session de navigateur, origine vérifiée pour les écritures
 - `GET /api/v2/shared-baskets` : les paniers partagés du compte.
 - `POST /api/v2/shared-baskets` : `{"name", "lines": [{"line", "quantity", "disabled"}], "settings"?}`, crée un panier partagé ; `line` vaut `{"kind": "product", "product_id"}`, `{"kind": "group", "name"}` ou `{"kind": "scope", "department", "family", "name"}`.
 - `GET /api/v2/shared-baskets/{id}` : le panier (membres, lignes avec le produit actuel, lien d’invitation). Avec `?after=<revision>&wait=true`, la réponse attend un changement jusqu’à 25 s ; `204` signifie « rien de neuf », éventuellement avec `Retry-After`.
-- `POST /api/v2/shared-baskets/{id}/changes` : `{"ops": [...]}` appliquées dans l’ordre, une ligne étant désignée par ce qu’elle est (`line`) : `{"op": "add", "line", "quantity", "disabled"}` (ajoutée une seule fois), `{"op": "remove", "line"}`, `{"op": "update", "line", "quantity"?, "disabled"?}`, et `{"op": "settings", "advanced"?, "compare"?, "filters"?, "stores_off"?, "units"?, "checked"?}`, qui remplace les réglages nommés (bornés : 200 magasins, 100 villes ou départements, 50 magasins désactivés, une unité et une coche par article). La migration `0043_shared_basket_settings` ajoute la colonne `settings`.
+- `POST /api/v2/shared-baskets/{id}/changes` : `{"ops": [...]}` appliquées dans l’ordre, une ligne étant désignée par ce qu’elle est (`line`) : `{"op": "add", "line", "quantity", "disabled"}` (ajoutée une seule fois), `{"op": "remove", "line"}`, `{"op": "update", "line", "quantity"?, "disabled"?}`, et `{"op": "settings", "advanced"?, "compare"?, "filters"?, "stores_off"?, "units"?, "checked"?, "list_mode"?}`, qui remplace les réglages nommés (bornés : 200 magasins, 100 villes ou départements, 50 magasins désactivés, une unité et une coche par article ; `list_mode` vaut `all`, `split` ou `store:<magasin>:<canal>`). La migration `0043_shared_basket_settings` ajoute la colonne `settings`.
 - `POST /api/v2/shared-baskets/join` : `{"invite", "confirm"}` ; sans `confirm`, décrit le panier sans le rejoindre.
 - `PATCH /api/v2/shared-baskets/{id}` (`{"name"}`), `POST /api/v2/shared-baskets/{id}/invite`, `DELETE /api/v2/shared-baskets/{id}` : réservés au créateur. `DELETE /api/v2/shared-baskets/{id}/members/{user_id}` : quitter (son propre identifiant) ou retirer un membre (créateur).
-
-Listes enregistrées (session de navigateur, origine vérifiée pour les écritures, `Cache-Control: private, no-store`) :
-
-- `GET /api/v2/lists` : les listes du compte, complètes (30 au plus).
-- `PUT /api/v2/lists/{list_id}` (UUID choisi par le navigateur) : `{"name", "content", "checked"}`, crée ou remplace la liste ; renvoyer la même requête ne change rien de plus.
-- `PATCH /api/v2/lists/{list_id}` : `{"name"?, "checked"?}`.
-- `DELETE /api/v2/lists/{list_id}` : supprime la liste (réussit aussi si elle n’existe déjà plus).
-

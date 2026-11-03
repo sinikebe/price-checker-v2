@@ -1151,6 +1151,10 @@ MIGRATIONS = {
         );
         CREATE INDEX v2_saved_lists_recent_idx ON v2_saved_lists(user_id, updated_at DESC);
     """,
+    "0045_drop_saved_lists": """
+        -- A shopping list is now always the live view of a basket: saved copies are no longer kept.
+        DROP TABLE v2_saved_lists;
+    """,
 }
 
 

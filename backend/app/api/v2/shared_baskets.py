@@ -176,6 +176,9 @@ class Settings(BaseModel):
     units: dict[UnitKey, Literal["g", "ml", "piece"]] | None = Field(default=None, max_length=MAX_LINES)
     # Articles ticked in the shopping list, so the one shopping sees what the others picked up.
     checked: list[UnitKey] | None = Field(default=None, max_length=MAX_LINES)
+    # The basket's list as every member sees it: all articles, split across stores, or one store.
+    list_mode: str | None = Field(
+        default=None, pattern=r"^(?:all|split|store:[1-9][0-9]{0,18}:(?:in_store|drive|delivery))$")
 
     def patch(self) -> dict:
         return self.model_dump(mode="json", exclude={"op"}, exclude_none=True)
@@ -183,7 +186,7 @@ class Settings(BaseModel):
 
 DEFAULT_SETTINGS = {"advanced": False, "compare": "price",
                     "filters": {"storeIds": [], "cities": [], "departments": []},
-                    "stores_off": [], "units": {}, "checked": []}
+                    "stores_off": [], "units": {}, "checked": [], "list_mode": "all"}
 
 
 class SettingsOp(Settings):

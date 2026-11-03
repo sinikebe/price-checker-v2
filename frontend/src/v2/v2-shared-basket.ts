@@ -37,9 +37,11 @@ export type SharedSettings = {
   stores_off: string[]; units: Record<string, BaseUnit>;
   /** Articles ticked in the shopping list (basket keys). */
   checked: string[];
+  /** The list as every member sees it: "all", "split" or "store:<store>:<channel>". */
+  list_mode: string;
 };
 export const DEFAULT_SETTINGS: SharedSettings = {
-  advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {}, checked: [],
+  advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {}, checked: [], list_mode: "all",
 };
 export type LocalOp =
   | { op: "settings"; patch: Partial<SharedSettings> }
