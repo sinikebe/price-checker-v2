@@ -11,6 +11,8 @@ import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
 import { useV2Basket } from "./V2BasketContext";
+import { useOnline } from "./useOnline";
+import { OFFLINE_TITLE } from "./v2-basket-read-only";
 import { SHARED_BASKET_PATH } from "./v2-shared-basket";
 import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
 import { rewardHint } from "./v2-basket-credits-api";
@@ -94,6 +96,8 @@ function List({ user, onLogout }: Props) {
 
 function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
   const basket = useV2Basket();
+  // Offline, the baskets are read only: the ingredients are added once the connection is back.
+  const online = useOnline();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [access, setAccess] = useState<{ recipeId: number; userId: number; canEdit: boolean } | null>(null);
   const userId = user?.id;
@@ -262,8 +266,8 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
             </select></label>}
             {item.note && <small>{item.note}</small>}
           </li>;
-        })}</ul><div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => addIngredients()}>Ajouter les ingrédients au panier →</button>
-          {basket.sharedBasket && <button type="button" className="v2-button v2-button-secondary" onClick={() => addIngredients(true)}>Au panier partagé →</button>}</div></section>
+        })}</ul><div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients()}>Ajouter les ingrédients au panier →</button>
+          {basket.sharedBasket && <button type="button" className="v2-button v2-button-secondary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients(true)}>Au panier partagé →</button>}</div></section>
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{currentRecipe.prep_minutes != null && `Préparation : ${currentRecipe.prep_minutes} min · `}{currentRecipe.cook_minutes != null && `Cuisson : ${currentRecipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{currentRecipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
       {!privateRecipe && <V2ReportControl kind="recipe" contentId={currentRecipe.id} user={user} />}
     </>}

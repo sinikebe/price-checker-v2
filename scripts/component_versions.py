@@ -135,6 +135,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2AccountSecurity.tsx", ("accounts",)),
     ("frontend/src/v2/v2-account-security-text.ts", ("accounts",)),
     ("frontend/src/v2/v2-account-local-keys.ts", ("accounts", "pwa")),
+    ("frontend/src/v2/v2-offline-user.ts", ("accounts", "pwa")),
+    ("frontend/src/v2/useOnline.ts", ("pwa", "basket")),
     ("frontend/src/v2/v2-auth-*.ts", ("accounts",)),
     ("frontend/src/v2/v2-auth.css", ("accounts",)),
     ("frontend/src/v2/V2Gateway.tsx", ("application", "database", "accounts")),

@@ -22,6 +22,8 @@ import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { useBasketComparison } from "./useBasketComparison";
+import { useOnline } from "./useOnline";
+import { BasketReadOnlyContext, OFFLINE_TITLE } from "./v2-basket-read-only";
 import { withStoreOff } from "./v2-basket-store-off";
 import type { BaseUnit } from "./v2-basket-quantity";
 import { withUnitChoice } from "./v2-measures";
@@ -48,6 +50,8 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   // Quantities, price or unit price, units, stores off and filters: in this browser for the personal
   // basket, on the server (the same for every member) for the shared one.
   const display = useBasketView(user?.id ?? null, sharing ? shared : null);
+  // Offline, the basket and its list are read only, ticks apart.
+  const readOnly = !useOnline();
   const { advanced, mode, filters, setFilters } = display;
   const toggleAdvanced = display.setAdvanced;
   const changeMode = display.setMode;
@@ -160,11 +164,11 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   const noCredit = outOfCredits(credits, fetchCost);
 
   const basePath = sharedMode ? SHARED_BASKET_PATH : "/v2/panier";
-  /** Open the list in this mode (for a shared basket, the mode every member sees). */
-  const openList = (mode: ListView, anchor?: string) => { display.setListView(mode); navigate(shoppingListPath(basePath) + (anchor ? "#" + anchor : "")); };
+  /** Open the list in this mode (for a shared basket, the mode every member sees); offline, in the mode it already has. */
+  const openList = (mode: ListView, anchor?: string) => { if (!readOnly) display.setListView(mode); navigate(shoppingListPath(basePath) + (anchor ? "#" + anchor : "")); };
   if (listMode) {
     const listView = display.listView;
-    return <div className="v2-home v2-recipes">
+    return <BasketReadOnlyContext.Provider value={readOnly}><div className="v2-home v2-recipes">
       <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
       <V2SiteHeader user={user} onLogout={onLogout} />
       <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
@@ -180,25 +184,26 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
             fetchHint="La répartition entre magasins et la liste d’un magasin se construisent avec les prix récupérés pour ce panier." />
         </>}
       </main>
-    </div>;
+    </div></BasketReadOnlyContext.Provider>;
   }
   // A shared basket created from the personal one starts with its settings too.
   const personalSettings = { advanced: display.advanced, compare: display.mode, filters: display.filters, stores_off: display.storesOff, units: display.units };
 
-  return <div className="v2-home v2-recipes">
+  return <BasketReadOnlyContext.Provider value={readOnly}><div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
     <V2SiteHeader user={user} onLogout={onLogout} />
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
       <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharedMode ? "Panier partagé" : "Mon panier"}<span>.</span></h1><p>{sharing ? "Modifié en direct par ses membres, avec les mêmes réglages pour tous." : sharedMode ? "Un panier que plusieurs comptes remplissent ensemble, en direct." : "Comparez les prix de vos courses."}</p></div><div className="v2-basket-heading-actions">{basket && items.length > 0 && <Link className="v2-button v2-button-secondary" to={shoppingListPath(basePath)}>Liste de courses</Link>}
         <Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div></div>
+      {readOnly && !sharing && <p className="v2-basket-offline-note" role="status">Hors connexion : le panier est en lecture seule et sa liste de courses se coche toujours. Le reste se modifie au retour de la connexion.</p>}
       {sharedLink && <section className="v2-shared-basket" aria-label="Panier partagé">
         {sharedEntries ? <>
           <h2>Panier partagé</h2>
           <p>{sharedEntries.length} article{sharedEntries.length > 1 ? "s" : ""} dans ce lien. Les prix seront recalculés selon les magasins disponibles.</p>
           <ul>{sharedEntries.map((entry, index) => <li key={index}>{sharedEntryName(entry)} <span>· {basketQuantityLabel(sharedEntryQuantity(entry))}{sharedEntryDisabled(entry) ? " · exclu du calcul" : ""}</span></li>)}</ul>
           <p>Ajouter conserve les articles et quantités déjà présents. Remplacer reprend exactement ce panier partagé.</p>
-          <div className="v2-shared-basket-actions"><button type="button" className="v2-button v2-button-primary" disabled={importing} onClick={() => void importSharedBasket("add")}>{importing ? "Importation…" : "Ajouter les articles manquants"}</button>
-            <button type="button" className="v2-button v2-button-secondary" disabled={importing} onClick={() => void importSharedBasket("replace")}>Remplacer mon panier</button>
+          <div className="v2-shared-basket-actions"><button type="button" className="v2-button v2-button-primary" disabled={importing || readOnly} title={readOnly ? OFFLINE_TITLE : undefined} onClick={() => void importSharedBasket("add")}>{importing ? "Importation…" : "Ajouter les articles manquants"}</button>
+            <button type="button" className="v2-button v2-button-secondary" disabled={importing || readOnly} title={readOnly ? OFFLINE_TITLE : undefined} onClick={() => void importSharedBasket("replace")}>Remplacer mon panier</button>
             <button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Ignorer</button></div>
           {importError && <p role="alert">{importError}</p>}
         </> : <><h2>Lien de panier invalide</h2><p>Ce lien ne peut pas être ouvert.</p><button type="button" className="v2-button v2-button-secondary" onClick={closeSharedLink}>Fermer</button></>}
@@ -222,7 +227,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           {state.phase === "error" && <p role="alert" className="v2-recipes-error">{state.message}{state.signedOut && <> <Link to="/v2/connexion?next=panier">Se connecter</Link></>}</p>}
           {state.phase !== "error" && noCredit && credits && fetchCost > 0 && <p role="status">{shortText(credits, fetchCost)}</p>}
         </div>
-        {panel === "share" && <div className="v2-basket-panel" id="v2-basket-panel-share">
+        {panel === "share" && !readOnly && <div className="v2-basket-panel" id="v2-basket-panel-share">
           {sharing ? <SharedInvite shared={shared} user={user} /> : <SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault />}
           <h3 className="v2-shared-copy-title">Envoyer une copie</h3>
           <p className="v2-shared-hint">Une copie figée du panier, sans compte et sans rien enregistrer sur le serveur.</p>
@@ -231,7 +236,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
         {panel === "items" && <V2BasketItems items={items} advanced={advanced} categories={categories} categoryError={categoryError}
           actions={{ setEnabled, setQuantity, replace, remove, clear }}
           addedBy={sharing ? shared.addedBy : undefined} sharedName={shared.basket?.name} />}
-        {panel === "filters" && comparison && <V2BasketFilters filters={filters} onChange={setFilters} storeOptions={storeOptions}
+        {panel === "filters" && comparison && !readOnly && <V2BasketFilters filters={filters} onChange={setFilters} storeOptions={storeOptions}
           storeLabel={id => storeNames.get(id) ?? String(id)} cityOptions={cityOptions} departmentOptions={departmentOptions} defaults={defaults} />}
         {!activeItems.length ? <div className="v2-recipes-card"><p>Activez au moins un article pour comparer les prix.</p></div>
           : !user ? <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
@@ -258,5 +263,5 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           {!invite && !shared.sharedId && <div className="v2-recipes-card v2-shared-empty-start"><SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault={false} /></div>}</>}
       </>}
     </main>
-  </div>;
+  </div></BasketReadOnlyContext.Provider>;
 }

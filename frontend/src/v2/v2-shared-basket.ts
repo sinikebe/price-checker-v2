@@ -21,6 +21,8 @@ export type SharedBasket = {
   invite: string | null; members: SharedMember[]; lines: SharedLine[]; limits: { lines: number; members: number };
   /** Absent from the first servers with shared baskets: read with sharedSettings(). */
   settings?: Partial<SharedSettings>;
+  /** In the browser copy only: when the server last confirmed this state (ISO date). */
+  synced_at?: string;
 };
 export type SharedSummary = {
   id: number; name: string; owner: boolean; owner_name: string; updated_at: string; lines: number; members: number;
@@ -48,12 +50,15 @@ export type LocalOp =
   | { op: "settings"; patch: Partial<SharedSettings> }
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean; item: BasketItem }
   | { op: "remove"; line: LineRef; key: string }
-  | { op: "update"; line: LineRef; key: string; quantity?: BasketQuantity | null; disabled?: boolean };
+  | { op: "update"; line: LineRef; key: string; quantity?: BasketQuantity | null; disabled?: boolean }
+  /** Tick or untick one article of the list: the only change allowed offline, sent when the connection is back. */
+  | { op: "tick"; key: string; on: boolean };
 export type WireOp =
   | ({ op: "settings" } & Partial<SharedSettings>)
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean }
   | { op: "remove"; line: LineRef }
-  | { op: "update"; line: LineRef; quantity?: BasketQuantity | null; disabled?: boolean };
+  | { op: "update"; line: LineRef; quantity?: BasketQuantity | null; disabled?: boolean }
+  | { op: "tick"; key: string; on: boolean };
 type KeyOf = (item: BasketItem) => string;
 
 export const SHARED_INVITE = /^#rejoindre=([1-9][0-9]{0,18}-[A-Za-z0-9_-]{22})$/;
@@ -110,7 +115,7 @@ export function diffOps(current: readonly BasketItem[], next: readonly BasketIte
 export function applyOps(items: readonly BasketItem[], ops: readonly LocalOp[], keyOf: KeyOf): BasketItem[] {
   let result = [...items];
   for (const op of ops) {
-    if (op.op === "settings") continue;
+    if (op.op === "settings" || op.op === "tick") continue;
     if (op.op === "add") {
       const key = keyOf(op.item);
       if (!result.some(item => keyOf(item) === key)) result.push(op.item);
@@ -127,7 +132,7 @@ export function applyOps(items: readonly BasketItem[], ops: readonly LocalOp[], 
 }
 
 export function wireOps(ops: readonly LocalOp[]): WireOp[] {
-  return ops.map(op => op.op === "settings" ? { op: "settings", ...op.patch } : op.op === "add" ? { op: "add", line: op.line, quantity: op.quantity, disabled: op.disabled }
+  return ops.map(op => op.op === "settings" ? { op: "settings", ...op.patch } : op.op === "tick" ? { op: "tick", key: op.key, on: op.on } : op.op === "add" ? { op: "add", line: op.line, quantity: op.quantity, disabled: op.disabled }
     : op.op === "remove" ? { op: "remove", line: op.line }
       : { op: "update", line: op.line, ...("quantity" in op ? { quantity: op.quantity } : {}), ...("disabled" in op ? { disabled: op.disabled } : {}) });
 }
@@ -187,16 +192,36 @@ export function sharedSettings(basket: Pick<SharedBasket, "settings"> | null): S
 /** The settings as they will be once these changes are applied (later changes win). */
 export function applySettings(settings: SharedSettings, ops: readonly LocalOp[]): SharedSettings {
   let result = settings;
-  for (const op of ops) if (op.op === "settings") result = { ...result, ...op.patch };
+  for (const op of ops) {
+    if (op.op === "settings") result = { ...result, ...op.patch };
+    else if (op.op === "tick") {
+      const others = result.checked.filter(key => key !== op.key);
+      result = { ...result, checked: op.on ? [...others, op.key].slice(0, 100) : others };
+    }
+  }
   return result;
 }
 
-/** A settings change queued after another one not sent yet joins it: one request instead of several. */
+/** The ticks that turn `before` into `after`, one per article that changed. */
+export function tickOps(before: readonly string[], after: readonly string[]): LocalOp[] {
+  const was = new Set(before), now = new Set(after);
+  return [...[...was].filter(key => !now.has(key)).map(key => ({ op: "tick" as const, key, on: false })),
+    ...[...now].filter(key => !was.has(key)).map(key => ({ op: "tick" as const, key, on: true }))];
+}
+
+/** Offline, a shared basket only takes ticks: everything else waits for the connection. */
+export const allowedOffline = (op: LocalOp) => op.op === "tick";
+
+/**
+ * A settings change queued after another one not sent yet joins it: one request instead of several. A
+ * tick replaces a tick of the same article still waiting (the last one wins).
+ */
 export function queueOps(queue: readonly LocalOp[], ops: readonly LocalOp[]): LocalOp[] {
-  const result = [...queue];
+  let result = [...queue];
   for (const op of ops) {
     const last = result[result.length - 1];
     if (op.op === "settings" && last?.op === "settings") result[result.length - 1] = { op: "settings", patch: { ...last.patch, ...op.patch } };
+    else if (op.op === "tick") result = [...result.filter(queued => !(queued.op === "tick" && queued.key === op.key)), op];
     else result.push(op);
   }
   return result;
@@ -204,12 +229,12 @@ export function queueOps(queue: readonly LocalOp[], ops: readonly LocalOp[]): Lo
 
 /**
  * The last known state of a shared basket and the changes not sent yet, kept in this browser so the
- * basket opens and changes offline; the changes are sent when the connection is back. The keys end
+ * basket opens offline (read only, ticks apart); the changes are sent when the connection is back. The keys end
  * with the account id, so they go with the account's local data.
  */
 export const sharedStateKey = (basketId: number, userId: number) => `v2:basket:shared-state:${basketId}:${userId}`;
 export const sharedQueueKey = (basketId: number, userId: number) => `v2:basket:shared-queue:${basketId}:${userId}`;
-const OPS = new Set(["add", "remove", "update", "settings"]);
+const OPS = new Set(["add", "remove", "update", "settings", "tick"]);
 export function readSharedCache(basketId: number | null, userId: number | null): { basket: SharedBasket | null; queue: LocalOp[] } {
   if (!basketId || !userId) return { basket: null, queue: [] };
   let basket: SharedBasket | null = null, queue: LocalOp[] = [];
@@ -224,9 +249,10 @@ export function readSharedCache(basketId: number | null, userId: number | null):
   } catch { /* nothing waiting */ }
   return { basket, queue };
 }
-export function writeSharedState(userId: number, basket: SharedBasket) {
+/** Keep the state the server just confirmed, with the moment of that confirmation (shown offline). */
+export function writeSharedState(userId: number, basket: SharedBasket, syncedAt: string) {
   // The invitation link grants membership: it is never written to the browser's storage.
-  try { localStorage.setItem(sharedStateKey(basket.id, userId), JSON.stringify({ ...basket, invite: null })); } catch { /* the page still works online */ }
+  try { localStorage.setItem(sharedStateKey(basket.id, userId), JSON.stringify({ ...basket, invite: null, synced_at: syncedAt })); } catch { /* the page still works online */ }
 }
 export function writeSharedQueue(basketId: number, userId: number, ops: readonly LocalOp[]) {
   try {

@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import { Link } from "react-router-dom";
 import { BasketLinksContext } from "./v2-basket-links";
+import { BasketReadOnlyContext, OFFLINE_TITLE } from "./v2-basket-read-only";
 import { purchaseTotalCents, type BasketComparison } from "./v2-basket-comparison";
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
@@ -89,6 +90,7 @@ export default function V2ShoppingList({ view, onView, items, comparison, split,
   /** Shown instead of the store modes when no prices were fetched for this basket. */
   fetchHint: string;
 }) {
+  const readOnly = useContext(BasketReadOnlyContext);
   const ticked = new Set(checked);
   const keys = items.map(basketItemKey);
   const check = (key: string, on: boolean) => onChecked(withChecked(checked, key, on, keys));
@@ -107,7 +109,8 @@ export default function V2ShoppingList({ view, onView, items, comparison, split,
       <Link className="v2-button v2-button-secondary" to={basePath}>← {sharedName ? "Panier partagé" : "Panier"}</Link>
       <button type="button" className="v2-button v2-button-secondary" disabled={!checked.length} onClick={() => onChecked([])}>Tout décocher</button>
     </div>
-    <fieldset className="v2-list-modes">
+    {readOnly && !sharedName && <p className="v2-basket-offline-note" role="status">Hors connexion : vous pouvez cocher les articles ; le mode de la liste change au retour de la connexion.</p>}
+    <fieldset className="v2-list-modes" disabled={readOnly} title={readOnly ? OFFLINE_TITLE : undefined}>
       <legend>Liste{sharedName ? " (la même pour tous les membres)" : ""}</legend>
       <label><input type="radio" name="v2-list-mode" checked={view.kind === "all"} onChange={() => mode("all")} />Tous les articles</label>
       <label><input type="radio" name="v2-list-mode" checked={view.kind === "stores"} onChange={() => mode("stores")} />Répartie entre les magasins</label>

@@ -218,3 +218,10 @@ html[data-v2-theme="dark"] .v2-basket-unit-switch button[aria-pressed="true"] { 
 html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-unit-price { color: #a9e6b7; }
 html[data-v2-theme="dark"] .v2-basket-reading small.v2-basket-surplus { color: #ffd18a; }
 html[data-v2-theme="dark"] .v2-basket-unit-note { background: #47351f; color: #ffe5ac; }
+
+/* Offline: the basket and its list are read only, ticks apart. */
+.v2-basket-offline-note { margin: 0 0 14px; padding: 10px 14px; border: 1px solid #ecd3a8; border-radius: 12px; background: #fff6e8; color: #5b4423; font-size: .9rem; }
+.v2-basket-store-toggle:disabled, .v2-basket-remove:disabled, .v2-basket-unit-switch button:disabled,
+.v2-basket-tool:disabled, .v2-list-modes:disabled label { opacity: .5; cursor: not-allowed; }
+.v2-shared-synced { color: var(--v2-muted, #617467); }
+html[data-v2-theme="dark"] .v2-basket-offline-note { border-color: #6b5530; background: #3a3020; color: #f3dcb6; }

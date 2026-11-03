@@ -193,8 +193,17 @@ class SettingsOp(Settings):
     op: Literal["settings"]
 
 
+class TickOp(BaseModel):
+    """Tick or untick one article of the shopping list: ticks made by several members, or sent late
+    from a device that was offline, add up instead of replacing each other."""
+
+    op: Literal["tick"]
+    key: UnitKey
+    on: bool
+
+
 class Changes(BaseModel):
-    ops: list[Annotated[AddOp | RemoveOp | UpdateOp | SettingsOp, Field(discriminator="op")]] = Field(
+    ops: list[Annotated[AddOp | RemoveOp | UpdateOp | SettingsOp | TickOp, Field(discriminator="op")]] = Field(
         min_length=1, max_length=MAX_OPS)
 
 
@@ -497,7 +506,8 @@ async def change_shared_basket(basket_id: Id, payload: Changes, request: Request
     """Apply a member's changes in order. A line is named by what it is (product, group or scope), as
     in the browser basket, so a change made before an addition was confirmed, or after another member
     changed the basket, still applies to the right line. An article is added once. A settings change
-    replaces the settings it names (filters, quantities, price or unit price, stores off, units)."""
+    replaces the settings it names (filters, quantities, price or unit price, stores off, units); a
+    tick adds or removes one article of the shopping list's ticks."""
     _secure_write(request)
     _no_store(response)
     connection = await _connect()
@@ -515,6 +525,15 @@ async def change_shared_basket(basket_id: Id, payload: Changes, request: Request
                     status = await connection.execute(
                         "UPDATE v2_shared_baskets SET settings=settings||$2::jsonb "
                         "WHERE id=$1 AND settings IS DISTINCT FROM settings||$2::jsonb", basket_id, patch)
+                    changed = status.endswith(" 1") or changed
+                elif isinstance(op, TickOp):
+                    ticked = "coalesce(settings->'checked','[]'::jsonb)"
+                    status = await connection.execute(
+                        f"UPDATE v2_shared_baskets SET settings=jsonb_set(settings,'{{checked}}',{ticked}||to_jsonb($2::text)) "
+                        f"WHERE id=$1 AND NOT {ticked} ? $2 AND jsonb_array_length({ticked}) < $3"
+                        if op.on else
+                        f"UPDATE v2_shared_baskets SET settings=jsonb_set(settings,'{{checked}}',{ticked}-$2::text) "
+                        f"WHERE id=$1 AND {ticked} ? $2", basket_id, op.key, *([MAX_LINES] if op.on else []))
                     changed = status.endswith(" 1") or changed
                 elif isinstance(op, RemoveOp):
                     status = await connection.execute(
