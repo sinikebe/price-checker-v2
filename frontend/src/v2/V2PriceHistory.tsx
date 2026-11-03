@@ -255,7 +255,7 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
 }
 
 export default function V2PriceHistory({ productId, user, current }: { productId: number; user: V2User | null; current: boolean }) {
-  const queueBadges = useConnectorQueue(current ? [productId] : []);
+  const queueBadges = useConnectorQueue(current ? [productId] : [], user?.role === "admin");
   const userId = user?.id;
   // Prices cost one credit: shown from this browser when already paid for, fetched on request.
   const paid = usePaidPrices<PricesResponse>(userId ?? null, "product", String(productId), 1, () => `/api/v2/prices/products/${productId}`);

@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
-from app.services.v2_write_limits import check_write_limit
+from app.services.v2_write_limits import check_write_limit, lock_account_writes
 
 router = APIRouter(prefix="/api/v2/stores", tags=["v2-stores"])
 AliasSource = Literal["retailer", "open_food_facts", "open_prices"]
@@ -518,8 +518,9 @@ async def create_alias_proposal(store_id: int, payload: AliasProposalInput, requ
         user = await _current_user(connection, request)
         if user is None:
             raise HTTPException(status_code=401, detail="Connectez-vous pour proposer un nom.")
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await visible_store(connection, store_id, user)
             proposal_id = await propose_alias(
                 connection, store_id=store_id, author_id=user["id"],

@@ -237,6 +237,10 @@ def _decoded(value):
 
 
 async def _write_limit(connection, user: dict) -> None:
+    """Count one write attempt, before the write's transaction: a write that fails and rolls back
+    still counts."""
+    if connection.is_in_transaction():
+        raise RuntimeError("Count the attempt before the write transaction.")
     key = account_limit_key("shared-basket-write", user["id"])
     if await _bump_limit(connection, key, 60) > WRITES_PER_MINUTE:
         raise HTTPException(status_code=429, detail="Trop de modifications du panier partagé. Réessayez dans une minute.")
@@ -358,9 +362,9 @@ async def create_shared_basket(payload: NewBasket, request: Request, response: R
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        await _write_limit(connection, user)
         async with connection.transaction():
             await connection.execute("SELECT pg_advisory_xact_lock(783217, $1)", user["id"])
-            await _write_limit(connection, user)
             owned, joined = await connection.fetchrow(
                 "SELECT (SELECT count(*) FROM v2_shared_baskets WHERE owner_id=$1),"
                 "(SELECT count(*) FROM v2_shared_basket_members WHERE user_id=$1)", user["id"])
@@ -499,8 +503,8 @@ async def change_shared_basket(basket_id: Id, payload: Changes, request: Request
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        await _write_limit(connection, user)
         async with connection.transaction():
-            await _write_limit(connection, user)
             await _membership(connection, basket_id, user, lock=True)
             changed = False
             for op in payload.ops:
@@ -544,8 +548,8 @@ async def rename_shared_basket(basket_id: Id, payload: BasketName, request: Requ
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        await _write_limit(connection, user)
         async with connection.transaction():
-            await _write_limit(connection, user)
             _owner(await _membership(connection, basket_id, user, lock=True), user)
             await connection.execute("UPDATE v2_shared_baskets SET name=$2 WHERE id=$1", basket_id, payload.name)
             await _changed(connection, basket_id)
@@ -563,8 +567,8 @@ async def renew_invite(basket_id: Id, request: Request, response: Response):
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        await _write_limit(connection, user)
         async with connection.transaction():
-            await _write_limit(connection, user)
             _owner(await _membership(connection, basket_id, user, lock=True), user)
             await connection.execute(
                 "UPDATE v2_shared_baskets SET invite_version=invite_version+1 WHERE id=$1", basket_id)
@@ -577,13 +581,14 @@ async def renew_invite(basket_id: Id, request: Request, response: Response):
 
 @router.delete("/{basket_id}/members/{user_id}", status_code=204)
 async def remove_member(basket_id: Id, user_id: Id, request: Request):
-    """A member leaves (their own id), or the owner removes a member. Their lines stay."""
+    """A member leaves (their own id), or the owner removes a member. Their lines stay. A removal by the
+    owner also renews the invitation link, so the removed member cannot join again with the old one."""
     _secure_write(request)
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        await _write_limit(connection, user)
         async with connection.transaction():
-            await _write_limit(connection, user)
             basket = await _membership(connection, basket_id, user, lock=True)
             if user_id != user["id"]:
                 _owner(basket, user)
@@ -594,6 +599,10 @@ async def remove_member(basket_id: Id, user_id: Id, request: Request):
                 basket_id, user_id)
             if removed is None:
                 raise HTTPException(status_code=404, detail="Membre introuvable.")
+            if user_id != user["id"]:
+                # Removed by the owner: the link they know stops working, so they cannot come back.
+                await connection.execute(
+                    "UPDATE v2_shared_baskets SET invite_version=invite_version+1 WHERE id=$1", basket_id)
             await _changed(connection, basket_id)
         _live.notify(basket_id)
         return Response(status_code=204)

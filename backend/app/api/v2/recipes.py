@@ -16,6 +16,7 @@ from app.services.v2_write_limits import (
     MAX_RECIPES,
     check_open_limit,
     check_write_limit,
+    lock_account_writes,
 )
 
 router = APIRouter(prefix="/api/v2/recipes", tags=["v2-recipes"])
@@ -249,8 +250,9 @@ async def create_recipe(payload: RecipeInput, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await check_open_limit(
                 connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
             )
@@ -271,8 +273,9 @@ async def update_recipe(recipe_id: int, payload: RecipeUpdate, request: Request)
     connection = await _connect()
     try:
         user = await _user(connection, request)
+        await check_write_limit(connection, user)
         async with connection.transaction():
-            await check_write_limit(connection, user)
+            await lock_account_writes(connection, user)
             await require_visible(connection, "recipe", recipe_id)
             existing = await connection.fetchrow(
                 "SELECT author_id,revision FROM v2_recipes WHERE id=$1 FOR UPDATE",

@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-account-local-keys.ts", import
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { accountLocalKeys } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+const { accountLocalKeys, logoutLocalKeys, unsentAtLogout } = await import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
 test("an account's own drafts, edits and baskets are removed", () => {
   const own = [
@@ -44,4 +44,32 @@ test("a multi-digit id removes only its own keys", () => {
 test("prices paid for by an account go with it, not those of another account or of visitors", async () => {
   const keys = ["v2:prices:user:3:product:12", "v2:prices:user:3:index", "v2:prices:user:30:product:1", "v2:prices:visitor:product:1"];
   assert.deepEqual(accountLocalKeys(keys, 3), ["v2:prices:user:3:product:12", "v2:prices:user:3:index"]);
+});
+
+test("signing out removes the account's shared basket copies and drafts, not its personal basket", () => {
+  const keys = [
+    "v2:basket:user:5", "v2:basket:prices:5", "v2:basket:stores-off:5", "v2:basket:checked:5",
+    "v2:basket:shared:5", "v2:basket:shared-state:9:5", "v2:basket:shared-queue:9:5", "v2:basket:shared-prices:9:5",
+    "v2:recipe:new:5", "v2:recipe:edit:5:12", "v2:recipe:proposal:5:3", "v2:product:new:5", "v2:product:edit:5:7", "v2:product:draft:5:2",
+    // Other accounts on the same browser keep theirs.
+    "v2:basket:shared-state:9:50", "v2:basket:shared-queue:9:15", "v2:recipe:new:50", "v2:product:edit:51:7",
+  ];
+  assert.deepEqual(logoutLocalKeys(keys, 5).sort(), [
+    "v2:basket:shared-prices:9:5", "v2:basket:shared-queue:9:5", "v2:basket:shared-state:9:5", "v2:basket:shared:5",
+    "v2:product:draft:5:2", "v2:product:edit:5:7", "v2:product:new:5",
+    "v2:recipe:edit:5:12", "v2:recipe:new:5", "v2:recipe:proposal:5:3",
+  ]);
+});
+
+test("what signing out would erase without it ever being sent", () => {
+  const data = new Map([
+    ["v2:basket:shared-queue:9:5", JSON.stringify([{ op: "add" }, { op: "settings" }])],
+    ["v2:basket:shared-queue:8:5", "{oops"],
+    ["v2:recipe:new:5", "{}"], ["v2:product:edit:5:7", "{}"],
+    ["v2:basket:user:5", "[]"], ["v2:basket:shared-queue:9:6", JSON.stringify([{ op: "add" }])],
+  ]);
+  const keys = [...data.keys()];
+  const storage = { length: keys.length, key: index => keys[index] ?? null, getItem: key => data.get(key) ?? null };
+  assert.deepEqual(unsentAtLogout(storage, 5), { changes: 2, drafts: 2 });
+  assert.deepEqual(unsentAtLogout(storage, 7), { changes: 0, drafts: 0 });
 });

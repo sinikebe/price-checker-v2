@@ -248,3 +248,22 @@ async def test_a_refused_request_is_not_reopened_while_another_waits(setup):
                                 json={**PAYLOAD, "revision": 1})
     assert reopened.status_code == 409, reopened.text
     assert "attend déjà validation" in reopened.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_refused_recipe_writes_still_count_toward_the_hourly_limit(setup, monkeypatch):
+    from app.services import v2_write_limits
+
+    client, _connection, _users = setup
+    monkeypatch.setattr(v2_write_limits, "MAX_WRITES_PER_HOUR", 2)
+    missing = {**PAYLOAD, "ingredients": [{"label": "Riz", "product_id": 999999, "note": "", "optional": False}]}
+    for _ in range(2):  # an unknown product: refused inside the transaction, rolled back
+        assert (await client.post("/api/v2/recipes/private", json=missing, headers=who("author"))).status_code == 422
+    assert (await client.post("/api/v2/recipes/private", json=PAYLOAD, headers=who("author"))).status_code == 429
+    with pytest.raises(RuntimeError):
+        connection = await recipes._connect()
+        try:
+            async with connection.transaction():
+                await v2_write_limits.check_write_limit(connection, {"id": 1, "role": "confirmed"})
+        finally:
+            await connection.close()

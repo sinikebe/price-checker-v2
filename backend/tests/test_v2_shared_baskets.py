@@ -257,7 +257,10 @@ async def test_members_leave_or_are_removed_and_their_lines_stay(setup):
     assert (await client.get(f"{PATH}/{basket_id}", headers=who("bob"))).status_code == 404
     assert (await client.delete(f"{PATH}/{basket_id}/members/{users['carol']['id']}",
                                 headers=who("alice"))).status_code == 204
+    # Removed by the owner: the old link no longer lets carol in; bob, who left by himself, could rejoin.
+    assert (await client.post(f"{PATH}/join", headers=who("carol"), json={"invite": state["invite"], "confirm": True})).status_code == 404
     left = (await client.get(f"{PATH}/{basket_id}", headers=who("alice"))).json()
+    assert left["invite"] != state["invite"]
     assert [m["username"] for m in left["members"]] == ["alice"]
     assert left["lines"][-1]["added_by"] == "bob"
     renamed = await client.patch(f"{PATH}/{basket_id}", headers=who("alice"), json={"name": "  Week-end  "})
@@ -370,3 +373,24 @@ async def test_settings_are_shared_by_every_member(setup):
         refused = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"),
                                     json={"ops": [{"op": "settings", **bad}]})
         assert refused.status_code == 422, bad
+
+
+@pytest.mark.asyncio
+async def test_refused_changes_still_count_toward_the_write_limit(setup, monkeypatch):
+    client, _connection, _users, products = setup
+    state = await create(client, products)
+    monkeypatch.setattr(shared_baskets, "WRITES_PER_MINUTE", 3)  # creating the basket was the first
+    refused = {"ops": [{"op": "add", **product(products["Retiré"])}]}  # withdrawn product: 422, rolled back
+    for _ in range(2):
+        assert (await client.post(f"{PATH}/{state['id']}/changes", headers=who("alice"), json=refused)).status_code == 422
+    third = await client.post(f"{PATH}/{state['id']}/changes", headers=who("alice"),
+                              json={"ops": [{"op": "add", "line": {"kind": "group", "name": "Riz"}}]})
+    assert third.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_the_attempt_is_counted_before_the_write_transaction(setup):
+    _client, connection, users, _products = setup
+    async with connection.transaction():
+        with pytest.raises(RuntimeError):
+            await shared_baskets._write_limit(connection, users["alice"])

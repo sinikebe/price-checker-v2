@@ -971,6 +971,48 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.131",
+      "components": {
+        "application": {
+          "version": "0.1.131",
+          "notes": [
+            "Se déconnecter efface de l’appareil les données privées du compte, après un avertissement s’il reste des modifications ou brouillons jamais envoyés."
+          ]
+        },
+        "basket": {
+          "version": "0.1.42",
+          "notes": [
+            "Retirer un membre change le lien d’invitation du panier partagé : il ne peut pas revenir avec l’ancien.",
+            "Le lien d’invitation n’est plus gardé dans la copie du panier partagé enregistrée sur l’appareil."
+          ]
+        },
+        "products": {
+          "version": "0.1.61",
+          "notes": [
+            "L’état de lecture des connecteurs sur les fiches et les groupes est réservé aux administrateurs."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.25",
+          "notes": [
+            "Une recette privée disparaît de l’écran dès la déconnexion."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.37",
+          "notes": [
+            "Une modification refusée compte désormais dans la limite de modifications par heure."
+          ]
+        },
+        "pwa": {
+          "version": "0.1.28",
+          "notes": [
+            "À la déconnexion, les copies hors ligne des paniers partagés et les brouillons du compte sont effacés de l’appareil."
+          ]
+        }
+      }
     }
   ]
 }

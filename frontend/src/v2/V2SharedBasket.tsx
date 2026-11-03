@@ -102,7 +102,8 @@ export function SharedInvite({ shared, user }: { shared: SharedBasketControls; u
   return <section className="v2-shared-invite" aria-label="Inviter dans le panier partagé">
     <h3>Inviter</h3>
     <p>Toute personne connectée qui ouvre ce lien peut rejoindre « {basket.name} », voir ses articles et les modifier. Envoyez-le seulement aux personnes concernées.</p>
-    <InviteLink url={inviteUrl(window.location.origin, basket.invite)} name={basket.name} />
+    {basket.invite ? <InviteLink url={inviteUrl(window.location.origin, basket.invite)} name={basket.name} />
+      : <p className="v2-shared-hint">Le lien d’invitation s’affiche une fois la connexion rétablie.</p>}
     {owner && <p><button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => {
       if (window.confirm("Créer un nouveau lien d’invitation ? L’ancien ne fonctionnera plus ; les membres actuels restent.")) void run(() => shared.renewInvite());
     }}>Nouveau lien (l’ancien ne fonctionnera plus)</button></p>}
@@ -110,7 +111,7 @@ export function SharedInvite({ shared, user }: { shared: SharedBasketControls; u
     <ul className="v2-shared-members">{basket.members.map(member => <li key={member.id}>
       <span>{member.username}{member.owner ? " · créateur" : ""}{member.id === user?.id ? " · vous" : ""}</span>
       {owner && !member.owner && <button type="button" className="v2-basket-remove" disabled={busy} onClick={() => {
-        if (window.confirm(`Retirer ${member.username} du panier partagé ? Les articles ajoutés restent.`)) void run(() => shared.removeMember(member.id));
+        if (window.confirm(`Retirer ${member.username} du panier partagé ? Les articles ajoutés restent.\n\nLe lien d’invitation change aussi, pour que ${member.username} ne puisse pas revenir : renvoyez le nouveau lien aux personnes que vous voulez encore inviter.`)) void run(() => shared.removeMember(member.id));
       }}>Retirer</button>}
     </li>)}</ul>
   </section>;

@@ -401,6 +401,7 @@ function Editor({ mode, id, privateRecipe = false, user, onLogout }: Props) {
 
 export default function V2RecipesPage(props: Props) {
   if (props.mode === "list") return <List key={props.user?.id ?? "anon"} {...props} />;
-  if (props.mode === "detail") return <Detail key={`${props.privateRecipe ? "private" : "public"}:${props.id}`} {...props} />;
+  // Keyed by account too: signing out drops a private recipe from the page at once.
+  if (props.mode === "detail") return <Detail key={`${props.privateRecipe ? "private" : "public"}:${props.id}:${props.user?.id ?? "anon"}`} {...props} />;
   return <Editor key={`${props.mode}:${props.privateRecipe ? "private" : "public"}:${props.id}:${props.user?.id ?? "anon"}:${window.location.search}`} {...props} />;
 }
