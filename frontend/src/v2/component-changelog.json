@@ -940,6 +940,37 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.130",
+      "components": {
+        "application": {
+          "version": "0.1.130",
+          "notes": [
+            "La liste de courses devient une vue de chaque panier ; les listes enregistrées et leur entrée de la barre du bas sont retirées."
+          ]
+        },
+        "basket": {
+          "version": "0.1.41",
+          "notes": [
+            "La liste d’un panier a trois modes : tous les articles à cocher (sans prix, hors connexion), la répartition entre magasins, ou un seul magasin.",
+            "Dans un panier partagé, le mode de la liste est le même pour tous et change en direct ; filtres et magasins désactivés sont respectés.",
+            "Le bouton « Liste de courses » est en haut du panier, même avant de comparer les prix."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.36",
+          "notes": [
+            "L’export de vos données ne contient plus de listes enregistrées, qui n’existent plus."
+          ]
+        },
+        "database": {
+          "version": "0.1.45",
+          "notes": [
+            "La mise à jour retire les listes enregistrées."
+          ]
+        }
+      }
     }
   ]
 }
