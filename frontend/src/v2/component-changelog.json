@@ -1048,6 +1048,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.134",
+      "components": {
+        "pwa": {
+          "version": "0.1.29",
+          "notes": [
+            "Le bouton « Installer l’app » et les avis de mise à jour ou de connexion ne cachent plus la barre de navigation du bas."
+          ]
+        }
+      }
     }
   ]
 }
