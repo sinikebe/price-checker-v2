@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { V2_BASKET_EVENT, activateBasketUser, activeBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
 import { addedProductIds, requestBasketConnectorRefresh } from "./v2-connector-refresh";
@@ -6,7 +6,8 @@ import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
 import { useSharedBasket, type SharedBasketControls } from "./useSharedBasket";
 
-type BasketValue = {
+/** What can be done with one basket: the personal one, or the shared one. */
+export type BasketApi = {
   items: BasketItem[];
   add: (item: BasketItem) => void;
   remove: (item: BasketItem | number) => void;
@@ -18,39 +19,26 @@ type BasketValue = {
   clear: () => void;
   replaceAll: (incoming: BasketItem[]) => void;
   merge: (incoming: BasketItem[]) => number;
+};
+/** The personal basket (on this device) at the top level, as before; the shared one beside it. */
+type BasketValue = BasketApi & {
   setUser: (userId: number | null, preserveOffline?: boolean) => void;
-  /** The shared basket open in this browser, if any: while it is, every change above goes to it. */
+  /** The shared basket followed in this browser: its live state, members and settings. */
   shared: SharedBasketControls;
+  /** The same actions on the shared basket, or null when this account follows none. */
+  sharedBasket: BasketApi | null;
 };
 const Context = createContext<BasketValue | null>(null);
 
-export function V2BasketProvider({ children }: { children: ReactNode }) {
-  const [local, setLocal] = useState(readV2Basket);
-  const [userId, setUserId] = useState(activeBasketUser);
-  const shared = useSharedBasket(userId);
-  const sharing = shared.sharedId !== null;
-  const items = sharing ? shared.items : local;
-  const localRef = useRef(local);
-  useEffect(() => { localRef.current = local; }, [local]);
-  useEffect(() => {
-    const refresh = () => { setLocal(readV2Basket()); setUserId(activeBasketUser()); };
-    window.addEventListener("storage", refresh);
-    window.addEventListener(V2_BASKET_EVENT, refresh);
-    return () => { window.removeEventListener("storage", refresh); window.removeEventListener(V2_BASKET_EVENT, refresh); };
-  }, []);
-  /** The basket being edited right now, the shared one included, unconfirmed changes applied. */
-  const current = () => sharing ? shared.view() : localRef.current;
+/** The actions on one basket, from what it holds now (`current`) and how to change it (`write`). */
+function basketApi(items: BasketItem[], current: () => BasketItem[], write: (next: BasketItem[]) => void): BasketApi {
   const update = (next: BasketItem[]) => {
     const previous = new Set(current().filter(isBasketProduct).map(item => item.id));
-    if (sharing) shared.edit(next);
-    else {
-      localRef.current = next; setLocal(next);
-      try { writeV2Basket(next); } catch { /* current tab still works */ }
-    }
+    write(next);
     const added = addedProductIds(previous, next);
     if (added.length) void requestBasketConnectorRefresh(added);
   };
-  return <Context.Provider value={{
+  return {
     items,
     add: item => { const now = current(); if (!now.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...now, item]); },
     remove: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
@@ -93,9 +81,31 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
       if (additions.length) update([...now, ...additions]);
       return additions.length;
     },
-    setUser: activateBasketUser,
-    shared,
-  }}>{children}</Context.Provider>;
+  };
+}
+
+export function V2BasketProvider({ children }: { children: ReactNode }) {
+  const [local, setLocal] = useState(readV2Basket);
+  const [userId, setUserId] = useState(activeBasketUser);
+  const shared = useSharedBasket(userId);
+  const localRef = useRef(local);
+  useEffect(() => { localRef.current = local; }, [local]);
+  useEffect(() => {
+    const refresh = () => { setLocal(readV2Basket()); setUserId(activeBasketUser()); };
+    window.addEventListener("storage", refresh);
+    window.addEventListener(V2_BASKET_EVENT, refresh);
+    return () => { window.removeEventListener("storage", refresh); window.removeEventListener(V2_BASKET_EVENT, refresh); };
+  }, []);
+  const currentLocal = useCallback(() => localRef.current, []);
+  const writeLocal = useCallback((next: BasketItem[]) => {
+    localRef.current = next; setLocal(next);
+    try { writeV2Basket(next); } catch { /* current tab still works */ }
+  }, []);
+  // The callbacks read the ref when an action runs (a click), never while rendering.
+  // eslint-disable-next-line react-hooks/refs
+  const personal = basketApi(local, currentLocal, writeLocal);
+  const sharedBasket = shared.sharedId !== null ? basketApi(shared.items, shared.view, shared.edit) : null;
+  return <Context.Provider value={{ ...personal, setUser: activateBasketUser, shared, sharedBasket }}>{children}</Context.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

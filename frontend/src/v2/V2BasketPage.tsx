@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
+import { useBasketView } from "./useBasketView";
 import V2BasketShare from "./V2BasketShare";
 import { SharedBanner, SharedInvite, SharedJoin, SharedStart } from "./V2SharedBasket";
-import { inviteFromHash, takePendingInvite } from "./v2-shared-basket";
+import { SHARED_BASKET_PATH, inviteFromHash, takePendingInvite } from "./v2-shared-basket";
 import V2BasketItems from "./V2BasketItems";
 import V2BasketFilters from "./V2BasketFilters";
 import V2BasketResults from "./V2BasketResults";
@@ -17,10 +18,10 @@ import { decodeBasketShare, encodeBasketShare, sharedEntryDisabled, sharedEntryN
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { productRequest, type Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { buildBasketComparison, emptyBasketFilters, postalDepartment, reactivationGains, readingKey, splitSavings, type BasketFilters, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
-import { readStoresOff, withStoreOff, writeStoresOff } from "./v2-basket-store-off";
+import { buildBasketComparison, postalDepartment, reactivationGains, readingKey, splitSavings, type UnitChoices } from "./v2-basket-comparison";
+import { withStoreOff } from "./v2-basket-store-off";
 import type { BaseUnit } from "./v2-basket-quantity";
-import { readUnitChoices, withUnitChoice, writeUnitChoices } from "./v2-measures";
+import { withUnitChoice } from "./v2-measures";
 import { snapshotView } from "./v2-basket-snapshot";
 import { FIRST_STORES, MORE_STORES, fetchedLabel, itemName, type Category } from "./v2-basket-view";
 import { balanceText, costNote, creditLabel, outOfCredits, shortText } from "./v2-basket-credits-api";
@@ -28,22 +29,25 @@ import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
 
-export default function V2BasketPage({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
-  const { items, remove, clear, setEnabled, setQuantity, replace, replaceAll, merge, shared } = useV2Basket();
-  const sharing = shared.sharedId !== null;
-  const [advanced, setAdvanced] = useState(() => { try { return localStorage.getItem("v2:basket:advanced") === "1"; } catch { return false; } });
-  const toggleAdvanced = (value: boolean) => { setAdvanced(value); try { localStorage.setItem("v2:basket:advanced", value ? "1" : "0"); } catch { /* current tab still works */ } };
-  const [mode, setMode] = useState<CompareMode>(() => { try { return localStorage.getItem("v2:basket:compare") === "unit" ? "unit" : "price"; } catch { return "price"; } });
-  const changeMode = (value: CompareMode) => { setMode(value); try { localStorage.setItem("v2:basket:compare", value); } catch { /* current tab still works */ } };
-  // The unit an article is compared in when it can be measured in several (per kg or per piece), kept in this browser.
-  const unitUserId = user?.id ?? null;
-  const [unitState, setUnitState] = useState(() => ({ userId: unitUserId, choices: readUnitChoices(unitUserId) }));
-  useEffect(() => { setUnitState(state => state.userId === unitUserId ? state : { userId: unitUserId, choices: readUnitChoices(unitUserId) }); }, [unitUserId]);
-  const unitChoices = useMemo<UnitChoices>(() => item => unitState.choices[basketItemKey(item)], [unitState]);
-  // Stores switched off in the split by hand: still in the filters and in the store ranking, kept in this browser.
-  const [offState, setOffState] = useState(() => ({ userId: unitUserId, keys: readStoresOff(unitUserId) }));
-  useEffect(() => { setOffState(state => state.userId === unitUserId ? state : { userId: unitUserId, keys: readStoresOff(unitUserId) }); }, [unitUserId]);
-  const storesOff = useMemo(() => new Set(offState.keys), [offState]);
+const NO_ITEMS: BasketItem[] = [];
+
+/** The personal basket (/v2/panier, on this device) or the shared one (/v2/panier/partage, live for every member). */
+export default function V2BasketPage({ user, onLogout, sharedMode = false }: { user: V2User | null; onLogout: () => Promise<void>; sharedMode?: boolean }) {
+  const context = useV2Basket();
+  const { shared } = context;
+  const basket = sharedMode ? context.sharedBasket : context;
+  const sharing = sharedMode && basket !== null;
+  const { remove, clear, setEnabled, setQuantity, replace, replaceAll, merge } = basket ?? context;
+  const items = basket?.items ?? NO_ITEMS;
+  // Quantities, price or unit price, units, stores off and filters: in this browser for the personal
+  // basket, on the server (the same for every member) for the shared one.
+  const display = useBasketView(user?.id ?? null, sharing ? shared : null);
+  const { advanced, mode, filters, setFilters } = display;
+  const toggleAdvanced = display.setAdvanced;
+  const changeMode = display.setMode;
+  const unitChoices = useMemo<UnitChoices>(() => item => display.units[basketItemKey(item)], [display.units]);
+  // Stores switched off in the split by hand: still in the filters and in the store ranking.
+  const storesOff = useMemo(() => new Set(display.storesOff), [display.storesOff]);
   const location = useLocation();
   const navigate = useNavigate();
   const sharedLink = location.hash.startsWith("#panier=");
@@ -56,12 +60,14 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const closeSharedLink = () => navigate({ pathname: location.pathname, search: location.search }, { replace: true });
   const invite = inviteFromHash(location.hash);
   const signedInId = user?.id;
-  // An invitation opened while signed out comes back after signing in.
+  // Invitations open on the shared basket page, also the first links that pointed at /v2/panier. One
+  // opened while signed out comes back after signing in.
   useEffect(() => {
+    if (!sharedMode && invite) { navigate({ pathname: SHARED_BASKET_PATH, hash: location.hash }, { replace: true }); return; }
     if (!signedInId || location.hash) return;
     const pending = takePendingInvite();
-    if (pending) navigate({ pathname: location.pathname, search: location.search, hash: "#rejoindre=" + pending }, { replace: true });
-  }, [signedInId, location.hash, location.pathname, location.search, navigate]);
+    if (pending) navigate({ pathname: SHARED_BASKET_PATH, hash: "#rejoindre=" + pending }, { replace: true });
+  }, [sharedMode, invite, signedInId, location.hash, navigate]);
   async function importSharedBasket(mode: "add" | "replace") {
     if (!sharedEntries || importing) return;
     if (mode === "replace" && items.length && !window.confirm("Remplacer tout votre panier actuel par ce panier partagé ?")) return;
@@ -96,13 +102,10 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const extension = useExtensionRefresh(user);
   const startExtension = extension.start;
   const afterFetch = useCallback((ids: number[]) => { void startExtension(ids, () => { void refetch.current(true); }); }, [startExtension]);
-  const { snapshot, credits, state, fetchPrices } = useBasketPrices(userId, items, afterFetch);
+  const { snapshot, credits, state, fetchPrices } = useBasketPrices(userId, items, afterFetch, sharing ? shared.sharedId ?? undefined : undefined);
   refetch.current = fetchPrices;
   const [panel, setPanel] = useState<BasketPanel | null>(null);
   const [defaultStores, setDefaultStores] = useState(readBasketDefaultStores);
-  const [filters, setFilters] = useState<BasketFilters>(() => ({
-    ...emptyBasketFilters, storeIds: readBasketDefaultStores().map(store => store.id),
-  }));
   const [defaultStoreError, setDefaultStoreError] = useState(false);
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoryError, setCategoryError] = useState(false);
@@ -135,17 +138,12 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
     [split, view, filters, advanced, mode, unitChoices, presentOff]);
   const gains = useMemo(() => split && presentOff.size ? reactivationGains(view.lines, view.responses, filters, advanced, split, presentOff, mode, unitChoices) : new Map(),
     [split, view, filters, advanced, mode, unitChoices, presentOff]);
-  const setStoreActive = (key: string, active: boolean) => {
-    const keys = withStoreOff(offState.keys, key, !active);
-    setOffState({ userId: unitUserId, keys }); writeStoresOff(unitUserId, keys);
-  };
-  const chooseUnit = (item: BasketItem, unit: BaseUnit) => {
-    const choices = withUnitChoice(unitState.choices, basketItemKey(item), unit, items.map(basketItemKey));
-    setUnitState({ userId: unitUserId, choices }); writeUnitChoices(unitUserId, choices);
-  };
+  const setStoreActive = (key: string, active: boolean) => display.setStoresOff(withStoreOff(display.storesOff, key, !active));
+  const chooseUnit = (item: BasketItem, unit: BaseUnit) =>
+    display.setUnits(withUnitChoice(display.units, basketItemKey(item), unit, items.map(basketItemKey)));
   const lineItems = view.lines.map(line => line.item);
   const availableRows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
-  const offStores = offState.keys.flatMap(key => {
+  const offStores = display.storesOff.flatMap(key => {
     const reading = availableRows.find(row => readingKey(row) === key);
     return reading ? [{ key, reading, gain: gains.get(key) ?? null }] : [];
   });
@@ -181,11 +179,14 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
   const fetchCost = basketFetchCost(items);
   const noCredit = outOfCredits(credits, fetchCost);
 
+  // A shared basket created from the personal one starts with its settings too.
+  const personalSettings = { advanced: display.advanced, compare: display.mode, filters: display.filters, stores_off: display.storesOff, units: display.units };
+
   return <div className="v2-home v2-recipes">
     <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
     <V2SiteHeader user={user} onLogout={onLogout} />
     <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharing ? "Panier partagé" : "Mon panier"}<span>.</span></h1><p>{sharing ? "Modifié en direct par ses membres." : "Comparez les prix de vos courses."}</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharedMode ? "Panier partagé" : "Mon panier"}<span>.</span></h1><p>{sharing ? "Modifié en direct par ses membres, avec les mêmes réglages pour tous." : sharedMode ? "Un panier que plusieurs comptes remplissent ensemble, en direct." : "Comparez les prix de vos courses."}</p></div><Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link></div>
       {sharedLink && <section className="v2-shared-basket" aria-label="Panier partagé">
         {sharedEntries ? <>
           <h2>Panier partagé</h2>
@@ -201,6 +202,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
       {importNotice && <p role="status">{importNotice}</p>}
       {invite && <SharedJoin invite={invite} user={user} shared={shared} onClose={closeSharedLink} />}
       {shared.notice && <p role="status" className="v2-shared-notice">{shared.notice} <button type="button" className="v2-basket-remove" onClick={shared.clearNotice}>Fermer</button></p>}
+      {sharedMode && !basket ? !invite && <div className="v2-recipes-card"><SharedStart shared={shared} user={user} items={context.items} startSettings={personalSettings} copyByDefault={false} /></div> : <>
       {sharing && <SharedBanner shared={shared} user={user} onInvite={() => setPanel("share")} />}
       {sharing && !items.length && panel === "share" && <div className="v2-basket-panel" id="v2-basket-panel-share"><SharedInvite shared={shared} user={user} /></div>}
       {items.length ? <>
@@ -217,7 +219,7 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
           {state.phase !== "error" && noCredit && credits && fetchCost > 0 && <p role="status">{shortText(credits, fetchCost)}</p>}
         </div>
         {panel === "share" && <div className="v2-basket-panel" id="v2-basket-panel-share">
-          {sharing ? <SharedInvite shared={shared} user={user} /> : <SharedStart shared={shared} user={user} items={items} />}
+          {sharing ? <SharedInvite shared={shared} user={user} /> : <SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault />}
           <h3 className="v2-shared-copy-title">Envoyer une copie</h3>
           <p className="v2-shared-hint">Une copie figée du panier, sans compte et sans rien enregistrer sur le serveur.</p>
           <V2BasketShare items={items} url={shareUrl} /></div>}
@@ -246,7 +248,8 @@ export default function V2BasketPage({ user, onLogout }: { user: V2User | null; 
             </section>}
       </> : sharing ? <div className="v2-recipes-card"><p>Ce panier partagé est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue : ses membres le verront aussitôt.</p></div>
         : <><div className="v2-recipes-card"><p>Votre panier est vide pour le moment. Ajoutez un produit, un groupe comparable ou un ensemble depuis le catalogue.</p></div>
-          {!invite && <div className="v2-recipes-card v2-shared-empty-start"><SharedStart shared={shared} user={user} items={items} /></div>}</>}
+          {!invite && !shared.sharedId && <div className="v2-recipes-card v2-shared-empty-start"><SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault={false} /></div>}</>}
+      </>}
     </main>
   </div>;
 }

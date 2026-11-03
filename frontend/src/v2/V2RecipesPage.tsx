@@ -11,6 +11,7 @@ import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
 import { useV2Basket } from "./V2BasketContext";
+import { SHARED_BASKET_PATH } from "./v2-shared-basket";
 import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
 import { rewardHint } from "./v2-basket-credits-api";
 import { useCredits } from "./useCredits";
@@ -187,7 +188,10 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     catch (reason) { setError(message(reason)); }
     finally { setPublishing(false); }
   }
-  function addIngredients() {
+  /** The ingredients go to the personal basket, or to the shared one when `toShared`. */
+  function addIngredients(toShared = false) {
+    const target = toShared ? basket.sharedBasket : basket;
+    if (!target) return;
     if (!currentRecipe || !positiveDecimal(servings)) { setBasketError("Indiquez un nombre de portions valide."); return; }
     if (!productsReady || resolvingProducts) { setBasketError("Vérification des références en cours. Réessayez dans un instant."); return; }
     const entries: { item: BasketItem; quantity: BasketQuantity }[] = [];
@@ -212,12 +216,14 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     }
     if (!entries.length) { setBasketError("Aucun ingrédient sélectionné."); return; }
     if (unavailable.length) { setBasketError("Ingrédients sans produit disponible ou quantité valide : " + unavailable.join(", ") + ". Aucun ingrédient ajouté."); return; }
-    const result = basket.addQuantities(entries);
+    const result = target.addQuantities(entries);
     if (result.conflicts) { setBasketError(result.conflicts + " quantité(s) incompatibles avec le panier actuel. Aucun ingrédient ajouté."); return; }
+    // Quantities matter: the basket opens in the quantities mode (for every member of a shared basket).
     if (result.added || result.merged) {
-      try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
+      if (toShared) basket.shared.setSettings({ advanced: true });
+      else try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
     }
-    navigate("/v2/panier");
+    navigate(toShared ? SHARED_BASKET_PATH : "/v2/panier");
   }
   return <Frame user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to="/v2/recettes">← Toutes les recettes</Link>
@@ -256,7 +262,8 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
             </select></label>}
             {item.note && <small>{item.note}</small>}
           </li>;
-        })}</ul><button type="button" className="v2-button v2-button-primary" onClick={addIngredients}>Ajouter les ingrédients au panier →</button></section>
+        })}</ul><div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" onClick={() => addIngredients()}>Ajouter les ingrédients au panier →</button>
+          {basket.sharedBasket && <button type="button" className="v2-button v2-button-secondary" onClick={() => addIngredients(true)}>Au panier partagé →</button>}</div></section>
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{currentRecipe.prep_minutes != null && `Préparation : ${currentRecipe.prep_minutes} min · `}{currentRecipe.cook_minutes != null && `Cuisson : ${currentRecipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{currentRecipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
       {!privateRecipe && <V2ReportControl kind="recipe" contentId={currentRecipe.id} user={user} />}
     </>}

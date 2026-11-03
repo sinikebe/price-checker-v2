@@ -76,6 +76,20 @@ test("the last result is kept in the session and in the browser, per account", (
   store.set(snapshotKey(1), JSON.stringify({ userId: 1 })); assert.equal(readSnapshot(1), null);
 });
 
+test("the personal basket and each shared basket keep their own result", () => {
+  reset();
+  const personal = snapshotFromFetch(1, [pasta, milk], result);
+  const shared = snapshotFromFetch(1, [milk], { ...result, lines: [result.lines[1]] }, 9);
+  writeSnapshot(personal); writeSnapshot(shared);
+  assert.equal(shared.basketId, 9);
+  assert.equal(readSnapshot(1), personal);
+  assert.equal(readSnapshot(1, 9), shared);
+  assert.equal(readSnapshot(1, 10), null);
+  assert.ok(snapshotKey(1, 9).startsWith("v2:basket:") && snapshotKey(1, 9).endsWith(":1"), "found with the account's local data");
+  forgetSnapshot(1, 9); store.set(snapshotKey(1, 9), JSON.stringify(personal));
+  assert.equal(readSnapshot(1, 9), null, "the personal result is never shown for a shared basket");
+});
+
 test("a result too large for the browser still works for the session", () => {
   reset();
   const snapshot = snapshotFromFetch(1, [pasta, milk], result);

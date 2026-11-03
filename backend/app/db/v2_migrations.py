@@ -1128,6 +1128,12 @@ MIGRATIONS = {
         CREATE INDEX v2_shared_basket_lines_added_by_idx ON v2_shared_basket_lines(added_by)
             WHERE added_by IS NOT NULL;
     """,
+    "0043_shared_basket_settings": """
+        -- What every member sees the same way: store filters, quantities, price or unit price,
+        -- stores switched off and the unit of each article. Validated by the API.
+        ALTER TABLE v2_shared_baskets ADD COLUMN settings jsonb NOT NULL DEFAULT '{}'::jsonb
+            CHECK (jsonb_typeof(settings) = 'object');
+    """,
 }
 
 

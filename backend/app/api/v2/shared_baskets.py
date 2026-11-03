@@ -153,8 +153,43 @@ class UpdateOp(BaseModel):
     disabled: bool | None = None
 
 
+StoreKey = Annotated[str, Field(pattern=r"^[1-9][0-9]{0,18}:(?:in_store|drive|delivery)$")]
+UnitKey = Annotated[str, Field(min_length=1, max_length=400)]
+
+
+class Filters(BaseModel):
+    """The stores compared, as in the basket page (same field names)."""
+
+    storeIds: list[Annotated[int, Field(ge=1, le=MAX_BIGINT)]] = Field(default_factory=list, max_length=200)  # noqa: N815
+    cities: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(default_factory=list, max_length=100)
+    departments: list[Annotated[str, Field(pattern=r"^(?:[0-9]{2,3}|2A|2B)$")]] = Field(
+        default_factory=list, max_length=100)
+
+
+class Settings(BaseModel):
+    """What every member sees the same way. A field left out keeps its value."""
+
+    advanced: bool | None = None
+    compare: Literal["price", "unit"] | None = None
+    filters: Filters | None = None
+    stores_off: list[StoreKey] | None = Field(default=None, max_length=50)
+    units: dict[UnitKey, Literal["g", "ml", "piece"]] | None = Field(default=None, max_length=MAX_LINES)
+
+    def patch(self) -> dict:
+        return self.model_dump(mode="json", exclude={"op"}, exclude_none=True)
+
+
+DEFAULT_SETTINGS = {"advanced": False, "compare": "price",
+                    "filters": {"storeIds": [], "cities": [], "departments": []},
+                    "stores_off": [], "units": {}}
+
+
+class SettingsOp(Settings):
+    op: Literal["settings"]
+
+
 class Changes(BaseModel):
-    ops: list[Annotated[AddOp | RemoveOp | UpdateOp, Field(discriminator="op")]] = Field(
+    ops: list[Annotated[AddOp | RemoveOp | UpdateOp | SettingsOp, Field(discriminator="op")]] = Field(
         min_length=1, max_length=MAX_OPS)
 
 
@@ -165,6 +200,7 @@ class BasketName(BaseModel):
 
 class NewBasket(BasketName):
     lines: list[NewLine] = Field(default_factory=list, max_length=MAX_LINES)
+    settings: Settings | None = None
 
 
 class Join(BaseModel):
@@ -203,7 +239,7 @@ async def _write_limit(connection, user: dict) -> None:
 
 async def _membership(connection, basket_id: int, user: dict, *, lock: bool = False):
     row = await connection.fetchrow(
-        "SELECT b.id,b.name,b.owner_id,b.invite_version,b.revision FROM v2_shared_baskets b "
+        "SELECT b.id,b.name,b.owner_id,b.invite_version,b.revision,b.settings FROM v2_shared_baskets b "
         "JOIN v2_shared_basket_members m ON m.basket_id=b.id AND m.user_id=$2 WHERE b.id=$1"
         + (" FOR UPDATE OF b" if lock else ""), basket_id, user["id"])
     if row is None:
@@ -248,6 +284,7 @@ async def _state(connection, basket_id: int, user: dict) -> dict:
             "product": {"id": line["product_id"], "revision": line["product_revision"],
                         "data": _decoded(line["product_data"])} if line["product_data"] else None,
         } for line in lines],
+        "settings": {**DEFAULT_SETTINGS, **(_decoded(basket["settings"]) or {})},
         "limits": {"lines": MAX_LINES, "members": MAX_MEMBERS},
     }
 
@@ -328,8 +365,8 @@ async def create_shared_basket(payload: NewBasket, request: Request, response: R
             if joined >= MAX_JOINED:
                 raise HTTPException(status_code=409, detail=f"Vous participez déjà à {MAX_JOINED} paniers partagés.")
             basket_id = await connection.fetchval(
-                "INSERT INTO v2_shared_baskets(owner_id,name) VALUES($1,$2) RETURNING id",
-                user["id"], payload.name)
+                "INSERT INTO v2_shared_baskets(owner_id,name,settings) VALUES($1,$2,$3::jsonb) RETURNING id",
+                user["id"], payload.name, json.dumps(payload.settings.patch() if payload.settings else {}))
             await connection.execute(
                 "INSERT INTO v2_shared_basket_members(basket_id,user_id) VALUES($1,$2)", basket_id, user["id"])
             for item in payload.lines:
@@ -450,7 +487,8 @@ async def read_shared_basket(
 async def change_shared_basket(basket_id: Id, payload: Changes, request: Request, response: Response):
     """Apply a member's changes in order. A line is named by what it is (product, group or scope), as
     in the browser basket, so a change made before an addition was confirmed, or after another member
-    changed the basket, still applies to the right line. An article is added once."""
+    changed the basket, still applies to the right line. An article is added once. A settings change
+    replaces the settings it names (filters, quantities, price or unit price, stores off, units)."""
     _secure_write(request)
     _no_store(response)
     connection = await _connect()
@@ -463,6 +501,12 @@ async def change_shared_basket(basket_id: Id, payload: Changes, request: Request
             for op in payload.ops:
                 if isinstance(op, AddOp):
                     changed = await _add(connection, basket_id, op, user) or changed
+                elif isinstance(op, SettingsOp):
+                    patch = json.dumps(op.patch())
+                    status = await connection.execute(
+                        "UPDATE v2_shared_baskets SET settings=settings||$2::jsonb "
+                        "WHERE id=$1 AND settings IS DISTINCT FROM settings||$2::jsonb", basket_id, patch)
+                    changed = status.endswith(" 1") or changed
                 elif isinstance(op, RemoveOp):
                     status = await connection.execute(
                         "DELETE FROM v2_shared_basket_lines WHERE basket_id=$1 AND line_key=$2",

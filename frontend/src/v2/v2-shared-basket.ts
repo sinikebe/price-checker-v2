@@ -2,6 +2,8 @@
  * Shared baskets, without React: the server's lines as basket items, and a member's edits as
  * changes. No value import, so the tests can load this file on its own.
  */
+import type { BasketFilters, CompareMode } from "./v2-basket-comparison";
+import type { BaseUnit } from "./v2-basket-quantity";
 import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
 import type { ProductData } from "./v2-products-api";
 
@@ -16,6 +18,8 @@ export type SharedMember = { id: number; username: string; owner: boolean };
 export type SharedBasket = {
   id: number; name: string; revision: number; role: "owner" | "member"; owner: string | null;
   invite: string; members: SharedMember[]; lines: SharedLine[]; limits: { lines: number; members: number };
+  /** Absent from the first servers with shared baskets: read with sharedSettings(). */
+  settings?: Partial<SharedSettings>;
 };
 export type SharedSummary = {
   id: number; name: string; owner: boolean; owner_name: string; updated_at: string; lines: number; members: number;
@@ -27,11 +31,21 @@ export type LineRef =
   | { kind: "group"; name: string }
   | { kind: "scope"; department: string; family: string; name: string };
 /** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
+/** How every member sees a shared basket: the same filters and options, kept on the server. */
+export type SharedSettings = {
+  advanced: boolean; compare: CompareMode; filters: BasketFilters;
+  stores_off: string[]; units: Record<string, BaseUnit>;
+};
+export const DEFAULT_SETTINGS: SharedSettings = {
+  advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {},
+};
 export type LocalOp =
+  | { op: "settings"; patch: Partial<SharedSettings> }
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean; item: BasketItem }
   | { op: "remove"; line: LineRef; key: string }
   | { op: "update"; line: LineRef; key: string; quantity?: BasketQuantity | null; disabled?: boolean };
 export type WireOp =
+  | ({ op: "settings" } & Partial<SharedSettings>)
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean }
   | { op: "remove"; line: LineRef }
   | { op: "update"; line: LineRef; quantity?: BasketQuantity | null; disabled?: boolean };
@@ -91,6 +105,7 @@ export function diffOps(current: readonly BasketItem[], next: readonly BasketIte
 export function applyOps(items: readonly BasketItem[], ops: readonly LocalOp[], keyOf: KeyOf): BasketItem[] {
   let result = [...items];
   for (const op of ops) {
+    if (op.op === "settings") continue;
     if (op.op === "add") {
       const key = keyOf(op.item);
       if (!result.some(item => keyOf(item) === key)) result.push(op.item);
@@ -107,7 +122,7 @@ export function applyOps(items: readonly BasketItem[], ops: readonly LocalOp[], 
 }
 
 export function wireOps(ops: readonly LocalOp[]): WireOp[] {
-  return ops.map(op => op.op === "add" ? { op: "add", line: op.line, quantity: op.quantity, disabled: op.disabled }
+  return ops.map(op => op.op === "settings" ? { op: "settings", ...op.patch } : op.op === "add" ? { op: "add", line: op.line, quantity: op.quantity, disabled: op.disabled }
     : op.op === "remove" ? { op: "remove", line: op.line }
       : { op: "update", line: op.line, ...("quantity" in op ? { quantity: op.quantity } : {}), ...("disabled" in op ? { disabled: op.disabled } : {}) });
 }
@@ -138,7 +153,9 @@ export function writeSharedId(userId: number, basketId: number | null) {
   catch { /* the choice lasts for this page only */ }
 }
 
-export const inviteUrl = (origin: string, invite: string) => `${origin}/v2/panier#rejoindre=${invite}`;
+/** The page of the shared basket; the personal basket stays at /v2/panier. */
+export const SHARED_BASKET_PATH = "/v2/panier/partage";
+export const inviteUrl = (origin: string, invite: string) => `${origin}${SHARED_BASKET_PATH}#rejoindre=${invite}`;
 
 export const STORAGE_NOTICE = "Un panier partagé est enregistré sur le serveur, jusqu’à ce que son créateur le supprime ou supprime son compte. "
   + "Les membres invités voient et modifient ses articles en direct ; chacun utilise ses propres crédits pour en voir les prix.";
@@ -154,4 +171,28 @@ export function takePendingInvite(): string | null {
     sessionStorage.removeItem(PENDING_INVITE);
     return value && SHARED_INVITE.test("#rejoindre=" + value) ? value : null;
   } catch { return null; }
+}
+
+/** The settings of a shared basket, with the defaults for what the server does not say. */
+export function sharedSettings(basket: Pick<SharedBasket, "settings"> | null): SharedSettings {
+  const stored = basket?.settings ?? {};
+  return { ...DEFAULT_SETTINGS, ...stored, filters: { ...DEFAULT_SETTINGS.filters, ...(stored.filters ?? {}) } };
+}
+
+/** The settings as they will be once these changes are applied (later changes win). */
+export function applySettings(settings: SharedSettings, ops: readonly LocalOp[]): SharedSettings {
+  let result = settings;
+  for (const op of ops) if (op.op === "settings") result = { ...result, ...op.patch };
+  return result;
+}
+
+/** A settings change queued after another one not sent yet joins it: one request instead of several. */
+export function queueOps(queue: readonly LocalOp[], ops: readonly LocalOp[]): LocalOp[] {
+  const result = [...queue];
+  for (const op of ops) {
+    const last = result[result.length - 1];
+    if (op.op === "settings" && last?.op === "settings") result[result.length - 1] = { op: "settings", patch: { ...last.patch, ...op.patch } };
+    else result.push(op);
+  }
+  return result;
 }

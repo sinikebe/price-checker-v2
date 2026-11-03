@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import type { BasketItem } from "./v2-basket-storage";
 import type { SharedBasketControls } from "./useSharedBasket";
 import { listSharedBaskets, previewInvite } from "./v2-shared-basket-api";
-import { STORAGE_NOTICE, inviteUrl, keepPendingInvite, type InvitePreview, type SharedSummary } from "./v2-shared-basket";
+import { SHARED_BASKET_PATH, STORAGE_NOTICE, inviteUrl, keepPendingInvite, type InvitePreview, type SharedSettings, type SharedSummary } from "./v2-shared-basket";
 import "./v2-share.css";
 import "./v2-shared-basket.css";
 
@@ -30,7 +30,7 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
       </div>
       <div className="v2-shared-banner-actions">
         <button type="button" className="v2-button v2-button-secondary" onClick={onInvite} disabled={!basket}>Inviter et membres</button>
-        <button type="button" className="v2-button v2-button-secondary" onClick={() => shared.open(null)}>Revenir à mon panier</button>
+        <Link className="v2-button v2-button-secondary" to="/v2/panier">Mon panier</Link>
       </div>
     </div>
     <p className="v2-shared-activity" role="status" aria-live="polite">{shared.activity}</p>
@@ -113,12 +113,20 @@ export function SharedInvite({ shared, user }: { shared: SharedBasketControls; u
   </section>;
 }
 
-/** In the share panel when no shared basket is open: share this basket live, or open one already shared. */
-export function SharedStart({ shared, user, items }: { shared: SharedBasketControls; user: V2User | null; items: BasketItem[] }) {
+/**
+ * Create a shared basket (empty, or with the articles and settings of the personal basket), or open
+ * one already followed. Shown in the share panel of the personal basket and on the shared basket page.
+ */
+export function SharedStart({ shared, user, items, startSettings, copyByDefault }: {
+  shared: SharedBasketControls; user: V2User | null; items: BasketItem[];
+  startSettings: Partial<SharedSettings>; copyByDefault: boolean;
+}) {
   const [name, setName] = useState("Courses partagées");
+  const [copy, setCopy] = useState(copyByDefault);
   const [busy, setBusy] = useState(false);
   const [list, setList] = useState<SharedSummary[] | null>(null);
   const [listError, setListError] = useState("");
+  const navigate = useNavigate();
   const userId = user?.id;
   useEffect(() => {
     if (!userId) return;
@@ -129,29 +137,33 @@ export function SharedStart({ shared, user, items }: { shared: SharedBasketContr
   }, [userId]);
   if (!user) return <section className="v2-shared-start" aria-label="Partager en direct">
     <h3>Partager en direct</h3>
-    <p>Un panier partagé se modifie à plusieurs, en direct. <Link to="/v2/connexion?next=panier">Connectez-vous</Link> pour en créer un ou en rejoindre un.</p>
+    <p>Un panier partagé se remplit à plusieurs, en direct. <Link to="/v2/connexion?next=panier">Connectez-vous</Link> pour en créer un ou en rejoindre un.</p>
   </section>;
-  const tooMany = items.length > 100;
+  const copying = copy && items.length > 0;
+  const tooMany = copying && items.length > 100;
   return <section className="v2-shared-start" aria-label="Partager en direct">
+    {list && list.length > 0 && <><h3>Vos paniers partagés</h3>
+      <ul className="v2-shared-list">{list.map(item => <li key={item.id}><span><strong>{item.name}</strong> · {item.owner ? "créé par vous" : `de ${item.owner_name}`} · {plural(item.lines, "article")} · {plural(item.members, "membre")}</span>
+        <button type="button" className="v2-button v2-button-secondary" onClick={() => { shared.open(item.id); navigate(SHARED_BASKET_PATH); }}>{item.id === shared.sharedId ? "Afficher" : "Ouvrir"}</button></li>)}</ul></>}
+    {listError && <p role="alert">{listError}</p>}
     <h3>Partager en direct</h3>
-    <p>Créez un panier partagé à partir de ce panier : les personnes que vous invitez voient en direct ce qui y est ajouté, et peuvent ajouter, cocher ou retirer des articles.</p>
+    <p>Un panier partagé se remplit à plusieurs : les personnes que vous invitez voient en direct ce qui y est ajouté, et peuvent ajouter, cocher ou retirer des articles. Filtres et options sont les mêmes pour tous. Votre panier personnel reste à part, sur cet appareil : chaque produit peut aller dans l’un ou dans l’autre.</p>
     <p className="v2-shared-warning">{STORAGE_NOTICE}</p>
     <form className="v2-shared-create" onSubmit={event => {
       event.preventDefault();
       if (busy || tooMany) return;
       setBusy(true);
-      void shared.create(name.trim(), items).finally(() => setBusy(false));
+      void shared.create(name.trim(), copying ? items : [], copying ? startSettings : undefined)
+        .then(created => { if (created) navigate(SHARED_BASKET_PATH); })
+        .finally(() => setBusy(false));
     }}>
       <label>Nom du panier partagé<input value={name} maxLength={80} required onChange={event => setName(event.target.value)} /></label>
+      {items.length > 0 && <label className="v2-shared-copy"><input type="checkbox" checked={copy} onChange={event => setCopy(event.target.checked)} />
+        Y copier {plural(items.length, "article")} de mon panier, avec ses réglages</label>}
       <button type="submit" className="v2-button v2-button-primary" disabled={busy || tooMany || !name.trim()}>{busy ? "Création…" : "Créer et enregistrer sur le serveur"}</button>
     </form>
     {tooMany && <p role="alert">Un panier partagé compte 100 articles au plus.</p>}
     {shared.error && <p role="alert" className="v2-recipes-error">{shared.error}</p>}
-    <p className="v2-shared-hint">Votre panier personnel reste sur cet appareil : « Revenir à mon panier » le retrouve à tout moment.</p>
-    {listError && <p role="alert">{listError}</p>}
-    {list && list.length > 0 && <><h3>Vos paniers partagés</h3>
-      <ul className="v2-shared-list">{list.map(item => <li key={item.id}><span><strong>{item.name}</strong> · {item.owner ? "créé par vous" : `de ${item.owner_name}`} · {plural(item.lines, "article")} · {plural(item.members, "membre")}</span>
-        <button type="button" className="v2-button v2-button-secondary" onClick={() => shared.open(item.id)}>Ouvrir</button></li>)}</ul></>}
   </section>;
 }
 

@@ -330,3 +330,39 @@ async def test_account_export_and_deletion(setup, monkeypatch):
     assert remaining["lines"][-1]["label"] == "Marque Pâtes" and remaining["lines"][-1]["added_by"] is None
     await connection.execute("DELETE FROM v2_users WHERE id=$1", users["alice"]["id"])
     assert await connection.fetchval("SELECT count(*) FROM v2_shared_basket_lines") == 0
+
+
+@pytest.mark.asyncio
+async def test_settings_are_shared_by_every_member(setup):
+    client, _connection, _users, products = setup
+    created = await client.post(PATH, headers=who("alice"), json={
+        "name": "Réglages", "lines": [product(products["Lait"])],
+        "settings": {"advanced": True, "filters": {"storeIds": [4], "cities": [], "departments": ["78"]}},
+    })
+    state = created.json()
+    assert state["settings"] == {"advanced": True, "compare": "price",
+                                 "filters": {"storeIds": [4], "cities": [], "departments": ["78"]},
+                                 "stores_off": [], "units": {}}
+    basket_id = state["id"]
+    await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": state["invite"], "confirm": True})
+    changed = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [
+        {"op": "settings", "compare": "unit", "stores_off": ["12:drive", "3:in_store"]},
+        {"op": "settings", "units": {f"product:{products['Lait']}": "piece"}},
+    ]})
+    assert changed.status_code == 200, changed.text
+    seen = (await client.get(f"{PATH}/{basket_id}", headers=who("alice"))).json()
+    assert seen["settings"] == {"advanced": True, "compare": "unit",
+                                "filters": {"storeIds": [4], "cities": [], "departments": ["78"]},
+                                "stores_off": ["12:drive", "3:in_store"],
+                                "units": {f"product:{products['Lait']}": "piece"}}
+    assert seen["revision"] == changed.json()["revision"] == state["revision"] + 2
+    # The same settings again change nothing, so nobody reads again.
+    same = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"),
+                             json={"ops": [{"op": "settings", "compare": "unit"}]})
+    assert same.json()["revision"] == seen["revision"]
+    for bad in ({"compare": "cheapest"}, {"stores_off": ["12:bike"]}, {"units": {"x": "kg"}},
+                {"filters": {"storeIds": [0]}}, {"filters": {"departments": ["Paris"]}},
+                {"stores_off": [f"{n + 1}:drive" for n in range(51)]}):
+        refused = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"),
+                                    json={"ops": [{"op": "settings", **bad}]})
+        assert refused.status_code == 422, bad
