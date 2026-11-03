@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import V2BasketLines from "./V2BasketLines";
-import { BasketReadOnlyContext, OFFLINE_TITLE } from "./v2-basket-read-only";
+import { BasketReadOnlyContext, readOnlyTitle } from "./v2-basket-read-only";
 import type { ListView } from "./v2-shopping-list";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { pricePosition, purchaseTotalCents, type BasketComparison, type BasketPrice, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
@@ -22,7 +22,8 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
   /** Open the basket's list in a mode: the split (at a store's section), or the whole basket in one store. */
   onList: (mode: ListView, anchor?: string) => void;
 }) {
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnlyMode = useContext(BasketReadOnlyContext);
+  const readOnly = !!readOnlyMode;
   const lineCount = items.length;
   const unit = mode === "unit";
   const withSurplus = split.split.filter(choice => choice.unit && surplusText(choice.unit)).length;
@@ -78,7 +79,7 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
           <V2BasketLines choices={choices} advanced={advanced} rangeFor={rangeFor} onUnit={onUnit} />
           <button type="button" className="v2-basket-list-link" onClick={() => onList({ kind: "stores" }, `magasin-${storeKey}`)}>Liste de courses répartie →</button>
         </details>
-          <button type="button" className="v2-basket-store-toggle" disabled={readOnly} title={readOnly ? OFFLINE_TITLE : "Laisser ce magasin de côté dans la répartition de ce panier, sans le retirer des filtres"}
+          <button type="button" className="v2-basket-store-toggle" disabled={readOnly} title={readOnly ? readOnlyTitle(readOnlyMode) : "Laisser ce magasin de côté dans la répartition de ce panier, sans le retirer des filtres"}
             aria-label={`Désactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`} onClick={() => onStoreActive(storeKey, false)}>Désactiver</button></li>;
       })}</ul>}
       {offStores.length > 0 && <div className="v2-basket-stores-off"><p>Désactivés dans la répartition de ce panier (toujours dans vos filtres et dans le classement) :</p>
@@ -86,7 +87,7 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
           const note = gain ? reactivationText(gain, mode) : null;
           return <li key={key}><span className="v2-basket-split-store-name"><b>{reading.retailer}</b><small>{storeName(reading)}</small>
             {note && <span className="v2-basket-saving" data-kind={note.kind}>{note.text}</span>}</span>
-            <button type="button" className="v2-basket-store-toggle" disabled={readOnly} title={readOnly ? OFFLINE_TITLE : undefined} aria-label={`Réactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`}
+            <button type="button" className="v2-basket-store-toggle" disabled={readOnly} title={readOnly ? readOnlyTitle(readOnlyMode) : undefined} aria-label={`Réactiver ${reading.retailer} · ${storeName(reading)} dans la répartition`}
               onClick={() => onStoreActive(key, true)}>Réactiver</button></li>;
         })}</ul></div>}
       {missingWithoutOff.length > 0 && <p className="v2-basket-missing">Sans prix hors des magasins désactivés : {missingNames(missingWithoutOff)}.</p>}

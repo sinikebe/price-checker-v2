@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-shared-basket.ts", import.meta
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const {
   DEFAULT_SETTINGS, activityText, forgetSharedCache, readSharedCache, sharedQueueKey, sharedStateKey, writeSharedQueue, writeSharedState, applyOps, applySettings, diffOps, inviteFromHash, inviteUrl, keepPendingInvite, lineRef,
-  newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId, tickOps, allowedOffline,
+  newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId, tickOps, allowedOffline, sharedSnapshot, readSharedPrices, writeSharedPrices,
 } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 // The same key as the browser basket (basketItemKey in v2-basket-storage.ts).
@@ -172,5 +172,38 @@ test("the browser copy keeps when the server last confirmed it, and the ticks wa
   assert.equal(cache.basket.synced_at, "2026-11-03T12:00:00.000Z");
   assert.equal(cache.basket.invite, null, "the invitation is still never kept");
   assert.deepEqual(cache.queue, [{ op: "tick", key: "group:pâtes", on: true }]);
+  delete globalThis.localStorage;
+});
+
+
+test("free text lines of a shared basket, and the prices a member fetched, matched to the articles they are now", () => {
+  const line = (id, kind, label, extra = {}) => ({ id, kind, label, product_id: null, department: null, family: null, quantity: null, disabled: false, created_at: "", product: null, ...extra });
+  const milk = line(1, "product", "Lait", { product_id: 7, product: { id: 7, revision: 1, data: { name: "Lait" } } });
+  const text = line(2, "text", "Bougies");
+  const pasta = line(3, "group", "Pâtes");
+  const { items } = sharedItems([milk, text, pasta]);
+  assert.deepEqual(items[1], { kind: "text", name: "Bougies" });
+  assert.deepEqual(lineRef(items[1]), { kind: "text", name: "Bougies" });
+  const keyOf = item => "kind" in item ? `${item.kind}:${item.name.toLocaleLowerCase("fr")}` : `product:${item.id}`;
+  const prices = {
+    fetched_at: "2026-11-03T10:00:00+00:00", fetched_by: "ana",
+    content: { fetched_at: "2026-11-03T10:00:00+00:00", line_ids: [1, 3, 99], lines: [{ product_ids: [7], truncated: false }, { product_ids: [8, 9], truncated: true }, { product_ids: [5], truncated: false }],
+      products: { 7: { id: 7 } }, prices: { 7: { latest_by_store: [] } } },
+  };
+  const snapshot = sharedSnapshot(prices, [milk, text, pasta], keyOf, { userId: 4, basketId: 12 });
+  assert.deepEqual(snapshot.entries, { "product:7": { productIds: [7], truncated: false }, "group:pâtes": { productIds: [8, 9], truncated: true } },
+    "the free text is not priced, and a line gone since is ignored");
+  assert.equal(snapshot.fetchedAt, prices.fetched_at);
+  assert.deepEqual([snapshot.userId, snapshot.basketId], [4, 12]);
+  const replaced = sharedSnapshot(prices, [milk, line(4, "group", "Bougies")], keyOf, { userId: 4, basketId: 12 });
+  assert.deepEqual(Object.keys(replaced.entries), ["product:7"], "an article added after the fetch waits for the next one");
+
+  const store = new Map();
+  globalThis.localStorage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)) };
+  assert.equal(readSharedPrices(12, 4), null);
+  writeSharedPrices(12, 4, prices);
+  assert.deepEqual(readSharedPrices(12, 4), prices);
+  store.set("v2:basket:shared-prices:12:4", JSON.stringify({ userId: 4, entries: {} }));
+  assert.equal(readSharedPrices(12, 4), null, "an older per-member copy is not taken for the basket's prices");
   delete globalThis.localStorage;
 });

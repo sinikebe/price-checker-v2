@@ -3,16 +3,19 @@ import { validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-
 export type SharedBasketEntry =
   | ["p", number, string, 0 | 1]
   | ["g", string, 0 | 1]
+  | ["t", string, 0 | 1]
+  | ["t", string, 0 | 1, BasketQuantity | null]
   | ["s", string, string, string, 0 | 1]
   | ["p", number, string, 0 | 1, BasketQuantity | null]
   | ["g", string, 0 | 1, BasketQuantity | null]
   | ["s", string, string, string, 0 | 1, BasketQuantity | null];
 
+const groupLike = (entry: SharedBasketEntry) => entry[0] === "g" || entry[0] === "t";
 export const sharedEntryQuantity = (entry: SharedBasketEntry): BasketQuantity | undefined => {
-  const value = entry[entry[0] === "p" ? 4 : entry[0] === "g" ? 3 : 5];
+  const value = entry[entry[0] === "p" ? 4 : groupLike(entry) ? 3 : 5];
   return validBasketQuantity(value) ? value : undefined;
 };
-export const sharedEntryDisabled = (entry: SharedBasketEntry): boolean => Boolean(entry[entry[0] === "p" ? 3 : entry[0] === "g" ? 2 : 4]);
+export const sharedEntryDisabled = (entry: SharedBasketEntry): boolean => Boolean(entry[entry[0] === "p" ? 3 : groupLike(entry) ? 2 : 4]);
 
 const MAX_ITEMS = 100;
 const MAX_TOKEN_LENGTH = 12000;
@@ -28,6 +31,7 @@ export function encodeBasketShare(items: BasketItem[]): string | null {
     if ("kind" in item) {
       if (!validText(item.name)) return null;
       if (item.kind === "group") entries.push(version === 2 ? ["g", item.name, disabled, item.quantity ?? null] : ["g", item.name, disabled]);
+      else if (item.kind === "text") entries.push(version === 2 ? ["t", item.name, disabled, item.quantity ?? null] : ["t", item.name, disabled]);
       else if (validText(item.department) && validText(item.family))
         entries.push(version === 2 ? ["s", item.department, item.family, item.name, disabled, item.quantity ?? null] : ["s", item.department, item.family, item.name, disabled]);
       else return null;
@@ -60,15 +64,15 @@ export function decodeBasketShare(hash: string): SharedBasketEntry[] | null {
     for (const entry of data[1]) {
       if (!Array.isArray(entry)) return null;
       let key: string;
-      const quantityIndex = entry[0] === "p" ? 4 : entry[0] === "g" ? 3 : 5;
+      const quantityIndex = entry[0] === "p" ? 4 : entry[0] === "g" || entry[0] === "t" ? 3 : 5;
       const oldLength = quantityIndex;
       if (entry.length !== oldLength + (version === 2 ? 1 : 0)
         || (version === 2 && entry[quantityIndex] !== null && !validBasketQuantity(entry[quantityIndex]))) return null;
       if (entry[0] === "p" && Number.isSafeInteger(entry[1])
         && entry[1] > 0 && validText(entry[2]) && validFlag(entry[3])) {
         key = "p:" + entry[1];
-      } else if (entry[0] === "g" && validText(entry[1]) && validFlag(entry[2])) {
-        key = "g:" + entry[1].toLocaleLowerCase("fr");
+      } else if ((entry[0] === "g" || entry[0] === "t") && validText(entry[1]) && validFlag(entry[2])) {
+        key = entry[0] + ":" + entry[1].toLocaleLowerCase("fr");
       } else if (entry[0] === "s" && validText(entry[1])
         && validText(entry[2]) && validText(entry[3]) && validFlag(entry[4])) {
         key = ["s", entry[1], entry[2], entry[3]].map(String).join(":").toLocaleLowerCase("fr");
@@ -82,5 +86,5 @@ export function decodeBasketShare(hash: string): SharedBasketEntry[] | null {
 }
 
 export function sharedEntryName(entry: SharedBasketEntry): string {
-  return entry[0] === "p" ? entry[2] : entry[0] === "g" ? entry[1] : entry[3];
+  return entry[0] === "p" ? entry[2] : entry[0] === "g" || entry[0] === "t" ? entry[1] : entry[3];
 }

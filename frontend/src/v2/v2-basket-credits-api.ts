@@ -43,10 +43,11 @@ type WireItem =
   | { kind: "product"; id: number }
   | { kind: "group"; name: string }
   | { kind: "scope"; department: string; family: string; name: string };
+/** What is priced for each article. Free text has no price: it is never sent (see fetchedItems). */
 export function wireItems(items: readonly BasketItem[]): WireItem[] {
-  return items.map((item): WireItem => !("kind" in item) ? { kind: "product", id: item.id }
-    : item.kind === "group" ? { kind: "group", name: item.name }
-      : { kind: "scope", department: item.department, family: item.family, name: item.name });
+  return items.flatMap((item): WireItem[] => !("kind" in item) ? [{ kind: "product", id: item.id }]
+    : item.kind === "group" ? [{ kind: "group", name: item.name }]
+      : item.kind === "scope" ? [{ kind: "scope", department: item.department, family: item.family, name: item.name }] : []);
 }
 
 export async function readBasketCredits(signal?: AbortSignal): Promise<BasketCredits> {

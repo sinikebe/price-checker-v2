@@ -68,3 +68,14 @@ test("copyable list and QR link preserve explicit quantities and exclusions", as
   assert.match(await QRCode.toDataURL(url, { errorCorrectionLevel: "L" }), /^data:image\/png;base64,/);
   assert.doesNotMatch(basketShareList(items, null), /Ouvrir ce panier/);
 });
+
+
+test("a copy link carries free text, with its quantity, and refuses it twice", () => {
+  const items = [{ kind: "text", name: "Bougies d’anniversaire", quantity: { amount: "2", unit: "package" } }, { kind: "group", name: "Lait" }];
+  const hash = encodeBasketShare(items);
+  const entries = decodeBasketShare(hash);
+  assert.deepEqual(entries, [["t", "Bougies d’anniversaire", 0, { amount: "2", unit: "package" }], ["g", "Lait", 0, null]]);
+  assert.equal(sharedEntryName(entries[0]), "Bougies d’anniversaire");
+  const twice = encodeBasketShare([{ kind: "text", name: "Bougies" }, { kind: "text", name: "bougies" }]);
+  assert.equal(decodeBasketShare(twice), null);
+});

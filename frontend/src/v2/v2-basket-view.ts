@@ -11,18 +11,20 @@ const euros = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR
 export const money = (cents: number) => euros.format(cents / 100);
 export const productName = (product: BasketProduct) => [product.data.brand, product.data.name].filter(Boolean).join(" ");
 export const itemName = (item: BasketItem) => "kind" in item ? item.name : productName(item);
-export const itemKind = (item: BasketItem) => "kind" in item ? item.kind === "group" ? "Groupe comparable" : "Ensemble" : "Produit";
+export const itemKind = (item: BasketItem) => "kind" in item ? item.kind === "group" ? "Groupe comparable" : item.kind === "text" ? "Texte libre" : "Ensemble" : "Produit";
 const fold = (value: string) => value.toLocaleLowerCase("fr");
 
 export function itemHref(item: BasketItem) {
   if (!("kind" in item)) return "/v2/produits/" + item.id;
   if (item.kind === "group") return "/v2/categories/" + encodeURIComponent(item.name);
+  // Free text: what the catalogue has under these words.
+  if (item.kind === "text") return "/v2/produits?" + new URLSearchParams({ q: item.name });
   return "/v2/produits?" + new URLSearchParams({ rayon: item.department, famille: item.family, ensemble: item.name });
 }
 
 /** The other groups or ensembles an article may be compared as, when it belongs to a comparison scope. */
 export function alternatives(item: BasketItem, categories: Category[]): (BasketGroup | BasketScope)[] {
-  if (!("kind" in item)) return [];
+  if (!("kind" in item) || item.kind === "text") return [];
   const group = item.kind === "group" ? categories.find(category => fold(category.name) === fold(item.name)) : null;
   if (item.kind === "group" && !group?.comparison_scope) return [];
   const location = item.kind === "scope" ? item : group!;

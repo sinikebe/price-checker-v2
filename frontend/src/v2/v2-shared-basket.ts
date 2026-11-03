@@ -4,14 +4,17 @@
  */
 import type { BasketFilters, CompareMode } from "./v2-basket-comparison";
 import type { BaseUnit } from "./v2-basket-quantity";
-import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
+import type { BasketItem, BasketProduct, BasketQuantity } from "./v2-basket-storage";
+import type { BasketPriceResponse } from "./v2-basket-comparison";
+import type { BasketSnapshot } from "./v2-basket-snapshot";
 import type { ProductData } from "./v2-products-api";
 
 export type SharedLine = {
-  id: number; kind: "product" | "group" | "scope"; label: string; product_id: number | null;
+  id: number; kind: "product" | "group" | "scope" | "text"; label: string; product_id: number | null;
   department: string | null; family: string | null;
   quantity: BasketQuantity | null; disabled: boolean;
-  added_by: string | null; mine: boolean; created_at: string;
+  /** Absent when the basket is seen through its link, without being a member. */
+  added_by?: string | null; mine?: boolean; created_at: string;
   product: { id: number; revision: number; data: ProductData } | null;
 };
 export type SharedMember = { id: number; username: string; owner: boolean };
@@ -23,6 +26,20 @@ export type SharedBasket = {
   settings?: Partial<SharedSettings>;
   /** In the browser copy only: when the server last confirmed this state (ISO date). */
   synced_at?: string;
+  /** When a member last fetched the basket's prices, and who (null: never). */
+  prices?: { fetched_at: string; fetched_by?: string | null } | null;
+};
+/** The prices a member fetched for a shared basket, as the server keeps them for every member. */
+export type SharedPrices = {
+  fetched_at: string; fetched_by?: string | null;
+  content: {
+    fetched_at: string; line_ids: number[]; lines: { product_ids: number[]; truncated: boolean }[];
+    products: Record<string, BasketProduct>; prices: Record<string, BasketPriceResponse>;
+  };
+};
+/** A shared basket seen through its link, without an account: read only, no member's name. */
+export type SharedView = {
+  name: string; revision: number; settings: Partial<SharedSettings>; lines: SharedLine[]; prices: SharedPrices | null;
 };
 export type SharedSummary = {
   id: number; name: string; owner: boolean; owner_name: string; updated_at: string; lines: number; members: number;
@@ -32,6 +49,7 @@ export type InvitePreview = { id: number; name: string; owner: string; lines: nu
 export type LineRef =
   | { kind: "product"; product_id: number }
   | { kind: "group"; name: string }
+  | { kind: "text"; name: string }
   | { kind: "scope"; department: string; family: string; name: string };
 /** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 /** How every member sees a shared basket: the same filters and options, kept on the server. */
@@ -79,7 +97,7 @@ export function sharedItems(lines: readonly SharedLine[]): { items: BasketItem[]
   for (const line of lines) {
     let item: BasketItem | null = null;
     if (line.kind === "product") item = line.product ? { id: line.product.id, data: line.product.data, revision: line.product.revision, ...options(line) } : null;
-    else if (line.kind === "group") item = { kind: "group", name: line.label, ...options(line) };
+    else if (line.kind === "group" || line.kind === "text") item = { kind: line.kind, name: line.label, ...options(line) };
     else if (line.department && line.family) item = { kind: "scope", name: line.label, department: line.department, family: line.family, ...options(line) };
     if (item) { items.push(item); kept.push(line); } else unavailable.push(line);
   }
@@ -88,7 +106,8 @@ export function sharedItems(lines: readonly SharedLine[]): { items: BasketItem[]
 
 export function lineRef(item: BasketItem): LineRef {
   if (!("kind" in item)) return { kind: "product", product_id: item.id };
-  return item.kind === "group" ? { kind: "group", name: item.name } : { kind: "scope", department: item.department, family: item.family, name: item.name };
+  return item.kind === "group" || item.kind === "text" ? { kind: item.kind, name: item.name }
+    : { kind: "scope", department: item.department, family: item.family, name: item.name };
 }
 
 const sameQuantity = (a: BasketQuantity | undefined, b: BasketQuantity | undefined) =>
@@ -168,7 +187,8 @@ export const SHARED_BASKET_PATH = "/v2/panier/partage";
 export const inviteUrl = (origin: string, invite: string) => `${origin}${SHARED_BASKET_PATH}#rejoindre=${invite}`;
 
 export const STORAGE_NOTICE = "Un panier partagé est enregistré sur le serveur, jusqu’à ce que son créateur le supprime ou supprime son compte. "
-  + "Les membres invités voient et modifient ses articles en direct ; chacun utilise ses propres crédits pour en voir les prix.";
+  + "Les membres invités voient et modifient ses articles en direct. Les prix récupérés par un membre, avec ses crédits, sont visibles de tous les membres "
+  + "et de toute personne qui ouvre le lien du panier, sans dépenser de crédits.";
 
 const PENDING_INVITE = "v2:basket:pending-invite";
 /** An invitation kept while the visitor signs in, so the link still works afterwards (this tab only). */
@@ -262,4 +282,34 @@ export function writeSharedQueue(basketId: number, userId: number, ops: readonly
 }
 export function forgetSharedCache(basketId: number, userId: number) {
   try { localStorage.removeItem(sharedStateKey(basketId, userId)); localStorage.removeItem(sharedQueueKey(basketId, userId)); } catch { /* nothing kept */ }
+}
+
+/**
+ * The prices of a shared basket as the basket page uses them: each priced line is matched to the
+ * article it is now, so an article added or replaced since the fetch shows as not priced yet.
+ */
+export function sharedSnapshot(prices: SharedPrices, lines: readonly SharedLine[], keyOf: KeyOf, owner: { userId: number; basketId: number }): BasketSnapshot {
+  const { items, lines: kept } = sharedItems(lines);
+  const keyOfLine = new Map(kept.map((line, index) => [line.id, keyOf(items[index])]));
+  const entries: BasketSnapshot["entries"] = {};
+  prices.content.line_ids.forEach((id, index) => {
+    const key = keyOfLine.get(id), line = prices.content.lines[index];
+    if (key && line) entries[key] = { productIds: line.product_ids, truncated: line.truncated };
+  });
+  return { userId: owner.userId, basketId: owner.basketId, fetchedAt: prices.fetched_at, entries,
+    products: prices.content.products, prices: prices.content.prices };
+}
+
+/** The shared prices kept in this browser for offline use (the key ends with the account id). */
+export const sharedPricesKey = (basketId: number, userId: number) => `v2:basket:shared-prices:${basketId}:${userId}`;
+export function readSharedPrices(basketId: number, userId: number): SharedPrices | null {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(sharedPricesKey(basketId, userId)) ?? "null");
+    const prices = value as SharedPrices | null;
+    return prices && typeof prices.fetched_at === "string" && prices.content && Array.isArray(prices.content.line_ids)
+      && Array.isArray(prices.content.lines) && prices.content.products && prices.content.prices ? prices : null;
+  } catch { return null; }
+}
+export function writeSharedPrices(basketId: number, userId: number, prices: SharedPrices) {
+  try { localStorage.setItem(sharedPricesKey(basketId, userId), JSON.stringify(prices)); } catch { /* the page still shows them */ }
 }

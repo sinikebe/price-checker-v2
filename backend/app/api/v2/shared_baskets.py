@@ -15,6 +15,7 @@ import json
 import re
 import time
 from collections import Counter
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -23,9 +24,11 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
 from app.api.v2.auth_security import account_limit_key
-from app.api.v2.basket import _clean, _current_product
+from app.api.v2.basket import ADMIN_FETCHES_PER_MINUTE, GroupRef, ProductRef, ScopeRef, _clean, _current_product, _gather
 from app.api.v2.catalogue import MAX_BIGINT
 from app.api.v2.setup import _access_code
+from app.services import v2_basket_credits as credits
+from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/shared-baskets", tags=["v2-shared-baskets"])
 
@@ -42,6 +45,7 @@ MAX_WAITERS = 200
 MAX_WAITERS_PER_ACCOUNT = 4
 RETRY_SECONDS = 10  # when no live slot is free, the client reads again after this delay
 READS_PER_MINUTE = 120  # a live client reads a few times a minute; this only stops a runaway loop
+VIEWS_PER_MINUTE = 60  # reads of a basket by its link, without an account, per client
 _INVITE = re.compile(r"([1-9][0-9]{0,18})-([A-Za-z0-9_-]{22})")
 Id = Annotated[int, Path(ge=1, le=MAX_BIGINT)]
 
@@ -126,7 +130,15 @@ class ScopeLine(BaseModel):
     _clean = field_validator("department", "family", "name")(_clean)
 
 
-Line = Annotated[ProductLine | GroupLine | ScopeLine, Field(discriminator="kind")]
+class TextLine(BaseModel):
+    """Free text: an article not in the catalogue yet, to be replaced later by a product, group or ensemble."""
+
+    kind: Literal["text"]
+    name: str = Field(min_length=1, max_length=100)
+    _clean = field_validator("name")(_clean)
+
+
+Line = Annotated[ProductLine | GroupLine | ScopeLine | TextLine, Field(discriminator="kind")]
 
 
 class NewLine(BaseModel):
@@ -222,12 +234,14 @@ class Join(BaseModel):
     confirm: bool = False
 
 
-def _key(line: ProductLine | GroupLine | ScopeLine) -> str:
+def _key(line: ProductLine | GroupLine | ScopeLine | TextLine) -> str:
     """The same key as the basket in the browser (basketItemKey), so one article is one line."""
     if isinstance(line, ProductLine):
         return f"product:{line.product_id}"
     if isinstance(line, GroupLine):
         return "group:" + line.name.lower()
+    if isinstance(line, TextLine):
+        return "text:" + line.name.lower()
     return ":".join(("scope", line.department, line.family, line.name)).lower()
 
 
@@ -277,15 +291,7 @@ async def _state(connection, basket_id: int, user: dict) -> dict:
         "JOIN v2_users u ON u.id=m.user_id WHERE m.basket_id=$1 "
         "ORDER BY m.user_id=$2 DESC,m.joined_at,u.id LIMIT $3",
         basket_id, basket["owner_id"], MAX_MEMBERS)
-    lines = await connection.fetch(
-        "SELECT l.id,l.kind,l.product_id,l.label,l.department,l.family,l.quantity,l.disabled,"
-        "l.created_at,l.added_by=$2 AS mine,u.username AS added_by,p.data AS product_data,"
-        "p.revision AS product_revision FROM v2_shared_basket_lines l "
-        "LEFT JOIN v2_users u ON u.id=l.added_by "
-        "LEFT JOIN v2_products p ON p.id=l.product_id AND NOT EXISTS (SELECT 1 FROM "
-        "v2_content_withdrawals w WHERE w.kind='product' AND w.content_id=p.id) "
-        "WHERE l.basket_id=$1 ORDER BY l.id LIMIT $3",
-        basket_id, user["id"], MAX_LINES)
+    lines = await _lines(connection, basket_id, user["id"])
     owner = next((member["username"] for member in members if member["owner"]), None)
     return {
         "id": basket["id"], "name": basket["name"], "revision": basket["revision"],
@@ -293,18 +299,43 @@ async def _state(connection, basket_id: int, user: dict) -> dict:
         "invite": _invite(basket["id"], basket["invite_version"]),
         "members": [{"id": member["id"], "username": member["username"], "owner": member["owner"]}
                     for member in members],
-        "lines": [{
-            "id": line["id"], "kind": line["kind"], "label": line["label"], "product_id": line["product_id"],
-            "department": line["department"], "family": line["family"],
-            "quantity": _decoded(line["quantity"]), "disabled": line["disabled"],
-            "added_by": line["added_by"], "mine": bool(line["mine"]),
-            "created_at": line["created_at"].isoformat(),
-            "product": {"id": line["product_id"], "revision": line["product_revision"],
-                        "data": _decoded(line["product_data"])} if line["product_data"] else None,
-        } for line in lines],
+        "lines": lines,
+        "prices": await _prices_info(connection, basket_id),
         "settings": {**DEFAULT_SETTINGS, **(_decoded(basket["settings"]) or {})},
         "limits": {"lines": MAX_LINES, "members": MAX_MEMBERS},
     }
+
+
+async def _lines(connection, basket_id: int, user_id: int | None) -> list[dict]:
+    """The lines of a basket, each with its current product; who added it only for a member (`user_id`)."""
+    rows = await connection.fetch(
+        "SELECT l.id,l.kind,l.product_id,l.label,l.department,l.family,l.quantity,l.disabled,"
+        "l.created_at,l.added_by=$2 AS mine,u.username AS added_by,p.data AS product_data,"
+        "p.revision AS product_revision FROM v2_shared_basket_lines l "
+        "LEFT JOIN v2_users u ON u.id=l.added_by "
+        "LEFT JOIN v2_products p ON p.id=l.product_id AND NOT EXISTS (SELECT 1 FROM "
+        "v2_content_withdrawals w WHERE w.kind='product' AND w.content_id=p.id) "
+        "WHERE l.basket_id=$1 ORDER BY l.id LIMIT $3",
+        basket_id, user_id, MAX_LINES)
+    return [{
+            "id": line["id"], "kind": line["kind"], "label": line["label"], "product_id": line["product_id"],
+            "department": line["department"], "family": line["family"],
+            "quantity": _decoded(line["quantity"]), "disabled": line["disabled"],
+            "created_at": line["created_at"].isoformat(),
+            "product": {"id": line["product_id"], "revision": line["product_revision"],
+                        "data": _decoded(line["product_data"])} if line["product_data"] else None,
+            **({"added_by": line["added_by"], "mine": bool(line["mine"])} if user_id is not None else {}),
+        } for line in rows]
+
+
+async def _prices_info(connection, basket_id: int, *, names: bool = True) -> dict | None:
+    """When the basket's prices were last fetched, and by whom (for members only)."""
+    row = await connection.fetchrow(
+        "SELECT p.fetched_at,u.username FROM v2_shared_basket_prices p LEFT JOIN v2_users u ON u.id=p.fetched_by "
+        "WHERE p.basket_id=$1", basket_id)
+    if row is None:
+        return None
+    return {"fetched_at": row["fetched_at"].isoformat(), **({"fetched_by": row["username"]} if names else {})}
 
 
 async def _changed(connection, basket_id: int) -> None:
@@ -324,7 +355,7 @@ async def _add(connection, basket_id: int, item: NewLine, user: dict) -> bool:
         data = _decoded(product["data"]) or {}
         label = " ".join(str(part) for part in (data.get("brand"), data.get("name")) if part)[:200].strip() \
             or f"Produit {product_id}"
-    elif isinstance(line, GroupLine):
+    elif isinstance(line, GroupLine | TextLine):
         label = line.name
     else:
         label, department, family = line.name, line.department, line.family
@@ -643,3 +674,135 @@ async def delete_shared_basket(basket_id: Id, request: Request):
         return Response(status_code=204)
     finally:
         await connection.close()
+
+
+def _price_refs(lines) -> tuple[list[int], list]:
+    """The lines whose prices are fetched (included, not free text), with what to price for each."""
+    ids, refs = [], []
+    for line in lines:
+        if line["disabled"] or line["kind"] == "text":
+            continue
+        if line["kind"] == "product":
+            refs.append(ProductRef(kind="product", id=line["product_id"]))
+        elif line["kind"] == "group":
+            refs.append(GroupRef(kind="group", name=line["label"]))
+        else:
+            refs.append(ScopeRef(kind="scope", department=line["department"], family=line["family"], name=line["label"]))
+        ids.append(line["id"])
+    return ids, refs
+
+
+async def _store_prices(connection, basket_id: int, line_ids: list[int], result: dict, user: dict) -> None:
+    content = json.dumps({**result, "line_ids": line_ids}, ensure_ascii=False, separators=(",", ":"))
+    await connection.execute(
+        "INSERT INTO v2_shared_basket_prices(basket_id,content,fetched_at,fetched_by) VALUES($1,$2::jsonb,now(),$3) "
+        "ON CONFLICT (basket_id) DO UPDATE SET content=EXCLUDED.content,fetched_at=now(),fetched_by=EXCLUDED.fetched_by",
+        basket_id, content, user["id"])
+    await _changed(connection, basket_id)
+
+
+async def _prices_json(connection, basket_id: int, *, names: bool = True) -> str:
+    """The prices of a basket as JSON text, sent as stored (they can be large): null when never fetched."""
+    row = await connection.fetchrow(
+        "SELECT p.content::text AS content,p.fetched_at,u.username FROM v2_shared_basket_prices p "
+        "LEFT JOIN v2_users u ON u.id=p.fetched_by WHERE p.basket_id=$1", basket_id)
+    if row is None:
+        return "null"
+    head = {"fetched_at": row["fetched_at"].isoformat(), **({"fetched_by": row["username"]} if names else {})}
+    return json.dumps(head, ensure_ascii=False)[:-1] + ',"content":' + row["content"] + "}"
+
+
+@router.post("/{basket_id}/prices")
+async def fetch_shared_prices(basket_id: Id, request: Request, response: Response):
+    """Fetch the prices of the basket's included articles (free text apart), for one credit each from the
+    member who asks. Every member, and anyone with the basket's link, then sees them without paying."""
+    _secure_write(request)
+    _no_store(response)
+    connection = await _connect()
+    try:
+        user = await _session_user(connection, request)
+        await _membership(connection, basket_id, user)
+        lines = await connection.fetch(
+            "SELECT id,kind,product_id,label,department,family,disabled FROM v2_shared_basket_lines "
+            "WHERE basket_id=$1 ORDER BY id LIMIT $2", basket_id, MAX_LINES)
+        line_ids, refs = _price_refs(lines)
+        if not refs:
+            raise HTTPException(status_code=422, detail="Aucun article à comparer : incluez au moins un produit, un groupe ou un ensemble.")
+        cost = len(refs)
+        if user["role"] == "admin":
+            # The role comes from the server-side session, never from the request.
+            if await _bump_limit(connection, account_limit_key("basket-admin", user["id"]), 60) > ADMIN_FETCHES_PER_MINUTE:
+                raise HTTPException(status_code=429, headers={"Retry-After": "60"}, detail="Trop de requêtes. Réessayez dans un instant.")
+            async with connection.transaction():
+                result = await _gather(connection, refs)
+                await _store_prices(connection, basket_id, line_ids, result, user)
+            await logbook.log_event(connection, "basket.prices.fetched", items=cost, products=len(result["products"]),
+                                    truncated=any(line["truncated"] for line in result["lines"]), unlimited=True, shared=True)
+            public = credits.unlimited_state(credits.paris_now().date(), await credits.settings(connection))
+        else:
+            async with connection.transaction():
+                cfg = await credits.settings(connection)
+                state = await credits.lock_and_refill(connection, user["id"], cfg)
+                result = None
+                if state["balance"] + state["bonus"] >= cost:
+                    result = await _gather(connection, refs)
+                    state = await credits.spend(connection, user["id"], state, cost)
+                    await _store_prices(connection, basket_id, line_ids, result, user)
+                    await logbook.log_event(connection, "basket.prices.fetched", items=cost, products=len(result["products"]),
+                                            truncated=any(line["truncated"] for line in result["lines"]),
+                                            credits_left=state["balance"], shared=True)
+            public = credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
+            if result is None:
+                await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
+                wait = credits.seconds_until(date.fromisoformat(public["next_grant_on"]), state["now"])
+                raise HTTPException(status_code=429, headers={"Retry-After": str(wait)}, detail={
+                    "code": "no_credits", "credits": public, "cost": cost,
+                    "message": f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier."})
+        _live.notify(basket_id)
+        body = '{"prices":' + await _prices_json(connection, basket_id) + ',"credits":' + json.dumps(public) + ',"cost":' + str(cost) + "}"
+        return Response(body, media_type="application/json", headers={"Cache-Control": "private, no-store"})
+    finally:
+        await connection.close()
+
+
+@router.get("/{basket_id}/prices")
+async def read_shared_prices(basket_id: Id, request: Request):
+    """The prices last fetched for the basket by one of its members (null when never fetched)."""
+    connection = await _connect()
+    try:
+        user = await _session_user(connection, request)
+        await _membership(connection, basket_id, user)
+        body = '{"prices":' + await _prices_json(connection, basket_id) + "}"
+    finally:
+        await connection.close()
+    return Response(body, media_type="application/json", headers={"Cache-Control": "private, no-store"})
+
+
+class View(BaseModel):
+    invite: str = Field(min_length=1, max_length=80)
+
+
+@router.post("/view")
+async def view_shared_basket(payload: View, request: Request):
+    """The basket a link opens, for anyone with it, signed in or not: read only, its articles and settings,
+    and the prices a member fetched. No member's name is shown."""
+    connection = await _connect()
+    try:
+        if await _bump_limit(connection, _limit_key("shared-basket-view", request), 60) > VIEWS_PER_MINUTE:
+            raise HTTPException(status_code=429, headers={"Retry-After": "60"}, detail="Trop de requêtes. Réessayez dans un instant.")
+        invalid = HTTPException(status_code=404, detail="Ce lien de panier partagé n’est plus valable : demandez-en un nouveau.")
+        match = _INVITE.fullmatch(payload.invite)
+        if match is None or int(match.group(1)) > MAX_BIGINT:
+            raise invalid
+        basket_id = int(match.group(1))
+        basket = await connection.fetchrow(
+            "SELECT id,name,invite_version,revision,settings FROM v2_shared_baskets WHERE id=$1", basket_id)
+        if basket is None or not hmac.compare_digest(_invite(basket_id, basket["invite_version"]), payload.invite):
+            raise invalid
+        view = {"name": basket["name"], "revision": basket["revision"],
+                "settings": {**DEFAULT_SETTINGS, **(_decoded(basket["settings"]) or {})},
+                "lines": await _lines(connection, basket_id, None)}
+        body = json.dumps(view, ensure_ascii=False)[:-1] + ',"prices":' + await _prices_json(connection, basket_id, names=False) + "}"
+    finally:
+        await connection.close()
+    return Response(body, media_type="application/json", headers={"Cache-Control": "private, no-store"})

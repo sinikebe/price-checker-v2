@@ -91,7 +91,7 @@ function DemoBasket({ source, listMode, admin }: { source: DemoSource; listMode:
   const restart = () => { demo.reset(); setPanel(null); };
 
   // The app's example has no catalogue behind it; a saved basket links to its real products.
-  return <BasketReadOnlyContext.Provider value={readOnly}><BasketLinksContext.Provider value={!source.fictional}>
+  return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><BasketLinksContext.Provider value={!source.fictional}>
     <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">DÉMONSTRATION</span>
       <h1>{listMode ? "Liste de courses" : "Panier de démonstration"}<span>.</span></h1>
       <p>{listMode ? listView.kind === "all" ? "Les articles du panier, à cocher en rayon." : listView.kind === "stores" ? "Répartie entre les magasins, au meilleur prix." : "Tout le panier dans un magasin ; ce qui n’y a pas de prix vient en premier."

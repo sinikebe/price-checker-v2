@@ -9,7 +9,7 @@ import { freshness, itemHref, itemName, money, productName, quantityText, shortD
 /** Switches the unit an article is compared in, when its products are measured in several (per kg, per piece). */
 function UnitSwitch({ choice, onUnit }: { choice: PriceChoice; onUnit: (item: BasketItem, unit: BaseUnit) => void }) {
   const unit = choice.unit;
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   if (!unit || unit.fixed || unit.available.length < 2) return null;
   return <span className="v2-basket-unit-switch" role="group" aria-label={`Unité de comparaison pour ${itemName(choice.item)}`}>
     {unit.available.map(option => <button type="button" key={option} aria-pressed={option === unit.unit} disabled={readOnly}

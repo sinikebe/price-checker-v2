@@ -23,7 +23,7 @@ export function V2BasketFetch({ signedIn, credits, cost, hasPrices, fetching, on
   signedIn: boolean; credits: BasketCredits | null; cost: number; hasPrices: boolean; fetching: boolean; onFetch: () => void;
 }) {
   const empty = outOfCredits(credits, cost);
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   const unlimited = credits?.unlimited === true;
   const creditTitle = unlimited ? "Crédits illimités pour les administrateurs."
     : credits
@@ -50,7 +50,7 @@ export default function V2BasketToolbar({ panel, onPanel, itemCount, activeCount
   shareable?: boolean; action: ReactNode;
 }) {
   // Offline: the articles can still be read; settings, filters and sharing wait for the connection.
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   return <div className="v2-basket-toolbar" role="group" aria-label="Outils du panier">
     <div className="v2-basket-tools">
       <Tool icon={<ListIcon />} label="Articles" detail={`${activeCount}/${itemCount}`} title="Articles du panier" active={panel === "items"}

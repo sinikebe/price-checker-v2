@@ -20,7 +20,7 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   const owner = basket?.role === "owner";
   async function run(action: () => Promise<unknown>) { setBusy(true); try { await action(); } finally { setBusy(false); } }
   return <section className="v2-shared-banner" aria-label="Panier partagé">
@@ -100,14 +100,14 @@ function InviteLink({ url, name }: { url: string; name: string }) {
 export function SharedInvite({ shared, user }: { shared: SharedBasketControls; user: V2User | null }) {
   const basket = shared.basket;
   const [busy, setBusy] = useState(false);
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   if (!basket) return <p>Chargement du panier partagé…</p>;
   if (readOnly) return <p className="v2-shared-hint">Hors connexion : l’invitation et les membres se gèrent au retour de la connexion.</p>;
   const owner = basket.role === "owner";
   async function run(action: () => Promise<unknown>) { setBusy(true); try { await action(); } finally { setBusy(false); } }
   return <section className="v2-shared-invite" aria-label="Inviter dans le panier partagé">
     <h3>Inviter</h3>
-    <p>Toute personne connectée qui ouvre ce lien peut rejoindre « {basket.name} », voir ses articles et les modifier. Envoyez-le seulement aux personnes concernées.</p>
+    <p>Toute personne qui ouvre ce lien voit « {basket.name} », ses articles et ses prix, même sans compte, sans voir le nom des membres. Une personne connectée peut aussi le rejoindre et le modifier. Envoyez-le seulement aux personnes concernées.</p>
     {basket.invite ? <InviteLink url={inviteUrl(window.location.origin, basket.invite)} name={basket.name} />
       : <p className="v2-shared-hint">Le lien d’invitation s’affiche une fois la connexion rétablie.</p>}
     {owner && <p><button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => {
@@ -137,7 +137,7 @@ export function SharedStart({ shared, user, items, startSettings, copyByDefault 
   const [list, setList] = useState<SharedSummary[] | null>(null);
   const [listError, setListError] = useState("");
   const navigate = useNavigate();
-  const readOnly = useContext(BasketReadOnlyContext);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   const userId = user?.id;
   useEffect(() => {
     if (!userId) return;

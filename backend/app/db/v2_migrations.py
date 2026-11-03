@@ -1166,6 +1166,22 @@ MIGRATIONS = {
             saved_at timestamptz NOT NULL DEFAULT now()
         );
     """,
+    "0047_shared_basket_text_and_prices": """
+        -- A basket line can be free text (an article not in the catalogue yet), to be replaced later.
+        ALTER TABLE v2_shared_basket_lines DROP CONSTRAINT v2_shared_basket_lines_kind_check,
+            ADD CONSTRAINT v2_shared_basket_lines_kind_check CHECK (kind IN ('product', 'group', 'scope', 'text'));
+        -- The prices a member fetched for a shared basket, with that member's credits: every member,
+        -- and anyone opening its link, sees them without paying again. One result per basket, replaced
+        -- by the next fetch and deleted with the basket.
+        CREATE TABLE v2_shared_basket_prices (
+            basket_id bigint PRIMARY KEY REFERENCES v2_shared_baskets(id) ON DELETE CASCADE,
+            content jsonb NOT NULL CHECK (jsonb_typeof(content) = 'object'),
+            fetched_at timestamptz NOT NULL DEFAULT now(),
+            fetched_by bigint REFERENCES v2_users(id) ON DELETE SET NULL
+        );
+        CREATE INDEX v2_shared_basket_prices_fetched_by_idx ON v2_shared_basket_prices(fetched_by)
+            WHERE fetched_by IS NOT NULL;
+    """,
 }
 
 
