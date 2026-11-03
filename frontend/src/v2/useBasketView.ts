@@ -17,7 +17,11 @@ export type BasketView = {
   /** The list: all articles, split across stores, or one store (shared live in a shared basket). */
   listView: ListView; setListView: (value: ListView) => void;
 };
-type SharedView = { settings: SharedSettings; setSettings: (patch: Partial<SharedSettings>) => void };
+type SharedView = {
+  settings: SharedSettings; setSettings: (patch: Partial<SharedSettings>) => void;
+  /** Ticks sent one article at a time (a shared basket); without it, the ticks are a setting like the others. */
+  setChecked?: (keys: string[]) => void;
+};
 
 function readFlag(key: string, on: string): boolean { try { return localStorage.getItem(key) === on; } catch { return false; } }
 function writeValue(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* this page still works */ } }
@@ -55,7 +59,8 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
     units: shared.settings.units, setUnits: value => shared.setSettings({ units: value }),
     storesOff: shared.settings.stores_off, setStoresOff: value => shared.setSettings({ stores_off: value }),
     filters: shared.settings.filters, setFilters: value => shared.setSettings({ filters: value }),
-    checked: shared.settings.checked, setChecked: value => shared.setSettings({ checked: value.slice(0, 100) }),
+    checked: shared.settings.checked,
+    setChecked: value => shared.setChecked ? shared.setChecked(value.slice(0, 100)) : shared.setSettings({ checked: value.slice(0, 100) }),
     listView: listViewOf(shared.settings.list_mode), setListView: value => shared.setSettings({ list_mode: listSetting(value) }),
   };
   return {

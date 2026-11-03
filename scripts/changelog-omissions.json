@@ -729,6 +729,26 @@
       "component": "deployment",
       "version": "0.1.26",
       "reason": "Carte d’administration ajoutée aux réglages du serveur, sans changement de déploiement."
+    },
+    {
+      "component": "application",
+      "version": "0.1.134",
+      "reason": "Numéro d’application suivant la correction de la PWA, annoncée dans son composant."
+    },
+    {
+      "component": "database",
+      "version": "0.1.48",
+      "reason": "Ouverture de l’interface hors connexion, sans changement de la base de données."
+    },
+    {
+      "component": "database",
+      "version": "0.1.49",
+      "reason": "Lignes de texte libre et prix partagés des paniers partagés (migration 0047)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.41",
+      "reason": "Lecture d’un panier partagé par son lien sans compte, sans changement des comptes."
     }
   ]
 }

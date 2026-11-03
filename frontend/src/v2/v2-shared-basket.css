@@ -64,3 +64,15 @@ html[data-v2-theme="dark"] .v2-shared-members li { border-color: #355248; }
 html[data-v2-theme="dark"] .v2-shared-notice { background: #243b31; }
 html[data-v2-theme="dark"] .v2-shared-offline { background: #2a3238; color: #d3dde4 !important; }
 html[data-v2-theme="dark"] .v2-shared-status[data-status="offline"] { color: #b9c4cc; }
+
+/* A shared basket seen through its link, without an account. */
+.v2-shared-view-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.v2-shared-view-tabs button { min-height: 42px; padding: 8px 16px; border: 1px solid #dce8db; border-radius: 999px; background: #fff; color: #244b36; font: inherit; font-weight: 700; cursor: pointer; }
+.v2-shared-view-tabs button[aria-pressed="true"] { border-color: #6dbb77; background: #e8f3dc; }
+.v2-shared-view-items { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.v2-shared-view-items li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid #e3ece1; border-radius: 12px; }
+.v2-shared-view-items li[data-disabled="true"] { opacity: .6; }
+.v2-shared-view-items small { color: var(--v2-muted, #617467); }
+html[data-v2-theme="dark"] .v2-shared-view-tabs button { background: #1b2d28; border-color: #355248; color: #e3f3df; }
+html[data-v2-theme="dark"] .v2-shared-view-tabs button[aria-pressed="true"] { background: #294636; border-color: #609973; }
+html[data-v2-theme="dark"] .v2-shared-view-items li { border-color: #355248; }

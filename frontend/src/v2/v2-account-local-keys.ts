@@ -7,7 +7,7 @@
  */
 export function accountLocalKeys(keys: readonly string[], userId: number, exactKeys: readonly string[] = []): string[] {
   const id = String(userId);
-  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, ...exactKeys]);
+  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, `v2:auth:offline-user:${id}`, ...exactKeys]);
   const prefixes = [
     `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
     `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
@@ -20,12 +20,13 @@ export function accountLocalKeys(keys: readonly string[], userId: number, exactK
 
 /**
  * What signing out removes from this browser: the account's private data that another person using
- * the device should not find (shared basket copies and their unsent changes, drafts). The personal
+ * the device should not find (shared basket copies and their unsent changes, drafts, the account kept
+ * for offline use). The personal
  * basket and its settings stay, as before: they are this device's basket, shown only to the account.
  */
 export function logoutLocalKeys(keys: readonly string[], userId: number): string[] {
   const id = String(userId);
-  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, `v2:basket:shared:${id}`]);
+  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, `v2:basket:shared:${id}`, `v2:auth:offline-user:${id}`]);
   const prefixes = [
     `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
     `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,

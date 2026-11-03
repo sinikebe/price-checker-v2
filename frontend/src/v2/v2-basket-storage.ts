@@ -14,14 +14,21 @@ type BasketOptions = { disabled?: boolean; quantity?: BasketQuantity };
 export type BasketProduct = Pick<Product, "id" | "data" | "revision"> & BasketOptions;
 export type BasketGroup = { kind: "group"; name: string } & BasketOptions;
 export type BasketScope = { kind: "scope"; name: string; department: string; family: string } & BasketOptions;
-export type BasketItem = BasketProduct | BasketGroup | BasketScope;
+/** Free text: an article not in the catalogue yet, kept for the list and replaced later by a product, group or ensemble. */
+export type BasketText = { kind: "text"; name: string } & BasketOptions;
+export type BasketItem = BasketProduct | BasketGroup | BasketScope | BasketText;
 export function isBasketProduct(item: BasketItem): item is BasketProduct { return !("kind" in item); }
+export function isFreeText(item: BasketItem): item is BasketText { return "kind" in item && item.kind === "text"; }
+/** Whether an article has prices to compare: everything but free text. */
+export const isPriceable = (item: BasketItem) => !isFreeText(item);
+/** The longest free text line. */
+export const FREE_TEXT_MAX = 100;
 /** A basket line with fresher product data: its quantity and its excluded flag stay. */
 export function withProductData(item: BasketProduct, product: Pick<Product, "data" | "revision">): BasketProduct {
   return { ...item, data: product.data, revision: product.revision };
 }
 export const basketItemKey = (item: BasketItem): string => "kind" in item
-  ? item.kind === "group" ? "group:" + item.name.toLocaleLowerCase("fr")
+  ? item.kind === "group" || item.kind === "text" ? item.kind + ":" + item.name.toLocaleLowerCase("fr")
     : ["scope", item.department, item.family, item.name].map(part => part.toLocaleLowerCase("fr")).join(":")
   : "product:" + item.id;
 
@@ -36,7 +43,7 @@ export function readV2Basket(userId: number | null = activeBasketUser()): Basket
     const value: unknown = JSON.parse(localStorage.getItem(basketKey(userId)) ?? "[]");
     return Array.isArray(value) ? value.filter((item): item is BasketItem => {
       if (!item || typeof item !== "object") return false;
-      if ("kind" in item) return item.kind === "group" && typeof item.name === "string" && !!item.name.trim()
+      if ("kind" in item) return (item.kind === "group" || item.kind === "text") && typeof item.name === "string" && !!item.name.trim()
         || item.kind === "scope" && typeof item.name === "string" && !!item.name.trim()
           && typeof item.department === "string" && !!item.department.trim()
           && typeof item.family === "string" && !!item.family.trim();

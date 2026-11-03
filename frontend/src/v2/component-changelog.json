@@ -1048,6 +1048,72 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.134",
+      "components": {
+        "pwa": {
+          "version": "0.1.29",
+          "notes": [
+            "Le bouton « Installer l’app » et les avis de mise à jour ou de connexion ne cachent plus la barre de navigation du bas."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.135",
+      "components": {
+        "application": {
+          "version": "0.1.135",
+          "notes": [
+            "Hors connexion, l’application s’ouvre avec le dernier compte connecté et reste en lecture seule, sauf les coches des listes de courses."
+          ]
+        },
+        "basket": {
+          "version": "0.1.44",
+          "notes": [
+            "Hors connexion, les paniers et leurs listes se consultent et se cochent ; le reste attend le retour de la connexion.",
+            "Le panier partagé indique sa dernière synchronisation, et les coches faites hors connexion s’ajoutent à celles des autres membres."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.26",
+          "notes": [
+            "Hors connexion, l’ajout des ingrédients d’une recette au panier attend le retour de la connexion."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.40",
+          "notes": [
+            "Le compte reste reconnu hors connexion sur l’appareil où il s’est connecté ; se déconnecter l’efface de cet appareil."
+          ]
+        },
+        "pwa": {
+          "version": "0.1.30",
+          "notes": [
+            "Le bandeau hors ligne indique que l’application est en lecture seule, sauf les coches des listes."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.136",
+      "components": {
+        "basket": {
+          "version": "0.1.45",
+          "notes": [
+            "Un panier accepte des textes libres pour les articles pas encore au catalogue, à remplacer ensuite par un produit, un groupe ou un ensemble.",
+            "Les prix d’un panier partagé récupérés par un membre sont visibles de tous ses membres, sans dépenser leurs crédits.",
+            "Le lien d’un panier partagé l’ouvre en lecture seule, même sans compte, avec ses prix et sans le nom des membres."
+          ]
+        },
+        "application": {
+          "version": "0.1.136",
+          "notes": [
+            "Le journal distingue les prix récupérés pour un panier partagé."
+          ]
+        }
+      }
     }
   ]
 }

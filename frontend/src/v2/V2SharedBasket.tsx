@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import type { BasketItem } from "./v2-basket-storage";
 import type { SharedBasketControls } from "./useSharedBasket";
 import { listSharedBaskets, previewInvite } from "./v2-shared-basket-api";
 import { SHARED_BASKET_PATH, STORAGE_NOTICE, inviteUrl, keepPendingInvite, type InvitePreview, type SharedSettings, type SharedSummary } from "./v2-shared-basket";
+import { BasketReadOnlyContext, OFFLINE_TITLE } from "./v2-basket-read-only";
 import "./v2-share.css";
 import "./v2-shared-basket.css";
 
 const STATUS = { connecting: "Connexion…", live: "En direct", retrying: "Reconnexion…", offline: "Hors ligne" } as const;
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
+const syncLabel = (value: string) => new Date(value).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
 
 /** The line at the top of the basket while a shared basket is open: who is in, whether it is live, what just changed. */
@@ -18,6 +20,7 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   const owner = basket?.role === "owner";
   async function run(action: () => Promise<unknown>) { setBusy(true); try { await action(); } finally { setBusy(false); } }
   return <section className="v2-shared-banner" aria-label="Panier partagé">
@@ -26,24 +29,25 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
         <span className="v2-section-kicker">PANIER PARTAGÉ</span>
         <h2>{basket?.name ?? "Chargement…"}</h2>
         <p><span className="v2-shared-status" data-status={shared.status}>{STATUS[shared.status]}</span>
-          {basket && <> · {plural(basket.members.length, "membre")} · {owner ? "créé par vous" : `créé par ${basket.owner ?? "un compte supprimé"}`}</>}</p>
+          {basket && <> · {plural(basket.members.length, "membre")} · {owner ? "créé par vous" : `créé par ${basket.owner ?? "un compte supprimé"}`}</>}
+          {shared.status !== "live" && shared.syncedAt && <span className="v2-shared-synced"> · dernière synchronisation le {syncLabel(shared.syncedAt)}</span>}</p>
       </div>
       <div className="v2-shared-banner-actions">
-        <button type="button" className="v2-button v2-button-secondary" onClick={onInvite} disabled={!basket}>Inviter et membres</button>
+        <button type="button" className="v2-button v2-button-secondary" onClick={onInvite} disabled={!basket || readOnly} title={readOnly ? OFFLINE_TITLE : undefined}>Inviter et membres</button>
         <Link className="v2-button v2-button-secondary" to="/v2/panier">Mon panier</Link>
       </div>
     </div>
     <p className="v2-shared-activity" role="status" aria-live="polite">{shared.activity}</p>
     {(shared.status === "offline" || shared.waiting > 0) && <p className="v2-shared-offline" role="status">
-      {shared.status === "offline" ? "Hors connexion : le panier reste utilisable ; vos modifications sont gardées sur cet appareil et partent dès le retour de la connexion." : "Envoi des modifications…"}
+      {shared.status === "offline" ? "Hors connexion : le panier partagé est en lecture seule, tel qu’à sa dernière synchronisation. Vous pouvez cocher les articles de la liste : vos coches partent au retour de la connexion." : "Envoi des modifications…"}
       {shared.waiting > 0 && ` ${shared.waiting} modification${shared.waiting > 1 ? "s" : ""} en attente.`}</p>}
     {shared.error && <p role="alert" className="v2-recipes-error">{shared.error}</p>}
     {shared.unavailable.length > 0 && <div className="v2-shared-unavailable" role="status">
       <p>Retiré du catalogue depuis son ajout, donc sans prix :</p>
       <ul>{shared.unavailable.map(line => <li key={line.id}>{line.label}
-        {line.product_id && <button type="button" className="v2-basket-remove" onClick={() => shared.dropUnavailable(line.product_id!)}>Retirer</button>}</li>)}</ul>
+        {line.product_id && <button type="button" className="v2-basket-remove" disabled={readOnly} onClick={() => shared.dropUnavailable(line.product_id!)}>Retirer</button>}</li>)}</ul>
     </div>}
-    {basket && <details className="v2-shared-manage">
+    {basket && !readOnly && <details className="v2-shared-manage">
       <summary>Gérer le panier partagé</summary>
       {owner ? <div className="v2-shared-manage-body">
         {renaming ? <form onSubmit={event => { event.preventDefault(); void run(async () => { if (await shared.rename(name)) setRenaming(false); }); }}>
@@ -96,12 +100,14 @@ function InviteLink({ url, name }: { url: string; name: string }) {
 export function SharedInvite({ shared, user }: { shared: SharedBasketControls; user: V2User | null }) {
   const basket = shared.basket;
   const [busy, setBusy] = useState(false);
+  const readOnly = !!useContext(BasketReadOnlyContext);
   if (!basket) return <p>Chargement du panier partagé…</p>;
+  if (readOnly) return <p className="v2-shared-hint">Hors connexion : l’invitation et les membres se gèrent au retour de la connexion.</p>;
   const owner = basket.role === "owner";
   async function run(action: () => Promise<unknown>) { setBusy(true); try { await action(); } finally { setBusy(false); } }
   return <section className="v2-shared-invite" aria-label="Inviter dans le panier partagé">
     <h3>Inviter</h3>
-    <p>Toute personne connectée qui ouvre ce lien peut rejoindre « {basket.name} », voir ses articles et les modifier. Envoyez-le seulement aux personnes concernées.</p>
+    <p>Toute personne qui ouvre ce lien voit « {basket.name} », ses articles et ses prix, même sans compte, sans voir le nom des membres. Une personne connectée peut aussi le rejoindre et le modifier. Envoyez-le seulement aux personnes concernées.</p>
     {basket.invite ? <InviteLink url={inviteUrl(window.location.origin, basket.invite)} name={basket.name} />
       : <p className="v2-shared-hint">Le lien d’invitation s’affiche une fois la connexion rétablie.</p>}
     {owner && <p><button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => {
@@ -131,6 +137,7 @@ export function SharedStart({ shared, user, items, startSettings, copyByDefault 
   const [list, setList] = useState<SharedSummary[] | null>(null);
   const [listError, setListError] = useState("");
   const navigate = useNavigate();
+  const readOnly = !!useContext(BasketReadOnlyContext);
   const userId = user?.id;
   useEffect(() => {
     if (!userId) return;
@@ -142,6 +149,10 @@ export function SharedStart({ shared, user, items, startSettings, copyByDefault 
   if (!user) return <section className="v2-shared-start" aria-label="Partager en direct">
     <h3>Partager en direct</h3>
     <p>Un panier partagé se remplit à plusieurs, en direct. <Link to="/v2/connexion?next=panier">Connectez-vous</Link> pour en créer un ou en rejoindre un.</p>
+  </section>;
+  if (readOnly) return <section className="v2-shared-start" aria-label="Partager en direct">
+    <h3>Partager en direct</h3>
+    <p className="v2-shared-hint">Hors connexion : un panier partagé se crée ou s’ouvre au retour de la connexion.</p>
   </section>;
   const copying = copy && items.length > 0;
   const tooMany = copying && items.length > 100;

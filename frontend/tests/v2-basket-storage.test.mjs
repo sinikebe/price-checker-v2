@@ -14,7 +14,7 @@ globalThis.localStorage = {
   removeItem: key => storage.delete(key),
 };
 globalThis.window = { dispatchEvent: () => {} };
-const { readV2Basket, writeV2Basket, activateBasketUser, withProductData } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { readV2Basket, writeV2Basket, activateBasketUser, withProductData, basketItemKey, isFreeText, isPriceable } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const product = { id: 1, revision: 1, data: { name: "Jus" } };
 const group = { kind: "group", name: "Jus d'orange" };
 const scope = { kind: "scope", name: "Jus", department: "Boissons", family: "Jus de fruits" };
@@ -48,4 +48,16 @@ test("refreshing a product keeps the quantity and the excluded flag of its line"
   assert.deepEqual(withProductData(line, { data: { name: "Jus d'orange" }, revision: 4 }),
     { id: 1, revision: 4, data: { name: "Jus d'orange" }, quantity: { amount: "2", unit: "l" }, disabled: true });
   assert.deepEqual(withProductData(product, { data: { name: "Jus 2" }, revision: 2 }), { id: 1, revision: 2, data: { name: "Jus 2" } });
+});
+
+
+test("free text is a basket line of its own: kept, keyed by its words, never priced", () => {
+  const text = { kind: "text", name: "Sauce tomate maison", quantity: { amount: "2", unit: "package" } };
+  writeV2Basket([text, { kind: "text", name: "" }, { kind: "text" }], 42);
+  assert.deepEqual(readV2Basket(42), [text], "an empty text is dropped");
+  assert.equal(basketItemKey(text), "text:sauce tomate maison");
+  assert.notEqual(basketItemKey(text), basketItemKey({ kind: "group", name: "Sauce tomate maison" }), "a text and a group of the same name are two lines");
+  assert.equal(isFreeText(text), true);
+  assert.equal(isPriceable(text), false);
+  assert.equal(isPriceable({ kind: "group", name: "Lait" }), true);
 });

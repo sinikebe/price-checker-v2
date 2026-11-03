@@ -376,6 +376,31 @@ async def test_settings_are_shared_by_every_member(setup):
 
 
 @pytest.mark.asyncio
+async def test_ticks_from_several_members_add_up(setup, monkeypatch):
+    client, _connection, _users, products = setup
+    state = await create(client, products)
+    basket_id = state["id"]
+    await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": state["invite"], "confirm": True})
+    lait, pates = f"product:{products['Lait']}", "group:pâtes"
+    # Alice ticks the milk; Bob, back online later, sends the ticks he made meanwhile.
+    first = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": True}]})
+    assert first.status_code == 200 and first.json()["settings"]["checked"] == [lait]
+    late = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"),
+                             json={"ops": [{"op": "tick", "key": pates, "on": True}, {"op": "tick", "key": lait, "on": True}]})
+    assert late.json()["settings"]["checked"] == [lait, pates], "nobody's ticks are lost"
+    assert late.json()["revision"] == first.json()["revision"] + 1, "an article ticked twice changes nothing more"
+    off = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": False}]})
+    assert off.json()["settings"]["checked"] == [pates]
+    again = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "tick", "key": lait, "on": False}]})
+    assert again.json()["revision"] == off.json()["revision"], "unticking an article not ticked changes nothing"
+    monkeypatch.setattr(shared_baskets, "MAX_LINES", 1)
+    full = await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [{"op": "tick", "key": lait, "on": True}]})
+    assert full.json()["settings"]["checked"] == [pates], "the ticks stay bounded"
+    for bad in ({"key": "", "on": True}, {"key": "x" * 401, "on": True}, {"key": lait}):
+        assert (await client.post(f"{PATH}/{basket_id}/changes", headers=who("bob"), json={"ops": [{"op": "tick", **bad}]})).status_code == 422, bad
+
+
+@pytest.mark.asyncio
 async def test_refused_changes_still_count_toward_the_write_limit(setup, monkeypatch):
     client, _connection, _users, products = setup
     state = await create(client, products)
@@ -394,3 +419,103 @@ async def test_the_attempt_is_counted_before_the_write_transaction(setup):
     async with connection.transaction():
         with pytest.raises(RuntimeError):
             await shared_baskets._write_limit(connection, users["alice"])
+
+
+@pytest.mark.asyncio
+async def test_free_text_lines_wait_in_the_basket_until_replaced(setup):
+    client, _connection, _users, products = setup
+    state = await create(client, products)
+    basket_id = state["id"]
+    added = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [
+        {"op": "add", "line": {"kind": "text", "name": "  Sauce  tomate maison "}, "quantity": {"amount": "2", "unit": "package"}},
+        {"op": "add", "line": {"kind": "text", "name": "sauce tomate maison"}},
+    ]})
+    assert added.status_code == 200, added.text
+    text = [line for line in added.json()["lines"] if line["kind"] == "text"]
+    assert [(line["label"], line["product"], line["quantity"]) for line in text] == [("Sauce tomate maison", None, {"amount": "2", "unit": "package"})], \
+        "free text is one line, whatever its case and spaces"
+    replaced = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [
+        {"op": "remove", "line": {"kind": "text", "name": "Sauce tomate maison"}},
+        {"op": "add", "line": {"kind": "group", "name": "Sauce tomate"}, "quantity": {"amount": "2", "unit": "package"}},
+    ]})
+    assert [line["kind"] for line in replaced.json()["lines"]] == ["product", "group", "group"]
+    for bad in ({"kind": "text", "name": ""}, {"kind": "text", "name": "x" * 101}):
+        refused = await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [{"op": "add", "line": bad}]})
+        assert refused.status_code == 422, bad
+
+
+async def priced(connection, products):
+    retailer = await connection.fetchval("INSERT INTO v2_retailers(code,name) VALUES('sb','Enseigne') RETURNING id")
+    store = await connection.fetchval(
+        "INSERT INTO v2_stores(retailer_id,name,city,postal_code) VALUES($1,'Centre','Lyon','69003') RETURNING id", retailer)
+    for name in ("Lait", "Pâtes"):
+        await connection.execute(
+            "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,price,observed_at) "
+            "VALUES($1,$2,$3,'manual',1.5,now())", products[name], retailer, store)
+    return store
+
+
+@pytest.mark.asyncio
+async def test_one_member_pays_for_the_prices_and_every_member_sees_them(setup):
+    client, connection, users, products = setup
+    await priced(connection, products)
+    state = await create(client, products)
+    basket_id = state["id"]
+    await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": state["invite"], "confirm": True})
+    await client.post(f"{PATH}/{basket_id}/changes", headers=who("alice"), json={"ops": [
+        {"op": "add", "line": {"kind": "text", "name": "Bougies"}}]})
+    assert (await client.get(f"{PATH}/{basket_id}/prices", headers=who("bob"))).json() == {"prices": None}
+    assert state["prices"] is None
+    assert (await client.post(f"{PATH}/{basket_id}/prices", headers=who("carol"))).status_code == 404, "members only"
+
+    fetched = await client.post(f"{PATH}/{basket_id}/prices", headers=who("alice"))
+    assert fetched.status_code == 200, fetched.text
+    body = fetched.json()
+    assert body["cost"] == 1, "one credit per included article: the excluded group and the free text cost nothing"
+    content = body["prices"]["content"]
+    milk = next(line for line in state["lines"] if line["kind"] == "product")
+    assert content["line_ids"] == [milk["id"]] and content["lines"][0]["product_ids"] == [products["Lait"]]
+    assert content["prices"][str(products["Lait"])]["latest_by_store"][0]["price"] == "1.50"
+    assert body["prices"]["fetched_by"] == "alice"
+    spent = await connection.fetchval("SELECT balance FROM v2_basket_credits WHERE user_id=$1", users["alice"]["id"])
+
+    seen = await client.get(f"{PATH}/{basket_id}", headers=who("bob"))
+    assert seen.json()["prices"]["fetched_by"] == "alice" and seen.json()["revision"] > state["revision"], "members are told, live"
+    shared = await client.get(f"{PATH}/{basket_id}/prices", headers=who("bob"))
+    assert shared.json()["prices"]["content"] == content
+    assert await connection.fetchval("SELECT count(*) FROM v2_basket_credits WHERE user_id=$1", users["bob"]["id"]) == 0, \
+        "Bob sees the prices without spending a credit"
+    assert await connection.fetchval("SELECT balance FROM v2_basket_credits WHERE user_id=$1", users["alice"]["id"]) == spent
+
+    logged = await connection.fetch("SELECT data FROM v2_logs WHERE event='basket.prices.fetched' ORDER BY id")
+    assert json.loads(logged[-1]["data"])["shared"] is True and "alice" not in logged[-1]["data"]
+
+    only_text = await client.post(PATH, headers=who("bob"), json={"name": "Texte", "lines": [{"line": {"kind": "text", "name": "Bougies"}}]})
+    refused = await client.post(f"{PATH}/{only_text.json()['id']}/prices", headers=who("bob"))
+    assert refused.status_code == 422, "nothing to price, nothing spent"
+
+
+@pytest.mark.asyncio
+async def test_anyone_with_the_link_sees_the_basket_and_its_prices_without_names(setup, monkeypatch):
+    client, connection, _users, products = setup
+    await priced(connection, products)
+    state = await create(client, products)
+    basket_id = state["id"]
+    await client.post(f"{PATH}/{basket_id}/prices", headers=who("alice"))
+    view = await client.post(f"{PATH}/view", json={"invite": state["invite"]})
+    assert view.status_code == 200, view.text
+    body = view.json()
+    assert body["name"] == "Courses de la semaine" and len(body["lines"]) == 2
+    assert all("added_by" not in line and "mine" not in line for line in body["lines"]), "no member's name for a visitor"
+    assert "fetched_by" not in body["prices"] and body["prices"]["content"]["line_ids"]
+    assert "alice" not in view.text and "invite" not in body
+    assert view.headers["cache-control"] == "private, no-store"
+    wrong = state["invite"][:-1] + ("A" if state["invite"][-1] != "A" else "B")
+    assert (await client.post(f"{PATH}/view", json={"invite": wrong})).status_code == 404
+    assert (await client.post(f"{PATH}/view", json={"invite": "nonsense"})).status_code == 404
+    renewed = await client.post(f"{PATH}/{basket_id}/invite", headers=who("alice"))
+    assert (await client.post(f"{PATH}/view", json={"invite": state["invite"]})).status_code == 404, "a renewed link closes the old one"
+    assert (await client.post(f"{PATH}/view", json={"invite": renewed.json()["invite"]})).status_code == 200
+    monkeypatch.setattr(shared_baskets, "VIEWS_PER_MINUTE", 1)
+    statuses = [(await client.post(f"{PATH}/view", json={"invite": renewed.json()["invite"]})).status_code for _ in range(2)]
+    assert statuses[-1] == 429, "views by link are limited per client"
