@@ -170,6 +170,10 @@ async def purge_ephemeral_auth_data(connection: asyncpg.Connection) -> None:
         "DELETE FROM v2_api_tokens WHERE revoked_at < now()-interval '90 days' "
         "OR expires_at < now()-interval '90 days'"
     )
+    # A visitor's count of price views (keyed by an HMAC of the address) is kept for the day and the next.
+    await connection.execute(
+        "DELETE FROM v2_visitor_credits WHERE day < (now() AT TIME ZONE 'Europe/Paris')::date - 1"
+    )
     await connection.execute(
         "DELETE FROM v2_mfa_credentials WHERE enabled_at IS NULL "
         "AND pending_expires_at < now()"

@@ -139,10 +139,19 @@ async def test_ephemeral_auth_rows_expire_without_new_logins(isolated_config):
             "VALUES($1,now()-interval '2 hours',1),($2,now(),1)",
             "old-retention", "live-retention",
         )
+        await connection.execute(
+            "INSERT INTO v2_visitor_credits(key,day,used) VALUES"
+            "($1,(now() AT TIME ZONE 'Europe/Paris')::date - 3,4),"
+            "($2,(now() AT TIME ZONE 'Europe/Paris')::date - 1,2),"
+            "($3,(now() AT TIME ZONE 'Europe/Paris')::date,1)",
+            "c" * 64, "d" * 64, "e" * 64,
+        )
         await auth.purge_ephemeral_auth_data(connection)
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_sessions WHERE user_id=$1", user_id
         ) == 1
+        assert sorted(await connection.fetchval("SELECT array_agg(key) FROM v2_visitor_credits")) == ["d" * 64, "e" * 64], \
+            "a visitor's count goes after the next day, even when no visitor comes back"
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_auth_limits"
         ) == 1

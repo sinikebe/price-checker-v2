@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.132",
+    "version": "0.1.133",
     "status": "active"
   },
   "products": {
@@ -31,7 +31,7 @@
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.38",
+    "version": "0.1.39",
     "status": "active"
   },
   "pwa": {
@@ -41,7 +41,7 @@
   },
   "deployment": {
     "label": "Installation et mise à jour",
-    "version": "0.1.25",
+    "version": "0.1.26",
     "status": "active"
   },
   "open_prices": {

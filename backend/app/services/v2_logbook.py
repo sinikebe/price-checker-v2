@@ -145,6 +145,8 @@ EVENTS: dict[str, Event] = {
     "basket.prices.refused": Event("basket", "info", {"reason": choice("no_credits")}),
     "basket.demo.saved": Event("basket", "info", {"items": integer(0, 1000), "products": integer(0, 100_000)}),
     "basket.demo.removed": Event("basket", "info"),
+    "legal.document.updated": Event("system", "info", {
+        "document": choice("mentions", "confidentialite", "conditions"), "bytes": integer(1, 131_072)}),
 }
 
 _ENQUEUE_OUTCOMES = {"queued", "fresh", "cooldown", "rate_limited"}

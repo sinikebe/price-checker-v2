@@ -159,6 +159,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2App.tsx", ("application",)),
     ("frontend/src/v2/V2HomePage.tsx", ("application",)),
     ("frontend/src/v2/V2LegalPage.tsx", ("application",)),
+    ("frontend/src/v2/V2LegalDocuments.tsx", ("application",)),
     ("frontend/src/v2/V2SiteFooter.tsx", ("application",)),
     ("frontend/src/v2/v2-legal.css", ("application",)),
     ("frontend/src/v2/V2ServerUpdateSchedule.tsx", ("deployment",)),
