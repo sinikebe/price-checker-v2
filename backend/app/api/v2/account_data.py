@@ -29,7 +29,7 @@ class AccountDeletion(BaseModel):
     password: SecretStr
     second_factor: str | None = None
 
-_JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload", "quantity"}
+_JSON_FIELDS = {"data", "payload", "steps", "product_ids", "before_data", "after_data", "raw_payload", "quantity", "content", "checked"}
 
 
 def _rows(rows) -> list[dict]:
@@ -121,6 +121,10 @@ async def export_account_data(request: Request):
                 "FROM v2_shared_basket_lines l JOIN v2_shared_basket_members m "
                 "ON m.basket_id=l.basket_id AND m.user_id=$1 ORDER BY l.basket_id, l.id", user_id
             )
+            saved_lists = await connection.fetch(
+                "SELECT list_id, name, content, checked, created_at, updated_at "
+                "FROM v2_saved_lists WHERE user_id=$1 ORDER BY created_at", user_id
+            )
         payload = {
             "format": "price-checker-v2-account-export",
             "account": dict(account),
@@ -135,6 +139,7 @@ async def export_account_data(request: Request):
             "reports": _rows(reports),
             "shared_baskets": _rows(shared_baskets),
             "shared_basket_lines": _rows(shared_basket_lines),
+            "saved_lists": _rows(saved_lists),
             "account_security": {"mfa_enabled": mfa_enabled, "api_tokens": _rows(api_tokens)},
         }
         return JSONResponse(

@@ -12,7 +12,7 @@ export function pageKeyForPath(pathname: string): string {
   if (/^\/v2\/magasins\/\d+$/.test(path)) return "store";
   if (path === "/v2/recettes") return "recipes";
   if (/^\/v2\/recettes\/(?:(?:privees\/)?\d+(?:\/modifier)?|nouvelle)$/.test(path)) return "recipe";
-  if (/^\/v2\/panier(?:\/partage)?(?:\/liste)?$/.test(path)) return "basket";
+  if (/^\/v2\/panier(?:\/partage)?(?:\/liste)?$/.test(path) || /^\/v2\/listes(?:\/[0-9a-f-]{36})?$/i.test(path)) return "basket";
   if (path === "/v2/parametres" || path.startsWith("/v2/parametres/") || path === "/v2/settings/database") return "settings";
   if (path === "/v2/capture" || path === "/v2/capture/installer") return "capture";
   if (path === "/v2/a-completer") return "completion";

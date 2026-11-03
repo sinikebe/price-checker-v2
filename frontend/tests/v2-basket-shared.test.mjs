@@ -6,7 +6,7 @@ import ts from "typescript";
 const source = readFileSync(new URL("../src/v2/v2-shared-basket.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const {
-  DEFAULT_SETTINGS, activityText, applyOps, applySettings, diffOps, inviteFromHash, inviteUrl, keepPendingInvite, lineRef,
+  DEFAULT_SETTINGS, activityText, forgetSharedCache, readSharedCache, sharedQueueKey, sharedStateKey, writeSharedQueue, writeSharedState, applyOps, applySettings, diffOps, inviteFromHash, inviteUrl, keepPendingInvite, lineRef,
   newFromOthers, queueOps, readSharedId, sharedItems, sharedSettings, takePendingInvite, wireOps, writeSharedId,
 } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
@@ -119,4 +119,26 @@ test("settings every member shares: defaults, changes shown at once, one request
   assert.deepEqual(queueOps([ops[0]], [add, ops[1]]).map(op => op.op), ["settings", "add", "settings"]);
   assert.deepEqual(wireOps([ops[0]]), [{ op: "settings", advanced: true }]);
   assert.equal(inviteUrl("https://x.test", "3-abcdefghijklmnopqrstuv"), "https://x.test/v2/panier/partage#rejoindre=3-abcdefghijklmnopqrstuv");
+});
+
+test("a shared basket and its unsent changes are kept in the browser, for offline use", () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => { store.set(key, String(value)); }, removeItem: key => { store.delete(key); } };
+  const basket = { id: 9, name: "Courses", revision: 4, role: "member", owner: "alice", invite: "9-x", members: [], lines: [line(1)], limits: { lines: 100, members: 20 } };
+  writeSharedState(5, basket);
+  const ops = [...diffOps([], [milk], keyOf), { op: "settings", patch: { advanced: true } }];
+  writeSharedQueue(9, 5, ops);
+  assert.deepEqual(readSharedCache(9, 5), { basket, queue: JSON.parse(JSON.stringify(ops)) });
+  assert.deepEqual(readSharedCache(9, 6), { basket: null, queue: [] }, "another account has none");
+  assert.deepEqual(readSharedCache(null, 5), { basket: null, queue: [] });
+  assert.ok([sharedStateKey(9, 5), sharedQueueKey(9, 5)].every(key => key.startsWith("v2:basket:") && key.endsWith(":5")));
+  store.set(sharedQueueKey(9, 5), JSON.stringify([{ op: "drop table" }, { op: "remove", line: { kind: "group", name: "Pâtes" }, key: "group:pâtes" }]));
+  assert.deepEqual(readSharedCache(9, 5).queue.map(op => op.op), ["remove"], "an unknown change is dropped");
+  store.set(sharedStateKey(9, 5), JSON.stringify({ ...basket, id: 10 }));
+  assert.equal(readSharedCache(9, 5).basket, null, "a copy of another basket is ignored");
+  writeSharedQueue(9, 5, []);
+  assert.equal(store.has(sharedQueueKey(9, 5)), false);
+  forgetSharedCache(9, 5);
+  assert.equal(store.size, 0);
+  delete globalThis.localStorage;
 });

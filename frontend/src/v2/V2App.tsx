@@ -49,6 +49,7 @@ export default function V2App() {
   const settings = path.match(/^\/v2\/parametres(?:\/([^/]+))?$/);
   const recipe = path.match(/^\/v2\/recettes\/(privees\/)?(\d+)(?:\/(modifier))?$/);
   const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
+  const savedList = path.match(/^\/v2\/listes(?:\/([0-9a-f-]{36}))?$/i);
   const recipeMode = path === "/v2/recettes" ? "list"
     : path === "/v2/recettes/nouvelle" ? "new"
     : recipe ? recipe[3] ? "edit" : "detail" : undefined;
@@ -71,7 +72,7 @@ export default function V2App() {
   if (changelogComponent) return withFooter(<V2ChangelogPage componentId={changelogComponent[1]} />);
   if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
   if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || /^\/v2\/panier(?:\/partage)?(?:\/liste)?$/.test(path) || path === "/v2/magasins" || store) {
+    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || /^\/v2\/panier(?:\/partage)?(?:\/liste)?$/.test(path) || savedList || path === "/v2/magasins" || store) {
     return withFooter(<V2BasketProvider><V2Gateway
       settingsMode={path === "/v2/settings/database"}
       preferencesMode={Boolean(settings)}
@@ -83,6 +84,8 @@ export default function V2App() {
       basketMode={/^\/v2\/panier(?:\/partage)?(?:\/liste)?$/.test(path)}
       sharedBasketMode={path.startsWith("/v2/panier/partage")}
       shoppingListMode={path.endsWith("/liste")}
+      savedListsMode={Boolean(savedList)}
+      savedListId={savedList?.[1]}
       storesMode={path === "/v2/magasins" || Boolean(store)}
       storeId={store ? Number(store[1]) : undefined}
       recipeId={recipe ? Number(recipe[2]) : undefined}

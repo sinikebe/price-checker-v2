@@ -55,6 +55,12 @@ body.v2-has-dock { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px))
 .v2-dock-item:focus-visible { outline: 3px solid #20795e; outline-offset: 2px; }
 .v2-dock-count { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: #2f8061; color: #fff; font-size: .7rem; font-weight: 800; line-height: 18px; text-align: center; }
 .v2-dock-item[aria-current="page"] .v2-dock-count { top: 0; right: 0; }
+/* Six or seven entries (shared basket, saved lists): narrower buttons on a phone, the name of the page in the title. */
+@media (max-width: 520px) {
+  .v2-dock[data-many] { gap: 2px; padding: 6px; }
+  .v2-dock[data-many] .v2-dock-item, .v2-dock[data-many] .v2-dock-item[aria-current="page"] { min-width: 42px; padding: 0 9px; }
+  .v2-dock[data-many] .v2-dock-item[aria-current="page"] .v2-dock-label { display: none; }
+}
 
 /* A virtual keyboard must not carry the dock over the field being typed in. */
 @media (max-width: 700px) {

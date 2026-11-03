@@ -909,6 +909,37 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.129",
+      "components": {
+        "application": {
+          "version": "0.1.129",
+          "notes": [
+            "Une nouvelle entrée « Listes » de la barre du bas regroupe vos listes de courses enregistrées."
+          ]
+        },
+        "basket": {
+          "version": "0.1.40",
+          "notes": [
+            "Le panier partagé fonctionne hors connexion : vos modifications sont gardées sur l’appareil et partent dès le retour de la connexion.",
+            "La liste de courses s’ouvre et se coche hors connexion.",
+            "« Enregistrer la liste » garde une copie de la liste à cocher, renommer ou remettre dans un panier, sur tous vos appareils."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.35",
+          "notes": [
+            "Vos listes enregistrées figurent dans l’export de vos données et sont supprimées avec votre compte."
+          ]
+        },
+        "database": {
+          "version": "0.1.44",
+          "notes": [
+            "La mise à jour ajoute les listes de courses enregistrées sans toucher aux données existantes."
+          ]
+        }
+      }
     }
   ]
 }
