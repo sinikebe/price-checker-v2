@@ -739,6 +739,16 @@
       "component": "database",
       "version": "0.1.48",
       "reason": "Ouverture de l’interface hors connexion, sans changement de la base de données."
+    },
+    {
+      "component": "database",
+      "version": "0.1.49",
+      "reason": "Lignes de texte libre et prix partagés des paniers partagés (migration 0047)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.41",
+      "reason": "Lecture d’un panier partagé par son lien sans compte, sans changement des comptes."
     }
   ]
 }
