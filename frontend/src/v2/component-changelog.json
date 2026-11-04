@@ -1248,6 +1248,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.142",
+      "components": {
+        "basket": {
+          "version": "0.1.50",
+          "notes": [
+            "Dans une sélection, « jus d'orange » et « jus d’orange » désignent le même groupe, quelle que soit l’apostrophe."
+          ]
+        },
+        "products": {
+          "version": "0.1.67",
+          "notes": [
+            "L’arbre du catalogue se filtre sans tenir compte de la forme de l’apostrophe."
+          ]
+        }
+      }
     }
   ]
 }

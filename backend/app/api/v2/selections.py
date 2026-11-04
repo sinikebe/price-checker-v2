@@ -33,7 +33,7 @@ Level = Literal["product", "group", "scope", "family", "department"]
 
 def _fold_sql(expression: str) -> str:
     return (f"translate(replace(replace(lower({expression}),'œ','oe'),'æ','ae'),"
-            "'àâäáãåāçéèêëēíìîïñóòôöõúùûüýÿ','aaaaaaaceeeeeiiiinooooouuuuyy')")
+            "'àâäáãåāçéèêëēíìîïñóòôöõúùûüýÿ’‘','aaaaaaaceeeeeiiiinooooouuuuyy''''')")
 
 
 def _name(value: str | None) -> str | None:

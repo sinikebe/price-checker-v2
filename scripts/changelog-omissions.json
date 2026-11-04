@@ -824,6 +824,16 @@
       "component": "accounts",
       "version": "0.1.45",
       "reason": "Les sélections suivent les paniers partagés du compte, sans changement des comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.54",
+      "reason": "Comparaison des noms dans les requêtes de sélection, sans changement de la base de données."
+    },
+    {
+      "component": "application",
+      "version": "0.1.142",
+      "reason": "Documentation de l’API complétée, sans changement de l’interface."
     }
   ]
 }
