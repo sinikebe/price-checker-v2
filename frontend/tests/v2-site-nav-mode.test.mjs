@@ -15,12 +15,12 @@ function memory() {
   return { values, getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
 }
 
-test("the expert mode is remembered per account on this device; shopping is the default", () => {
+test("the contribution mode is remembered per account on this device; shopping is the default", () => {
   const storage = memory();
   assert.equal(readAppMode(storage, 7), "shopping");
-  writeAppMode(storage, 7, "expert");
-  assert.equal(storage.values.get(appModeKey(7)), "expert");
-  assert.equal(readAppMode(storage, 7), "expert");
+  writeAppMode(storage, 7, "contribute");
+  assert.equal(storage.values.get(appModeKey(7)), "contribute");
+  assert.equal(readAppMode(storage, 7), "contribute");
   assert.equal(readAppMode(storage, 8), "shopping");
   writeAppMode(storage, 7, "shopping");
   assert.equal(storage.values.size, 0);
@@ -28,11 +28,11 @@ test("the expert mode is remembered per account on this device; shopping is the 
 
 test("a visitor always shops, and an unreadable storage falls back to shopping", () => {
   const storage = memory();
-  storage.setItem(appModeKey(7), "expert");
+  storage.setItem(appModeKey(7), "contribute");
   assert.equal(readAppMode(storage, null), "shopping");
   assert.equal(readAppMode(null, 7), "shopping");
   assert.equal(readAppMode({ getItem() { throw new Error("blocked"); } }, 7), "shopping");
   storage.setItem(appModeKey(9), "other");
   assert.equal(readAppMode(storage, 9), "shopping");
-  assert.doesNotThrow(() => writeAppMode({ setItem() { throw new Error("full"); }, removeItem() {} }, 7, "expert"));
+  assert.doesNotThrow(() => writeAppMode({ setItem() { throw new Error("full"); }, removeItem() {} }, 7, "contribute"));
 });

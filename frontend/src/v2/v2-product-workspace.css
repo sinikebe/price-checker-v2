@@ -153,3 +153,11 @@
 .v2-product-simple h1, .v2-mode-notice h1 { margin: 6px 0 14px; }
 .v2-product-simple .v2-recipes-actions, .v2-mode-notice .v2-button { margin-top: 18px; }
 .v2-mode-notice { max-width: 640px; }
+.v2-shopping-price { margin-top: 14px; }
+.v2-shopping-price p { display: grid; gap: 3px; margin: 0; }
+.v2-shopping-price strong { font-size: 1.35rem; }
+.v2-shopping-price small { color: var(--v2-muted, #61736d); }
+.v2-product-simple-group { margin: 16px 0 0; }
+.v2-product-simple-group a { color: #317c54; font-weight: 700; }
+html[data-v2-theme="dark"] .v2-shopping-price small { color: #a9c2b8; }
+html[data-v2-theme="dark"] .v2-product-simple-group a { color: #aee1a8; }

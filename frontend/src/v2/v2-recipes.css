@@ -61,3 +61,7 @@ html[data-v2-theme="dark"] .v2-recipes-visibility .v2-recipes-check,
 html[data-v2-theme="dark"] .v2-recipes-private-note { color: #c3d6c9; }
 html[data-v2-theme="dark"] .v2-recipes-private-badge,
 html[data-v2-theme="dark"] .v2-recipes-tile .v2-recipes-private-badge { background: #294636; color: #caeda5; }
+/* A group ingredient keeps its products folded: the recipe stays readable, the choice one tap away. */
+.v2-recipes-choices-list { margin: 4px 0 6px; }
+.v2-recipes-choices-list summary { width: fit-content; color: #317c54; font-weight: 650; cursor: pointer; }
+html[data-v2-theme="dark"] .v2-recipes-choices-list summary { color: #aee1a8; }

@@ -202,13 +202,13 @@ function Pagination({ total, page, size, onChange }: { total: number; page: numb
     </select></label>
   </nav>;
 }
-/** The expert mode shows the catalogue's tools; shopping keeps names and quantities. */
-const useExpert = () => useAppMode().mode === "expert";
+/** The contribution mode shows the catalogue's tools; shopping keeps names and quantities. */
+const useContributing = () => useAppMode().mode === "contribute";
 
 function ProductLink({ product, showGroup = false }: { product: Product; showGroup?: boolean }) {
-  const expert = useExpert();
+  const contributing = useContributing();
   return <Link className="v2-workspace-list-item" to={"/v2/produits/" + product.id}>
-    <div><LevelBadge level="product" /><strong>{productName(product)}</strong><small>{(expert ? [showGroup && product.data.group, product.data.commercial_name, product.data.quantity || "Quantité à préciser"]
+    <div><LevelBadge level="product" /><strong>{productName(product)}</strong><small>{(contributing ? [showGroup && product.data.group, product.data.commercial_name, product.data.quantity || "Quantité à préciser"]
       : [product.data.quantity || "Quantité à préciser"]).filter(Boolean).join(" · ")}</small></div>
     <span>Voir la fiche →</span>
   </Link>;
@@ -391,7 +391,7 @@ function SimpleProducts({ products }: { products: Product[] }) {
 }
 
 function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
-  const expert = useExpert();
+  const contributing = useContributing();
   const basketGroup: BasketGroup = { kind: "group", name };
   const { data, error } = useCatalogue<CategoryDetail>("/categories/" + encodeURIComponent(name));
   const groupName = data?.name || name;
@@ -416,7 +416,7 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       <div className="v2-share-title-row"><h1>{data?.name || name}<span>.</span></h1>
       {data && <V2ShareButton title={"Groupe comparable · " + (data.name || name)} url={window.location.origin + "/v2/categories/" + encodeURIComponent(data.name || name)} />}</div><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
       {data && <V2BasketAddButtons item={basketGroup} what="group" />}</div>
-    {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : !expert ? <SimpleProducts products={products} /> : <>
+    {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : !contributing ? <SimpleProducts products={products} /> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
@@ -426,7 +426,7 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
 }
 
 function ScopePage({ department, family, scope, user, onLogout }: Props & { department: string; family: string; scope: string }) {
-  const expert = useExpert();
+  const contributing = useContributing();
   const basketScope: BasketScope = { kind: "scope", name: scope, department, family };
   const query = new URLSearchParams({ department, family, scope });
   const { data, error } = useCatalogue<ScopeDetail>("/comparison?" + query.toString());
@@ -441,24 +441,24 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="scope" />
       <div className="v2-share-title-row"><h1>{scope}<span>.</span></h1>
-      {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div><p>{expert ? "Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis." : "Les groupes de produits de cet ensemble."}</p></div>
+      {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div><p>{contributing ? "Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis." : "Les groupes de produits de cet ensemble."}</p></div>
       {data && <V2BasketAddButtons item={basketScope} what="scope" />}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       <h2>Groupes comparables inclus</h2>
       <div className="v2-workspace-list">{data.groups.map(group =>
         <Link key={group.name} className="v2-workspace-list-item" to={"/v2/categories/" + encodeURIComponent(group.name)}>
           <div><LevelBadge level="group" /><strong>{group.name}</strong><small>{group.product_count} produit{group.product_count > 1 ? "s" : ""}</small></div>
-          <span>{expert ? "Comparer ce groupe →" : "Voir les produits →"}</span>
+          <span>{contributing ? "Comparer ce groupe →" : "Voir les produits →"}</span>
         </Link>)}</div>
-      {expert && data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
+      {contributing && data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
-      {expert && <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />}
+      {contributing && <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />}
     </>}
   </Frame>;
 }
 
 function CatalogueIndex({ user, onLogout }: Props) {
-  const expert = useExpert();
+  const contributing = useContributing();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") || "", category = params.get("category") || "";
   const department = params.get("rayon") || "", family = params.get("famille") || "";
@@ -522,19 +522,19 @@ function CatalogueIndex({ user, onLogout }: Props) {
   const result = search.data;
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>Produits<span>.</span></h1>
-      <p>{expert ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
+      <p>{contributing ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
         : "Parcourez les rayons ou recherchez un produit, puis ajoutez-le à votre panier."}</p></div>
-      {expert && <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>}
+      {contributing && <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>}
     </div>
     <V2CatalogueSearch value={queryDraft} onChange={setQueryDraft} scope={{ category, storeId }} suggest={suggest}
       renderProduct={product => <ProductLink product={product} />}>
     <form className="v2-catalogue-search" onSubmit={apply}>
-      <details className="v2-catalogue-filters" open={Boolean(category || storeId) || undefined}><summary>Filtres {category || storeId ? "· actifs" : expert ? "· groupe et magasin" : "· groupe"}</summary>
+      <details className="v2-catalogue-filters" open={Boolean(category || storeId) || undefined}><summary>Filtres {category || storeId ? "· actifs" : contributing ? "· groupe et magasin" : "· groupe"}</summary>
         <div className="v2-catalogue-filter-fields">
           <label>Groupe comparable <select value={categoryDraft} onChange={event => setCategoryDraft(event.target.value)}>
             <option value="">Tous les groupes</option>{categoryList.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
           </select></label>
-          {expert && <div className="v2-catalogue-store"><label htmlFor="catalogue-store">Magasin</label>
+          {contributing && <div className="v2-catalogue-store"><label htmlFor="catalogue-store">Magasin</label>
             <input id="catalogue-store" value={storeDraft} autoComplete="off" placeholder="Nom ou ville (2 caractères min.)"
               onChange={event => { setStoreDraft(event.target.value); setSelectedStore(0); setStores([]); }} />
             {stores.length > 0 && <div className="v2-catalogue-suggestions">{stores.map(store => <button key={store.id} type="button"
@@ -581,7 +581,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
               to={item.kind === "scope" ? browsePath(department, family, item.name) : "/v2/categories/" + encodeURIComponent(item.name)}>
               <div><LevelBadge level={item.kind} /><strong>{item.name}</strong>
                 <small>{item.count} produit{item.count > 1 ? "s" : ""}</small></div>
-              <span>{!expert ? "Voir les produits →" : item.kind === "scope" ? "Comparer tout l’ensemble →" : "Comparer ce groupe →"}</span>
+              <span>{!contributing ? "Voir les produits →" : item.kind === "scope" ? "Comparer tout l’ensemble →" : "Comparer ce groupe →"}</span>
             </Link>)}</div>
           <Pagination total={familyEntries.length} page={page} size={size} onChange={changePage} />
         </> : <p>Aucun groupe dans cette famille.</p>}

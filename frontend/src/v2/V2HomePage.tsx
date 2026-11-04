@@ -61,9 +61,9 @@ export default function V2HomePage({ user, onLogout }: {
   const { installed, requestInstall } = usePwaInstall();
   const [installMessage, setInstallMessage] = useState("");
   const basketCount = items.length;
-  // Shopping: baskets first. Expert: contributing, without the baskets.
+  // Shopping: baskets first. Contribution: contributing, without the baskets.
   const { mode, canSwitch, setMode } = useAppMode();
-  const expert = mode === "expert";
+  const contributing = mode === "contribute";
 
   async function installApp() {
     setInstallMessage(installMessages[await requestInstall()]);
@@ -101,13 +101,13 @@ export default function V2HomePage({ user, onLogout }: {
                 <Link className="v2-button v2-button-primary" to="/v2/produits">
                   Voir les produits <ArrowIcon />
                 </Link>
-                {expert ? <Link className="v2-button v2-button-secondary" to="/v2/produits/nouveau">Ajouter un produit</Link>
+                {contributing ? <Link className="v2-button v2-button-secondary" to="/v2/produits/nouveau">Ajouter un produit</Link>
                   : <Link className="v2-button v2-button-secondary" to="/v2/panier">Voir mon panier</Link>}
                 {!installed && <button className="v2-button v2-button-secondary" type="button"
                   onClick={() => { void installApp(); }}>Installer l’application</button>}
               </div>
               {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
-              {!expert && <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course. <a className="v2-hero-demo-link" href="#demonstration">Voir un panier en exemple</a>.</p>}
+              {!contributing && <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course. <a className="v2-hero-demo-link" href="#demonstration">Voir un panier en exemple</a>.</p>}
               <p className="v2-hero-note">Vous développez une intégration ? <a href="/api/v2/docs">Consulter la documentation API</a>.</p>
             </div>
 
@@ -140,7 +140,7 @@ export default function V2HomePage({ user, onLogout }: {
                 </div>
                 <div className="v2-journey-footer">
                   <span className="v2-journey-avatar"><BagIcon /></span>
-                  <span>{expert ? "Mode expert : merci de vos contributions"
+                  <span>{contributing ? "Merci pour vos contributions"
                     : basketCount > 0 ? basketCount + " article" + (basketCount > 1 ? "s" : "") + " dans votre panier"
                     : "Votre panier vous attend"}</span>
                 </div>
@@ -164,7 +164,7 @@ export default function V2HomePage({ user, onLogout }: {
               <span className="v2-action-description">Retrouvez les produits publiés et préparez vos courses.</span>
               <span className="v2-action-link">Explorer les produits <ArrowIcon /></span>
             </Link>
-            {expert ? <Link className="v2-action-card" to="/v2/produits/nouveau">
+            {contributing ? <Link className="v2-action-card" to="/v2/produits/nouveau">
               <span className="v2-action-icon v2-action-icon-peach"><BagIcon /></span>
               <span className="v2-action-title">J’ajoute un produit</span>
               <span className="v2-action-description">Proposez une fiche produit, relue avant publication.</span>
@@ -177,26 +177,26 @@ export default function V2HomePage({ user, onLogout }: {
                 : "Gardez produits, groupes et ensembles sous la main pour vos courses."}</span>
               <span className="v2-action-link">Ouvrir mon panier <ArrowIcon /></span>
             </Link>}
-            {expert ? <Link className="v2-action-card" to="/v2/produits">
+            {contributing ? <Link className="v2-action-card" to="/v2/produits">
               <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
               <span className="v2-action-title">Je partage un prix</span>
               <span className="v2-action-description">Choisissez un produit, puis proposez un prix soumis à validation.</span>
               <span className="v2-action-link">Choisir un produit <ArrowIcon /></span>
-            </Link> : canSwitch ? <button type="button" className="v2-action-card" onClick={() => setMode("expert")}>
+            </Link> : canSwitch ? <button type="button" className="v2-action-card" onClick={() => setMode("contribute")}>
               <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
               <span className="v2-action-title">Je contribue</span>
-              <span className="v2-action-description">Le mode expert ajoute les outils pour proposer des produits, des prix, des magasins et des recettes.</span>
-              <span className="v2-action-link">Passer en mode expert <ArrowIcon /></span>
+              <span className="v2-action-description">Le mode contribution ajoute les outils pour proposer des produits, des prix, des magasins et des recettes.</span>
+              <span className="v2-action-link">Passer en mode contribution <ArrowIcon /></span>
             </button> : <Link className="v2-action-card" to="/v2/inscription">
               <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
               <span className="v2-action-title">Je contribue</span>
-              <span className="v2-action-description">Avec un compte, le mode expert permet de proposer des produits, des prix, des magasins et des recettes.</span>
+              <span className="v2-action-description">Avec un compte, le mode contribution permet de proposer des produits, des prix, des magasins et des recettes.</span>
               <span className="v2-action-link">Créer un compte <ArrowIcon /></span>
             </Link>}
           </div>
         </section>
 
-        {!expert && <V2HomeDemo />}
+        {!contributing && <V2HomeDemo />}
 
         <section className="v2-discover v2-wrap" aria-labelledby="v2-discover-heading">
           <div className="v2-discover-copy">

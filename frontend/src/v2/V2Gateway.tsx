@@ -501,7 +501,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
   const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
-  // Every page knows the mode in use: shopping (baskets and lists) or expert (contributing).
+  // Every page knows the mode in use: shopping (baskets and lists) or contributing (contributing).
   const withMode = (page: ReactNode) => <V2AppModeProvider userId={authStatus.user?.id ?? null}>{page}</V2AppModeProvider>;
   const withHostAlert = (page: ReactNode) => withMode(adminId !== null && !preferencesMode
     ? <><V2HostAlertNotice userId={adminId} />{page}</> : page);
