@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.141",
+    "version": "0.1.142",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.66",
+    "version": "0.1.67",
     "status": "active"
   },
   "recipes": {
@@ -16,12 +16,12 @@
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.49",
+    "version": "0.1.50",
     "status": "active"
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.53",
+    "version": "0.1.54",
     "status": "active"
   },
   "open_food_facts": {
