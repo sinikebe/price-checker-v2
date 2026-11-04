@@ -1173,6 +1173,38 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.139",
+      "components": {
+        "application": {
+          "version": "0.1.139",
+          "notes": [
+            "Le mode expert devient le « mode contribution » : il sert à quiconque veut ajouter ou corriger des contenus.",
+            "En mode contribution, une pastille dans l’en-tête le signale et ramène au mode courses d’un geste."
+          ]
+        },
+        "products": {
+          "version": "0.1.64",
+          "notes": [
+            "En mode courses, la fiche produit montre le prix le plus bas connu et un lien vers les produits comparables.",
+            "En mode contribution, les prix s’affichent avant la fiche détaillée du produit."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.28",
+          "notes": [
+            "Les portions s’affichent sans zéros inutiles : « 2 portions » au lieu de « 2,000 ».",
+            "Les produits d’un ingrédient au choix sont repliés derrière « Voir les produits du groupe »."
+          ]
+        },
+        "basket": {
+          "version": "0.1.48",
+          "notes": [
+            "Un panier ouvert en mode contribution propose de revenir au mode courses."
+          ]
+        }
+      }
     }
   ]
 }
