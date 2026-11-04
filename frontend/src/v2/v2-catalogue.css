@@ -58,3 +58,7 @@ html[data-v2-theme="dark"] .v2-catalogue-level-family { color: #d3b7f2; }
 html[data-v2-theme="dark"] .v2-catalogue-level-scope { color: #f3c68b; }
 html[data-v2-theme="dark"] .v2-catalogue-level-group { color: #8edbc7; }
 html[data-v2-theme="dark"] .v2-catalogue-level-product { color: #c5ced8; }
+/* Shopping mode: the catalogue is still a test sample, and says so. */
+.v2-catalogue-test-note { margin: 0 0 18px; padding: 12px 16px; border: 1px solid #ecd9a8; border-radius: 12px; background: #fff8e6; color: #5c4710; }
+.v2-catalogue-test-note a { color: inherit; font-weight: 700; }
+html[data-v2-theme="dark"] .v2-catalogue-test-note { border-color: #6b5520; background: #2f2711; color: #f3dfa6; }

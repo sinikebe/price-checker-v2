@@ -7,6 +7,7 @@ import V2SiteHeader from "./V2SiteHeader";
 import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2HomeDemo from "./V2HomeDemo";
+import V2CatalogueDemo from "./V2CatalogueDemo";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
 
@@ -197,6 +198,7 @@ export default function V2HomePage({ user, onLogout }: {
         </section>
 
         {!contributing && <V2HomeDemo />}
+        <V2CatalogueDemo />
 
         <section className="v2-discover v2-wrap" aria-labelledby="v2-discover-heading">
           <div className="v2-discover-copy">
