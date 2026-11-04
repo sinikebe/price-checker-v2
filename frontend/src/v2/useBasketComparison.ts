@@ -37,7 +37,7 @@ export function useBasketComparison(snapshot: BasketSnapshot | null, activeItems
     return reading ? [{ key, reading, gain: gains.get(key) ?? null }] : [];
   });
   const storeNames = new Map<number, string>();
-  for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.city].filter(Boolean).join(" · "));
+  for (const row of availableRows) storeNames.set(row.store_id, [row.retailer, row.store_name, row.online ? "En ligne" : row.city].filter(Boolean).join(" · "));
   const cityOptions = [...new Set(availableRows.map(row => row.city?.trim()).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const departmentOptions = [...new Set(availableRows.map(row => postalDepartment(row.postal_code)).filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, "fr"));
   const hasOpenPrices = comparison?.stores.some(store => store.choices.some(choice => choice.reading.source_provider === "open_prices")) ?? false;

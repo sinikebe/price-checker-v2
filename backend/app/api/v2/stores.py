@@ -30,6 +30,8 @@ def name_key(value: str) -> str:
 
 
 def _location_compatible(row, city: str, postal_code: str) -> bool:
+    if row["online"]:
+        return True  # an online platform has no address and delivers everywhere
     # Legacy incomplete stores stay public for completion, never automatic capture targets.
     if not (row["city"] or "").strip() or not (row["postal_code"] or "").strip():
         return False
@@ -41,7 +43,8 @@ def _location_compatible(row, city: str, postal_code: str) -> bool:
 def _store_dict(row) -> dict:
     return {"id": row["id"], "retailer": row["retailer"],
             "retailer_id": row["retailer_id"], "retailer_group_id": row["retailer_group_id"],
-            "name": row["name"], "city": row["city"], "postal_code": row["postal_code"]}
+            "name": row["name"], "city": row["city"], "postal_code": row["postal_code"],
+            "online": row["online"]}
 
 
 # Pending user-entered stores are visible only to their author; imported OSM
@@ -68,7 +71,7 @@ async def matches(
     try:
         user = await _current_user(connection, request)
         rows = await connection.fetch(
-            "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
+            "SELECT s.id,s.name,s.city,s.postal_code,s.online,r.name AS retailer,"
             "r.id AS retailer_id,r.group_id AS retailer_group_id "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE r.group_id IN (SELECT group_id FROM v2_retailers "
@@ -227,7 +230,7 @@ async def list_stores(request: Request):
         user = await _current_user(connection, request)
         is_admin = user is not None and user["role"] == "admin"
         rows = await connection.fetch(
-            "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,s.active,"
+            "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,s.active,s.online,"
             "r.name AS retailer,r.id AS retailer_id,"
             "g.id AS retailer_group_id,g.name AS retailer_group FROM v2_stores s "
             "JOIN v2_retailers r ON r.id=s.retailer_id "
@@ -306,10 +309,12 @@ async def complete_store(store_id: int, payload: StoreCompletion, request: Reque
         await _admin(connection, request)
         async with connection.transaction():
             row = await connection.fetchrow(
-                "SELECT id,city,postal_code FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
+                "SELECT id,city,postal_code,online FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
             if row is None:
                 raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            if row["online"]:
+                raise HTTPException(status_code=409, detail="Une plateforme en ligne n’a pas d’adresse.")
             if (row["city"] or "").strip() and (row["postal_code"] or "").strip():
                 raise HTTPException(status_code=409, detail="Ce magasin est déjà complet.")
             if ((row["city"] or "").strip() and row["city"].strip() != payload.city
@@ -327,6 +332,37 @@ async def complete_store(store_id: int, payload: StoreCompletion, request: Reque
 
 class StoreActivity(BaseModel):
     active: bool
+
+
+class StoreOnline(BaseModel):
+    online: bool
+
+
+@router.put("/{store_id}/online")
+async def set_store_online(store_id: int, payload: StoreOnline, request: Request):
+    """An administrator marks a store as an online platform (no address, delivered everywhere), or back."""
+    _secure_write(request)
+    connection = await _connect()
+    try:
+        await _admin(connection, request)
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                "SELECT id FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
+            )
+            if row is None:
+                raise HTTPException(status_code=404, detail="Magasin introuvable.")
+            if await connection.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
+                "WHERE kind='store' AND from_id=$1)", store_id,
+            ):
+                raise HTTPException(status_code=409, detail="Cette fiche a été fusionnée.")
+            await connection.execute(
+                "UPDATE v2_stores SET online=$2,supports_delivery=supports_delivery OR $2 WHERE id=$1",
+                store_id, payload.online,
+            )
+        return {"id": store_id, "online": payload.online}
+    finally:
+        await connection.close()
 
 
 @router.put("/{store_id}/activity")
@@ -455,7 +491,7 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
 
 async def visible_store(connection: asyncpg.Connection, store_id: int, user: dict) -> dict:
     row = await connection.fetchrow(
-        "SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer,"
+        "SELECT s.id,s.name,s.city,s.postal_code,s.online,r.name AS retailer,"
         "r.id AS retailer_id,r.group_id AS retailer_group_id "
         "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
         "WHERE s.id=$1 AND s.active AND " + VISIBLE + " FOR SHARE OF s",

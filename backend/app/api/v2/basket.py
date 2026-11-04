@@ -97,7 +97,7 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
                        o.id,o.product_id,o.price,o.observed_at,o.sales_channel,
                        o.source_provider,o.available,o.correction_status,
                        r.name AS retailer,s.name AS store_name,
-                       s.id AS store_id,s.city,s.postal_code
+                       s.id AS store_id,s.city,s.postal_code,s.online
                 FROM v2_price_observations o
                 JOIN v2_retailers r ON r.id=o.retailer_id
                 JOIN v2_stores s ON s.id=o.store_id
@@ -136,7 +136,7 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
             "id": row["id"], "price": str(row["price"]), "observed_at": _day(row["observed_at"]),
             "retailer": row["retailer"], "store_name": row["store_name"],
             "store_id": row["store_id"], "city": row["city"], "postal_code": row["postal_code"],
-            "sales_channel": row["sales_channel"], "available": row["available"],
+            "online": row["online"], "sales_channel": row["sales_channel"], "available": row["available"],
             "correction_status": row["correction_status"],
             "source_provider": row["source_provider"],
         })

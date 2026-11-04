@@ -511,7 +511,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
-  if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
+  if (storesMode) return withHostAlert(<V2StoresPage key={storeId ?? "list"} id={storeId} user={authStatus.user} onLogout={logout} />);
   if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
   if (basketMode) return withHostAlert(demoBasketMode ? <V2BasketDemoPage user={authStatus.user} onLogout={logout} listMode={shoppingListMode} />
