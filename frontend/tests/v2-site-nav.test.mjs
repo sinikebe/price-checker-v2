@@ -10,11 +10,11 @@ const output = ts.transpileModule(source, {
 const { SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
-test("shopping keeps the baskets and leaves the stores out; the expert mode does the reverse", () => {
+test("shopping keeps the baskets and leaves the stores out; the contribution mode does the reverse", () => {
   assert.deepEqual(dockItems("shopping", false).map(item => item.id), ["home", "products", "recipes", "basket"]);
-  assert.deepEqual(dockItems("expert", false).map(item => item.id), ["home", "products", "stores", "recipes"]);
-  assert.deepEqual(dockItems("expert", true).map(item => item.id), ["home", "products", "stores", "recipes"]);
-  for (const items of [dockItems("shopping", true), dockItems("expert", false)])
+  assert.deepEqual(dockItems("contribute", false).map(item => item.id), ["home", "products", "stores", "recipes"]);
+  assert.deepEqual(dockItems("contribute", true).map(item => item.id), ["home", "products", "stores", "recipes"]);
+  for (const items of [dockItems("shopping", true), dockItems("contribute", false)])
     assert.equal(new Set(items.map(item => item.to)).size, items.length);
 });
 
@@ -45,22 +45,22 @@ test("pages reached from the profile menu highlight no dock item", () => {
 });
 
 test("a signed-out visitor is offered to sign in and to open the settings, but no contribution or admin links", () => {
-  for (const mode of ["shopping", "expert"]) {
+  for (const mode of ["shopping", "contribute"]) {
     const links = profileMenuSections(null, mode).flatMap(section => section.links.map(link => link.to));
     assert.deepEqual(links, ["/v2/connexion", "/v2/inscription", "/v2/parametres"]);
   }
 });
 
-test("shopping leaves the contribution links to the expert mode", () => {
+test("shopping leaves the contribution links to the contribution mode", () => {
   const links = profileMenuSections({ username: "alice", role: "confirmed" }, "shopping").flatMap(section => section.links.map(link => link.to));
   assert.deepEqual(links, ["/v2/parametres"]);
   const admin = profileMenuSections({ username: "root", role: "admin" }, "shopping");
   assert.deepEqual(admin.map(section => section.id), ["me", "admin"]);
 });
 
-test("in the expert mode, a member sees their drafts, the settings and the contribution links, and nothing administrative", () => {
+test("in the contribution mode, a member sees their drafts, the settings and the contribution links, and nothing administrative", () => {
   for (const role of ["confirmed", "visitor"]) {
-    const sections = profileMenuSections({ username: "alice", role }, "expert");
+    const sections = profileMenuSections({ username: "alice", role }, "contribute");
     const links = sections.flatMap(section => section.links.map(link => link.to));
     assert.ok(links.includes("/v2/brouillons") && links.includes("/v2/parametres"), role);
     assert.ok(!links.includes("/v2/connexion"), role);
@@ -77,7 +77,7 @@ test("an administrator also gets the administration links, pointing to existing 
 });
 
 test("link ids are unique within the menu and the beta tag is on the capture link only", () => {
-  const all = profileMenuSections({ username: "root", role: "admin" }, "expert").flatMap(section => section.links);
+  const all = profileMenuSections({ username: "root", role: "admin" }, "contribute").flatMap(section => section.links);
   assert.equal(new Set(all.map(link => link.id)).size, all.length);
   assert.deepEqual(all.filter(link => link.tag).map(link => link.id), ["capture"]);
 });

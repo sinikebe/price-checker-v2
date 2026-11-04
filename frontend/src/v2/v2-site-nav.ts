@@ -5,10 +5,10 @@ export type DockItem = { id: DockId; label: string; to: string };
 
 /**
  * Two ways to use the application. Shopping (the default, for everyone): baskets and their lists, with
- * a simple view of the products and recipes to fill them. Expert (signed-in accounts only, for
+ * a simple view of the products and recipes to fill them. Contribution (signed-in accounts only, for
  * contributors): products, stores, recipes and the tools to add or correct them, without the baskets.
  */
-export type AppMode = "shopping" | "expert";
+export type AppMode = "shopping" | "contribute";
 
 const HOME: DockItem = { id: "home", label: "Accueil", to: "/v2" };
 const PRODUCTS: DockItem = { id: "products", label: "Produits", to: "/v2/produits" };
@@ -18,9 +18,9 @@ const BASKET: DockItem = { id: "basket", label: "Panier", to: "/v2/panier" };
 /** The shared basket, next to the personal one, for an account that follows one. */
 export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
 
-/** The dock entries for this mode: the shared basket shows once the account follows one; stores are for experts. */
+/** The dock entries for this mode: the shared basket shows once the account follows one; stores are for contributing. */
 export function dockItems(mode: AppMode, followsShared: boolean): readonly DockItem[] {
-  if (mode === "expert") return [HOME, PRODUCTS, STORES, RECIPES];
+  if (mode === "contribute") return [HOME, PRODUCTS, STORES, RECIPES];
   return followsShared ? [HOME, PRODUCTS, RECIPES, BASKET, SHARED_DOCK_ITEM] : [HOME, PRODUCTS, RECIPES, BASKET];
 }
 
@@ -54,7 +54,7 @@ const CONTRIBUTE: MenuSection = {
 };
 
 /**
- * The links of the profile menu for this viewer and mode. Contributing belongs to the expert mode, open to
+ * The links of the profile menu for this viewer and mode. Contributing belongs to the contribution mode, open to
  * signed-in accounts. Signing out and the mode switch are buttons, added by the component.
  */
 export function profileMenuSections(user: MenuUser | null, mode: AppMode = "shopping"): MenuSection[] {
@@ -67,7 +67,7 @@ export function profileMenuSections(user: MenuUser | null, mode: AppMode = "shop
       { id: "preferences", links: [{ id: "settings", label: "Paramètres", to: "/v2/parametres" }] },
     ];
   }
-  const sections: MenuSection[] = mode === "expert" ? [
+  const sections: MenuSection[] = mode === "contribute" ? [
     { id: "me", links: [
       { id: "drafts", label: "Mes brouillons", to: "/v2/brouillons" },
       { id: "settings", label: "Paramètres", to: "/v2/parametres" },

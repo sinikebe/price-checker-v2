@@ -62,9 +62,9 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
         </Link>)}
       </div>)}
       {user && canSwitch && <div role="group" aria-label="Mode" className="v2-profile-menu-section">
-        <button type="button" role="menuitemcheckbox" aria-checked={mode === "expert"} className="v2-profile-mode"
-          onClick={() => { setOpen(false); setMode(mode === "expert" ? "shopping" : "expert"); }}>
-          <span>Mode expert<small>{mode === "expert" ? "Contribuer : produits, magasins, recettes" : "Pour contribuer au catalogue"}</small></span>
+        <button type="button" role="menuitemcheckbox" aria-checked={mode === "contribute"} className="v2-profile-mode"
+          onClick={() => { setOpen(false); setMode(mode === "contribute" ? "shopping" : "contribute"); }}>
+          <span>Mode contribution<small>{mode === "contribute" ? "Produits, prix, magasins, recettes" : "Proposer produits, prix et recettes"}</small></span>
           <span className="v2-profile-mode-switch" aria-hidden="true" />
         </button>
       </div>}

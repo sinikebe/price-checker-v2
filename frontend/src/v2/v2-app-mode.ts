@@ -3,13 +3,13 @@ import type { AppMode } from "./v2-site-nav";
 
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 
-/** The device key that remembers the expert mode of one account. */
+/** The device key that remembers the contribution mode of one account. */
 export const appModeKey = (userId: number) => `v2:mode:${userId}`;
 
-/** The mode in use: expert only for a signed-in account that chose it on this device; shopping otherwise. */
+/** The mode in use: contributing only for a signed-in account that chose it on this device; shopping otherwise. */
 export function readAppMode(storage: Storage | null, userId: number | null): AppMode {
   if (!userId || !storage) return "shopping";
-  try { return storage.getItem(appModeKey(userId)) === "expert" ? "expert" : "shopping"; }
+  try { return storage.getItem(appModeKey(userId)) === "contribute" ? "contribute" : "shopping"; }
   catch { return "shopping"; }
 }
 
@@ -17,7 +17,7 @@ export function readAppMode(storage: Storage | null, userId: number | null): App
 export function writeAppMode(storage: Storage | null, userId: number, mode: AppMode) {
   if (!storage) return;
   try {
-    if (mode === "expert") storage.setItem(appModeKey(userId), "expert");
+    if (mode === "contribute") storage.setItem(appModeKey(userId), "contribute");
     else storage.removeItem(appModeKey(userId));
   } catch { /* storage unavailable: the choice lasts until the page is reloaded */ }
 }

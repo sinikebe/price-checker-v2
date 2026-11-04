@@ -29,6 +29,15 @@
 
 /* Profile circle and its menu */
 .v2-profile { position: relative; flex: 0 0 auto; }
+.v2-site-end { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.v2-mode-badge { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid #e3b56a; border-radius: 999px; background: #fff4df; color: #7a4a08; font: inherit; font-size: .85rem; font-weight: 750; cursor: pointer; white-space: nowrap; }
+.v2-mode-badge:hover { background: #ffe9c2; }
+.v2-mode-badge:focus-visible { outline: 2px solid #b5730f; outline-offset: 2px; }
+.v2-mode-badge-dot { width: 8px; height: 8px; border-radius: 50%; background: #d48a12; }
+.v2-mode-badge-close { margin-left: 2px; font-size: 1rem; line-height: 1; opacity: .7; }
+html[data-v2-theme="dark"] .v2-mode-badge { border-color: #8a6420; background: #3a2c12; color: #ffd796; }
+html[data-v2-theme="dark"] .v2-mode-badge:hover { background: #4a3816; }
+@media (max-width: 480px) { .v2-site-header:has(.v2-mode-badge) .v2-brand-word { display: none; } .v2-mode-badge { padding: 0 10px; } }
 .v2-profile-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 2px solid var(--v2-line, #dfebe4); border-radius: 50%; background: #e6f3dd; color: #1f5a3f; font: inherit; font-size: .95rem; font-weight: 800; letter-spacing: .02em; cursor: pointer; }
 .v2-profile-button svg { width: 22px; height: 22px; }
 .v2-profile-button:hover, .v2-profile-button[aria-expanded="true"] { border-color: #2f8061; }

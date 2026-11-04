@@ -18,3 +18,11 @@ export function scaledQuantity(amount: string, desired: string, base: string): s
   const approximate = numerator % denominator !== 0n;
   return `${approximate ? "≈ " : ""}${whole}${fraction ? `,${fraction}` : ""}`;
 }
+/** A stored decimal without its padding zeros, as typed in a field: "2.000" → "2", "1.500" → "1.5". */
+export function plainDecimal(value: string): string {
+  return /^\d+\.\d+$/.test(value) ? value.replace(/0+$/, "").replace(/\.$/, "") : value;
+}
+/** The same, written the French way for reading: "1.500" → "1,5". */
+export function decimalText(value: string): string {
+  return plainDecimal(value).replace(".", ",");
+}

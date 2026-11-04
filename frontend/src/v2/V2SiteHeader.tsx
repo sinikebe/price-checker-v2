@@ -3,6 +3,7 @@ import type { V2User } from "./v2-auth-api";
 import V2BackButton from "./V2BackButton";
 import V2Dock from "./V2Dock";
 import V2HeaderSearch from "./V2HeaderSearch";
+import V2ModeBadge from "./V2ModeBadge";
 import V2ProfileMenu from "./V2ProfileMenu";
 import { backTarget } from "./v2-site-nav";
 import "./v2-site-nav.css";
@@ -20,7 +21,7 @@ export default function V2SiteHeader({ user, onLogout }: { user: V2User | null; 
         </Link>
       </div>
       <V2HeaderSearch />
-      <V2ProfileMenu user={user} onLogout={onLogout} />
+      <div className="v2-site-end"><V2ModeBadge /><V2ProfileMenu user={user} onLogout={onLogout} /></div>
     </div></header>
     <V2Dock />
   </>;
