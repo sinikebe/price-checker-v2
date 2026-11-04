@@ -1187,6 +1187,16 @@ MIGRATIONS = {
         -- basket comparisons keep it whatever the city or department filters.
         ALTER TABLE v2_stores ADD COLUMN online boolean NOT NULL DEFAULT false;
     """,
+    "0049_shared_basket_selections": """
+        -- A selection combines parts of the catalogue (products, groups, ensembles, families,
+        -- departments) into one basket line; what it includes is kept in `spec`.
+        ALTER TABLE v2_shared_basket_lines ALTER COLUMN kind TYPE varchar(12),
+            DROP CONSTRAINT v2_shared_basket_lines_kind_check,
+            ADD CONSTRAINT v2_shared_basket_lines_kind_check
+                CHECK (kind IN ('product', 'group', 'scope', 'text', 'selection')),
+            ADD COLUMN spec jsonb CHECK (spec IS NULL OR jsonb_typeof(spec) = 'object'),
+            ADD CONSTRAINT v2_shared_basket_lines_selection_spec CHECK ((kind = 'selection') = (spec IS NOT NULL));
+    """,
 }
 
 

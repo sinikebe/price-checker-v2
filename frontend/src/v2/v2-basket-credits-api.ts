@@ -1,4 +1,4 @@
-import type { BasketItem, BasketProduct } from "./v2-basket-storage";
+import type { BasketItem, BasketProduct, SelectionMember } from "./v2-basket-storage";
 import type { BasketPriceResponse } from "./v2-basket-comparison";
 
 /**
@@ -42,12 +42,14 @@ export class SignedOutError extends Error {}
 type WireItem =
   | { kind: "product"; id: number }
   | { kind: "group"; name: string }
-  | { kind: "scope"; department: string; family: string; name: string };
+  | { kind: "scope"; department: string; family: string; name: string }
+  | { kind: "selection"; name: string; include: SelectionMember[]; exclude: SelectionMember[]; words: string[] };
 /** What is priced for each article. Free text has no price: it is never sent (see fetchedItems). */
 export function wireItems(items: readonly BasketItem[]): WireItem[] {
   return items.flatMap((item): WireItem[] => !("kind" in item) ? [{ kind: "product", id: item.id }]
     : item.kind === "group" ? [{ kind: "group", name: item.name }]
-      : item.kind === "scope" ? [{ kind: "scope", department: item.department, family: item.family, name: item.name }] : []);
+      : item.kind === "scope" ? [{ kind: "scope", department: item.department, family: item.family, name: item.name }]
+        : item.kind === "selection" ? [{ kind: "selection", name: item.name, include: item.include, exclude: item.exclude ?? [], words: item.words ?? [] }] : []);
 }
 
 export async function readBasketCredits(signal?: AbortSignal): Promise<BasketCredits> {

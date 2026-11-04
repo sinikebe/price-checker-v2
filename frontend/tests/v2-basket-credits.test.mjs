@@ -149,3 +149,11 @@ test("contribution credits count when the daily ones run out, and are named apar
   assert.equal(rewardHint("price", null), "");
   assert.equal(rewardSummary({ price: 5, product: 0, recipe: 10 }), "5 par relevé de prix, 10 par recette");
 });
+
+
+test("a selection is sent with its parts; free text is never sent", () => {
+  assert.deepEqual(wireItems([
+    { kind: "selection", name: "Jus", include: [{ family: "Jus de fruits" }] },
+    { kind: "text", name: "Bougies" },
+  ]), [{ kind: "selection", name: "Jus", include: [{ family: "Jus de fruits" }], exclude: [], words: [] }]);
+});

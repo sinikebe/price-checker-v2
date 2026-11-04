@@ -107,6 +107,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-recipes.css", ("recipes",)),
     ("frontend/src/recipes/*.ts", ("recipes",)),
     ("backend/app/api/v2/basket.py", ("basket",)),
+    ("backend/app/api/v2/selections.py", ("basket",)),
     ("backend/app/api/v2/shared_baskets.py", ("basket", "accounts")),
     ("frontend/src/v2/V2SharedBasket.tsx", ("basket",)),
     ("frontend/src/v2/V2SharedBasketView.tsx", ("basket",)),

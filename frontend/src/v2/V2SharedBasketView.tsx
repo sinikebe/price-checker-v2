@@ -8,7 +8,7 @@ import { BasketLinksContext } from "./v2-basket-links";
 import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { basketItemKey, isPriceable } from "./v2-basket-storage";
-import { FIRST_STORES, MORE_STORES, comparisonTitle, fetchedLabel, itemKind, itemName } from "./v2-basket-view";
+import { FIRST_STORES, MORE_STORES, comparisonTitle, fetchedLabel, itemKind, itemName, selectionSummary } from "./v2-basket-view";
 import { viewSharedBasket } from "./v2-shared-basket-api";
 import { SHARED_BASKET_PATH, keepPendingInvite, sharedItems, sharedSettings, sharedSnapshot, type SharedView } from "./v2-shared-basket";
 import "./v2-shared-basket.css";
@@ -71,7 +71,8 @@ export default function V2SharedBasketView({ invite }: { invite: string }) {
         <section className="v2-basket-panel" aria-label="Articles du panier">
           <ul className="v2-shared-view-items">{items.map(item => <li key={basketItemKey(item)} data-disabled={item.disabled ? "true" : "false"}>
             <span className="v2-basket-item-kind">{itemKind(item)}</span><strong>{itemName(item)}</strong>
-            <small>{[display.advanced && item.quantity ? basketQuantityLabel(item.quantity) : null, item.disabled ? "exclu du calcul" : null].filter(Boolean).join(" · ")}</small>
+            <small>{["kind" in item && item.kind === "selection" ? selectionSummary(item) : null, display.advanced && item.quantity ? basketQuantityLabel(item.quantity) : null,
+              item.disabled ? "exclu du calcul" : null].filter(Boolean).join(" · ")}</small>
           </li>)}</ul>
         </section>
         <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">

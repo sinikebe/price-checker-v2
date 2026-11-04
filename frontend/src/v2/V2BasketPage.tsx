@@ -86,6 +86,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
       const incoming = await Promise.all(sharedEntries.map(async (entry): Promise<BasketItem> => {
         if (entry[0] === "g" || entry[0] === "t") return { kind: entry[0] === "g" ? "group" : "text", name: entry[1], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
         if (entry[0] === "s") return { kind: "scope", department: entry[1], family: entry[2], name: entry[3], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
+        if (entry[0] === "x") return { kind: "selection", name: entry[1], ...entry[3], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
         const product = await currentBasketProduct(entry[1], null, productId => productRequest<Product>("/" + productId));
         if (!product) throw new Error("Produit indisponible");
         return { id: product.id, revision: product.revision, data: product.data, disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };

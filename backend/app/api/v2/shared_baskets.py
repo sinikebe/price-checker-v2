@@ -26,6 +26,7 @@ from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _s
 from app.api.v2.auth_security import account_limit_key
 from app.api.v2.basket import ADMIN_FETCHES_PER_MINUTE, GroupRef, ProductRef, ScopeRef, _clean, _current_product, _gather
 from app.api.v2.catalogue import MAX_BIGINT
+from app.api.v2.selections import Selection, SelectionRef
 from app.api.v2.setup import _access_code
 from app.services import v2_basket_credits as credits
 from app.services import v2_logbook as logbook
@@ -138,7 +139,13 @@ class TextLine(BaseModel):
     _clean = field_validator("name")(_clean)
 
 
-Line = Annotated[ProductLine | GroupLine | ScopeLine | TextLine, Field(discriminator="kind")]
+class SelectionLine(Selection):
+    """Several parts of the catalogue compared as one article (see selections.py)."""
+
+    kind: Literal["selection"]
+
+
+Line = Annotated[ProductLine | GroupLine | ScopeLine | TextLine | SelectionLine, Field(discriminator="kind")]
 
 
 class NewLine(BaseModel):
@@ -234,7 +241,7 @@ class Join(BaseModel):
     confirm: bool = False
 
 
-def _key(line: ProductLine | GroupLine | ScopeLine | TextLine) -> str:
+def _key(line: ProductLine | GroupLine | ScopeLine | TextLine | SelectionLine) -> str:
     """The same key as the basket in the browser (basketItemKey), so one article is one line."""
     if isinstance(line, ProductLine):
         return f"product:{line.product_id}"
@@ -242,6 +249,8 @@ def _key(line: ProductLine | GroupLine | ScopeLine | TextLine) -> str:
         return "group:" + line.name.lower()
     if isinstance(line, TextLine):
         return "text:" + line.name.lower()
+    if isinstance(line, SelectionLine):
+        return "selection:" + line.name.lower()
     return ":".join(("scope", line.department, line.family, line.name)).lower()
 
 
@@ -309,7 +318,7 @@ async def _state(connection, basket_id: int, user: dict) -> dict:
 async def _lines(connection, basket_id: int, user_id: int | None) -> list[dict]:
     """The lines of a basket, each with its current product; who added it only for a member (`user_id`)."""
     rows = await connection.fetch(
-        "SELECT l.id,l.kind,l.product_id,l.label,l.department,l.family,l.quantity,l.disabled,"
+        "SELECT l.id,l.kind,l.product_id,l.label,l.department,l.family,l.quantity,l.disabled,l.spec,"
         "l.created_at,l.added_by=$2 AS mine,u.username AS added_by,p.data AS product_data,"
         "p.revision AS product_revision FROM v2_shared_basket_lines l "
         "LEFT JOIN v2_users u ON u.id=l.added_by "
@@ -320,6 +329,7 @@ async def _lines(connection, basket_id: int, user_id: int | None) -> list[dict]:
     return [{
             "id": line["id"], "kind": line["kind"], "label": line["label"], "product_id": line["product_id"],
             "department": line["department"], "family": line["family"],
+            **({"spec": _decoded(line["spec"])} if line["spec"] is not None else {}),
             "quantity": _decoded(line["quantity"]), "disabled": line["disabled"],
             "created_at": line["created_at"].isoformat(),
             "product": {"id": line["product_id"], "revision": line["product_revision"],
@@ -345,7 +355,7 @@ async def _changed(connection, basket_id: int) -> None:
 
 async def _add(connection, basket_id: int, item: NewLine, user: dict) -> bool:
     line = item.line
-    product_id = label = department = family = None
+    product_id = label = department = family = spec = None
     if isinstance(line, ProductLine):
         product = await _current_product(connection, line.product_id)
         if product is None:
@@ -357,14 +367,16 @@ async def _add(connection, basket_id: int, item: NewLine, user: dict) -> bool:
             or f"Produit {product_id}"
     elif isinstance(line, GroupLine | TextLine):
         label = line.name
+    elif isinstance(line, SelectionLine):
+        label, spec = line.name, json.dumps(line.spec(), ensure_ascii=False)
     else:
         label, department, family = line.name, line.department, line.family
     status = await connection.execute(
         "INSERT INTO v2_shared_basket_lines(basket_id,line_key,kind,product_id,label,department,"
-        "family,quantity,disabled,added_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10) "
+        "family,quantity,disabled,added_by,spec) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11::jsonb) "
         "ON CONFLICT (basket_id,line_key) DO NOTHING",
         basket_id, _key(line), line.kind, product_id, label, department, family,
-        item.quantity.model_dump_json() if item.quantity else None, item.disabled, user["id"])
+        item.quantity.model_dump_json() if item.quantity else None, item.disabled, user["id"], spec)
     return status.endswith(" 1")
 
 
@@ -686,6 +698,8 @@ def _price_refs(lines) -> tuple[list[int], list]:
             refs.append(ProductRef(kind="product", id=line["product_id"]))
         elif line["kind"] == "group":
             refs.append(GroupRef(kind="group", name=line["label"]))
+        elif line["kind"] == "selection":
+            refs.append(SelectionRef(kind="selection", name=line["label"], **_decoded(line["spec"])))
         else:
             refs.append(ScopeRef(kind="scope", department=line["department"], family=line["family"], name=line["label"]))
         ids.append(line["id"])
@@ -723,7 +737,7 @@ async def fetch_shared_prices(basket_id: Id, request: Request, response: Respons
         user = await _session_user(connection, request)
         await _membership(connection, basket_id, user)
         lines = await connection.fetch(
-            "SELECT id,kind,product_id,label,department,family,disabled FROM v2_shared_basket_lines "
+            "SELECT id,kind,product_id,label,department,family,disabled,spec FROM v2_shared_basket_lines "
             "WHERE basket_id=$1 ORDER BY id LIMIT $2", basket_id, MAX_LINES)
         line_ids, refs = _price_refs(lines)
         if not refs:

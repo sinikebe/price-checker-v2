@@ -3,7 +3,7 @@
  * their quantities), four fictional stores and their fictional prices. Nothing is fetched or sent: the prices are built here, dated from today, and the
  * basket comparison runs on them as it does on fetched prices.
  */
-import { basketItemKey, validBasketQuantity, type BasketItem, type BasketProduct, type BasketQuantity } from "./v2-basket-storage";
+import { basketItemKey, validBasketQuantity, validSelection, type BasketItem, type BasketProduct, type BasketQuantity } from "./v2-basket-storage";
 import type { BasketPrice, BasketPriceResponse } from "./v2-basket-comparison";
 import type { BasketSnapshot } from "./v2-basket-snapshot";
 import type { SharedSettings } from "./v2-shared-basket";
@@ -206,6 +206,7 @@ function validItem(value: unknown): value is BasketItem {
   const item = record(value);
   if (item.kind === "group") return text(item.name, 100);
   if (item.kind === "scope") return text(item.name, 80) && text(item.department, 80) && text(item.family, 80);
+  if (item.kind === "selection") return validSelection(item);
   return item.kind === undefined && Number.isSafeInteger(item.id) && (item.id as number) > 0 && Number.isSafeInteger(item.revision)
     && text(record(item.data).name, 400);
 }
