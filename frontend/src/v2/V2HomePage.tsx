@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallContext";
 import { useV2Basket } from "./V2BasketContext";
+import { useAppMode } from "./useAppMode";
 import V2SiteHeader from "./V2SiteHeader";
 import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
@@ -60,6 +61,9 @@ export default function V2HomePage({ user, onLogout }: {
   const { installed, requestInstall } = usePwaInstall();
   const [installMessage, setInstallMessage] = useState("");
   const basketCount = items.length;
+  // Shopping: baskets first. Contribution: contributing, without the baskets.
+  const { mode, canSwitch, setMode } = useAppMode();
+  const contributing = mode === "contribute";
 
   async function installApp() {
     setInstallMessage(installMessages[await requestInstall()]);
@@ -97,14 +101,13 @@ export default function V2HomePage({ user, onLogout }: {
                 <Link className="v2-button v2-button-primary" to="/v2/produits">
                   Voir les produits <ArrowIcon />
                 </Link>
-                <Link className="v2-button v2-button-secondary" to="/v2/panier">
-                  Voir mon panier
-                </Link>
+                {contributing ? <Link className="v2-button v2-button-secondary" to="/v2/produits/nouveau">Ajouter un produit</Link>
+                  : <Link className="v2-button v2-button-secondary" to="/v2/panier">Voir mon panier</Link>}
                 {!installed && <button className="v2-button v2-button-secondary" type="button"
                   onClick={() => { void installApp(); }}>Installer l’application</button>}
               </div>
               {installMessage && <p className="v2-install-message" role="status">{installMessage}</p>}
-              <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course. <a className="v2-hero-demo-link" href="#demonstration">Voir un panier en exemple</a>.</p>
+              {!contributing && <p className="v2-hero-note">Un point de départ simple, que ce soit votre première visite ou votre prochaine course. <a className="v2-hero-demo-link" href="#demonstration">Voir un panier en exemple</a>.</p>}
               <p className="v2-hero-note">Vous développez une intégration ? <a href="/api/v2/docs">Consulter la documentation API</a>.</p>
             </div>
 
@@ -137,8 +140,8 @@ export default function V2HomePage({ user, onLogout }: {
                 </div>
                 <div className="v2-journey-footer">
                   <span className="v2-journey-avatar"><BagIcon /></span>
-                  <span>{basketCount > 0
-                    ? basketCount + " article" + (basketCount > 1 ? "s" : "") + " dans votre panier"
+                  <span>{contributing ? "Merci pour vos contributions"
+                    : basketCount > 0 ? basketCount + " article" + (basketCount > 1 ? "s" : "") + " dans votre panier"
                     : "Votre panier vous attend"}</span>
                 </div>
               </div>
@@ -161,24 +164,39 @@ export default function V2HomePage({ user, onLogout }: {
               <span className="v2-action-description">Retrouvez les produits publiés et préparez vos courses.</span>
               <span className="v2-action-link">Explorer les produits <ArrowIcon /></span>
             </Link>
-            <Link className="v2-action-card" to="/v2/panier">
+            {contributing ? <Link className="v2-action-card" to="/v2/produits/nouveau">
+              <span className="v2-action-icon v2-action-icon-peach"><BagIcon /></span>
+              <span className="v2-action-title">J’ajoute un produit</span>
+              <span className="v2-action-description">Proposez une fiche produit, relue avant publication.</span>
+              <span className="v2-action-link">Ajouter un produit <ArrowIcon /></span>
+            </Link> : <Link className="v2-action-card" to="/v2/panier">
               <span className="v2-action-icon v2-action-icon-peach"><BagIcon /></span>
               <span className="v2-action-title">{basketCount > 0 ? "Je reprends mon panier" : "Je prépare mon panier"}</span>
               <span className="v2-action-description">{basketCount > 0
                 ? "Retrouvez vos articles et continuez à organiser vos courses."
                 : "Gardez produits, groupes et ensembles sous la main pour vos courses."}</span>
               <span className="v2-action-link">Ouvrir mon panier <ArrowIcon /></span>
-            </Link>
-            <Link className="v2-action-card" to="/v2/produits">
+            </Link>}
+            {contributing ? <Link className="v2-action-card" to="/v2/produits">
               <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
               <span className="v2-action-title">Je partage un prix</span>
               <span className="v2-action-description">Choisissez un produit, puis proposez un prix soumis à validation.</span>
               <span className="v2-action-link">Choisir un produit <ArrowIcon /></span>
-            </Link>
+            </Link> : canSwitch ? <button type="button" className="v2-action-card" onClick={() => setMode("contribute")}>
+              <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
+              <span className="v2-action-title">Je contribue</span>
+              <span className="v2-action-description">Le mode contribution ajoute les outils pour proposer des produits, des prix, des magasins et des recettes.</span>
+              <span className="v2-action-link">Passer en mode contribution <ArrowIcon /></span>
+            </button> : <Link className="v2-action-card" to="/v2/inscription">
+              <span className="v2-action-icon v2-action-icon-blue"><ScanIcon /></span>
+              <span className="v2-action-title">Je contribue</span>
+              <span className="v2-action-description">Avec un compte, le mode contribution permet de proposer des produits, des prix, des magasins et des recettes.</span>
+              <span className="v2-action-link">Créer un compte <ArrowIcon /></span>
+            </Link>}
           </div>
         </section>
 
-        <V2HomeDemo />
+        {!contributing && <V2HomeDemo />}
 
         <section className="v2-discover v2-wrap" aria-labelledby="v2-discover-heading">
           <div className="v2-discover-copy">

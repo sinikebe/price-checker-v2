@@ -15,6 +15,8 @@ import V2BasketDemoPage from "./V2BasketDemoPage";
 import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
 import V2StoresPage from "./V2StoresPage";
+import { V2AppModeProvider } from "./V2AppMode";
+import V2ShoppingOnly from "./V2ShoppingOnly";
 import { useV2Basket } from "./V2BasketContext";
 import { offlineUser, rememberOfflineUser } from "./v2-offline-user";
 import { activeBasketUser } from "./v2-basket-storage";
@@ -499,11 +501,13 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
       onConfigured={() => setStatus({ ...status, configured: true })} />;
   }
   const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
-  const withHostAlert = (page: ReactNode) => adminId !== null && !preferencesMode
-    ? <><V2HostAlertNotice userId={adminId} />{page}</> : page;
-  if (preferencesMode) return <V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onLogout={logout} onAccountDeleted={() => {
+  // Every page knows the mode in use: shopping (baskets and lists) or contributing (contributing).
+  const withMode = (page: ReactNode) => <V2AppModeProvider userId={authStatus.user?.id ?? null}>{page}</V2AppModeProvider>;
+  const withHostAlert = (page: ReactNode) => withMode(adminId !== null && !preferencesMode
+    ? <><V2HostAlertNotice userId={adminId} />{page}</> : page);
+  if (preferencesMode) return withMode(<V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onLogout={logout} onAccountDeleted={() => {
     setAuthStatus(previous => previous ? { ...previous, user: null } : previous);
-  }} />;
+  }} />);
   if (!authStatus.admin_initialized) {
     return <V2AuthPage mode="admin" environment={status.app_env} onAuthenticated={authenticated} />;
   }
@@ -511,11 +515,12 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     if (authStatus.user) return <Navigate to={loginRedirect} replace />;
     return <V2AuthPage mode={authMode} environment={status.app_env} onAuthenticated={authenticated} />;
   }
-  if (storesMode) return withHostAlert(<V2StoresPage id={storeId} user={authStatus.user} onLogout={logout} />);
+  if (storesMode) return withHostAlert(<V2StoresPage key={storeId ?? "list"} id={storeId} user={authStatus.user} onLogout={logout} />);
   if (completionMode) return withHostAlert(<V2CompletionPage user={authStatus.user} onLogout={logout} />);
   if (captureMode) return withHostAlert(<V2CapturePage mode={captureMode} user={authStatus.user} onLogout={logout} />);
   if (basketMode) return withHostAlert(demoBasketMode ? <V2BasketDemoPage user={authStatus.user} onLogout={logout} listMode={shoppingListMode} />
-    : <V2BasketPage user={authStatus.user} onLogout={logout} sharedMode={sharedBasketMode} listMode={shoppingListMode} />);
+    : <V2ShoppingOnly user={authStatus.user} onLogout={logout}>
+      <V2BasketPage user={authStatus.user} onLogout={logout} sharedMode={sharedBasketMode} listMode={shoppingListMode} /></V2ShoppingOnly>);
   if (recipeMode) {
     return withHostAlert(<V2RecipesPage mode={recipeMode} id={recipeId} privateRecipe={privateRecipe} user={authStatus.user} onLogout={logout} />);
   }

@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _secure_write
 from app.api.v2.moderation import _admin
@@ -21,7 +21,7 @@ PRODUCT_FIELDS = tuple(key for key in ProductData.model_fields if key not in {
     "quantity_amount", "quantity_unit", "quantity_count_noun", "measures"})
 STORE_FIELDS = ("name", "city", "postal_code", "latitude", "longitude",
                 "supports_drive", "supports_delivery", "external_store_id",
-                "osm_type", "osm_id")
+                "osm_type", "osm_id", "online")
 
 
 class MergeInput(BaseModel):
@@ -36,8 +36,8 @@ class MergeInput(BaseModel):
 
 class StoreMergeData(BaseModel):
     name: str = Field(min_length=1,max_length=300)
-    city: str = Field(min_length=1,max_length=200)
-    postal_code: str = Field(min_length=1,max_length=20)
+    city: str | None = Field(default=None,max_length=200)
+    postal_code: str | None = Field(default=None,max_length=20)
     latitude: Decimal | None = Field(ge=-90,le=90)
     longitude: Decimal | None = Field(ge=-180,le=180)
     supports_drive: bool
@@ -45,14 +45,27 @@ class StoreMergeData(BaseModel):
     external_store_id: str | None = Field(max_length=100)
     osm_type: str | None = Field(max_length=20)
     osm_id: int | None = Field(ge=1)
+    online: bool = False
 
-    @field_validator("name","city","postal_code")
+    @field_validator("name")
     @classmethod
     def nonblank(cls,value: str) -> str:
         cleaned=value.strip()
         if not cleaned:
             raise ValueError("Champ magasin obligatoire.")
         return cleaned
+
+    @field_validator("city","postal_code")
+    @classmethod
+    def clean_place(cls,value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    @model_validator(mode="after")
+    def address_unless_online(self):
+        # A shop needs its address; an online platform has none.
+        if not self.online and (not self.city or not self.postal_code):
+            raise ValueError("Champ magasin obligatoire.")
+        return self
 
 
 def _fingerprint(value: dict) -> str:
@@ -350,11 +363,11 @@ async def merge(report_id: int, payload: MergeInput, request: Request):
                 try:
                     await connection.execute(
                         "UPDATE v2_stores SET name=$1,city=$2,postal_code=$3,latitude=$4,longitude=$5,"
-                        "supports_drive=$6,supports_delivery=$7,external_store_id=$8,osm_type=$9,osm_id=$10 "
+                        "supports_drive=$6,supports_delivery=$7,external_store_id=$8,osm_type=$9,osm_id=$10,online=$12 "
                         "WHERE id=$11",result["name"],result["city"],result["postal_code"],
                         result["latitude"],result["longitude"],result["supports_drive"],
                         result["supports_delivery"],result["external_store_id"],
-                        result["osm_type"],result["osm_id"],origin["id"],
+                        result["osm_type"],result["osm_id"],origin["id"],result["online"],
                     )
                 except (TypeError, ValueError) as exc:
                     raise HTTPException(status_code=422, detail="Champ magasin invalide.") from exc

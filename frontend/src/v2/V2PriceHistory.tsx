@@ -13,7 +13,7 @@ import "./v2-price-history.css";
 type Observation = {
   id: number; price: string; observed_at: string; retailer: string; retailer_id: number;
   source_retailer: string | null;
-  store_name: string; store_id: number; city: string | null; postal_code: string | null; sales_channel: Channel;
+  store_name: string; store_id: number; city: string | null; postal_code: string | null; online?: boolean; sales_channel: Channel;
   source: "manual" | "bookmarklet" | "connector" | "third_party"; source_provider: string | null;
   available: boolean; correction_status: string | null; note: string | null;
 };
@@ -23,7 +23,7 @@ type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" 
   capture_ean: string | null; quantity_text: string | null; captured_store_name: string | null;
 };
 type Channel = "in_store" | "drive" | "delivery";
-type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string;
+type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string; online: boolean;
   sales_channel: Channel; price: string; observed_at: string; note: string };
 type PricesResponse = { observations: Observation[]; truncated: boolean; latest_by_store: Observation[]; stores_truncated: boolean };
 const channels: Record<Channel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
@@ -31,7 +31,7 @@ const money = (value: string | number) => new Intl.NumberFormat("fr-FR", { style
 const dayTime = (value: string) => new Date(value + "T12:00:00").getTime();
 const date = (value: string | number) => new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value)
   .toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
-const seriesLabel = (row: Observation) => [row.retailer, row.store_name, row.city, row.postal_code, channels[row.sales_channel]].filter(Boolean).join(" · ");
+const seriesLabel = (row: Observation) => [row.retailer, row.store_name, ...(row.online ? ["En ligne"] : [row.city, row.postal_code]), channels[row.sales_channel]].filter(Boolean).join(" · ");
 function storeMeta(row: Observation) {
   const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
   const name = fold(row.store_name);
@@ -47,7 +47,7 @@ function localToday() {
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 function initialForm(): DraftForm {
-  return { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "in_store",
+  return { retailer: "", store_name: "", city: "", postal_code: "", online: false, sales_channel: "in_store",
     price: "", observed_at: localToday(), note: "" };
 }
 
@@ -414,14 +414,20 @@ export default function V2PriceHistory({ productId, user, current }: { productId
             onChange={event => setForm({ ...form, retailer: event.target.value })} /></label>
           <label>Point de vente ou service<input required maxLength={300} value={form.store_name} disabled={busy}
             onChange={event => setForm({ ...form, store_name: event.target.value })} /></label>
-          <label>Ville ou zone desservie<input required maxLength={200} value={form.city} disabled={busy}
-            onChange={event => setForm({ ...form, city: event.target.value })} /></label>
-          <label>Code postal<input required maxLength={20} value={form.postal_code} disabled={busy}
-            onChange={event => setForm({ ...form, postal_code: event.target.value })} /></label>
-          <label>Canal<select value={form.sales_channel} disabled={busy}
-            onChange={event => setForm({ ...form, sales_channel: event.target.value as Channel })}>
-            {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select></label>
+          <label className="v2-price-online"><input type="checkbox" checked={form.online} disabled={busy}
+            onChange={event => setForm(event.target.checked
+              ? { ...form, online: true, city: "", postal_code: "", sales_channel: "delivery" }
+              : { ...form, online: false, sales_channel: "in_store" })} />
+            Plateforme en ligne<small>Amazon, par exemple : pas d’adresse, livraison partout.</small></label>
+          {!form.online && <>
+            <label>Ville ou zone desservie<input required maxLength={200} value={form.city} disabled={busy}
+              onChange={event => setForm({ ...form, city: event.target.value })} /></label>
+            <label>Code postal<input required maxLength={20} value={form.postal_code} disabled={busy}
+              onChange={event => setForm({ ...form, postal_code: event.target.value })} /></label>
+            <label>Canal<select value={form.sales_channel} disabled={busy}
+              onChange={event => setForm({ ...form, sales_channel: event.target.value as Channel })}>
+              {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label></>}
           <label>Prix en euros<input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal"
             required value={form.price} disabled={busy}
             onChange={event => setForm({ ...form, price: event.target.value })} /></label>

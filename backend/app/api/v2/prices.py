@@ -46,6 +46,8 @@ class PriceDraftCreate(BaseModel):
     city: str = Field(default="", max_length=200)
     postal_code: str = Field(default="", max_length=20)
     sales_channel: Literal["in_store", "drive", "delivery"] = "in_store"
+    # An online platform (Amazon, for example): no shop address, delivered everywhere.
+    online: bool = False
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     observed_at: datetime
     note: str = Field(default="", max_length=1000)
@@ -68,7 +70,12 @@ class PriceDraftCreate(BaseModel):
 
     @model_validator(mode="after")
     def alias_requires_store(self):
-        if self.store_id is None and (not self.city or not self.postal_code):
+        if self.online:
+            if self.city or self.postal_code:
+                raise ValueError("Une plateforme en ligne n’a ni ville ni code postal.")
+            if self.sales_channel != "delivery":
+                raise ValueError("Une plateforme en ligne vend en livraison.")
+        if self.store_id is None and not self.online and (not self.city or not self.postal_code):
             raise ValueError("Indiquez la ville et le code postal du nouveau magasin.")
         if self.propose_store_alias and (self.store_id is None or not self.captured_store_name):
             raise ValueError("Choisissez un magasin existant et indiquez son nom capturé.")
@@ -184,11 +191,15 @@ async def _retailer_store(
         )
         if source_group_id is None or source_group_id != store["retailer_group_id"]:
             raise HTTPException(status_code=422, detail="Le magasin ne correspond pas au groupe d’enseignes.")
-        if not (store["city"] or "").strip() or not (store["postal_code"] or "").strip():
+        if store["online"] != payload.online:
+            raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
+        if not store["online"] and (
+                not (store["city"] or "").strip() or not (store["postal_code"] or "").strip()):
             raise HTTPException(status_code=422, detail="Ce magasin doit être complété avant un nouveau relevé.")
-        if (store["name"] != payload.store_name or
+        # A platform marked online may keep an old address: it is not asked for any more.
+        if (store["name"] != payload.store_name or not store["online"] and (
                 (store["city"] or "") != payload.city or
-                (store["postal_code"] or "") != payload.postal_code):
+                (store["postal_code"] or "") != payload.postal_code)):
             raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
         alias_id = None
         if payload.propose_store_alias:
@@ -208,7 +219,8 @@ async def _retailer_store(
             code, payload.retailer,
         )
     identity = "|".join((
-        str(retailer_id), payload.store_name, payload.city, payload.postal_code
+        str(retailer_id), payload.store_name, payload.city, payload.postal_code,
+        *(("online",) if payload.online else ()),
     ))
     import_key = "manual:store:" + _hash(identity)
     if await connection.fetchval(
@@ -217,11 +229,11 @@ async def _retailer_store(
     ):
         raise HTTPException(status_code=409, detail="Ce magasin a été supprimé définitivement.")
     store_id = await connection.fetchval(
-        "INSERT INTO v2_stores(retailer_id,name,city,postal_code,import_key) "
-        "VALUES($1,$2,$3,$4,$5) ON CONFLICT(import_key) DO UPDATE "
+        "INSERT INTO v2_stores(retailer_id,name,city,postal_code,import_key,online,supports_delivery) "
+        "VALUES($1,$2,$3,$4,$5,$6,$6) ON CONFLICT(import_key) DO UPDATE "
         "SET import_key=EXCLUDED.import_key RETURNING id",
         retailer_id, payload.store_name, payload.city or None,
-        payload.postal_code or None, import_key,
+        payload.postal_code or None, import_key, payload.online,
     )
     canonical = await connection.fetchrow(
         "SELECT COALESCE(m.to_id,s.id) AS store_id,"
@@ -256,6 +268,7 @@ def _observation(row: asyncpg.Record) -> dict:
         "store_id": row["store_id"],
         "city": row["city"],
         "postal_code": row["postal_code"],
+        "online": row["online"],
         "sales_channel": row["sales_channel"],
         "source": row["source"],
         "source_provider": row["source_provider"],
@@ -306,7 +319,7 @@ async def _product_prices(connection, product_id: int, state: dict) -> dict:
                b.source_provider,b.available,b.correction_status,b.note,
                r.name AS retailer,r.id AS retailer_id,
                sr.name AS source_retailer,s.name AS store_name,
-               s.id AS store_id,s.city,s.postal_code
+               s.id AS store_id,s.city,s.postal_code,s.online
         FROM compact_history b
         JOIN v2_retailers r ON r.id=b.retailer_id
         LEFT JOIN v2_retailers sr ON sr.id=b.source_retailer_id
@@ -325,7 +338,7 @@ async def _product_prices(connection, product_id: int, state: dict) -> dict:
                    o.source_provider,o.available,o.correction_status,o.note,
                    r.name AS retailer,r.id AS retailer_id,
                    sr.name AS source_retailer,s.name AS store_name,
-                   s.id AS store_id,s.city,s.postal_code
+                   s.id AS store_id,s.city,s.postal_code,s.online
             FROM v2_price_observations o
             JOIN v2_retailers r ON r.id=o.retailer_id
             LEFT JOIN v2_retailers sr ON sr.id=o.source_retailer_id

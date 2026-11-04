@@ -7,19 +7,20 @@ const source = readFileSync(new URL("../src/v2/v2-site-nav.ts", import.meta.url)
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { DOCK_ITEMS, SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
+const { SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 
-test("the dock has the five main sections, each with a distinct address", () => {
-  assert.deepEqual(DOCK_ITEMS.map(item => item.id), ["home", "products", "stores", "recipes", "basket"]);
-  assert.equal(new Set(DOCK_ITEMS.map(item => item.to)).size, DOCK_ITEMS.length);
+test("shopping keeps the baskets and leaves the stores out; the contribution mode does the reverse", () => {
+  assert.deepEqual(dockItems("shopping", false).map(item => item.id), ["home", "products", "recipes", "basket"]);
+  assert.deepEqual(dockItems("contribute", false).map(item => item.id), ["home", "products", "stores", "recipes"]);
+  assert.deepEqual(dockItems("contribute", true).map(item => item.id), ["home", "products", "stores", "recipes"]);
+  for (const items of [dockItems("shopping", true), dockItems("contribute", false)])
+    assert.equal(new Set(items.map(item => item.to)).size, items.length);
 });
 
 test("the shared basket gets its own dock entry once the account follows one", () => {
-  assert.deepEqual(dockItems(false).map(item => item.id), ["home", "products", "stores", "recipes", "basket"]);
-  assert.deepEqual(dockItems(true).map(item => item.id), ["home", "products", "stores", "recipes", "basket", "shared"]);
-  assert.equal(dockItems(true).at(-1).to, "/v2/panier/partage");
-  assert.equal(new Set(dockItems(true).map(item => item.to)).size, 6);
+  assert.deepEqual(dockItems("shopping", true).map(item => item.id), ["home", "products", "recipes", "basket", "shared"]);
+  assert.equal(dockItems("shopping", true).at(-1).to, "/v2/panier/partage");
   assert.equal(sharedBasketLabel(0), "Panier partagé, vide");
   assert.equal(sharedBasketLabel(3), "Panier partagé, 3 articles");
 });
@@ -43,16 +44,23 @@ test("pages reached from the profile menu highlight no dock item", () => {
     assert.equal(activeDockId(path), null, path);
 });
 
-test("a signed-out visitor is offered to sign in, to contribute and to open the settings, but no admin links", () => {
-  const links = profileMenuSections(null).flatMap(section => section.links.map(link => link.to));
-  assert.deepEqual(links.slice(0, 2), ["/v2/connexion", "/v2/inscription"]);
-  assert.ok(links.includes("/v2/parametres") && links.includes("/v2/produits/nouveau"));
-  assert.ok(!links.some(to => to.includes("moderation") || to.includes("brouillons")));
+test("a signed-out visitor is offered to sign in and to open the settings, but no contribution or admin links", () => {
+  for (const mode of ["shopping", "contribute"]) {
+    const links = profileMenuSections(null, mode).flatMap(section => section.links.map(link => link.to));
+    assert.deepEqual(links, ["/v2/connexion", "/v2/inscription", "/v2/parametres"]);
+  }
 });
 
-test("a member sees their drafts, the settings and the contribution links, and nothing administrative", () => {
+test("shopping leaves the contribution links to the contribution mode", () => {
+  const links = profileMenuSections({ username: "alice", role: "confirmed" }, "shopping").flatMap(section => section.links.map(link => link.to));
+  assert.deepEqual(links, ["/v2/parametres"]);
+  const admin = profileMenuSections({ username: "root", role: "admin" }, "shopping");
+  assert.deepEqual(admin.map(section => section.id), ["me", "admin"]);
+});
+
+test("in the contribution mode, a member sees their drafts, the settings and the contribution links, and nothing administrative", () => {
   for (const role of ["confirmed", "visitor"]) {
-    const sections = profileMenuSections({ username: "alice", role });
+    const sections = profileMenuSections({ username: "alice", role }, "contribute");
     const links = sections.flatMap(section => section.links.map(link => link.to));
     assert.ok(links.includes("/v2/brouillons") && links.includes("/v2/parametres"), role);
     assert.ok(!links.includes("/v2/connexion"), role);
@@ -69,7 +77,7 @@ test("an administrator also gets the administration links, pointing to existing 
 });
 
 test("link ids are unique within the menu and the beta tag is on the capture link only", () => {
-  const all = profileMenuSections({ username: "root", role: "admin" }).flatMap(section => section.links);
+  const all = profileMenuSections({ username: "root", role: "admin" }, "contribute").flatMap(section => section.links);
   assert.equal(new Set(all.map(link => link.id)).size, all.length);
   assert.deepEqual(all.filter(link => link.tag).map(link => link.id), ["capture"]);
 });

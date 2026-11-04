@@ -12,6 +12,8 @@ import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
 import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import V2BasketAddButtons from "./V2BasketAddButtons";
+import V2ShoppingPrice from "./V2ShoppingPrice";
+import { useAppMode } from "./useAppMode";
 import V2ShareButton from "./V2ShareButton";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -379,13 +381,36 @@ function Editor({ mode, id, user, onLogout }: Props) {
   </Frame>;
 }
 
+/**
+ * The product as a shopper needs it: its name, its quantity, its lowest known price, the comparable
+ * products and the baskets. The rest is the contribution mode's.
+ */
+function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void> }) {
+  const d = completeProductData(product.data);
+  return <Frame user={user} onLogout={onLogout}>
+    <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
+      <span className="v2-section-kicker">PRODUIT</span>
+      <h1 id="v2-product-simple-name">{[d.brand, d.name].filter(Boolean).join(" ")}<span>.</span></h1>
+      <dl className="v2-workspace-facts"><div><dt>Quantité</dt><dd>{d.quantity || "À préciser"}</dd></div></dl>
+      {product.successor_id ? <p><Link to={"/v2/produits/" + product.successor_id}>Cette référence a changé : voir la version actuelle →</Link></p>
+        : id ? <>
+          <V2ShoppingPrice productId={id} userId={user?.id ?? null} />
+          <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /></div>
+          {d.group && <p className="v2-product-simple-group"><Link to={"/v2/categories/" + encodeURIComponent(d.group)}>Voir les produits comparables · {d.group} →</Link></p>}
+        </> : null}
+    </section>
+  </Frame>;
+}
+
 function Detail({ mode, id, user, onLogout }: Props) {
+  const contributing = useAppMode().mode === "contribute";
   const { data: product, error } = useCollection<Product>("/" + id);
-  const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", mode === "history");
+  const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", contributing && mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
+  if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>
@@ -394,6 +419,9 @@ function Detail({ mode, id, user, onLogout }: Props) {
       <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
     <nav className="v2-workspace-subnav"><Link to={"/v2/produits/" + id}>Fiche</Link><Link to={"/v2/produits/" + id + "/historique"}>Historique</Link></nav>
+    {/* Prices first: they are what most visits come for; the full sheet follows. */}
+    {mode !== "history" && id && !product.successor_id && !product.merged_to_id && <V2ExtensionPriceButton key={`ext:${id}:${user?.id ?? "visitor"}`} productId={id} ean={d.ean} user={user} />}
+    {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode === "history" ? <div className="v2-workspace-card"><h2>Historique des modifications</h2>
       {!events ? <p>Chargement…</p> : events.length === 0 ? <p>Aucune modification.</p> : events.map(event =>
         <article key={event.id} className="v2-workspace-event"><strong>{event.event_type === "created" ? "Création" : event.event_type === "new_version" ? "Nouvelle version" : event.event_type === "superseded" ? "Remplacé par une nouvelle version" : "Correction"}</strong>
@@ -422,8 +450,6 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
-    {mode !== "history" && id && !product.successor_id && !product.merged_to_id && <V2ExtensionPriceButton key={`ext:${id}:${user?.id ?? "visitor"}`} productId={id} ean={d.ean} user={user} />}
-    {mode !== "history" && id && <V2PriceHistory key={`${id}:${user?.id ?? "visitor"}`} productId={id} user={user} current={!product.successor_id} />}
     {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;

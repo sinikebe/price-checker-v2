@@ -80,3 +80,9 @@ test("the account kept for offline use goes with the account, at sign-out and at
   assert.deepEqual(logoutLocalKeys(keys, 7), ["v2:auth:offline-user:7"]);
   assert.ok(accountLocalKeys(keys, 7).includes("v2:auth:offline-user:7") && !accountLocalKeys(keys, 7).includes("v2:auth:offline-user:70"));
 });
+
+test("deleting an account forgets its mode on this device; signing out keeps it", () => {
+  const keys = ["v2:mode:7", "v2:mode:70"];
+  assert.deepEqual(accountLocalKeys(keys, 7), ["v2:mode:7"]);
+  assert.deepEqual(logoutLocalKeys(keys, 7), []);
+});

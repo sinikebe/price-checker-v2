@@ -281,7 +281,7 @@ async def test_each_line_gets_its_candidates_and_prices_like_the_price_page(serv
             assert mine["stores_truncated"] is False
             keys = set(mine["latest_by_store"][0])
             assert keys == {"id", "price", "observed_at", "retailer", "store_name", "store_id", "city",
-                            "postal_code", "sales_channel", "available", "correction_status",
+                            "postal_code", "online", "sales_channel", "available", "correction_status",
                             "source_provider"}
             assert mine["latest_by_store"] == [
                 {key: row[key] for key in keys} for row in published["latest_by_store"]]

@@ -9,7 +9,7 @@ import "./v2-stores-page.css";
 
 type Store = {
   id: number; retailer: string; retailer_id: number; retailer_group: string; retailer_group_id: number; name: string;
-  city: string | null; postal_code: string | null;
+  city: string | null; postal_code: string | null; online: boolean;
   supports_drive: boolean; supports_delivery: boolean; active: boolean;
   external_store_id?: string | null; osm_type?: string | null; osm_id?: number | null;
   aliases?: { source: string; name: string }[]; merged_to_id?: number | null;
@@ -34,6 +34,15 @@ export default function V2StoresPage({ id, user, onLogout }: {
     setBusy(true); setActionError("");
     try {
       await storeRequest("/" + store.id + "/activity", "PUT", { active });
+      setReload(value => value + 1);
+    } catch (cause) { setActionError(String(cause)); }
+    finally { setBusy(false); }
+  }
+  async function changeOnline(online: boolean) {
+    if (!store || busy) return;
+    setBusy(true); setActionError("");
+    try {
+      await storeRequest("/" + store.id + "/online", "PUT", { online });
       setReload(value => value + 1);
     } catch (cause) { setActionError(String(cause)); }
     finally { setBusy(false); }
@@ -72,15 +81,16 @@ export default function V2StoresPage({ id, user, onLogout }: {
       {error && <p role="alert">{error}</p>}
       {!store && !error && <p>Chargement…</p>}
       {store && store.id === id && <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">MAGASIN · {store.retailer_group}</span>
-        <h1>{store.name}<span>.</span></h1><p>{store.postal_code} {store.city}</p></div></div>
+        <h1>{store.name}<span>.</span></h1><p>{store.online ? "Plateforme en ligne · livraison partout" : `${store.postal_code ?? ""} ${store.city ?? ""}`}</p></div></div>
         {store.merged_to_id ? <section className="v2-workspace-card"><h2>Fiche fusionnée</h2>
           <p>Ce magasin a été regroupé avec <Link to={"/v2/magasins/" + store.merged_to_id}>la fiche actuelle</Link>.</p></section> : <>
           <section className="v2-workspace-card"><h2>Informations</h2>
             <dl className="v2-workspace-facts">
               <div><dt>Groupe d’enseignes</dt><dd>{store.retailer_group}</dd></div>
               <div><dt>Enseigne d’origine</dt><dd>{store.retailer}</dd></div>
-              <div><dt>Ville</dt><dd>{store.city || "À compléter"}</dd></div>
-              <div><dt>Code postal</dt><dd>{store.postal_code || "À compléter"}</dd></div>
+              {store.online ? <div><dt>Type</dt><dd>Plateforme en ligne, sans adresse : toujours comparée dans les paniers, quels que soient les filtres de commune ou de département.</dd></div> : <>
+                <div><dt>Ville</dt><dd>{store.city || "À compléter"}</dd></div>
+                <div><dt>Code postal</dt><dd>{store.postal_code || "À compléter"}</dd></div></>}
               <div><dt>Services</dt><dd>{[store.supports_drive && "Drive",store.supports_delivery && "Livraison"].filter(Boolean).join(" · ") || "Non précisés"}</dd></div>
               {user?.role === "admin" && <div><dt>Statut</dt><dd>{store.active ? "Actif" : "Désactivé · masqué au public"}</dd></div>}
               {store.aliases && store.aliases.length > 0 && <div><dt>Autres noms validés</dt><dd>{store.aliases.map(alias => `${alias.name} (${sourceName[alias.source] ?? alias.source})`).join(" · ")}</dd></div>}
@@ -90,6 +100,9 @@ export default function V2StoresPage({ id, user, onLogout }: {
             <p>La désactivation est temporaire : elle masque la fiche, ses prix et ses résultats de panier. Les données restent conservées et peuvent être réactivées.</p>
             <button type="button" className="v2-button v2-button-secondary" disabled={busy}
               onClick={() => void changeActivity(!store.active)}>{store.active ? "Désactiver le magasin" : "Réactiver le magasin"}</button>
+            <p>Une plateforme en ligne (Amazon, par exemple) n’a pas d’adresse et livre partout.</p>
+            <button type="button" className="v2-button v2-button-secondary" disabled={busy}
+              onClick={() => void changeOnline(!store.online)}>{store.online ? "Ce n’est pas une plateforme en ligne" : "Marquer comme plateforme en ligne"}</button>
             <form onSubmit={event => void removeStore(event)}>
               <h3>Supprimer définitivement</h3>
               <p>Cette action efface le magasin et tous ses prix associés, ainsi que les brouillons et offres sources. Elle ne peut pas être annulée.</p>
@@ -117,7 +130,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
           <span><Link to={"/v2/magasins/" + item.id}>{item.name}</Link>
             {!item.active && <small className="v2-stores-inactive"> · Désactivé</small>}
             {item.retailer !== group.name && <small className="v2-stores-source"> · {item.retailer}</small>}</span>
-          <span>{item.postal_code} {item.city || "Ville à compléter"}</span>
+          <span>{item.online ? "En ligne" : <>{item.postal_code} {item.city || "Ville à compléter"}</>}</span>
         </li>)}</ul>
       </section>)}
     </>}
