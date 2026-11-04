@@ -1265,6 +1265,41 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.143",
+      "components": {
+        "application": {
+          "version": "0.1.143",
+          "notes": [
+            "Les confirmations s’affichent dans la page, avec un bouton qui dit l’action, au lieu des fenêtres du navigateur."
+          ]
+        },
+        "products": {
+          "version": "0.1.68",
+          "notes": [
+            "Rejeter une proposition de produit ou abandonner un brouillon se confirme dans la page."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.29",
+          "notes": [
+            "Publier, supprimer ou proposer une recette se confirme dans la page."
+          ]
+        },
+        "basket": {
+          "version": "0.1.51",
+          "notes": [
+            "Vider un panier, le remplacer ou gérer un panier partagé se confirme dans la page."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.46",
+          "notes": [
+            "La déconnexion et les réglages de double authentification se confirment dans la page."
+          ]
+        }
+      }
     }
   ]
 }
