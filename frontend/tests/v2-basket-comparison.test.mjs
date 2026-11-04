@@ -72,6 +72,17 @@ test("filters allow several stores, cities or departments and limit both compari
   }).splitCents, 50);
 });
 
+test("an online platform passes the city and department filters, not a store choice", () => {
+  const item = product(1);
+  const results = new Map([[1, response(
+    reading(1, 10, "2.00", { city: "Paris", postal_code: "75001" }),
+    reading(2, 40, "1.00", { city: null, postal_code: null, online: true, sales_channel: "delivery" }),
+  )]]);
+  const keys = filters => buildBasketComparison([line(item, item)], results, filters).stores.map(store => store.key);
+  assert.deepEqual(keys({ storeIds: [], cities: ["Paris"], departments: ["75"] }), ["40:delivery", "10:in_store"]);
+  assert.deepEqual(keys({ storeIds: [10], cities: [], departments: [] }), ["10:in_store"]);
+});
+
 test("failed candidates do not yield a misleading minimum for a group", () => {
   const group = { kind: "group", name: "Beans" };
   const comparison = buildBasketComparison([line(group, product(1), product(2))], new Map([

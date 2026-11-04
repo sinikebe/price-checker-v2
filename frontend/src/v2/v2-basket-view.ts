@@ -59,6 +59,7 @@ export function freshness(value: string) {
   return { code: "old", label: "Ancien" };
 }
 export function storeName(row: BasketPrice) {
+  if (row.online) return [row.store_name, "En ligne", channelNames[row.sales_channel]].join(" · ");
   return [row.store_name, row.city, row.postal_code, channelNames[row.sales_channel]].filter(Boolean).join(" · ");
 }
 export const quantityText = (quantity: NonNullable<BasketItem["quantity"]>) =>

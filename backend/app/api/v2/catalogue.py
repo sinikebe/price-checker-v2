@@ -110,7 +110,7 @@ async def to_complete(
         stores = await connection.fetch(
             f"""SELECT s.id,s.name,s.city,s.postal_code,r.name AS retailer
                 FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id
-                WHERE s.active AND EXISTS (
+                WHERE s.active AND NOT s.online AND EXISTS (
                     SELECT 1 FROM v2_price_observations o
                     JOIN v2_products p ON p.id=o.product_id
                     WHERE o.store_id=s.id AND NOT o.superseded AND {CURRENT})

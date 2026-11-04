@@ -1182,6 +1182,11 @@ MIGRATIONS = {
         CREATE INDEX v2_shared_basket_prices_fetched_by_idx ON v2_shared_basket_prices(fetched_by)
             WHERE fetched_by IS NOT NULL;
     """,
+    "0048_online_stores": """
+        -- An online platform (Amazon, for example) has no shop address: it delivers everywhere, so
+        -- basket comparisons keep it whatever the city or department filters.
+        ALTER TABLE v2_stores ADD COLUMN online boolean NOT NULL DEFAULT false;
+    """,
 }
 
 

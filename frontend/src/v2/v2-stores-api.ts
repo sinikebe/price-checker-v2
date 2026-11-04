@@ -1,7 +1,7 @@
 export type StoreCandidate = {
   id: number; retailer: string; retailer_id: number; retailer_group_id: number;
   name: string; city: string | null;
-  postal_code: string | null; match: "exact" | "near"; matched_name: string;
+  postal_code: string | null; online?: boolean; match: "exact" | "near"; matched_name: string;
 };
 export type StoreMatches = { matches: StoreCandidate[]; exact_store_id: number | null };
 export type AliasSource = "retailer" | "open_food_facts" | "open_prices";

@@ -20,7 +20,7 @@ const labels: Record<string,string> = {
   nutrition_checked_at: "Contrôle nutritionnel", off_source: "Source OFF",
   city: "Ville", postal_code: "Code postal", latitude: "Latitude", longitude: "Longitude",
   supports_drive: "Drive", supports_delivery: "Livraison", external_store_id: "Identifiant externe",
-  osm_type: "Type OSM", osm_id: "Identifiant OSM",
+  osm_type: "Type OSM", osm_id: "Identifiant OSM", online: "Plateforme en ligne",
 };
 function format(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";

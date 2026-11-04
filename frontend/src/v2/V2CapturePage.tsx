@@ -216,7 +216,8 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     storeEditVersion.current += 1;
     setSelectedStore({ candidate, aliasName }); setCreateStore(false);
     setStore(current => ({ ...current, store_name: candidate.name,
-      city: candidate.city || "", postal_code: candidate.postal_code || "" }));
+      city: candidate.city || "", postal_code: candidate.postal_code || "",
+      ...(candidate.online ? { sales_channel: "delivery" as const } : {}) }));
   }
   async function searchStores() {
     const version = ++storeEditVersion.current;
@@ -252,6 +253,8 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     try {
       const pricePayload = { ...store, price, observed_at: observedAt, note,
         captured_store_name: selectedStore?.aliasName || payload.store?.name || null,
+        // An online platform has no address and sells for delivery only.
+        ...(selectedStore?.candidate.online ? { online: true, city: "", postal_code: "", sales_channel: "delivery" } : {}),
         ...(selectedStore ? { store_id: selectedStore.candidate.id,
           propose_store_alias: Boolean(selectedStore.aliasName), alias_source: "retailer" } : {}) };
       let next: Submitted;

@@ -44,6 +44,7 @@ class TransferStore(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20)
     supports_drive: bool = False
     supports_delivery: bool = False
+    online: bool = False
 
 
 class TransferPrice(BaseModel):
@@ -149,7 +150,7 @@ async def export_products_prices(request: Request):
         )
         stores = await connection.fetch(
             "SELECT id, retailer_id, name, city, postal_code, supports_drive, "
-            "supports_delivery FROM v2_stores WHERE id = ANY($1::bigint[]) ORDER BY id",
+            "supports_delivery, online FROM v2_stores WHERE id = ANY($1::bigint[]) ORDER BY id",
             [row["store_id"] for row in prices],
         )
         retailers = await connection.fetch(
@@ -397,11 +398,11 @@ async def _import_locations(
         key = _key(source, "s", source_id)
         target_id = await connection.fetchval(
             "INSERT INTO v2_stores(retailer_id,name,city,postal_code,"
-            "supports_drive,supports_delivery,import_key) "
-            "VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(import_key) DO UPDATE "
+            "supports_drive,supports_delivery,import_key,online) "
+            "VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(import_key) DO UPDATE "
             "SET import_key=EXCLUDED.import_key RETURNING id",
             retailer_map[store.retailer_id], store.name, store.city,
-            store.postal_code, store.supports_drive, store.supports_delivery, key,
+            store.postal_code, store.supports_drive, store.supports_delivery, key, store.online,
         )
         store_map[source_id] = target_id
         if source_id in approved_deleted_ids:

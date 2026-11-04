@@ -52,7 +52,10 @@
 .v2-price-contribute h3 { margin: 0 0 8px; }
 .v2-price-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
 .v2-price-fields label { display: grid; gap: 6px; font-weight: 700; }
-.v2-price-fields :is(input,select) { min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: #fff; color: #203f30; }
+.v2-price-fields .v2-price-online { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.v2-price-fields .v2-price-online input { width: auto; }
+.v2-price-fields .v2-price-online small { flex-basis: 100%; font-weight: 400; }
+.v2-price-fields :is(input:not([type=checkbox]),select) { min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: #fff; color: #203f30; }
 .v2-price-contribute button { cursor: pointer; }
 .v2-price-drafts { margin-top: 25px; }
 .v2-price-drafts ul { padding: 0; list-style: none; }

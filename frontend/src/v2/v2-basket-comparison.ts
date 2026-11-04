@@ -4,6 +4,8 @@ import { baseQuantity, microUnits, pricedQuantity, productSizeIn, productSizes, 
 export type BasketPrice = {
   id: number; price: string; observed_at: string; retailer: string; store_name: string;
   store_id: number; city: string | null; postal_code: string | null;
+  /** An online platform: no address, delivered everywhere. */
+  online?: boolean;
   sales_channel: "in_store" | "drive" | "delivery";
   available: boolean; correction_status: string | null; source_provider: string | null;
 };
@@ -54,10 +56,11 @@ export function postalDepartment(postalCode: string | null): string | null {
   if (code.startsWith("20")) return Number(code.slice(0, 3)) <= 201 ? "2A" : "2B";
   return code.slice(0, 2);
 }
+/** Online platforms deliver everywhere: the city and department filters keep them. */
 export function matchesBasketFilters(row: BasketPrice, filters: BasketFilters): boolean {
   return (!filters.storeIds.length || filters.storeIds.includes(row.store_id))
-    && (!filters.cities.length || filters.cities.some(city => fold(city) === fold(row.city ?? "")))
-    && (!filters.departments.length || filters.departments.includes(postalDepartment(row.postal_code) ?? ""));
+    && (row.online === true || !filters.cities.length || filters.cities.some(city => fold(city) === fold(row.city ?? "")))
+    && (row.online === true || !filters.departments.length || filters.departments.includes(postalDepartment(row.postal_code) ?? ""));
 }
 function validPrice(row: BasketPrice): number | null {
   const value = Number(row.price);
