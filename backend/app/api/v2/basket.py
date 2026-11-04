@@ -8,11 +8,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _bump_limit, _connect, _secure_write, _session_user
+from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
 from app.api.v2.auth_security import account_limit_key
 from app.api.v2.catalogue import MAX_BIGINT, group_rows, scope_rows
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
+from app.api.v2.selections import Selection, SelectionRef, member_counts, selection_rows
 from app.services import v2_basket_credits as credits
 from app.services import v2_logbook as logbook
 
@@ -52,9 +53,11 @@ class ScopeRef(BaseModel):
     _clean = field_validator("department", "family", "name")(_clean)
 
 
+BasketRef = Annotated[ProductRef | GroupRef | ScopeRef | SelectionRef, Field(discriminator="kind")]
+
+
 class BasketPricesRequest(BaseModel):
-    items: list[Annotated[ProductRef | GroupRef | ScopeRef, Field(discriminator="kind")]] = Field(
-        min_length=1, max_length=MAX_ITEMS)
+    items: list[BasketRef] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
 async def _current_product(connection, product_id: int):
@@ -152,6 +155,8 @@ async def _gather(connection, items) -> dict:
             rows = [row] if row else []
         elif ref.kind == "group":
             rows = await group_rows(connection, ref.name, MAX_CANDIDATES + 1)
+        elif ref.kind == "selection":
+            rows = await selection_rows(connection, ref, MAX_CANDIDATES + 1, _current_product)
         else:
             rows = await scope_rows(connection, ref.department, ref.family, ref.name,
                                     MAX_CANDIDATES + 1)
@@ -236,5 +241,48 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
                 detail={"code": "no_credits", "credits": public, "cost": cost,
                         "message": f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier."})
         return {**result, "credits": public, "cost": cost}
+    finally:
+        await connection.close()
+
+
+PREVIEWS_PER_MINUTE = 30
+PREVIEW_SAMPLE = 20
+PREVIEW_GROUPS = 30
+
+
+@router.post("/selection")
+async def preview_selection(payload: Selection, request: Request, response: Response):
+    """What a selection holds, without prices and without credits: how many products, which groups,
+    a few of them, and how many products each included part matches on its own (0: a name to fix).
+
+    Example: `{"name": "Jus de fruits bio", "include": [{"family": "Jus de fruits"}], "words": ["bio"]}`.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    connection = await _connect()
+    try:
+        # Open to visitors, like the catalogue, but bounded per client.
+        key = _limit_key("basket-selection-preview", request)
+        if await _bump_limit(connection, key, 60) > PREVIEWS_PER_MINUTE:
+            raise HTTPException(status_code=429, headers={"Retry-After": "60"},
+                                detail="Trop de requêtes. Réessayez dans un instant.")
+        rows = await selection_rows(connection, payload, MAX_CANDIDATES + 1, _current_product)
+        counts = await member_counts(connection, payload, _current_product)
+        groups: dict[str, dict] = {}
+        for row in rows[:MAX_CANDIDATES]:
+            entry = groups.setdefault(row["category_name"].casefold(), {"name": row["category_name"], "products": 0})
+            entry["products"] += 1
+        sample = []
+        for row in rows[:PREVIEW_SAMPLE]:
+            data = _product(row)["data"]
+            sample.append({"id": row["id"], "name": data.get("name") or "", "brand": data.get("brand") or "",
+                           "quantity": data.get("quantity") or "", "group": row["category_name"]})
+        return {
+            "name": payload.name,
+            "products": min(len(rows), MAX_CANDIDATES), "truncated": len(rows) > MAX_CANDIDATES,
+            "include": [{"index": index, "level": member.level, "products": count}
+                        for index, (member, count) in enumerate(zip(payload.include, counts, strict=True))],
+            "groups": sorted(groups.values(), key=lambda item: (-item["products"], item["name"].casefold()))[:PREVIEW_GROUPS],
+            "sample": sample,
+        }
     finally:
         await connection.close()

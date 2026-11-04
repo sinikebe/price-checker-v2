@@ -4,7 +4,7 @@ import V2BasketReplace from "./V2BasketReplace";
 import V2BasketTextAdd from "./V2BasketTextAdd";
 import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketItemKey, isFreeText, validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
-import { alternatives, itemHref, itemKind, itemName, type Category } from "./v2-basket-view";
+import { alternatives, itemHref, itemKind, itemName, selectionSummary, type Category } from "./v2-basket-view";
 
 function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value: BasketQuantity) => void }) {
   const readOnly = !!useContext(BasketReadOnlyContext);
@@ -55,6 +55,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span>{isFreeText(item)
           ? <span className="v2-basket-unlinked">{item.name}</span> : <V2BasketLink to={itemHref(item)}>{itemName(item)}</V2BasketLink>}
           {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}
+          {"kind" in item && item.kind === "selection" && <small className="v2-basket-selection">{selectionSummary(item)}</small>}
           {addedBy?.(item) && <small className="v2-basket-added-by">Ajouté par {addedBy(item)}</small>}</div>
           <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} disabled={readOnly} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>
         <div className="v2-basket-editor-controls">

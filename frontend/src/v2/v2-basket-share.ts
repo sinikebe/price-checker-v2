@@ -1,4 +1,7 @@
-import { validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
+import { validBasketQuantity, validSelection, type BasketItem, type BasketQuantity, type SelectionMember } from "./v2-basket-storage";
+
+/** What a selection holds besides its name, as written in a link. */
+export type SelectionSpec = { include: SelectionMember[]; exclude: SelectionMember[]; words: string[] };
 
 export type SharedBasketEntry =
   | ["p", number, string, 0 | 1]
@@ -8,14 +11,19 @@ export type SharedBasketEntry =
   | ["s", string, string, string, 0 | 1]
   | ["p", number, string, 0 | 1, BasketQuantity | null]
   | ["g", string, 0 | 1, BasketQuantity | null]
-  | ["s", string, string, string, 0 | 1, BasketQuantity | null];
+  | ["s", string, string, string, 0 | 1, BasketQuantity | null]
+  | ["x", string, 0 | 1, SelectionSpec]
+  | ["x", string, 0 | 1, SelectionSpec, BasketQuantity | null];
 
-const groupLike = (entry: SharedBasketEntry) => entry[0] === "g" || entry[0] === "t";
+const groupLike = (entry: SharedBasketEntry | unknown[]) => entry[0] === "g" || entry[0] === "t";
+// Where each kind of entry keeps its quantity (version 2 only) and its excluded flag.
+const quantityAt = (entry: SharedBasketEntry | unknown[]) => entry[0] === "p" || entry[0] === "x" ? 4 : groupLike(entry) ? 3 : 5;
+const disabledAt = (entry: SharedBasketEntry | unknown[]) => entry[0] === "p" ? 3 : groupLike(entry) || entry[0] === "x" ? 2 : 4;
 export const sharedEntryQuantity = (entry: SharedBasketEntry): BasketQuantity | undefined => {
-  const value = entry[entry[0] === "p" ? 4 : groupLike(entry) ? 3 : 5];
+  const value = entry[quantityAt(entry)];
   return validBasketQuantity(value) ? value : undefined;
 };
-export const sharedEntryDisabled = (entry: SharedBasketEntry): boolean => Boolean(entry[entry[0] === "p" ? 3 : groupLike(entry) ? 2 : 4]);
+export const sharedEntryDisabled = (entry: SharedBasketEntry): boolean => Boolean(entry[disabledAt(entry)]);
 
 const MAX_ITEMS = 100;
 const MAX_TOKEN_LENGTH = 12000;
@@ -32,7 +40,10 @@ export function encodeBasketShare(items: BasketItem[]): string | null {
       if (!validText(item.name)) return null;
       if (item.kind === "group") entries.push(version === 2 ? ["g", item.name, disabled, item.quantity ?? null] : ["g", item.name, disabled]);
       else if (item.kind === "text") entries.push(version === 2 ? ["t", item.name, disabled, item.quantity ?? null] : ["t", item.name, disabled]);
-      else if (validText(item.department) && validText(item.family))
+      else if (item.kind === "selection") {
+        const spec: SelectionSpec = { include: item.include, exclude: item.exclude ?? [], words: item.words ?? [] };
+        entries.push(version === 2 ? ["x", item.name, disabled, spec, item.quantity ?? null] : ["x", item.name, disabled, spec]);
+      } else if (validText(item.department) && validText(item.family))
         entries.push(version === 2 ? ["s", item.department, item.family, item.name, disabled, item.quantity ?? null] : ["s", item.department, item.family, item.name, disabled]);
       else return null;
     } else {
@@ -64,7 +75,7 @@ export function decodeBasketShare(hash: string): SharedBasketEntry[] | null {
     for (const entry of data[1]) {
       if (!Array.isArray(entry)) return null;
       let key: string;
-      const quantityIndex = entry[0] === "p" ? 4 : entry[0] === "g" || entry[0] === "t" ? 3 : 5;
+      const quantityIndex = quantityAt(entry);
       const oldLength = quantityIndex;
       if (entry.length !== oldLength + (version === 2 ? 1 : 0)
         || (version === 2 && entry[quantityIndex] !== null && !validBasketQuantity(entry[quantityIndex]))) return null;
@@ -73,6 +84,9 @@ export function decodeBasketShare(hash: string): SharedBasketEntry[] | null {
         key = "p:" + entry[1];
       } else if ((entry[0] === "g" || entry[0] === "t") && validText(entry[1]) && validFlag(entry[2])) {
         key = entry[0] + ":" + entry[1].toLocaleLowerCase("fr");
+      } else if (entry[0] === "x" && validFlag(entry[2]) && entry[3] && typeof entry[3] === "object"
+        && validSelection({ ...entry[3], kind: "selection", name: entry[1] })) {
+        key = "x:" + String(entry[1]).toLocaleLowerCase("fr");
       } else if (entry[0] === "s" && validText(entry[1])
         && validText(entry[2]) && validText(entry[3]) && validFlag(entry[4])) {
         key = ["s", entry[1], entry[2], entry[3]].map(String).join(":").toLocaleLowerCase("fr");
@@ -86,5 +100,5 @@ export function decodeBasketShare(hash: string): SharedBasketEntry[] | null {
 }
 
 export function sharedEntryName(entry: SharedBasketEntry): string {
-  return entry[0] === "p" ? entry[2] : entry[0] === "g" || entry[0] === "t" ? entry[1] : entry[3];
+  return entry[0] === "p" ? entry[2] : entry[0] === "g" || entry[0] === "t" || entry[0] === "x" ? entry[1] : entry[3];
 }

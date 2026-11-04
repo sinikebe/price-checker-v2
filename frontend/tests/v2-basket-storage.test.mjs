@@ -14,7 +14,7 @@ globalThis.localStorage = {
   removeItem: key => storage.delete(key),
 };
 globalThis.window = { dispatchEvent: () => {} };
-const { readV2Basket, writeV2Basket, activateBasketUser, withProductData, basketItemKey, isFreeText, isPriceable } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { readV2Basket, writeV2Basket, activateBasketUser, withProductData, basketItemKey, isFreeText, isPriceable, validSelection } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const product = { id: 1, revision: 1, data: { name: "Jus" } };
 const group = { kind: "group", name: "Jus d'orange" };
 const scope = { kind: "scope", name: "Jus", department: "Boissons", family: "Jus de fruits" };
@@ -60,4 +60,20 @@ test("free text is a basket line of its own: kept, keyed by its words, never pri
   assert.equal(isFreeText(text), true);
   assert.equal(isPriceable(text), false);
   assert.equal(isPriceable({ kind: "group", name: "Lait" }), true);
+});
+
+
+test("a selection is kept with its parts, keyed by its name, and priced like a group", () => {
+  const selection = { kind: "selection", name: "Jus de fruits bio", include: [{ family: "Jus de fruits" }], words: ["bio"] };
+  assert.equal(basketItemKey(selection), "selection:jus de fruits bio");
+  assert.equal(isPriceable(selection), true);
+  assert.equal(validSelection(selection), true);
+  for (const wrong of [
+    { ...selection, include: [] }, { ...selection, include: [{}] }, { ...selection, include: [{ product: 2, group: "Lait" }] },
+    { ...selection, include: [{ group: "Lait", family: "Lait" }] }, { ...selection, words: ["x".repeat(41)] }, { ...selection, name: " " },
+    { ...selection, include: Array(21).fill({ group: "Lait" }) }, { ...selection, exclude: [{ product: 0 }] },
+  ]) assert.equal(validSelection(wrong), false, JSON.stringify(wrong));
+  assert.equal(validSelection({ ...selection, include: [{ scope: "Pâtes sèches", family: "Pâtes", department: "Épicerie" }] }), true);
+  localStorage.setItem("v2:basket:anonymous", JSON.stringify([selection, { ...selection, name: "Cassé", include: [] }]));
+  assert.deepEqual(readV2Basket(null), [selection]);
 });
