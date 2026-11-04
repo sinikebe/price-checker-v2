@@ -749,6 +749,21 @@
       "component": "accounts",
       "version": "0.1.41",
       "reason": "Lecture d’un panier partagé par son lien sans compte, sans changement des comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.50",
+      "reason": "Type de magasin « plateforme en ligne » (migration 0048)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.42",
+      "reason": "Transfert d’instance : le type de magasin est conservé, sans changement des comptes."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.31",
+      "reason": "Fusion de magasins : le type plateforme en ligne est conservé, sans changement de l’import Open Prices."
     }
   ]
 }

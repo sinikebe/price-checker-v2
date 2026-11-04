@@ -1114,6 +1114,35 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.137",
+      "components": {
+        "products": {
+          "version": "0.1.62",
+          "notes": [
+            "Un relevé de prix peut venir d’une plateforme en ligne, comme Amazon : pas d’adresse à saisir, vente en livraison."
+          ]
+        },
+        "basket": {
+          "version": "0.1.46",
+          "notes": [
+            "Les plateformes en ligne livrent partout : le panier les compare quels que soient les filtres de commune ou de département."
+          ]
+        },
+        "application": {
+          "version": "0.1.137",
+          "notes": [
+            "La page d’un magasin indique s’il s’agit d’une plateforme en ligne ; un administrateur peut le préciser."
+          ]
+        },
+        "bookmarklet": {
+          "version": "0.1.7",
+          "notes": [
+            "Une capture rattachée à une plateforme en ligne n’attend ni ville ni code postal."
+          ]
+        }
+      }
     }
   ]
 }
