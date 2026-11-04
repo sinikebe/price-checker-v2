@@ -809,6 +809,11 @@
       "component": "accounts",
       "version": "0.1.44",
       "reason": "Renommage du mode retenu par compte, sans changement des comptes."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.34",
+      "reason": "Page du catalogue : note et badge de niveau déplacé, sans changement de l’import Open Prices."
     }
   ]
 }
