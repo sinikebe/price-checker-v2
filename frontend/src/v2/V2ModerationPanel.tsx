@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
 import V2StoreAliasReview from "./V2StoreAliasReview";
@@ -12,6 +13,7 @@ type Report = {
 const PAGE_SIZE = 30;
 
 export default function V2ModerationPanel() {
+  const confirm = useConfirm();
   const [page, setPage] = useState(0);
   const [reports, setReports] = useState<Report[] | null>(null);
   const [error, setError] = useState("");
@@ -26,7 +28,7 @@ export default function V2ModerationPanel() {
     return () => { active = false; };
   }, [page, reload]);
   async function resolve(report: Report, action: "dismiss" | "withdraw") {
-    if (action === "withdraw" && !window.confirm("Retirer ce contenu public et ses vues associées ?")) return;
+    if (action === "withdraw" && !await confirm({ title: "Retirer le contenu", message: "Retirer ce contenu public et ses vues associées ?", confirmLabel: "Retirer", danger: true })) return;
     setBusy(report.id); setError("");
     try {
       await moderationRequest("/reports/" + report.id + "/resolve", "POST", { action });

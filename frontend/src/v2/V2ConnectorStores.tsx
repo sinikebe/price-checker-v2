@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import V2ConnectorSettings from "./V2ConnectorSettings";
 
@@ -34,6 +35,7 @@ async function request(url: string, method = "GET", body?: unknown): Promise<Res
 }
 
 export default function V2ConnectorStores() {
+  const confirm = useConfirm();
   const [stores, setStores] = useState<Store[]>([]);
   const [name, setName] = useState("");
   const [repository, setRepository] = useState("");
@@ -107,8 +109,8 @@ export default function V2ConnectorStores() {
       </div>}
       <div className="v2-settings-actions">
         <button className="v2-button" type="button" disabled={busy} onClick={() => void action(`${base}/${store.id}/refresh`, "POST", undefined, "Catalogue récupéré.")}>Récupérer le catalogue</button>
-        <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => {
-          if (window.confirm(`Supprimer le store ${store.name} et désinstaller ses connecteurs ? Les anciens prix seront conservés.`))
+        <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
+          if (await confirm({ title: "Supprimer le store", message: `Supprimer le store ${store.name} et désinstaller ses connecteurs ? Les anciens prix seront conservés.`, confirmLabel: "Supprimer", danger: true }))
             void action(`${base}/${store.id}`, "DELETE", undefined, "Store supprimé.");
         }}>Supprimer le store</button>
       </div>
@@ -125,8 +127,8 @@ export default function V2ConnectorStores() {
             <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, installed.enabled ? "disable" : "enable")}>{installed.enabled ? "Désactiver" : "Activer"}</button>
             {update && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, "update")}>Mettre à jour vers v{connector.version}</button>}
             {installed.previous_commit && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, "rollback")}>Restaurer v{installed.previous_version}</button>}
-            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => {
-              if (window.confirm(`Désinstaller ${connector.name} ? Les anciens prix seront conservés.`))
+            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
+              if (await confirm({ title: "Désinstaller le connecteur", message: `Désinstaller ${connector.name} ? Les anciens prix seront conservés.`, confirmLabel: "Désinstaller", danger: true }))
                 void action(`${base}/${store.id}/connectors/${connector.id}`, "DELETE", undefined, "Connecteur désinstallé.");
             }}>Désinstaller</button>
           </div>}
@@ -143,8 +145,8 @@ export default function V2ConnectorStores() {
               { id: item.connector_id, name: item.connector_id, version: item.version, changelog: [] }, item.enabled ? "disable" : "enable")}>{item.enabled ? "Désactiver" : "Activer"}</button>
             {item.previous_commit && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store,
               { id: item.connector_id, name: item.connector_id, version: item.version, changelog: [] }, "rollback")}>Restaurer v{item.previous_version}</button>}
-            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => {
-              if (window.confirm(`Désinstaller ${item.connector_id} ? Les anciens prix seront conservés.`))
+            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
+              if (await confirm({ title: "Désinstaller le connecteur", message: `Désinstaller ${item.connector_id} ? Les anciens prix seront conservés.`, confirmLabel: "Désinstaller", danger: true }))
                 void action(`${base}/${store.id}/connectors/${item.connector_id}`, "DELETE", undefined, "Connecteur désinstallé.");
             }}>Désinstaller</button>
           </div>

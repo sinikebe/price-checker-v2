@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useConfirm } from "./useConfirm";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import V2ReportControl from "./V2ReportControl";
@@ -98,6 +99,7 @@ function List({ user, onLogout }: Props) {
 }
 
 function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
+  const confirm = useConfirm();
   const basket = useV2Basket();
   // Shopping fills the basket from a recipe; the contribution mode edits, publishes and reports it.
   const contributing = useAppMode().mode === "contribute";
@@ -175,13 +177,13 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     return () => { active = false; };
   }, [id, userId, privateRecipe]);
   async function remove() {
-    if (!currentRecipe || !window.confirm(`Supprimer « ${currentRecipe.title} » ? Cette suppression est définitive.`)) return;
+    if (!currentRecipe || !await confirm({ title: "Supprimer la recette", message: `Supprimer « ${currentRecipe.title} » ? Cette suppression est définitive.`, confirmLabel: "Supprimer", danger: true })) return;
     setDeleting(true);
     try { await recipeRequest<void>(privateRecipe ? `/private/${currentRecipe.id}` : `/${currentRecipe.id}`, "DELETE"); navigate("/v2/recettes"); }
     catch (reason) { setError(message(reason)); setDeleting(false); }
   }
   async function publish() {
-    if (!currentRecipe || !window.confirm(`Proposer « ${currentRecipe.title} » à la publication ?\n\nUn administrateur la relira. Elle reste privée jusqu'à sa validation, puis devient visible par tous et vous rapporte des crédits de contribution.`)) return;
+    if (!currentRecipe || !await confirm({ title: "Proposer à la publication", message: `Proposer « ${currentRecipe.title} » à la publication ?\n\nUn administrateur la relira. Elle reste privée jusqu'à sa validation, puis devient visible par tous et vous rapporte des crédits de contribution.`, confirmLabel: "Proposer" })) return;
     setPublishing(true); setError(""); setNotice("");
     try {
       await recipeRequest<RecipeProposal>(`/private/${currentRecipe.id}/publish`, "POST", { revision: currentRecipe.revision });
@@ -191,7 +193,7 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     finally { setPublishing(false); }
   }
   async function withdrawPublication(submissionId: number) {
-    if (!window.confirm("Retirer la demande de publication ? La recette reste privée.")) return;
+    if (!await confirm({ title: "Retirer la demande", message: "Retirer la demande de publication ? La recette reste privée.", confirmLabel: "Retirer la demande" })) return;
     setPublishing(true); setError(""); setNotice("");
     try { await recipeRequest<void>(`/submissions/${submissionId}`, "DELETE"); setNotice("Demande retirée. Vous pouvez de nouveau modifier la recette."); setReload(value => value + 1); }
     catch (reason) { setError(message(reason)); }
@@ -294,6 +296,7 @@ function localRead(key: string): LocalCopy | null {
 }
 
 function Editor({ mode, id, privateRecipe = false, user, onLogout }: Props) {
+  const confirm = useConfirm();
   const replay = mode === "new" ? new URLSearchParams(window.location.search).get("reprendre") : null;
   const userId = user?.id;
   const key = replay ? `v2:recipe:proposal:${userId ?? "anon"}:${replay}` : mode === "new" ? `v2:recipe:new${user ? ":" + user.id : ""}`
@@ -404,7 +407,13 @@ function Editor({ mode, id, privateRecipe = false, user, onLogout }: Props) {
         <button type="button" className="v2-button v2-button-secondary" onClick={() => change({ ...form, ingredients: [...form.ingredients, blankIngredient()] })}>+ Ajouter un ingrédient</button></section>
       <section className="v2-recipes-card"><h2>Étapes</h2>{form.steps.map((step, index) => <div className="v2-recipes-step-edit" key={index}><label>Étape {index + 1}<textarea required value={step} onChange={event => change({ ...form, steps: form.steps.map((current, position) => position === index ? event.target.value : current) })} /></label><div><button type="button" aria-label={`Monter étape ${index + 1}`} disabled={index === 0} onClick={() => change({ ...form, steps: move(form.steps, index, -1) })}>↑</button><button type="button" aria-label={`Descendre étape ${index + 1}`} disabled={index === form.steps.length - 1} onClick={() => change({ ...form, steps: move(form.steps, index, 1) })}>↓</button><button type="button" disabled={form.steps.length === 1} onClick={() => change({ ...form, steps: form.steps.filter((_, position) => position !== index) })}>Retirer</button></div></div>)}<button type="button" className="v2-button v2-button-secondary" onClick={() => change({ ...form, steps: [...form.steps, ""] })}>+ Ajouter une étape</button></section>
       {!isPrivate && rewardHint("recipe", credits) && <p className="v2-reward-hint">{rewardHint("recipe", credits)}</p>}
-      <div className="v2-recipes-actions"><button type="submit" className="v2-button v2-button-primary">{busy ? "Enregistrement…" : isPrivate ? "Enregistrer la recette privée" : "Envoyer pour validation"}</button><Link className="v2-button v2-button-secondary" to={cancelTo} onClick={event => { if (busy || (dirty && !window.confirm("Abandonner les modifications non enregistrées ?"))) event.preventDefault(); }}>Annuler</Link></div>
+      <div className="v2-recipes-actions"><button type="submit" className="v2-button v2-button-primary">{busy ? "Enregistrement…" : isPrivate ? "Enregistrer la recette privée" : "Envoyer pour validation"}</button><Link className="v2-button v2-button-secondary" to={cancelTo} onClick={event => {
+        if (busy) { event.preventDefault(); return; }
+        if (!dirty) return;
+        event.preventDefault();
+        void confirm({ title: "Abandonner les modifications", message: "Abandonner les modifications non enregistrées ?", confirmLabel: "Abandonner", danger: true })
+          .then(yes => { if (yes) navigate(cancelTo); });
+      }}>Annuler</Link></div>
     </fieldset></form>}
   </Frame>;
 }

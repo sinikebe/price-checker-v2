@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { recipeRequest, type RecipeReview } from "./v2-recipes-api";
 
 const PAGE_SIZE = 30;
 
 export default function V2RecipeReviewPanel() {
+  const confirm = useConfirm();
   const [page, setPage] = useState(0);
   const [items, setItems] = useState<RecipeReview[] | null>(null);
   const [error, setError] = useState("");
@@ -18,7 +20,7 @@ export default function V2RecipeReviewPanel() {
     return () => { active = false; };
   }, [page, reload]);
   async function decide(item: RecipeReview, action: "approve" | "reject") {
-    if (action === "approve" && !window.confirm(`Publier la proposition « ${item.payload.title} » ?`)) return;
+    if (action === "approve" && !await confirm({ title: "Publier la recette", message: `Publier la proposition « ${item.payload.title} » ?`, confirmLabel: "Publier" })) return;
     setBusy(item.id); setError("");
     try {
       await recipeRequest(`/submissions/${item.id}/${action}`, "POST");

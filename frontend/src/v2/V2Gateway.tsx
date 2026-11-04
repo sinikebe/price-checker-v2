@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useConfirm } from "./useConfirm";
 import { logoutLocalKeys, unsentAtLogout } from "./v2-account-local-keys";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
@@ -395,6 +396,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   storeId?: number;
 }) {
   const { setUser: activateUserBasket } = useV2Basket();
+  const confirm = useConfirm();
   const route = useLocation();
   const [loginRedirect, setLoginRedirect] = useState("/v2");
   const [status, setStatus] = useState<Status | null>(null);
@@ -458,7 +460,7 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
       try { unsent = unsentAtLogout(localStorage, userId); } catch { /* storage unavailable: nothing kept */ }
       const lost = [unsent.changes ? `${unsent.changes} modification${unsent.changes > 1 ? "s" : ""} du panier partagé pas encore envoyée${unsent.changes > 1 ? "s" : ""}` : null,
         unsent.drafts ? `${unsent.drafts} brouillon${unsent.drafts > 1 ? "s" : ""} non envoyé${unsent.drafts > 1 ? "s" : ""}` : null].filter(Boolean);
-      if (lost.length && !window.confirm(`Se déconnecter efface de cet appareil : ${lost.join(" et ")}. Se déconnecter quand même ?`)) return;
+      if (lost.length && !await confirm({ title: "Se déconnecter", message: `Se déconnecter efface de cet appareil : ${lost.join(" et ")}. Se déconnecter quand même ?`, confirmLabel: "Se déconnecter", danger: true })) return;
     }
     try {
       await authRequest<void>("logout", "POST");

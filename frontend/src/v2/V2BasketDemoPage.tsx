@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import { Link, useNavigate } from "react-router-dom";
 import V2SiteHeader from "./V2SiteHeader";
 import V2BasketFilters from "./V2BasketFilters";
@@ -31,14 +32,15 @@ const day = (value: string) => new Date(value).toLocaleDateString("fr-FR", { day
 
 /** For administrators: where the demo comes from, how to replace it, and the way back to the app's example. */
 function DemoAdmin({ source }: { source: DemoSource }) {
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return <section className="v2-demo-admin" aria-label="Panier de démonstration : administration">
     <p><strong>Administration.</strong> {source.fictional ? "C’est l’exemple intégré, avec des prix fictifs."
       : `Panier enregistré le ${day(source.savedAt!)}, avec les prix de ce jour-là.`} Pour le remplacer, ouvrez <Link to="/v2/panier">votre panier</Link>,
       puis <b>Partager → Panier de démonstration</b>.</p>
-    {!source.fictional && <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => {
-      if (!window.confirm("Revenir à l’exemple intégré, avec des prix fictifs ? Le panier de démonstration enregistré sera effacé.")) return;
+    {!source.fictional && <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={async () => {
+      if (!await confirm({ title: "Revenir à l’exemple intégré", message: "Revenir à l’exemple intégré, avec des prix fictifs ? Le panier de démonstration enregistré sera effacé.", confirmLabel: "Revenir à l’exemple", danger: true })) return;
       setBusy(true); setError("");
       removeDemoBasket().then(reloadDemoSource).catch(reason => setError(reason instanceof Error ? reason.message : "Échec.")).finally(() => setBusy(false));
     }}>Revenir à l’exemple intégré</button>}

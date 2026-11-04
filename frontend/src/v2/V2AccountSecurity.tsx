@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useConfirm } from "./useConfirm";
 import {
   REGENERATE_CONFIRMATION, activationNotice, activationWarning, disableConfirmation,
 } from "./v2-account-security-text";
@@ -39,6 +40,7 @@ function useCredentials() {
 }
 
 export default function V2AccountSecurity() {
+  const askConfirm = useConfirm();
   const [mfa, setMfa] = useState<MfaState | null>(null);
   const [tokens, setTokens] = useState<TokenRecord[]>([]);
   const [setup, setSetup] = useState<SetupResult | null>(null);
@@ -91,9 +93,9 @@ export default function V2AccountSecurity() {
       setNotice(activationNotice(revoked));
     });
   }
-  function regenerate(event: FormEvent) {
+  async function regenerate(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm(REGENERATE_CONFIRMATION)) return;
+    if (!await askConfirm({ title: "Nouveaux codes de secours", message: REGENERATE_CONFIRMATION, confirmLabel: "Générer de nouveaux codes", danger: true })) return;
     void run(async () => {
       const result = await securityRequest<RecoveryResult>("mfa/recovery-codes", "POST", {
         password: regenerateForm.password, second_factor: regenerateForm.factor,
@@ -102,9 +104,9 @@ export default function V2AccountSecurity() {
       setNotice("Les anciens codes de secours sont annulés.");
     });
   }
-  function disable(event: FormEvent) {
+  async function disable(event: FormEvent) {
     event.preventDefault();
-    if (!window.confirm(disableConfirmation(tokens.length))) return;
+    if (!await askConfirm({ title: "Désactiver la double authentification", message: disableConfirmation(tokens.length), confirmLabel: "Désactiver", danger: true })) return;
     void run(async () => {
       await securityRequest<void>("mfa/disable", "POST", {
         password: disableForm.password, second_factor: disableForm.factor,
