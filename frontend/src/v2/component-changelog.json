@@ -1205,6 +1205,24 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.140",
+      "components": {
+        "application": {
+          "version": "0.1.140",
+          "notes": [
+            "L’accueil montre un exemple de rangement du catalogue, du rayon au produit, avec trois produits et des prix fictifs."
+          ]
+        },
+        "products": {
+          "version": "0.1.65",
+          "notes": [
+            "En mode courses, la page des produits précise que le catalogue sert aux essais et qu’il lui manque encore beaucoup de produits.",
+            "L’exemple compare un groupe et un ensemble : le produit le moins cher au kilo n’est pas le même."
+          ]
+        }
+      }
     }
   ]
 }
