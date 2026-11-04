@@ -1223,6 +1223,31 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.141",
+      "components": {
+        "basket": {
+          "version": "0.1.49",
+          "notes": [
+            "Un article peut être une sélection : plusieurs produits, groupes, ensembles, familles ou rayons comparés ensemble, au besoin filtrés par des mots.",
+            "Les sélections se comparent comme un groupe, pour un crédit, dans le panier personnel, un panier partagé et le panier de démonstration.",
+            "Le panier de démonstration refuse un texte libre avec un message clair au lieu d’échouer."
+          ]
+        },
+        "products": {
+          "version": "0.1.66",
+          "notes": [
+            "Une route publique donne l’arbre du catalogue, filtrable par mots, pour retrouver les noms de rayons, familles, ensembles et groupes."
+          ]
+        },
+        "application": {
+          "version": "0.1.141",
+          "notes": [
+            "La documentation de l’API décrit les sélections, avec des exemples courts faciles à écrire pour un script ou un assistant."
+          ]
+        }
+      }
     }
   ]
 }
