@@ -1,3 +1,4 @@
+import { useAppMode } from "./useAppMode";
 import { useV2Basket } from "./V2BasketContext";
 import { useOnline } from "./useOnline";
 import { OFFLINE_TITLE } from "./v2-basket-read-only";
@@ -14,6 +15,8 @@ export default function V2BasketAddButtons({ item, what }: { item: BasketItem; w
   // Offline, the baskets are read only.
   const online = useOnline();
   const offline = online ? undefined : OFFLINE_TITLE;
+  // Baskets belong to the shopping mode: the expert mode leaves them out.
+  if (useAppMode().mode === "expert") return null;
   return <>
     <button type="button" className="v2-button v2-button-primary" disabled={!online} title={offline} onClick={() => basket.has(item) ? basket.remove(item) : basket.add(item)}>
       {basket.has(item) ? `Retirer ${label}du panier` : `Ajouter ${label}au panier`}</button>

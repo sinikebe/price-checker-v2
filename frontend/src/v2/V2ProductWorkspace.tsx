@@ -12,6 +12,7 @@ import V2ReportControl from "./V2ReportControl";
 import V2ModerationPanel from "./V2ModerationPanel";
 import V2RecipeReviewPanel from "./V2RecipeReviewPanel";
 import V2BasketAddButtons from "./V2BasketAddButtons";
+import { useAppMode } from "./useAppMode";
 import V2ShareButton from "./V2ShareButton";
 import {
   completeProductData, emptyProduct, productRequest, type ChangeKind, type Draft, type Product,
@@ -379,13 +380,29 @@ function Editor({ mode, id, user, onLogout }: Props) {
   </Frame>;
 }
 
+/** The product as a shopper needs it: its name, its quantity, and the baskets. The rest is the expert mode's. */
+function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void> }) {
+  const d = completeProductData(product.data);
+  return <Frame user={user} onLogout={onLogout}>
+    <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
+      <span className="v2-section-kicker">PRODUIT</span>
+      <h1 id="v2-product-simple-name">{[d.brand, d.name].filter(Boolean).join(" ")}<span>.</span></h1>
+      <dl className="v2-workspace-facts"><div><dt>Quantité</dt><dd>{d.quantity || "À préciser"}</dd></div></dl>
+      {product.successor_id ? <p><Link to={"/v2/produits/" + product.successor_id}>Cette référence a changé : voir la version actuelle →</Link></p>
+        : id && <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /></div>}
+    </section>
+  </Frame>;
+}
+
 function Detail({ mode, id, user, onLogout }: Props) {
+  const expert = useAppMode().mode === "expert";
   const { data: product, error } = useCollection<Product>("/" + id);
-  const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", mode === "history");
+  const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", expert && mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
+  if (!expert) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>

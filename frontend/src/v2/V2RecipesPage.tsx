@@ -10,6 +10,7 @@ import { recipeRequest, type PrivateRecipePage, type Recipe, type RecipeIngredie
 import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
+import { useAppMode } from "./useAppMode";
 import { useV2Basket } from "./V2BasketContext";
 import { useOnline } from "./useOnline";
 import { OFFLINE_TITLE } from "./v2-basket-read-only";
@@ -38,6 +39,8 @@ function Frame({ children, user, onLogout }: { children: ReactNode; user: V2User
 }
 
 function List({ user, onLogout }: Props) {
+  // Writing recipes is contributing: the expert mode's job. Shopping reads them and fills the basket.
+  const expert = useAppMode().mode === "expert";
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<RecipePage | null>(null);
@@ -70,15 +73,15 @@ function List({ user, onLogout }: Props) {
   }, [q, page, refresh]);
   return <Frame user={user} onLogout={onLogout}>
     <div className="v2-recipes-heading"><div><span className="v2-section-kicker">À CUISINER</span><h1>Recettes<span>.</span></h1><p>Des ingrédients précis quand vous le souhaitez, ou un groupe pour garder le choix.</p></div>
-      <Link className="v2-button v2-button-primary" to="/v2/recettes/nouvelle">Ajouter une recette →</Link></div>
+      {expert && <Link className="v2-button v2-button-primary" to="/v2/recettes/nouvelle">Ajouter une recette →</Link>}</div>
     {location.search.includes("proposition=envoyee") && <p role="status" className="v2-recipes-card">Proposition envoyée. Elle sera visible publiquement après validation.</p>}
     {user && <section className="v2-recipes-card" aria-label="Mes recettes privées"><h2>Mes recettes privées</h2>
       <p className="v2-recipes-private-note">Visibles par vous seul, sans validation et sans crédits.</p>
       {ownError && <p role="alert">{ownError}</p>}
-      {own && !own.items.length && !ownError && <p>Aucune recette privée. Choisissez « Privée » en ajoutant une recette.</p>}
+      {own && !own.items.length && !ownError && <p>{expert ? "Aucune recette privée. Choisissez « Privée » en ajoutant une recette." : "Aucune recette privée. Le mode expert permet d’en écrire."}</p>}
       {own && own.items.length > 0 && <div className="v2-recipes-list">{own.items.map(recipe => <Link key={recipe.id} to={privatePath(recipe.id)} className="v2-recipes-tile"><strong>{recipe.title}</strong><span>{recipe.base_servings} portions · {recipe.ingredient_count} ingrédients</span>{recipe.publication && <span className="v2-recipes-private-badge">{recipe.publication === "pending" ? "Publication en attente" : "Publication refusée"}</span>}</Link>)}</div>}
     </section>}
-    {user && <section className="v2-recipes-card" aria-label="Mes propositions de recettes"><h2>Mes propositions</h2>
+    {expert && user && <section className="v2-recipes-card" aria-label="Mes propositions de recettes"><h2>Mes propositions</h2>
       {submissionError && <p role="alert">{submissionError}</p>}
       {!submissions.length && !submissionError && <p>Aucune proposition récente.</p>}
       {submissions.map(item => <p key={item.id}><strong>{item.title}</strong> · {item.status === "pending" ? "En attente de validation" : item.status === "rejected" ? "Refusée" : "Validée"}
@@ -96,6 +99,8 @@ function List({ user, onLogout }: Props) {
 
 function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
   const basket = useV2Basket();
+  // Shopping fills the basket from a recipe; the expert mode edits, publishes and reports it.
+  const expert = useAppMode().mode === "expert";
   // Offline, the baskets are read only: the ingredients are added once the connection is back.
   const online = useOnline();
   const [recipe, setRecipe] = useState<Recipe | null>(null);
@@ -236,10 +241,10 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     {privateRecipe && !userId && <p role="alert" className="v2-recipes-error">Connectez-vous pour ouvrir vos recettes privées.</p>}
     {notice && <p role="status" className="v2-recipes-card">{notice}</p>}
     {currentRecipe && <><div className="v2-recipes-heading"><div><span className="v2-section-kicker">{privateRecipe ? "RECETTE PRIVÉE" : "RECETTE"}</span><h1>{currentRecipe.title}<span>.</span></h1><p>{currentRecipe.description}</p></div>
-      {canEdit && <div className="v2-recipes-actions">{privateRecipe && currentRecipe.publication?.status === "pending"
+      {expert && canEdit && <div className="v2-recipes-actions">{privateRecipe && currentRecipe.publication?.status === "pending"
         ? <span className="v2-recipes-private-badge">Modification bloquée pendant la validation</span>
         : <Link className="v2-button v2-button-secondary" to={privateRecipe ? `${privatePath(currentRecipe.id)}/modifier` : `/v2/recettes/${currentRecipe.id}/modifier`}>Modifier</Link>}<button className="v2-button v2-button-secondary" disabled={deleting} onClick={() => { void remove(); }}>Supprimer</button></div>}</div>
-      {privateRecipe && <section className="v2-recipes-card v2-recipes-private" aria-label="Visibilité de la recette">
+      {expert && privateRecipe && <section className="v2-recipes-card v2-recipes-private" aria-label="Visibilité de la recette">
         <p><strong>Privée.</strong> {PRIVATE_NOTE}</p>
         {currentRecipe.publication?.status === "pending" ? <>
           <p>Publication demandée : en attente de validation par un administrateur. Elle restera privée jusque-là.</p>
@@ -252,7 +257,7 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
       </section>}
       <div className="v2-recipes-detail-grid"><section className="v2-recipes-card"><h2>Ingrédients</h2>
         <label className="v2-recipes-servings">Pour <input aria-label="Nombre de portions" type="number" min="0.001" step="0.001" value={servings} onChange={event => setServings(event.target.value)} /> portions</label>
-        <p>Ajoutez les ingrédients au panier pour comparer le coût des paquets et des quantités utilisées. Les ingrédients facultatifs sont décochés par défaut.</p>
+        {!expert && <p>Ajoutez les ingrédients au panier pour comparer le coût des paquets et des quantités utilisées. Les ingrédients facultatifs sont décochés par défaut.</p>}
         {basketError && <p role="alert" className="v2-recipes-error">{basketError}</p>}
         <ul className="v2-recipes-ingredients">{currentRecipe.ingredients.map(item => {
           const index = currentRecipe.ingredients.indexOf(item);
@@ -260,16 +265,16 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
           return <li key={item.id}><div><strong>{item.amount && positiveDecimal(servings) ? `${scaledQuantity(item.amount, servings, currentRecipe.base_servings)} ${item.unit === "piece" ? "pièce(s)" : item.unit} · ` : ""}{item.label}</strong>{item.optional && <span>Facultatif</span>}</div>
             {item.product_id && <p>Produit précis : <Link to={`/v2/produits/${resolvedProducts[item.product_id]?.id ?? item.product_id}`}>{resolvedProducts[item.product_id] ? productName(resolvedProducts[item.product_id].data) : item.product ? productName(item.product) : `Produit #${item.product_id}`}</Link>{resolvedProducts[item.product_id] && <small>Référence remplacée</small>}</p>}
             {item.group_name && <div><p>Au choix dans « {item.group_name} »</p>{choices.length ? <div className="v2-recipes-choices">{choices.map(product => <Link key={product.id} to={`/v2/produits/${product.id}`}>{productName(product.data)} →</Link>)}</div> : <small>{productsError ? "Choix indisponibles actuellement." : "Aucun produit publié dans ce groupe pour le moment."}</small>}</div>}
-            {item.optional && <label className="v2-recipes-check"><input type="checkbox" checked={included[index] === true} onChange={event => setIncluded({ ...included, [index]: event.target.checked })} />Ajouter cet ingrédient facultatif</label>}
-            {item.group_name && <label className="v2-recipes-basket-choice">Référence pour le panier<select value={selectedProducts[index] ?? 0} onChange={event => setSelectedProducts({ ...selectedProducts, [index]: Number(event.target.value) })}>
+            {!expert && item.optional && <label className="v2-recipes-check"><input type="checkbox" checked={included[index] === true} onChange={event => setIncluded({ ...included, [index]: event.target.checked })} />Ajouter cet ingrédient facultatif</label>}
+            {!expert && item.group_name && <label className="v2-recipes-basket-choice">Référence pour le panier<select value={selectedProducts[index] ?? 0} onChange={event => setSelectedProducts({ ...selectedProducts, [index]: Number(event.target.value) })}>
               <option value={0}>Choix automatique dans le groupe</option>{choices.map(product => <option key={product.id} value={product.id}>{productName(product.data)}</option>)}
             </select></label>}
             {item.note && <small>{item.note}</small>}
           </li>;
-        })}</ul><div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients()}>Ajouter les ingrédients au panier →</button>
-          {basket.sharedBasket && <button type="button" className="v2-button v2-button-secondary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients(true)}>Au panier partagé →</button>}</div></section>
+        })}</ul>{!expert && <div className="v2-recipes-actions"><button type="button" className="v2-button v2-button-primary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients()}>Ajouter les ingrédients au panier →</button>
+          {basket.sharedBasket && <button type="button" className="v2-button v2-button-secondary" disabled={!online} title={online ? undefined : OFFLINE_TITLE} onClick={() => addIngredients(true)}>Au panier partagé →</button>}</div>}</section>
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{currentRecipe.prep_minutes != null && `Préparation : ${currentRecipe.prep_minutes} min · `}{currentRecipe.cook_minutes != null && `Cuisson : ${currentRecipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{currentRecipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
-      {!privateRecipe && <V2ReportControl kind="recipe" contentId={currentRecipe.id} user={user} />}
+      {expert && !privateRecipe && <V2ReportControl kind="recipe" contentId={currentRecipe.id} user={user} />}
     </>}
   </Frame>;
 }

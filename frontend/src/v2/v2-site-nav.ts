@@ -3,19 +3,25 @@
 export type DockId = "home" | "products" | "stores" | "recipes" | "basket" | "shared";
 export type DockItem = { id: DockId; label: string; to: string };
 
-export const DOCK_ITEMS: readonly DockItem[] = [
-  { id: "home", label: "Accueil", to: "/v2" },
-  { id: "products", label: "Produits", to: "/v2/produits" },
-  { id: "stores", label: "Magasins", to: "/v2/magasins" },
-  { id: "recipes", label: "Recettes", to: "/v2/recettes" },
-  { id: "basket", label: "Panier", to: "/v2/panier" },
-];
+/**
+ * Two ways to use the application. Shopping (the default, for everyone): baskets and their lists, with
+ * a simple view of the products and recipes to fill them. Expert (signed-in accounts only, for
+ * contributors): products, stores, recipes and the tools to add or correct them, without the baskets.
+ */
+export type AppMode = "shopping" | "expert";
+
+const HOME: DockItem = { id: "home", label: "Accueil", to: "/v2" };
+const PRODUCTS: DockItem = { id: "products", label: "Produits", to: "/v2/produits" };
+const STORES: DockItem = { id: "stores", label: "Magasins", to: "/v2/magasins" };
+const RECIPES: DockItem = { id: "recipes", label: "Recettes", to: "/v2/recettes" };
+const BASKET: DockItem = { id: "basket", label: "Panier", to: "/v2/panier" };
 /** The shared basket, next to the personal one, for an account that follows one. */
 export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
 
-/** The dock entries for this viewer: the shared basket shows once the account follows one. */
-export function dockItems(followsShared: boolean): readonly DockItem[] {
-  return followsShared ? [...DOCK_ITEMS, SHARED_DOCK_ITEM] : DOCK_ITEMS;
+/** The dock entries for this mode: the shared basket shows once the account follows one; stores are for experts. */
+export function dockItems(mode: AppMode, followsShared: boolean): readonly DockItem[] {
+  if (mode === "expert") return [HOME, PRODUCTS, STORES, RECIPES];
+  return followsShared ? [HOME, PRODUCTS, RECIPES, BASKET, SHARED_DOCK_ITEM] : [HOME, PRODUCTS, RECIPES, BASKET];
 }
 
 /** Pages that belong to a dock item but sit under another section's path, or none at all. */
@@ -47,25 +53,27 @@ const CONTRIBUTE: MenuSection = {
   ],
 };
 
-/** The links of the profile menu for this viewer. Signing out is a button and is added by the component. */
-export function profileMenuSections(user: MenuUser | null): MenuSection[] {
+/**
+ * The links of the profile menu for this viewer and mode. Contributing belongs to the expert mode, open to
+ * signed-in accounts. Signing out and the mode switch are buttons, added by the component.
+ */
+export function profileMenuSections(user: MenuUser | null, mode: AppMode = "shopping"): MenuSection[] {
   if (!user) {
     return [
       { id: "account", links: [
         { id: "login", label: "Connexion", to: "/v2/connexion" },
         { id: "register", label: "Créer un compte", to: "/v2/inscription" },
       ] },
-      CONTRIBUTE,
       { id: "preferences", links: [{ id: "settings", label: "Paramètres", to: "/v2/parametres" }] },
     ];
   }
-  const sections: MenuSection[] = [
+  const sections: MenuSection[] = mode === "expert" ? [
     { id: "me", links: [
       { id: "drafts", label: "Mes brouillons", to: "/v2/brouillons" },
       { id: "settings", label: "Paramètres", to: "/v2/parametres" },
     ] },
     CONTRIBUTE,
-  ];
+  ] : [{ id: "me", links: [{ id: "settings", label: "Paramètres", to: "/v2/parametres" }] }];
   if (user.role === "admin") {
     sections.push({ id: "admin", heading: "Administration", links: [
       { id: "moderation", label: "À valider", to: "/v2/moderation" },
