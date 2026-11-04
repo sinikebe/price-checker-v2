@@ -764,6 +764,31 @@
       "component": "open_prices",
       "version": "0.1.31",
       "reason": "Fusion de magasins : le type plateforme en ligne est conservé, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.51",
+      "reason": "Modes courses et expert de l’interface, sans changement de la base de données."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.33",
+      "reason": "Les données Open Food Facts restent affichées en mode expert, sans changement de leur lecture."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.32",
+      "reason": "Les graphiques de prix restent affichés en mode expert, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.43",
+      "reason": "Le mode choisi est retenu par compte sur l’appareil et oublié à la suppression du compte."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.31",
+      "reason": "Clé locale du mode ajoutée au nettoyage du compte, sans changement du hors ligne."
     }
   ]
 }

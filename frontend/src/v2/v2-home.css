@@ -472,6 +472,9 @@
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
+/* The "switch to the expert mode" card is a button that looks like its link neighbours. */
+button.v2-action-card { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+
 .v2-action-card:hover {
   border-color: #b4d9bd;
   box-shadow: 0 16px 36px rgba(36, 75, 50, .09);

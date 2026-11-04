@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
+import { useAppMode } from "./useAppMode";
 import { useV2Basket } from "./V2BasketContext";
 import { CartIcon, HomeIcon, ProductsIcon, RecipesIcon, SharedCartIcon, StoreIcon } from "./V2SiteIcons";
 import { activeDockId, basketLabel, dockItems, sharedBasketLabel, type DockId } from "./v2-site-nav";
@@ -15,7 +16,8 @@ export default function V2Dock() {
   const { pathname } = useLocation();
   const { items, sharedBasket } = useV2Basket();
   const active = activeDockId(pathname);
-  const entries = dockItems(sharedBasket !== null);
+  const { mode } = useAppMode();
+  const entries = dockItems(mode, sharedBasket !== null);
   useEffect(() => {
     document.body.classList.add("v2-has-dock");
     return () => document.body.classList.remove("v2-has-dock");

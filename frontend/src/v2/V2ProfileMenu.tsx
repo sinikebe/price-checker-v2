@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
+import { useAppMode } from "./useAppMode";
 import { PersonIcon } from "./V2SiteIcons";
 import { initials, nextMenuIndex, profileMenuSections, roleLabel } from "./v2-site-nav";
 import "./v2-site-nav.css";
@@ -14,7 +15,8 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const sections = profileMenuSections(user);
+  const { mode, canSwitch, setMode } = useAppMode();
+  const sections = profileMenuSections(user, mode);
 
   useEffect(() => {
     if (!open) return;
@@ -25,7 +27,7 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);
     document.addEventListener("keydown", escape);
-    root.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+    root.current?.querySelector<HTMLElement>("[role^=menuitem]")?.focus();
     return () => {
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("focusin", outside);
@@ -34,7 +36,7 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
   }, [open]);
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const entries = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]"));
+    const entries = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role^=menuitem]"));
     const next = nextMenuIndex(entries.indexOf(document.activeElement as HTMLElement), event.key, entries.length);
     if (next === null) return;
     event.preventDefault();
@@ -59,6 +61,13 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
           {link.label}{link.tag && <span className="v2-beta-tag">{link.tag}</span>}
         </Link>)}
       </div>)}
+      {user && canSwitch && <div role="group" aria-label="Mode" className="v2-profile-menu-section">
+        <button type="button" role="menuitemcheckbox" aria-checked={mode === "expert"} className="v2-profile-mode"
+          onClick={() => { setOpen(false); setMode(mode === "expert" ? "shopping" : "expert"); }}>
+          <span>Mode expert<small>{mode === "expert" ? "Contribuer : produits, magasins, recettes" : "Pour contribuer au catalogue"}</small></span>
+          <span className="v2-profile-mode-switch" aria-hidden="true" />
+        </button>
+      </div>}
       {user && <div role="group" aria-label="Session" className="v2-profile-menu-section v2-profile-menu-last">
         <button type="button" role="menuitem" onClick={() => { setOpen(false); void onLogout(); }}>Déconnexion</button>
       </div>}

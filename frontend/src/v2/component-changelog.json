@@ -1143,6 +1143,36 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.138",
+      "components": {
+        "application": {
+          "version": "0.1.138",
+          "notes": [
+            "Deux modes : « courses », par défaut, pour les paniers et les listes ; « expert », pour contribuer, à activer dans le menu du compte.",
+            "En mode courses, la barre du bas montre accueil, produits, recettes et paniers ; le mode expert remplace les paniers par les magasins."
+          ]
+        },
+        "products": {
+          "version": "0.1.63",
+          "notes": [
+            "En mode courses, un produit se résume à son nom, sa quantité et l’ajout au panier ; prix, fiche détaillée et modifications passent en mode expert."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.27",
+          "notes": [
+            "En mode courses, une recette sert à remplir le panier ; l’écriture et la modification des recettes passent en mode expert."
+          ]
+        },
+        "basket": {
+          "version": "0.1.47",
+          "notes": [
+            "Un panier ouvert en mode expert propose de revenir au mode courses."
+          ]
+        }
+      }
     }
   ]
 }
