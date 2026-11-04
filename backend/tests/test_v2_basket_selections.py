@@ -114,6 +114,9 @@ async def test_a_selection_combines_levels_and_keeps_products_with_every_word(se
         "exclude": [{"group": "nectar de pomme"}]})).json()
     assert names(mixed) == {"Pur jus d'orange bio", "Jus d'orange bio", "Jus d'orange", "Chips nature"}
     assert [member["products"] for member in mixed["include"]] == [3, 1, 2]
+    # Straight and curly apostrophes are the same.
+    curly = (await client.post(PREVIEW, json={"name": "x", "include": [{"group": "Jus d’orange bio"}]})).json()
+    assert curly["include"][0]["products"] == 2
     # A misspelt part matches nothing, and says so.
     typo = (await client.post(PREVIEW, json={"name": "x", "include": [{"family": "Jus de fruit"}, {"group": "Chips"}]})).json()
     assert [member["products"] for member in typo["include"]] == [0, 1]

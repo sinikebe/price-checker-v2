@@ -11,8 +11,8 @@ UNCATEGORIZED = "À classer"
 
 
 def fold(value: str) -> str:
-    """Lower case without accents and with single spaces, to match names as a person types them."""
-    value = " ".join(value.split()).lower().replace("œ", "oe").replace("æ", "ae")
+    """Lower case without accents, with single spaces and plain apostrophes, to match names as a person types them."""
+    value = " ".join(value.split()).lower().replace("œ", "oe").replace("æ", "ae").replace("’", "'").replace("‘", "'")
     return "".join(char for char in unicodedata.normalize("NFKD", value) if not unicodedata.combining(char))
 
 # Exact, curated local tags. Order is meaningful when a group has several tags.

@@ -101,7 +101,7 @@ Sa forme est volontairement courte, pour qu’une personne, un script ou un peti
 - `exclude` (facultatif) : de 0 à 20 parties de même forme, retirées du résultat : `"exclude": [{"group": "Nectar de pomme"}]`.
 - `words` (facultatif) : jusqu’à 5 mots (40 caractères au plus) que chaque produit doit tous contenir, dans son nom, sa marque, son nom commercial, son groupe ou ses étiquettes.
 
-Les noms et les mots se comparent sans tenir compte des majuscules ni des accents (« epicerie salee » trouve « Épicerie salée »). Un produit remplacé par une nouvelle version ou fusionné désigne la version actuelle ; un groupe pas encore classé se trouve sous le rayon et la famille « À classer », comme dans le catalogue. Une sélection compare au plus 300 produits, comme un groupe.
+Les noms et les mots se comparent sans tenir compte des majuscules, des accents ni de la forme de l’apostrophe (« epicerie salee » trouve « Épicerie salée », « jus d'orange » trouve « jus d’orange »). Un produit remplacé par une nouvelle version ou fusionné désigne la version actuelle ; un groupe pas encore classé se trouve sous le rayon et la famille « À classer », comme dans le catalogue. Une sélection compare au plus 300 produits, comme un groupe.
 
 Pour composer une sélection, par exemple avec un assistant :
 
