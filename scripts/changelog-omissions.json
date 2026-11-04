@@ -834,6 +834,16 @@
       "component": "application",
       "version": "0.1.142",
       "reason": "Documentation de l’API complétée, sans changement de l’interface."
+    },
+    {
+      "component": "database",
+      "version": "0.1.55",
+      "reason": "Confirmations dans la page, sans changement de la base de données."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.35",
+      "reason": "Confirmation des brouillons de produit dans la page, sans changement de la lecture Open Food Facts."
     }
   ]
 }

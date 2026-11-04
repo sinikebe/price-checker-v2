@@ -1,4 +1,5 @@
 import { useContext, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import V2BasketLink from "./V2BasketLink";
 import V2BasketReplace from "./V2BasketReplace";
 import V2BasketTextAdd from "./V2BasketTextAdd";
@@ -40,6 +41,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
   /** Add free text to the basket; absent where the basket has no free text (the demo). */
   onAddText?: (name: string) => string | null;
 }) {
+  const confirm = useConfirm();
   const readOnly = !!useContext(BasketReadOnlyContext);
   // The free text line whose replacement is being chosen.
   const [replacing, setReplacing] = useState<string | null>(null);
@@ -73,6 +75,6 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         {advanced && <QuantityEditor key={`${itemKey}:${item.quantity?.amount}:${item.quantity?.unit}`} item={item} onChange={quantity => actions.setQuantity(item, quantity)} />}
       </li>;
     })}</ul>
-    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" disabled={readOnly} onClick={() => { if (window.confirm(sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
+    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" disabled={readOnly} onClick={async () => { if (await confirm({ title: "Vider le panier", message: sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ? Tous ses articles seront retirés.", confirmLabel: "Vider", danger: true })) actions.clear(); }}>Vider le panier</button>
   </section>;
 }

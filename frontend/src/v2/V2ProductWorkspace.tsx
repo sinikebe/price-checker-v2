@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useConfirm } from "./useConfirm";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
@@ -125,6 +126,7 @@ function localRead(key: string): { data: ProductData; change_kind: ChangeKind; r
 }
 
 function Editor({ mode, id, user, onLogout }: Props) {
+  const confirm = useConfirm();
   const credits = useCredits(user?.id ?? null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -258,7 +260,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   }
   async function reject() {
     if (!draft || busy || dirty || draft.status !== "draft") return;
-    if (!window.confirm("Rejeter cette proposition ?")) return;
+    if (!await confirm({ title: "Rejeter la proposition", message: "Rejeter cette proposition ? Elle reste visible pour son auteur.", confirmLabel: "Rejeter", danger: true })) return;
     setBusy(true); setError("");
     try {
       const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
@@ -269,7 +271,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   }
   async function discardSuperseded() {
     if (!draft || (!successorId && draft.status !== "rejected") || draft.author_id !== user?.id || busy) return;
-    if (!window.confirm("Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.")) return;
+    if (!await confirm({ title: "Abandonner le brouillon", message: "Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.", confirmLabel: "Abandonner", danger: true })) return;
     setBusy(true); setError("");
     try {
       await productRequest<{ deleted: boolean }>("/drafts/" + draft.id, "DELETE");
