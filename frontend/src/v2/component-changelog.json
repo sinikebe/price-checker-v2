@@ -1463,6 +1463,38 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.151",
+      "components": {
+        "application": {
+          "version": "0.1.151",
+          "notes": [
+            "Un filtre de magasins pour tout le site, réglé dans les paramètres du compte, limite les prix affichés sur toutes les pages.",
+            "Le filtre s’enregistre sur cet appareil ; l’enregistrement dans le cloud, pour le retrouver partout, arrive bientôt."
+          ]
+        },
+        "products": {
+          "version": "0.1.76",
+          "notes": [
+            "En mode courses, l’historique des prix et les prix par magasin restent disponibles dans une section repliée de la fiche produit.",
+            "En mode courses, chaque produit d’un groupe affiche son prix le plus bas sur sa ligne.",
+            "Quand le filtre de magasins du site est actif, fiches produits et groupes ne montrent que les prix des magasins choisis."
+          ]
+        },
+        "basket": {
+          "version": "0.1.53",
+          "notes": [
+            "Quand le filtre de magasins du site est actif, il remplace les filtres du panier et de la liste de courses (sauf le panier de démonstration)."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.48",
+          "notes": [
+            "Le filtre de magasins du site est propre à chaque compte et disparaît de l’appareil à la suppression du compte."
+          ]
+        }
+      }
     }
   ]
 }

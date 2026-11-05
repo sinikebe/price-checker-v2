@@ -1,4 +1,6 @@
 import { usePaidPrices } from "./usePaidPrices";
+import { useSiteFilter } from "./useSiteFilter";
+import { passesSiteFilter } from "./v2-site-filter";
 import { creditLabel } from "./v2-basket-credits-api";
 import { bestPrice, readingPlace, type LatestReading } from "./v2-product-best-price";
 
@@ -12,11 +14,13 @@ const day = (value: string) => new Date(value + "T12:00:00").toLocaleDateString(
  */
 export default function V2ShoppingPrice({ productId, userId }: { productId: number; userId: number | null }) {
   const paid = usePaidPrices<Prices>(userId, "product", String(productId), 1, () => `/api/v2/prices/products/${productId}`);
-  const best = paid.data ? bestPrice(paid.data.latest_by_store) : null;
+  // The account's site-wide store filter, when on, keeps the stores it names.
+  const site = useSiteFilter().active;
+  const best = paid.data ? bestPrice(paid.data.latest_by_store.filter(row => passesSiteFilter(row, site))) : null;
   return <div className="v2-shopping-price" aria-live="polite">
     {paid.data ? best ? <p><strong>À partir de {money(best.cents)}</strong>
       <small>{readingPlace(best.reading)} · relevé le {day(best.reading.observed_at)}{best.stores > 1 ? ` · ${best.stores} magasins relevés` : ""}</small></p>
-      : <p>Aucun prix relevé pour ce produit.</p>
+      : <p>{site ? "Aucun prix relevé dans les magasins du filtre du site." : "Aucun prix relevé pour ce produit."}</p>
       : <button type="button" className="v2-button v2-button-secondary" disabled={paid.busy} onClick={() => { void paid.pay(); }}>
         {paid.busy ? "Chargement…" : `Voir le prix · ${creditLabel(paid.cost)}`}</button>}
     {paid.error && <p role="alert">{paid.error}</p>}

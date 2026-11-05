@@ -17,6 +17,7 @@ import V2CapturePage from "./V2CapturePage";
 import V2CompletionPage from "./V2CompletionPage";
 import V2StoresPage from "./V2StoresPage";
 import { V2AppModeProvider } from "./V2AppMode";
+import { V2SiteFilterProvider } from "./V2SiteFilter";
 import V2ShoppingOnly from "./V2ShoppingOnly";
 import { useV2Basket } from "./V2BasketContext";
 import { offlineUser, rememberOfflineUser } from "./v2-offline-user";
@@ -504,7 +505,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }
   const adminId = authStatus.user?.role === "admin" ? authStatus.user.id : null;
   // Every page knows the mode in use: shopping (baskets and lists) or contributing (contributing).
-  const withMode = (page: ReactNode) => <V2AppModeProvider userId={authStatus.user?.id ?? null}>{page}</V2AppModeProvider>;
+  const withMode = (page: ReactNode) => <V2AppModeProvider userId={authStatus.user?.id ?? null}>
+    <V2SiteFilterProvider userId={authStatus.user?.id ?? null}>{page}</V2SiteFilterProvider></V2AppModeProvider>;
   const withHostAlert = (page: ReactNode) => withMode(adminId !== null && !preferencesMode
     ? <><V2HostAlertNotice userId={adminId} />{page}</> : page);
   if (preferencesMode) return withMode(<V2SettingsPage user={authStatus.user} tabSlug={preferencesTab} onLogout={logout} onAccountDeleted={() => {

@@ -86,3 +86,8 @@ test("deleting an account forgets its mode on this device; signing out keeps it"
   assert.deepEqual(accountLocalKeys(keys, 7), ["v2:mode:7"]);
   assert.deepEqual(logoutLocalKeys(keys, 7), []);
 });
+
+test("deleting an account forgets its site-wide store filter on this device; signing out keeps it", () => {
+  assert.deepEqual(accountLocalKeys(["v2:site-filter:7", "v2:site-filter:70"], 7), ["v2:site-filter:7"]);
+  assert.deepEqual(logoutLocalKeys(["v2:site-filter:7"], 7), []);
+});

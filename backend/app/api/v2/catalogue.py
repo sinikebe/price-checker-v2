@@ -450,8 +450,8 @@ async def _recent_observations(connection, ids: list[int]) -> list[dict]:
     observations = await connection.fetch(
         COMPACT_HISTORY_CTE + """
         SELECT * FROM (
-            SELECT c.id,c.product_id,c.price,c.observed_at,
-                   r.name AS retailer,s.name AS store_name,s.city,
+            SELECT c.id,c.product_id,c.price,c.observed_at,c.store_id,c.sales_channel,
+                   r.name AS retailer,s.name AS store_name,s.city,s.postal_code,s.online,
                    row_number() OVER (
                        PARTITION BY c.product_id
                        ORDER BY c.observed_at DESC,c.id DESC
@@ -470,7 +470,8 @@ async def _recent_observations(connection, ids: list[int]) -> list[dict]:
         {"id": row["id"], "product_id": row["product_id"],
          "price": str(row["price"]), "observed_at": _day(row["observed_at"]),
          "retailer": row["retailer"], "store_name": row["store_name"],
-         "city": row["city"]}
+         "store_id": row["store_id"], "city": row["city"], "postal_code": row["postal_code"],
+         "online": row["online"], "sales_channel": row["sales_channel"]}
         for row in observations
     ]
 
