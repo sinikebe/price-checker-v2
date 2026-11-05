@@ -1405,6 +1405,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.148",
+      "components": {
+        "open_food_facts": {
+          "version": "0.1.40",
+          "notes": [
+            "Les recherches chez Open Food Facts se limitent aux produits vendus en France, sauf si vous cochez « Inclure les produits vendus hors de France »."
+          ]
+        },
+        "products": {
+          "version": "0.1.73",
+          "notes": [
+            "En proposant un produit, la recherche Open Food Facts par nom se limite aussi aux produits vendus en France par défaut."
+          ]
+        }
+      }
     }
   ]
 }

@@ -879,6 +879,11 @@
       "component": "open_prices",
       "version": "0.1.36",
       "reason": "Page du catalogue : recherche validée transmise à Open Food Facts, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.148",
+      "reason": "Style de l’interrupteur de recherche Open Food Facts, sans autre changement de l’application."
     }
   ]
 }
