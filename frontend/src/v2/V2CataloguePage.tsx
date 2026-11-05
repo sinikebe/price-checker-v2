@@ -514,6 +514,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
     {!contributing && <p className="v2-catalogue-test-note" role="note"><strong>Catalogue de test.</strong> Cette liste de produits sert aux essais
       et il lui manque encore beaucoup de produits. <Link to={"/v2#" + CATALOGUE_DEMO_ID}>Voir un exemple de rangement</Link></p>}
     <V2CatalogueSearch value={queryDraft} onChange={setQueryDraft} scope={{ category, storeId }} suggest={suggest}
+      onSubmitText={text => { const next = new URLSearchParams(params); next.set("q", text); next.set("page", "1"); setParams(next); }}
       renderProduct={product => <ProductLink product={product} />}>
     <form className="v2-catalogue-search" onSubmit={apply}>
       <details className="v2-catalogue-filters" open={Boolean(category || storeId) || undefined}><summary>Filtres {category || storeId ? "· actifs" : contributing ? "· groupe et magasin" : "· groupe"}</summary>
@@ -535,7 +536,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
       {filterError && <p role="alert">{filterError}</p>}
     </form>
     </V2CatalogueSearch>
-    {normalizeQuery(queryDraft).length >= SEARCH_MIN_CHARS && <V2OffSearch query={queryDraft} />}
+    {normalizeQuery(queryDraft).length >= SEARCH_MIN_CHARS && <V2OffSearch query={queryDraft} submitted={q} />}
     {dynamicActive ? null : searching ? <>
       <div className="v2-catalogue-result-heading"><h2>Références</h2><Link to="/v2/produits">Effacer les filtres</Link></div>
       {search.error ? <p role="alert">{search.error}</p> : !result ? <p>Recherche…</p>

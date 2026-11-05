@@ -1381,6 +1381,30 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.147",
+      "components": {
+        "products": {
+          "version": "0.1.72",
+          "notes": [
+            "Une recherche validée (Entrée) affiche aussi les produits d’Open Food Facts vendus en France, sous ceux du catalogue.",
+            "Ouvrir un de ces produits n’importe que son code-barres : on peut alors l’ajouter au panier ou y noter un prix."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.39",
+          "notes": [
+            "La recherche chez Open Food Facts ne part jamais pendant la saisie, et une recherche déjà faite n’est pas refaite au retour."
+          ]
+        },
+        "application": {
+          "version": "0.1.147",
+          "notes": [
+            "La barre de recherche de l’en-tête mène aussi aux produits d’Open Food Facts absents du catalogue."
+          ]
+        }
+      }
     }
   ]
 }
