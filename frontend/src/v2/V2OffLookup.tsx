@@ -25,6 +25,8 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   const [selectedFor, setSelectedFor] = useState("");
   const [checked, setChecked] = useState<OffField[]>([]);
   const [busy, setBusy] = useState<"search" | "barcode" | null>(null);
+  // Products sold in France by default; the switch widens the search to every country.
+  const [world, setWorld] = useState(false);
   const [error, setError] = useState("");
   const currentEan = useRef(data.ean);
   useEffect(() => { currentEan.current = data.ean; }, [data.ean]);
@@ -45,7 +47,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
     const terms = query.trim();
     if (terms.length < 2 || busy) return;
     setBusy("search"); setError(""); setSelected(null); setResults(null);
-    try { setResults(await searchOff(terms)); }
+    try { setResults(await searchOff(terms, undefined, { france: !world })); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Recherche indisponible."); }
     finally { setBusy(null); }
   }
@@ -90,6 +92,9 @@ export default function V2OffLookup({ data, onApply, disabled }: {
       <button type="button" className="v2-button v2-button-secondary" disabled={disabled || !validBarcode(data.ean.trim()) || busy !== null}
         onClick={() => { void lookupBarcode(); }}>{busy === "barcode" ? "Recherche…" : "Chercher le code saisi"}</button>
     </div>
+    <label className="v2-off-world"><input type="checkbox" checked={world} disabled={disabled || busy !== null}
+      onChange={event => { setWorld(event.target.checked); setResults(null); }} />
+      Inclure les produits vendus hors de France (recherche par nom)</label>
     {error && <p className="v2-off-error" role="alert">{error}</p>}
     {results && <div className="v2-off-results" aria-live="polite">
       {results.length ? results.map(match =>
