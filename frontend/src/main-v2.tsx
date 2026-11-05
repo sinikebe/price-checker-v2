@@ -8,6 +8,7 @@ import { PwaUpdateProvider } from "./pwa/PwaUpdateContext";
 import V2PwaMount from "./pwa/V2PwaMount";
 import { PwaInstallProvider } from "./pwa/PwaInstallContext";
 import V2MaintenanceOverlay from "./v2/V2MaintenanceOverlay";
+import { V2ConfirmProvider } from "./v2/V2ConfirmProvider";
 import "./v2/v2-base.css";
 
 const queryClient = new QueryClient({
@@ -21,9 +22,11 @@ createRoot(document.getElementById("root")!).render(
         <V2ThemeProvider>
           <PwaUpdateProvider>
             <PwaInstallProvider>
-              <V2App />
-              <V2PwaMount />
-              <V2MaintenanceOverlay />
+              <V2ConfirmProvider>
+                <V2App />
+                <V2PwaMount />
+                <V2MaintenanceOverlay />
+              </V2ConfirmProvider>
             </PwaInstallProvider>
           </PwaUpdateProvider>
         </V2ThemeProvider>

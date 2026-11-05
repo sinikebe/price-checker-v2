@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
@@ -44,6 +45,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   listMode?: boolean;
 }) {
   const context = useV2Basket();
+  const confirm = useConfirm();
   const { shared } = context;
   const basket = sharedMode ? context.sharedBasket : context;
   const sharing = sharedMode && basket !== null;
@@ -79,13 +81,14 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   }, [sharedMode, invite, signedInId, location.hash, navigate]);
   async function importSharedBasket(mode: "add" | "replace") {
     if (!sharedEntries || importing) return;
-    if (mode === "replace" && items.length && !window.confirm("Remplacer tout votre panier actuel par ce panier partagé ?")) return;
+    if (mode === "replace" && items.length && !await confirm({ title: "Remplacer le panier", message: "Remplacer tout votre panier actuel par ce panier partagé ?", confirmLabel: "Remplacer", danger: true })) return;
     setImporting(true);
     setImportError("");
     try {
       const incoming = await Promise.all(sharedEntries.map(async (entry): Promise<BasketItem> => {
         if (entry[0] === "g" || entry[0] === "t") return { kind: entry[0] === "g" ? "group" : "text", name: entry[1], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
         if (entry[0] === "s") return { kind: "scope", department: entry[1], family: entry[2], name: entry[3], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
+        if (entry[0] === "x") return { kind: "selection", name: entry[1], ...entry[3], disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };
         const product = await currentBasketProduct(entry[1], null, productId => productRequest<Product>("/" + productId));
         if (!product) throw new Error("Produit indisponible");
         return { id: product.id, revision: product.revision, data: product.data, disabled: sharedEntryDisabled(entry), quantity: sharedEntryQuantity(entry) };

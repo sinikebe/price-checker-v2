@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useConfirm } from "./useConfirm";
 import V2SiteHeader from "./V2SiteHeader";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
-import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
+import V2OffPanel from "./V2OffPanel";
+import { useOffProduct, type OffRead } from "./useOffProduct";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
@@ -125,6 +127,7 @@ function localRead(key: string): { data: ProductData; change_kind: ChangeKind; r
 }
 
 function Editor({ mode, id, user, onLogout }: Props) {
+  const confirm = useConfirm();
   const credits = useCredits(user?.id ?? null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -143,7 +146,6 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [localError, setLocalError] = useState("");
   const localVersion = useRef(0);
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
-  const [allowOffDefault] = useState(() => !localRead(localKey));
   const [tagInput, setTagInput] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
   const [extraUnit, setExtraUnit] = useState<MeasureUnit>("piece");
@@ -193,9 +195,8 @@ function Editor({ mode, id, user, onLogout }: Props) {
   function persist(next: ProductData, kind: ChangeKind, fromOff = false) {
     if (!fromOff && next.off_source) {
       const changed = fields.filter(field => data[field.key] !== next[field.key]).map(field => field.key);
-      const kept = next.off_source.fields.filter(key =>
-        !changed.includes(key) && !(key === "nutriscore" && changed.includes("nutriscore_version"))
-      );
+      // A fact the contributor rewrote is no longer a copy from Open Food Facts.
+      const kept = next.off_source.fields.filter(key => !changed.includes(key));
       next = { ...next, off_source: kept.length ? { ...next.off_source, fields: kept } : null };
       if (changed.includes("nutriscore")) next.nutriscore_version = "";
     }
@@ -258,7 +259,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   }
   async function reject() {
     if (!draft || busy || dirty || draft.status !== "draft") return;
-    if (!window.confirm("Rejeter cette proposition ?")) return;
+    if (!await confirm({ title: "Rejeter la proposition", message: "Rejeter cette proposition ? Elle reste visible pour son auteur.", confirmLabel: "Rejeter", danger: true })) return;
     setBusy(true); setError("");
     try {
       const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
@@ -269,7 +270,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   }
   async function discardSuperseded() {
     if (!draft || (!successorId && draft.status !== "rejected") || draft.author_id !== user?.id || busy) return;
-    if (!window.confirm("Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.")) return;
+    if (!await confirm({ title: "Abandonner le brouillon", message: "Abandonner cet ancien brouillon ? Recopiez d’abord les informations utiles dans une proposition sur la version actuelle.", confirmLabel: "Abandonner", danger: true })) return;
     setBusy(true); setError("");
     try {
       await productRequest<{ deleted: boolean }>("/drafts/" + draft.id, "DELETE");
@@ -329,7 +330,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <small>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</small>
           </fieldset>}
         </fieldset>
-        <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
+        <V2OffLookup data={data} disabled={busy || readonly}
           onApply={next => persist(next, changeKind, true)} />
         {conflict && draft && <div className="v2-workspace-conflict" role="alert">
           <strong>Conflit de brouillon.</strong> Votre saisie locale repose sur une version différente de celle du serveur.
@@ -385,12 +386,38 @@ function Editor({ mode, id, user, onLogout }: Props) {
  * The product as a shopper needs it: its name, its quantity, its lowest known price, the comparable
  * products and the baskets. The rest is the contribution mode's.
  */
-function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void> }) {
+/**
+ * A product known only by its barcode, shown with what Open Food Facts says about it (read by this
+ * browser when the page opens). The facts are kept with the basket line on this device only.
+ */
+function withOffFacts(product: Product, read: OffRead): Product {
+  if (!product.off_reference || read.phase !== "done") return product;
+  const off = read.product;
+  // Open Food Facts names often hold the brand already ("Nutella" by Nutella): it is not repeated.
+  const brand = off.brand && off.name.toLocaleLowerCase("fr").includes(off.brand.toLocaleLowerCase("fr")) ? "" : off.brand;
+  return { ...product, data: { ...product.data, name: product.data.name || off.name, brand: product.data.brand || brand,
+    quantity: product.data.quantity || off.quantity } };
+}
+const productTitle = (product: Product) => [product.data.brand, product.data.name].filter(Boolean).join(" ")
+  || (product.data.ean ? "Code-barres " + product.data.ean : "Produit");
+
+function ReferenceNotice({ product, read, contributing }: { product: Product; read: OffRead; contributing: boolean }) {
+  return <p className="v2-reference-notice" role="note">
+    {read.phase === "loading" ? "Lecture chez Open Food Facts…"
+      : read.phase === "missing" ? "Ce produit n’est connu que par son code-barres, et Open Food Facts ne le connaît pas."
+      : read.phase === "error" ? read.message
+      : "Ce produit n’est connu ici que par son code-barres : son nom et ses informations sont lus chez Open Food Facts par votre navigateur."}
+    {contributing && <> <Link to={"/v2/produits/" + product.id + "/modifier"}>Proposer une fiche complète</Link> l’ajoute au catalogue.</>}
+  </p>;
+}
+
+function ShoppingDetail({ product, id, user, onLogout, read }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void>; read: OffRead }) {
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
       <span className="v2-section-kicker">PRODUIT</span>
-      <h1 id="v2-product-simple-name">{[d.brand, d.name].filter(Boolean).join(" ")}<span>.</span></h1>
+      <h1 id="v2-product-simple-name">{productTitle(product)}<span>.</span></h1>
+      {product.off_reference && <ReferenceNotice product={product} read={read} contributing={false} />}
       <dl className="v2-workspace-facts"><div><dt>Quantité</dt><dd>{d.quantity || "À préciser"}</dd></div></dl>
       {product.successor_id ? <p><Link to={"/v2/produits/" + product.successor_id}>Cette référence a changé : voir la version actuelle →</Link></p>
         : id ? <>
@@ -404,18 +431,22 @@ function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?
 
 function Detail({ mode, id, user, onLogout }: Props) {
   const contributing = useAppMode().mode === "contribute";
-  const { data: product, error } = useCollection<Product>("/" + id);
+  const { data: loaded, error } = useCollection<Product>("/" + id);
+  // Known only by its barcode: opening its page reads its name and details at Open Food Facts.
+  const read = useOffProduct(loaded?.off_reference ? loaded.data.ean : null);
+  const product = loaded ? withOffFacts(loaded, read) : null;
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", contributing && mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
-  if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} />;
+  if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} read={read} />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>
-      <V2ShareButton title={[d.brand, d.name].filter(Boolean).join(" ")} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
-      <p>{d.commercial_name || d.quantity}</p></div>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">{product.off_reference ? "PRODUIT · CODE-BARRES SEUL" : "PRODUIT PUBLIÉ · V2"}</span><div className="v2-share-title-row"><h1>{productTitle(product)}<span>.</span></h1>
+      <V2ShareButton title={productTitle(product)} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
+      <p>{d.commercial_name || d.quantity}</p>
+      {product.off_reference && <ReferenceNotice product={product} read={read} contributing />}</div>
       <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
     <nav className="v2-workspace-subnav"><Link to={"/v2/produits/" + id}>Fiche</Link><Link to={"/v2/produits/" + id + "/historique"}>Historique</Link></nav>
@@ -450,7 +481,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
-    {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
+    {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} initial={read.phase === "done" ? read.product : undefined} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }

@@ -58,3 +58,23 @@ html[data-v2-theme="dark"] .v2-catalogue-level-family { color: #d3b7f2; }
 html[data-v2-theme="dark"] .v2-catalogue-level-scope { color: #f3c68b; }
 html[data-v2-theme="dark"] .v2-catalogue-level-group { color: #8edbc7; }
 html[data-v2-theme="dark"] .v2-catalogue-level-product { color: #c5ced8; }
+/* Shopping mode: the catalogue is still a test sample, and says so. */
+.v2-catalogue-test-note { margin: 0 0 18px; padding: 12px 16px; border: 1px solid #ecd9a8; border-radius: 12px; background: #fff8e6; color: #5c4710; }
+.v2-catalogue-test-note a { color: inherit; font-weight: 700; }
+html[data-v2-theme="dark"] .v2-catalogue-test-note { border-color: #6b5520; background: #2f2711; color: #f3dfa6; }
+/* The catalogue's search at Open Food Facts, on request. */
+.v2-off-search-catalogue { margin: 22px 0; padding: 18px; border: 1px solid #dce8db; border-radius: 16px; background: #fff; }
+.v2-off-search-catalogue-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.v2-off-search-catalogue h2 { margin: 0; font-size: 1.15rem; }
+.v2-off-search-results { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.v2-off-search-results li { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid #e6eee5; border-radius: 12px; }
+.v2-off-search-results img, .v2-off-search-noimage { width: 48px; height: 48px; border-radius: 8px; object-fit: contain; background: #f4f7f3; }
+.v2-off-search-text { display: grid; min-width: 0; }
+.v2-off-search-text small { color: var(--v2-muted, #61736d); overflow-wrap: anywhere; }
+.v2-off-search-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.v2-off-search-actions a:not(.v2-button) { font-weight: 700; }
+@media (max-width: 600px) { .v2-off-search-results li { grid-template-columns: 40px minmax(0, 1fr); } .v2-off-search-actions { grid-column: 1 / -1; justify-content: flex-start; } .v2-off-search-results img, .v2-off-search-noimage { width: 40px; height: 40px; } }
+html[data-v2-theme="dark"] .v2-off-search-catalogue { border-color: #2f4a3f; background: #172822; }
+html[data-v2-theme="dark"] .v2-off-search-results li { border-color: #2f4a3f; }
+html[data-v2-theme="dark"] .v2-off-search-results img, html[data-v2-theme="dark"] .v2-off-search-noimage { background: #1d3129; }
+html[data-v2-theme="dark"] .v2-off-search-text small { color: #a9c2b8; }

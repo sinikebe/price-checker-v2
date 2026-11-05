@@ -12,14 +12,15 @@ from app.api.v2.credits import charge
 from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
-from app.services.v2_catalogue_hierarchy import UNCATEGORIZED
+from app.services.v2_catalogue_hierarchy import UNCATEGORIZED, fold as _fold
 
 router = APIRouter(prefix="/api/v2/catalogue", tags=["v2-catalogue"])
 MAX_PRICE_COST = 1000  # the highest amount a page of prices may announce
 
 # A catalogue category is the existing comparable group, never a second field.
 CATEGORY = "COALESCE(NULLIF(btrim(p.data->>'group'), ''), 'Sans groupe')"
-CURRENT = """NOT EXISTS (
+# Current, and part of the catalogue: barcode-only products (details at Open Food Facts) are left out.
+CURRENT = """NOT p.off_reference AND NOT EXISTS (
     SELECT 1 FROM v2_content_withdrawals w
     WHERE w.kind='product' AND w.content_id=p.id
 ) AND NOT EXISTS (
@@ -85,6 +86,59 @@ async def list_categories():
                 for row in rows]
     finally:
         await connection.close()
+
+
+OUTLINE_MAX_GROUPS = 300
+
+
+@router.get("/outline")
+async def catalogue_outline(
+    q: str = Query("", max_length=80, description="Mots à trouver dans un nom de rayon, famille, ensemble ou groupe."),
+    limit: int = Query(OUTLINE_MAX_GROUPS, ge=1, le=OUTLINE_MAX_GROUPS),
+):
+    """The catalogue tree, compact and nested, to find the names a basket line or a selection can use.
+
+    Departments hold families; a family holds ensembles (`scopes`) and the groups outside any ensemble;
+    each group gives its number of products. With `q`, only the branches where every word appears in a
+    level's name (without regard to case or accents) are kept. At most `limit` groups are listed.
+    """
+    connection = await _connect()
+    try:
+        rows = await connection.fetch(
+            f"""SELECT min(v.category) AS name, count(*) AS products, c.department, c.family, c.comparison_scope
+                FROM (SELECT {CATEGORY} AS category FROM v2_products p WHERE {CURRENT}) v
+                LEFT JOIN v2_catalogue_classifications c ON c.group_key=lower(v.category)
+                GROUP BY lower(v.category), c.department, c.family, c.comparison_scope""")
+    finally:
+        await connection.close()
+    words = _fold(q).split()
+    departments: dict[str, dict] = {}
+    listed = 0
+    truncated = False
+    for row in sorted(rows, key=lambda item: tuple(_fold(part or UNCATEGORIZED) for part in (
+            item["department"], item["family"], item["comparison_scope"] or "", item["name"]))):
+        department, family = row["department"] or UNCATEGORIZED, row["family"] or UNCATEGORIZED
+        scope = row["comparison_scope"]
+        text = _fold(" ".join(part for part in (department, family, scope, row["name"]) if part))
+        if any(word not in text for word in words):
+            continue
+        if listed >= limit:
+            truncated = True
+            break
+        listed += 1
+        dep = departments.setdefault(department, {"name": department, "families": {}})
+        fam = dep["families"].setdefault(family, {"name": family, "scopes": {}, "groups": []})
+        group = {"name": row["name"], "products": row["products"]}
+        if scope:
+            fam["scopes"].setdefault(scope, {"name": scope, "groups": []})["groups"].append(group)
+        else:
+            fam["groups"].append(group)
+    return {
+        "departments": [{"name": dep["name"], "families": [
+            {"name": fam["name"], "scopes": list(fam["scopes"].values()), "groups": fam["groups"]}
+            for fam in dep["families"].values()]} for dep in departments.values()],
+        "groups": listed, "truncated": truncated,
+    }
 
 
 # Published records may predate the current publication rules. Optional

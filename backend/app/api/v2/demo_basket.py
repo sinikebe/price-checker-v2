@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
 from app.api.v2.auth_security import account_limit_key
 from app.api.v2.basket import GroupRef, ProductRef, ScopeRef, _clean, _gather
+from app.api.v2.selections import SelectionRef
 from app.api.v2.shared_baskets import DEFAULT_SETTINGS, NewLine, Settings
 from app.services import v2_logbook as logbook
 
@@ -48,10 +49,16 @@ async def _admin(connection, request: Request) -> dict:
 def _refs(lines: list[NewLine]):
     for entry in lines:
         line = entry.line
+        if line.kind == "text":
+            # A demo shows prices for every article: a free text has none.
+            raise HTTPException(status_code=422, detail="Le panier de démonstration ne prend pas de texte libre : "
+                                                        "remplacez-le par un produit, un groupe ou un ensemble.")
         if line.kind == "product":
             yield ProductRef(kind="product", id=line.product_id)
         elif line.kind == "group":
             yield GroupRef(kind="group", name=line.name)
+        elif line.kind == "selection":
+            yield SelectionRef(kind="selection", **line.model_dump(exclude={"kind"}))
         else:
             yield ScopeRef(kind="scope", department=line.department, family=line.family, name=line.name)
 
@@ -68,6 +75,9 @@ def _items(lines: list[NewLine], refs: list, result: dict) -> list[dict]:
             item, key = {"id": product["id"], "revision": product["revision"], "data": product["data"]}, ("product", product["id"])
         elif ref.kind == "group":
             item, key = {"kind": "group", "name": ref.name}, ("group", ref.name.casefold())
+        elif ref.kind == "selection":
+            item = {"kind": "selection", **ref.model_dump(mode="json", exclude={"kind"}, exclude_none=True)}
+            key = ("selection", ref.name.casefold())
         else:
             item = {"kind": "scope", "department": ref.department, "family": ref.family, "name": ref.name}
             key = ("scope", ref.department.casefold(), ref.family.casefold(), ref.name.casefold())

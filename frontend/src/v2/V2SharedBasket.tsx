@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import { Link, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import type { BasketItem } from "./v2-basket-storage";
@@ -16,6 +17,7 @@ const syncLabel = (value: string) => new Date(value).toLocaleString("fr-FR", { d
 
 /** The line at the top of the basket while a shared basket is open: who is in, whether it is live, what just changed. */
 export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketControls; user: V2User | null; onInvite: () => void }) {
+  const confirm = useConfirm();
   const basket = shared.basket;
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
@@ -56,13 +58,13 @@ export function SharedBanner({ shared, user, onInvite }: { shared: SharedBasketC
           <button type="button" className="v2-button v2-button-secondary" onClick={() => setRenaming(false)}>Annuler</button>
         </form> : <button type="button" className="v2-button v2-button-secondary" onClick={() => { setName(basket.name); setRenaming(true); }}>Renommer</button>}
         <p className="v2-shared-warning">Supprimer ce panier l’efface du serveur pour tous ses membres, avec ses articles. <strong>Cette suppression est définitive : elle ne peut pas être annulée.</strong></p>
-        <button type="button" className="v2-button v2-shared-danger" disabled={busy} onClick={() => {
-          if (window.confirm(`Supprimer « ${basket.name} » pour tous ses membres ?\n\nCette suppression est définitive : elle ne peut pas être annulée.`)) void run(() => shared.remove());
+        <button type="button" className="v2-button v2-shared-danger" disabled={busy} onClick={async () => {
+          if (await confirm({ title: "Supprimer le panier partagé", message: `Supprimer « ${basket.name} » pour tous ses membres ?\n\nCette suppression est définitive : elle ne peut pas être annulée.`, confirmLabel: "Supprimer pour tous", danger: true })) void run(() => shared.remove());
         }}>Supprimer le panier partagé</button>
       </div> : <div className="v2-shared-manage-body">
         <p>Quitter ce panier le retire de vos paniers partagés. Les articles que vous y avez ajoutés restent ; un lien d’invitation valable permet de revenir.</p>
-        <button type="button" className="v2-button v2-button-secondary" disabled={busy || !user} onClick={() => {
-          if (user && window.confirm(`Quitter « ${basket.name} » ?`)) void run(() => shared.leave(user.id));
+        <button type="button" className="v2-button v2-button-secondary" disabled={busy || !user} onClick={async () => {
+          if (user && await confirm({ title: "Quitter le panier partagé", message: `Quitter « ${basket.name} » ? Les articles que vous y avez ajoutés restent.`, confirmLabel: "Quitter" })) void run(() => shared.leave(user.id));
         }}>Quitter le panier partagé</button>
       </div>}
     </details>}
@@ -98,6 +100,7 @@ function InviteLink({ url, name }: { url: string; name: string }) {
 
 /** Invitation and members, in the share panel of an open shared basket. */
 export function SharedInvite({ shared, user }: { shared: SharedBasketControls; user: V2User | null }) {
+  const confirm = useConfirm();
   const basket = shared.basket;
   const [busy, setBusy] = useState(false);
   const readOnly = !!useContext(BasketReadOnlyContext);
@@ -110,14 +113,14 @@ export function SharedInvite({ shared, user }: { shared: SharedBasketControls; u
     <p>Toute personne qui ouvre ce lien voit « {basket.name} », ses articles et ses prix, même sans compte, sans voir le nom des membres. Une personne connectée peut aussi le rejoindre et le modifier. Envoyez-le seulement aux personnes concernées.</p>
     {basket.invite ? <InviteLink url={inviteUrl(window.location.origin, basket.invite)} name={basket.name} />
       : <p className="v2-shared-hint">Le lien d’invitation s’affiche une fois la connexion rétablie.</p>}
-    {owner && <p><button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => {
-      if (window.confirm("Créer un nouveau lien d’invitation ? L’ancien ne fonctionnera plus ; les membres actuels restent.")) void run(() => shared.renewInvite());
+    {owner && <p><button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={async () => {
+      if (await confirm({ title: "Nouveau lien d’invitation", message: "Créer un nouveau lien d’invitation ? L’ancien ne fonctionnera plus ; les membres actuels restent.", confirmLabel: "Créer un nouveau lien" })) void run(() => shared.renewInvite());
     }}>Nouveau lien (l’ancien ne fonctionnera plus)</button></p>}
     <h3>Membres ({basket.members.length}/{basket.limits.members})</h3>
     <ul className="v2-shared-members">{basket.members.map(member => <li key={member.id}>
       <span>{member.username}{member.owner ? " · créateur" : ""}{member.id === user?.id ? " · vous" : ""}</span>
-      {owner && !member.owner && <button type="button" className="v2-basket-remove" disabled={busy} onClick={() => {
-        if (window.confirm(`Retirer ${member.username} du panier partagé ? Les articles ajoutés restent.\n\nLe lien d’invitation change aussi, pour que ${member.username} ne puisse pas revenir : renvoyez le nouveau lien aux personnes que vous voulez encore inviter.`)) void run(() => shared.removeMember(member.id));
+      {owner && !member.owner && <button type="button" className="v2-basket-remove" disabled={busy} onClick={async () => {
+        if (await confirm({ title: "Retirer un membre", message: `Retirer ${member.username} du panier partagé ? Les articles ajoutés restent.\n\nLe lien d’invitation change aussi, pour que ${member.username} ne puisse pas revenir : renvoyez le nouveau lien aux personnes que vous voulez encore inviter.`, confirmLabel: "Retirer", danger: true })) void run(() => shared.removeMember(member.id));
       }}>Retirer</button>}
     </li>)}</ul>
   </section>;

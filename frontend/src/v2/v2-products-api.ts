@@ -1,15 +1,9 @@
 import { cacheApprovedProduct } from "../pwa/cache-writes";
-import type { OffSection } from "./off-types";
 import { productErrorText } from "./v2-product-errors";
 
-export type OffField = "name" | "brand" | "composition" | "quantity" | "ean" | "nutriscore" | "nova";
+/** The identifying facts a contributor may copy from Open Food Facts. */
+export type OffField = "name" | "brand" | "quantity" | "ean";
 export type OffSource = { code: string; checked_at: string; fields: OffField[] };
-export type OffSuggestion = {
-  code: string | null; product_name: string | null; brand: string | null;
-  quantity: string | null; ingredients_text: string | null; image_url: string | null;
-  nutriscore_grade: string | null; nova_group: number | null;
-  nutriscore_version: string | null;
-};
 export type RetailerLink = { retailer: string; url: string; source: "manual" | "capture" };
 export type MeasureUnit = "g" | "ml" | "piece";
 /** Another way to measure one pack (6 pieces for 750 g); the server derives `measures` from it and the quantity text. */
@@ -29,6 +23,8 @@ export type ChangeKind = "correction" | "new_version";
 export type Product = {
   id: number; data: ProductData; revision: number; predecessor_id: number | null;
   updated_at: string; successor_id?: number | null; merged_to_id?: number | null;
+  /** Known only by its barcode: its name and details are read from Open Food Facts by the browser. */
+  off_reference?: boolean;
 };
 export type Draft = {
   id: number; product_id: number | null; author_id: number; author?: string | null;
@@ -38,11 +34,6 @@ export type Draft = {
   linked_prices?: { id: number; price: string; status: "draft" | "approved" | "rejected";
     capture_ean: string | null; quantity_text: string | null; captured_store_name: string | null;
     retailer: string; store_name: string }[];
-};
-export type V2OffSnapshot = {
-  product_id: number; source_product_id?: number; barcode: string; fetched_at: string;
-  off_rev: number | null; off_last_modified: string | null; off_url: string;
-  field_count: number; presented_field_count: number; sections: OffSection[];
 };
 export type ProductEvent = {
   id: number; event_type: string; created_at: string;

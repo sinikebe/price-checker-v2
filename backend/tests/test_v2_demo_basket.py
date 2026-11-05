@@ -185,3 +185,22 @@ async def test_reads_and_saves_are_limited(served, config, monkeypatch):
         assert (await client.put(PATH, headers=admin, json=body(products))).status_code == 200
         limited = await client.put(PATH, headers=admin, json=body(products))
         assert limited.status_code == 429 and limited.headers["retry-after"] == "60"
+
+
+@pytest.mark.asyncio
+async def test_a_demo_keeps_selections_and_refuses_free_text(served, config):
+    users, _store, products = await seed(config)
+    admin = acting(users["admin"], "admin")
+    async with served as client:
+        mixed = body(products)
+        mixed["lines"].append({"line": {"kind": "selection", "name": "Tout", "include": [{"group": "Lait"}, {"group": "Pâtes"}]}})
+        saved = await client.put(PATH, headers=admin, json=mixed)
+        assert saved.status_code == 200, saved.text
+        demo = (await client.get(PATH)).json()["demo"]
+        selection = demo["content"]["items"][-1]
+        assert selection == {"kind": "selection", "name": "Tout", "include": [{"group": "Lait"}, {"group": "Pâtes"}],
+                             "exclude": [], "words": []}
+        texted = body(products)
+        texted["lines"].append({"line": {"kind": "text", "name": "Bougies"}})
+        refused = await client.put(PATH, headers=admin, json=texted)
+        assert refused.status_code == 422 and "texte libre" in refused.json()["detail"]

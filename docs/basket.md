@@ -86,6 +86,31 @@ Un article qui n’est pas encore au catalogue peut être ajouté en **texte lib
 
 **Remplacer par un produit, un groupe ou un ensemble** ouvre, sous la ligne, une recherche partant du texte : les groupes et ensembles du catalogue qui correspondent, et les produits trouvés. Le choix remplace la ligne en gardant sa quantité et son inclusion ; un article déjà dans le panier n’est pas proposé. Un lien de copie du panier transporte aussi les textes libres.
 
+## Sélections
+
+Un groupe comparable répond à « du jus d’orange bio ». Une **sélection** répond à « n’importe quel jus de fruits bio » : un seul article du panier qui réunit les produits de plusieurs parties du catalogue, produits, groupes, ensembles, familles ou rayons, moins ce qui est exclu, et éventuellement limités aux produits dont le texte contient certains mots. Elle n’existe que dans le panier : le catalogue ne change pas, et chacun compose la sienne. Elle se compare comme un groupe (le produit le moins cher parmi ses candidats) et compte pour un article, donc 1 crédit.
+
+Sa forme est volontairement courte, pour qu’une personne, un script ou un petit modèle de langue puisse l’écrire sans aide :
+
+```json
+{"kind": "selection", "name": "Jus de fruits bio", "include": [{"family": "Jus de fruits"}], "words": ["bio"]}
+```
+
+- `name` : le nom affiché (100 caractères au plus). Un même nom n’est qu’une ligne du panier.
+- `include` : de 1 à 20 parties. Chacune nomme **un seul niveau** : `{"product": 12}`, `{"group": "Jus d’orange bio"}`, `{"scope": "Pâtes sèches"}`, `{"family": "Jus de fruits"}` ou `{"department": "Boissons"}`. Un ensemble peut ajouter sa famille et son rayon, une famille son rayon, pour distinguer deux noms identiques : `{"scope": "Pâtes sèches", "family": "Pâtes, riz et céréales"}`. Un produit ou un groupe se donne seul.
+- `exclude` (facultatif) : de 0 à 20 parties de même forme, retirées du résultat : `"exclude": [{"group": "Nectar de pomme"}]`.
+- `words` (facultatif) : jusqu’à 5 mots (40 caractères au plus) que chaque produit doit tous contenir, dans son nom, sa marque, son nom commercial, son groupe ou ses étiquettes.
+
+Les noms et les mots se comparent sans tenir compte des majuscules, des accents ni de la forme de l’apostrophe (« epicerie salee » trouve « Épicerie salée », « jus d'orange » trouve « jus d’orange »). Un produit remplacé par une nouvelle version ou fusionné désigne la version actuelle ; un groupe pas encore classé se trouve sous le rayon et la famille « À classer », comme dans le catalogue. Une sélection compare au plus 300 produits, comme un groupe.
+
+Pour composer une sélection, par exemple avec un assistant :
+
+1. trouver les noms avec `GET /api/v2/catalogue/outline?q=jus` (l’arbre du catalogue, filtré) ;
+2. vérifier avec `POST /api/v2/basket/selection` : nombre de produits, groupes concernés, quelques exemples et, pour chaque partie incluse, le nombre de produits qu’elle trouve seule (0 signale un nom à corriger) ;
+3. l’ajouter au panier, ou à un panier partagé avec `{"op": "add", "line": {...}}`. Pour la modifier, la retirer puis l’ajouter de nouveau dans la même requête : `[{"op": "remove", "line": <ancienne>}, {"op": "add", "line": <nouvelle>}]`.
+
+L’application affiche une sélection (« Sélection », avec ses parties, ses exclusions et ses mots), la compare, la garde hors connexion et la transporte dans un lien de copie du panier. Il n’y a pas encore d’écran pour en composer une.
+
 ## Hors connexion
 
 L’application installée (ou déjà ouverte dans le navigateur) s’ouvre sans connexion, avec le dernier compte connecté sur l’appareil. La règle est simple : **hors connexion, tout est en lecture seule**, sauf les coches des listes de courses.
@@ -117,7 +142,12 @@ Sans autre choix, l’exemple est celui de l’application : un mois de courses 
 Ces routes demandent une session de navigateur (pas de jeton personnel).
 
 - `GET /api/v2/basket/credits` : solde, règles et prochaine date d’attribution (comme `GET /api/v2/credits`, qui répond aussi aux visiteurs sans compte).
-- `POST /api/v2/basket/prices` : `{"items": [...]}` avec, par article, `{"kind": "product", "id"}`, `{"kind": "group", "name"}` ou `{"kind": "scope", "department", "family", "name"}`. Réponse : `lines` (dans l’ordre, avec les identifiants de produits candidats), `products`, `prices` et `credits`. Sans crédit, la réponse est `429` avec `Retry-After`.
+- `POST /api/v2/basket/prices` : `{"items": [...]}` avec, par article, `{"kind": "product", "id"}`, `{"kind": "group", "name"}`, `{"kind": "scope", "department", "family", "name"}` ou une sélection `{"kind": "selection", "name", "include", "exclude"?, "words"?}` (voir [Sélections](#sélections)). Réponse : `lines` (dans l’ordre, avec les identifiants de produits candidats), `products`, `prices` et `credits`. Sans crédit, la réponse est `429` avec `Retry-After`.
+
+Routes ouvertes aussi aux visiteurs, pour trouver les noms et composer une sélection :
+
+- `GET /api/v2/catalogue/outline?q=&limit=` : l’arbre du catalogue, imbriqué et compact : `{"departments": [{"name", "families": [{"name", "scopes": [{"name", "groups": [{"name", "products"}]}], "groups": [...]}]}], "groups", "truncated"}`. Avec `q`, seules restent les branches où chaque mot figure dans un nom de rayon, famille, ensemble ou groupe (sans majuscules ni accents). Au plus 300 groupes (`limit`).
+- `POST /api/v2/basket/selection` : une sélection sans `kind` (`{"name", "include", "exclude"?, "words"?}`), sans prix ni crédit. Réponse : `products`, `truncated`, `include` (`[{"index", "level", "products"}]`, le nombre trouvé par chaque partie seule), `groups` (30 au plus) et `sample` (20 produits : `id`, `name`, `brand`, `quantity`, `group`). Au plus 30 requêtes par minute et par client ; une forme invalide répond `422` avec le champ en cause.
 
 Une requête porte au plus 100 articles, compare au plus 300 produits par groupe ou ensemble et 600 produits au total, et renvoie au plus 200 magasins par produit ; les limites atteintes sont signalées dans `lines[].truncated` et `prices[].stores_truncated`. Les prix d’un magasin où le produit est retiré de la gamme (voir `availability.md`) sont laissés de côté et comptés dans `prices[].withdrawn_count`. La migration `0036_basket_credits` crée la table des soldes ; une ligne est créée à la première utilisation d’un compte et supprimée avec lui.
 
@@ -129,11 +159,11 @@ Paniers partagés (session de navigateur, origine vérifiée pour les écritures
 - `POST /api/v2/shared-baskets/{id}/changes` : `{"ops": [...]}` appliquées dans l’ordre, une ligne étant désignée par ce qu’elle est (`line`) : `{"op": "add", "line", "quantity", "disabled"}` (ajoutée une seule fois), `{"op": "remove", "line"}`, `{"op": "update", "line", "quantity"?, "disabled"?}`, `{"op": "tick", "key", "on"}` (coche ou décoche un seul article de la liste, 100 coches au plus), et `{"op": "settings", "advanced"?, "compare"?, "filters"?, "stores_off"?, "units"?, "checked"?, "list_mode"?}`, qui remplace les réglages nommés (bornés : 200 magasins, 100 villes ou départements, 50 magasins désactivés, une unité et une coche par article ; `list_mode` vaut `all`, `split` ou `store:<magasin>:<canal>`). La migration `0043_shared_basket_settings` ajoute la colonne `settings`.
 - `POST /api/v2/shared-baskets/join` : `{"invite", "confirm"}` ; sans `confirm`, décrit le panier sans le rejoindre.
 - `POST /api/v2/shared-baskets/view` : `{"invite"}`, sans compte : le panier en lecture seule (nom, réglages, lignes sans auteur, prix sans nom), 60 lectures par minute et par client.
-- `POST /api/v2/shared-baskets/{id}/prices` : un membre récupère les prix des articles inclus (hors textes libres) avec ses crédits ; `GET /api/v2/shared-baskets/{id}/prices` : les derniers prix du panier (`null` sans relevé), pour tous ses membres. L’état du panier indique `prices.fetched_at` et `prices.fetched_by`. Une ligne peut être `{"kind": "text", "name"}` (migration `0047_shared_basket_text_and_prices`, qui crée aussi `v2_shared_basket_prices`, supprimée avec le panier).
+- `POST /api/v2/shared-baskets/{id}/prices` : un membre récupère les prix des articles inclus (hors textes libres) avec ses crédits ; `GET /api/v2/shared-baskets/{id}/prices` : les derniers prix du panier (`null` sans relevé), pour tous ses membres. L’état du panier indique `prices.fetched_at` et `prices.fetched_by`. Une ligne peut être `{"kind": "text", "name"}` (migration `0047_shared_basket_text_and_prices`, qui crée aussi `v2_shared_basket_prices`, supprimée avec le panier). Une ligne peut aussi être une sélection `{"kind": "selection", "name", "include", "exclude"?, "words"?}` ; l’état du panier la rend avec `label` (son nom) et `spec` (`include`, `exclude`, `words`). La migration `0049_shared_basket_selections` ajoute la colonne `spec`.
 - `PATCH /api/v2/shared-baskets/{id}` (`{"name"}`), `POST /api/v2/shared-baskets/{id}/invite`, `DELETE /api/v2/shared-baskets/{id}` : réservés au créateur. `DELETE /api/v2/shared-baskets/{id}/members/{user_id}` : quitter (son propre identifiant) ou retirer un membre (créateur).
 
 Panier de démonstration :
 
 - `GET /api/v2/demo-basket` : public, `{"demo": null}` sans panier enregistré, sinon `{"demo": {"title", "saved_at", "content": {"items", "settings", "result"}}}`, où `result` a la forme de la réponse de `POST /api/v2/basket/prices` (sans les crédits). Réponse `Cache-Control: no-cache` avec un `ETag` (`304` quand rien n’a changé) ; au plus 60 lectures par minute et par client.
-- `PUT /api/v2/demo-basket` : administrateur (session de navigateur, origine vérifiée), `{"title", "lines": [{"line", "quantity", "disabled"}], "settings"}` comme pour un panier partagé (100 articles au plus). Les prix sont relus par le serveur ; un produit qui n’est plus au catalogue, deux articles qui désignent la même chose ou un contenu de plus de 2 Mo sont refusés (`422`). `DELETE /api/v2/demo-basket` revient à l’exemple intégré. Au plus 10 écritures par minute et par compte ; chaque enregistrement est journalisé avec ses seuls nombres d’articles et de produits.
+- `PUT /api/v2/demo-basket` : administrateur (session de navigateur, origine vérifiée), `{"title", "lines": [{"line", "quantity", "disabled"}], "settings"}` comme pour un panier partagé (100 articles au plus). Les prix sont relus par le serveur ; un produit qui n’est plus au catalogue, un texte libre, deux articles qui désignent la même chose ou un contenu de plus de 2 Mo sont refusés (`422`). Une sélection est acceptée. `DELETE /api/v2/demo-basket` revient à l’exemple intégré. Au plus 10 écritures par minute et par compte ; chaque enregistrement est journalisé avec ses seuls nombres d’articles et de produits.
 - La migration `0046_demo_basket` crée la table `v2_demo_basket` (une ligne au plus, sans lien vers un compte).

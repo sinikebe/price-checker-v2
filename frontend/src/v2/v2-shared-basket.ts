@@ -4,18 +4,20 @@
  */
 import type { BasketFilters, CompareMode } from "./v2-basket-comparison";
 import type { BaseUnit } from "./v2-basket-quantity";
-import type { BasketItem, BasketProduct, BasketQuantity } from "./v2-basket-storage";
+import type { BasketItem, BasketProduct, BasketQuantity, SelectionMember } from "./v2-basket-storage";
 import type { BasketPriceResponse } from "./v2-basket-comparison";
 import type { BasketSnapshot } from "./v2-basket-snapshot";
 import type { ProductData } from "./v2-products-api";
 
 export type SharedLine = {
-  id: number; kind: "product" | "group" | "scope" | "text"; label: string; product_id: number | null;
+  id: number; kind: "product" | "group" | "scope" | "text" | "selection"; label: string; product_id: number | null;
   department: string | null; family: string | null;
+  /** What a selection holds (its name is the label). */
+  spec?: { include: SelectionMember[]; exclude?: SelectionMember[]; words?: string[] };
   quantity: BasketQuantity | null; disabled: boolean;
   /** Absent when the basket is seen through its link, without being a member. */
   added_by?: string | null; mine?: boolean; created_at: string;
-  product: { id: number; revision: number; data: ProductData } | null;
+  product: { id: number; revision: number; data: ProductData; off_reference?: boolean } | null;
 };
 export type SharedMember = { id: number; username: string; owner: boolean };
 export type SharedBasket = {
@@ -47,10 +49,11 @@ export type SharedSummary = {
 export type InvitePreview = { id: number; name: string; owner: string; lines: number; members: number; member: boolean };
 
 export type LineRef =
-  | { kind: "product"; product_id: number }
+  | { kind: "product"; product_id: number; label?: string }
   | { kind: "group"; name: string }
   | { kind: "text"; name: string }
-  | { kind: "scope"; department: string; family: string; name: string };
+  | { kind: "scope"; department: string; family: string; name: string }
+  | { kind: "selection"; name: string; include: SelectionMember[]; exclude: SelectionMember[]; words: string[] };
 /** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 /** How every member sees a shared basket: the same filters and options, kept on the server. */
 export type SharedSettings = {
@@ -96,8 +99,13 @@ export function sharedItems(lines: readonly SharedLine[]): { items: BasketItem[]
   const items: BasketItem[] = [], kept: SharedLine[] = [], unavailable: SharedLine[] = [];
   for (const line of lines) {
     let item: BasketItem | null = null;
-    if (line.kind === "product") item = line.product ? { id: line.product.id, data: line.product.data, revision: line.product.revision, ...options(line) } : null;
+    if (line.kind === "product") item = !line.product ? null : line.product.off_reference
+      // Known only by its barcode: the name is the one the member who added it read from Open Food Facts.
+      ? { id: line.product.id, data: { ...line.product.data, name: line.product.data.name || line.label }, revision: line.product.revision, off_reference: true, ...options(line) }
+      : { id: line.product.id, data: line.product.data, revision: line.product.revision, ...options(line) };
     else if (line.kind === "group" || line.kind === "text") item = { kind: line.kind, name: line.label, ...options(line) };
+    else if (line.kind === "selection") item = line.spec?.include?.length ? { kind: "selection", name: line.label, include: line.spec.include,
+      exclude: line.spec.exclude ?? [], words: line.spec.words ?? [], ...options(line) } : null;
     else if (line.department && line.family) item = { kind: "scope", name: line.label, department: line.department, family: line.family, ...options(line) };
     if (item) { items.push(item); kept.push(line); } else unavailable.push(line);
   }
@@ -105,7 +113,11 @@ export function sharedItems(lines: readonly SharedLine[]): { items: BasketItem[]
 }
 
 export function lineRef(item: BasketItem): LineRef {
-  if (!("kind" in item)) return { kind: "product", product_id: item.id };
+  if (!("kind" in item)) {
+    const label = [item.data.brand, item.data.name].filter(Boolean).join(" ").slice(0, 200);
+    return item.off_reference && label ? { kind: "product", product_id: item.id, label } : { kind: "product", product_id: item.id };
+  }
+  if (item.kind === "selection") return { kind: "selection", name: item.name, include: item.include, exclude: item.exclude ?? [], words: item.words ?? [] };
   return item.kind === "group" || item.kind === "text" ? { kind: item.kind, name: item.name }
     : { kind: "scope", department: item.department, family: item.family, name: item.name };
 }

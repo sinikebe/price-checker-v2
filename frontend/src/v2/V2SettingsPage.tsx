@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2AccountSecurity from "./V2AccountSecurity";
 import V2AvailabilitySettings from "./V2AvailabilitySettings";
+import V2ReferenceSettings from "./V2ReferenceSettings";
 import V2ConnectorStores from "./V2ConnectorStores";
 import V2ExtensionDownload from "./V2ExtensionDownload";
 import V2CreditSettings from "./V2CreditSettings";
@@ -57,6 +58,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
       case "server": return user?.role === "admin" && <>
         <V2SettingsServer userId={user.id} />
         <V2CreditSettings key={`credits-${user.id}`} />
+        <V2ReferenceSettings key={`references-${user.id}`} />
       </>;
       case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
       case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;

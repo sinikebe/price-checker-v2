@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 
 const storageSource = readFileSync(new URL("../src/v2/v2-basket-storage.ts", import.meta.url), "utf8");
 const source = readFileSync(new URL("../src/v2/v2-basket-share.ts", import.meta.url), "utf8")
-  .replace('import { validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";', storageSource);
+  .replace(/import \{[^}]*\} from "\.\/v2-basket-storage";/, storageSource);
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -78,4 +78,20 @@ test("a copy link carries free text, with its quantity, and refuses it twice", (
   assert.equal(sharedEntryName(entries[0]), "Bougies d’anniversaire");
   const twice = encodeBasketShare([{ kind: "text", name: "Bougies" }, { kind: "text", name: "bougies" }]);
   assert.equal(decodeBasketShare(twice), null);
+});
+
+
+test("a selection travels in a link with its parts, its exclusions and its words", () => {
+  const selection = { kind: "selection", name: "Jus de fruits bio", include: [{ family: "Jus de fruits", department: "Boissons" }, { product: 4 }],
+    exclude: [{ group: "Nectar de pomme" }], words: ["bio"], quantity: { amount: "2", unit: "l" } };
+  const entries = decodeBasketShare(encodeBasketShare([selection, { kind: "group", name: "Lait", disabled: true }]));
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries[0], ["x", "Jus de fruits bio", 0, { include: selection.include, exclude: selection.exclude, words: ["bio"] }, { amount: "2", unit: "l" }]);
+  assert.equal(sharedEntryName(entries[0]), "Jus de fruits bio");
+  const plain = decodeBasketShare(encodeBasketShare([{ ...selection, quantity: undefined, disabled: true }]));
+  assert.deepEqual(plain[0], ["x", "Jus de fruits bio", 1, { include: selection.include, exclude: selection.exclude, words: ["bio"] }]);
+  // A malformed selection makes the whole link unreadable, as for any other entry.
+  const forged = btoa(JSON.stringify([1, [["x", "Tout", 0, { include: [{ product: 1, group: "Lait" }], exclude: [], words: [] }]]]))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  assert.equal(decodeBasketShare("#panier=" + forged), null);
 });

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import V2BarcodeScanner from "./V2BarcodeScanner";
 import { BarcodeIcon, SearchIcon } from "./V2SiteIcons";
 import { useCatalogueSearch, type Suggest } from "./useCatalogueSearch";
+import V2OffBarcodeResult from "./V2OffBarcodeResult";
 import { resolveBarcodePath } from "./v2-barcode";
 import {
   SEARCH_MAX_LENGTH, SEARCH_MIN_CHARS, isBarcode, sameBarcode, type SearchScope, type SearchableProduct,
@@ -13,11 +14,12 @@ const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "
 
 /**
  * One search bar for names, brands and barcodes, with a scan icon. Results follow what is typed.
- * `children` (the filters) sit between the bar and the results.
+ * `children` (the filters) sit between the bar and the results. Submitting a text (Enter) calls
+ * `onSubmitText`: the catalogue page then also searches Open Food Facts, once per submitted search.
  */
-export default function V2CatalogueSearch<T extends SearchableProduct & { id: number }>({ value, onChange, scope, suggest, renderProduct, children }: {
+export default function V2CatalogueSearch<T extends SearchableProduct & { id: number }>({ value, onChange, scope, suggest, renderProduct, children, onSubmitText }: {
   value: string; onChange: (value: string) => void; scope: SearchScope; suggest: Suggest<T>;
-  renderProduct: (product: T) => ReactNode; children?: ReactNode;
+  renderProduct: (product: T) => ReactNode; children?: ReactNode; onSubmitText?: (text: string) => void;
 }) {
   const navigate = useNavigate();
   const view = useCatalogueSearch(value, scope, suggest);
@@ -25,16 +27,21 @@ export default function V2CatalogueSearch<T extends SearchableProduct & { id: nu
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState("");
+  const [unknown, setUnknown] = useState("");
   const code = isBarcode(value) ? value.trim() : "";
 
   async function open(barcode: string) {
     if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError("");
-    try { navigate(await resolveBarcodePath(barcode)); }
+    busyRef.current = true; setBusy(true); setError(""); setUnknown("");
+    try { const path = await resolveBarcodePath(barcode); if (path) navigate(path); else setUnknown(barcode); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez."); }
     finally { busyRef.current = false; setBusy(false); }
   }
-  function submit(event: FormEvent) { event.preventDefault(); if (code) void open(code); }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (code) void open(code);
+    else if (value.trim().length >= SEARCH_MIN_CHARS) onSubmitText?.(value.trim());
+  }
   function detected(scanned: string) { setScannerOpen(false); onChange(scanned); void open(scanned); }
 
   const status = view.kind === "idle" ? (view.short ? `Saisissez au moins ${SEARCH_MIN_CHARS} caractères.` : "")
@@ -57,10 +64,10 @@ export default function V2CatalogueSearch<T extends SearchableProduct & { id: nu
     {children}
     <p className="v2-dynamic-search-status" role={view.kind === "error" ? "alert" : "status"} aria-live="polite">{status}</p>
     {code && <button type="button" className="v2-button v2-button-secondary v2-dynamic-search-barcode" disabled={busy} onClick={() => void open(code)}>
-      {busy ? "Recherche…" : known ? `Ouvrir la fiche du code-barres ${code} →`
-        : view.kind === "list" ? `Préparer une fiche pour le code-barres ${code} →` : `Ouvrir ou préparer la fiche du code-barres ${code} →`}
+      {busy ? "Recherche…" : known ? `Ouvrir la fiche du code-barres ${code} →` : `Chercher le code-barres ${code} →`}
     </button>}
     {error && <p role="alert">{error}</p>}
+    {unknown && unknown === code && <V2OffBarcodeResult key={unknown} code={unknown} />}
     {view.kind === "list" && view.items.length > 0 && <div className="v2-workspace-list">
       {view.items.map(item => <Fragment key={item.id}>{renderProduct(item)}</Fragment>)}
     </div>}

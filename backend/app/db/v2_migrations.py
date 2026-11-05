@@ -1187,6 +1187,88 @@ MIGRATIONS = {
         -- basket comparisons keep it whatever the city or department filters.
         ALTER TABLE v2_stores ADD COLUMN online boolean NOT NULL DEFAULT false;
     """,
+    "0049_shared_basket_selections": """
+        -- A selection combines parts of the catalogue (products, groups, ensembles, families,
+        -- departments) into one basket line; what it includes is kept in `spec`.
+        ALTER TABLE v2_shared_basket_lines ALTER COLUMN kind TYPE varchar(12),
+            DROP CONSTRAINT v2_shared_basket_lines_kind_check,
+            ADD CONSTRAINT v2_shared_basket_lines_kind_check
+                CHECK (kind IN ('product', 'group', 'scope', 'text', 'selection')),
+            ADD COLUMN spec jsonb CHECK (spec IS NULL OR jsonb_typeof(spec) = 'object'),
+            ADD CONSTRAINT v2_shared_basket_lines_selection_spec CHECK ((kind = 'selection') = (spec IS NOT NULL));
+    """,
+    "0050_open_food_facts_in_browser": """
+        -- Open Food Facts is read by the visitor's browser when needed; the server keeps none of it.
+        DROP TABLE v2_product_off_snapshots;
+        DROP TABLE v2_off_refresh_queue;
+        DROP TABLE v2_off_rate_events;
+        -- Product sheets keep only the identifying facts a contributor copied (name, brand, quantity,
+        -- barcode). Composition, Nutri-Score and NOVA recorded as copied from Open Food Facts are cleared,
+        -- in products, drafts and their history; values typed by contributors stay.
+        CREATE FUNCTION pg_temp.v2_without_off_copies(data jsonb) RETURNS jsonb AS $$
+            SELECT CASE
+                WHEN data IS NULL OR coalesce(jsonb_typeof(data->'off_source'->'fields'), '') <> 'array'
+                     OR NOT coalesce(data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'], false)
+                THEN data
+                ELSE data
+                    || CASE WHEN data->'off_source'->'fields' ? 'composition'
+                            THEN '{"composition": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ? 'nutriscore'
+                            THEN '{"nutriscore": "", "nutriscore_version": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ? 'nova'
+                            THEN '{"nova": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ?| ARRAY['nutriscore', 'nova']
+                            THEN '{"nutrition_checked_at": null}'::jsonb ELSE '{}'::jsonb END
+                    || jsonb_build_object('off_source', (
+                        SELECT CASE WHEN count(*) = 0 THEN 'null'::jsonb
+                                    ELSE jsonb_set(data->'off_source', '{fields}', jsonb_agg(field)) END
+                        FROM jsonb_array_elements(data->'off_source'->'fields') field
+                        WHERE field #>> '{}' IN ('name', 'brand', 'quantity', 'ean')))
+            END
+        $$ LANGUAGE sql IMMUTABLE;
+        UPDATE v2_products SET data = pg_temp.v2_without_off_copies(data)
+            WHERE data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        UPDATE v2_product_drafts SET data = pg_temp.v2_without_off_copies(data)
+            WHERE data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        UPDATE v2_product_events SET after_data = pg_temp.v2_without_off_copies(after_data),
+                before_data = pg_temp.v2_without_off_copies(before_data)
+            WHERE after_data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova']
+               OR before_data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        DROP FUNCTION pg_temp.v2_without_off_copies(jsonb);
+    """,
+    "0051_barcode_products": """
+        -- A product known only by its barcode: created on demand when someone uses an Open Food
+        -- Facts product we do not have (adds it to a basket, records a price), so that prices can
+        -- point to it. Everything else about it is read from Open Food Facts by the browser.
+        ALTER TABLE v2_products ADD COLUMN off_reference boolean NOT NULL DEFAULT false;
+        -- When it was last used, apart from the row so that a use does not change the product.
+        CREATE TABLE v2_product_reference_uses (
+            product_id bigint PRIMARY KEY REFERENCES v2_products(id) ON DELETE CASCADE,
+            last_used_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_product_reference_uses_last_idx ON v2_product_reference_uses(last_used_at);
+        -- How long an unused barcode-only product with nothing on our side is kept (0: forever).
+        CREATE TABLE v2_product_reference_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            unused_days integer NOT NULL DEFAULT 90 CHECK (unused_days BETWEEN 0 AND 3650),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_product_reference_settings (singleton) VALUES (true);
+        -- Lookups by barcode and by previous version use indexes from now on.
+        CREATE INDEX v2_products_ean_idx ON v2_products (lpad(data->>'ean', 14, '0')) WHERE data->>'ean' <> '';
+        CREATE INDEX v2_products_predecessor_idx ON v2_products (predecessor_id) WHERE predecessor_id IS NOT NULL;
+        -- Barcode-only products are not part of the catalogue the devices keep offline: creating
+        -- or removing one does not make every device download the catalogue again.
+        DROP TRIGGER v2_products_pwa_version ON v2_products;
+        CREATE TRIGGER v2_products_pwa_version_insert AFTER INSERT ON v2_products
+            FOR EACH ROW WHEN (NOT NEW.off_reference) EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_products_pwa_version_update AFTER UPDATE ON v2_products
+            FOR EACH ROW WHEN (NOT OLD.off_reference OR NOT NEW.off_reference)
+            EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_products_pwa_version_delete AFTER DELETE ON v2_products
+            FOR EACH ROW WHEN (NOT OLD.off_reference) EXECUTE FUNCTION v2_bump_pwa_version();
+    """,
 }
 
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.api.v2.credits import charge
 from app.services import v2_basket_credits as credits
-from app.api.v2.off import normalize_barcode
+from app.services.barcodes import normalize_barcode
 from app.api.v2.products import ProductData
 from app.api.v2.stores import AliasSource, propose_alias, visible_store
 from app.core.url_validation import validate_clickable_url
@@ -408,7 +408,8 @@ async def _draft_inbox(connection, *, owner_id: int | None, limit: int, offset: 
                d.status,d.note,d.capture_ean,d.quantity_text,d.captured_store_name,
                r.name AS retailer,sr.name AS source_retailer,
                s.name AS store_name,s.city,s.active AS store_active,
-               COALESCE(p.data->>'name',pd.data->>'name','') AS product_name,
+               COALESCE(NULLIF(p.data->>'name',''),pd.data->>'name',
+                        CASE WHEN p.off_reference THEN 'Code-barres '||(p.data->>'ean') END,'') AS product_name,
                COALESCE(p.data->>'brand',pd.data->>'brand','') AS product_brand
         FROM v2_price_drafts d
         JOIN v2_users u ON u.id=d.author_id

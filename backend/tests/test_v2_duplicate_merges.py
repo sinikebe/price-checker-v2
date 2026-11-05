@@ -18,7 +18,6 @@ from app.api.v2 import duplicate_merges, moderation, prices, products, stores
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as sync
-from app.services import v2_off_refresh_queue as off_queue
 from app.services.v2_open_prices_sync import _save_items as save_open_prices_items
 from app.services.v2_open_prices_sync import _store as open_prices_store
 
@@ -301,16 +300,6 @@ async def test_product_merge_preserves_observations_and_barcode_route(data, monk
             connection, product_ids[1], "22222222",
             [open_price("22222222", 61001, location_id=66101, osm_id=66101)]
         ) == 1
-        for product_id, barcode in zip(product_ids, ("11111111", "22222222")):
-            await connection.execute(
-                "INSERT INTO v2_product_off_snapshots(product_id,barcode,payload) "
-                "VALUES($1,$2,$3::jsonb)",
-                product_id, barcode, json.dumps({"code": barcode}),
-            )
-        await connection.execute(
-            "INSERT INTO v2_off_refresh_queue(product_id,next_attempt_at) "
-            "VALUES($1,now()-interval '1 minute')", product_ids[1],
-        )
     finally:
         await connection.close()
     async with httpx.AsyncClient(
@@ -363,14 +352,6 @@ async def test_product_merge_preserves_observations_and_barcode_route(data, monk
             headers={"x-test-user": "admin"},
         )
         assert reviewed.status_code == 200, reviewed.text
-        sources = await client.get(f"/api/v2/products/{product_ids[0]}/off-sources")
-        assert sources.status_code == 200, sources.text
-        assert {row["barcode"] for row in sources.json()} == {"11111111", "22222222"}
-        old_off = await client.get(
-            f"/api/v2/products/{product_ids[0]}/off", params={"barcode": "22222222"}
-        )
-        assert old_off.status_code == 200, old_off.text
-        assert old_off.json()["source_product_id"] == product_ids[1]
         connection = await connect_v2(config)
         try:
             assert (
@@ -441,20 +422,6 @@ async def test_product_merge_preserves_observations_and_barcode_route(data, monk
             assert await connection.fetchval(
                 "SELECT count(*) FROM v2_open_prices_sync_state WHERE product_id=$1",
                 product_ids[0],
-            ) == 2
-            assert await connection.fetchval(
-                "SELECT count(*) FROM v2_off_refresh_queue WHERE product_id=$1",
-                product_ids[1],
-            ) == 1
-            async def fetch_old_off(barcode):
-                assert barcode == "22222222"
-                return {"code": barcode, "rev": 2}
-            monkeypatch.setattr(off_queue, "_connect", fake_connect)
-            monkeypatch.setattr(off_queue, "fetch_full_off_product", fetch_old_off)
-            assert await off_queue.run_due_refresh_once() == "updated"
-            assert await connection.fetchval(
-                "SELECT off_rev FROM v2_product_off_snapshots WHERE product_id=$1",
-                product_ids[1],
             ) == 2
         finally:
             await connection.close()

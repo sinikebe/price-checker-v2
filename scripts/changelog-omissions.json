@@ -809,6 +809,76 @@
       "component": "accounts",
       "version": "0.1.44",
       "reason": "Renommage du mode retenu par compte, sans changement des comptes."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.34",
+      "reason": "Page du catalogue : note et badge de niveau déplacé, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "database",
+      "version": "0.1.53",
+      "reason": "Colonne spec des lignes de paniers partagés pour les sélections (migration 0049)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.45",
+      "reason": "Les sélections suivent les paniers partagés du compte, sans changement des comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.54",
+      "reason": "Comparaison des noms dans les requêtes de sélection, sans changement de la base de données."
+    },
+    {
+      "component": "application",
+      "version": "0.1.142",
+      "reason": "Documentation de l’API complétée, sans changement de l’interface."
+    },
+    {
+      "component": "database",
+      "version": "0.1.55",
+      "reason": "Confirmations dans la page, sans changement de la base de données."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.35",
+      "reason": "Confirmation des brouillons de produit dans la page, sans changement de la lecture Open Food Facts."
+    },
+    {
+      "component": "database",
+      "version": "0.1.56",
+      "reason": "Suppression des tables Open Food Facts du serveur (migration 0050)."
+    },
+    {
+      "component": "database",
+      "version": "0.1.57",
+      "reason": "Fiches à code-barres seul, index par code-barres et réglage de nettoyage (migration 0051)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.47",
+      "reason": "Libellé des lignes de panier partagé pour ces fiches, sans changement des comptes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.32",
+      "reason": "Ces fiches restent hors du catalogue hors ligne, sans changement du fonctionnement hors ligne."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.35",
+      "reason": "Page du catalogue : recherche Open Food Facts ajoutée, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.33",
+      "reason": "Requête du navigateur vers Open Food Facts sur demande, sans changement du hors ligne."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.36",
+      "reason": "Page du catalogue : recherche validée transmise à Open Food Facts, sans changement de l’import Open Prices."
     }
   ]
 }

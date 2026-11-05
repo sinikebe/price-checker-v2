@@ -1205,6 +1205,206 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.140",
+      "components": {
+        "application": {
+          "version": "0.1.140",
+          "notes": [
+            "L’accueil montre un exemple de rangement du catalogue, du rayon au produit, avec trois produits et des prix fictifs."
+          ]
+        },
+        "products": {
+          "version": "0.1.65",
+          "notes": [
+            "En mode courses, la page des produits précise que le catalogue sert aux essais et qu’il lui manque encore beaucoup de produits.",
+            "L’exemple compare un groupe et un ensemble : le produit le moins cher au kilo n’est pas le même."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.141",
+      "components": {
+        "basket": {
+          "version": "0.1.49",
+          "notes": [
+            "Un article peut être une sélection : plusieurs produits, groupes, ensembles, familles ou rayons comparés ensemble, au besoin filtrés par des mots.",
+            "Les sélections se comparent comme un groupe, pour un crédit, dans le panier personnel, un panier partagé et le panier de démonstration.",
+            "Le panier de démonstration refuse un texte libre avec un message clair au lieu d’échouer."
+          ]
+        },
+        "products": {
+          "version": "0.1.66",
+          "notes": [
+            "Une route publique donne l’arbre du catalogue, filtrable par mots, pour retrouver les noms de rayons, familles, ensembles et groupes."
+          ]
+        },
+        "application": {
+          "version": "0.1.141",
+          "notes": [
+            "La documentation de l’API décrit les sélections, avec des exemples courts faciles à écrire pour un script ou un assistant."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.142",
+      "components": {
+        "basket": {
+          "version": "0.1.50",
+          "notes": [
+            "Dans une sélection, « jus d'orange » et « jus d’orange » désignent le même groupe, quelle que soit l’apostrophe."
+          ]
+        },
+        "products": {
+          "version": "0.1.67",
+          "notes": [
+            "L’arbre du catalogue se filtre sans tenir compte de la forme de l’apostrophe."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.143",
+      "components": {
+        "application": {
+          "version": "0.1.143",
+          "notes": [
+            "Les confirmations s’affichent dans la page, avec un bouton qui dit l’action, au lieu des fenêtres du navigateur."
+          ]
+        },
+        "products": {
+          "version": "0.1.68",
+          "notes": [
+            "Rejeter une proposition de produit ou abandonner un brouillon se confirme dans la page."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.29",
+          "notes": [
+            "Publier, supprimer ou proposer une recette se confirme dans la page."
+          ]
+        },
+        "basket": {
+          "version": "0.1.51",
+          "notes": [
+            "Vider un panier, le remplacer ou gérer un panier partagé se confirme dans la page."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.46",
+          "notes": [
+            "La déconnexion et les réglages de double authentification se confirment dans la page."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.144",
+      "components": {
+        "open_food_facts": {
+          "version": "0.1.36",
+          "notes": [
+            "Open Food Facts est lu par votre navigateur, à la demande : le serveur de Price Checker n’en garde plus aucune copie.",
+            "La fiche d’un produit affiche composition, Nutri-Score, NOVA et valeurs nutritionnelles d’Open Food Facts après un clic.",
+            "Les compositions, Nutri-Score et NOVA repris d’Open Food Facts sont retirés des fiches ; ceux saisis par les contributeurs restent."
+          ]
+        },
+        "products": {
+          "version": "0.1.69",
+          "notes": [
+            "En proposant un produit, la recherche Open Food Facts permet de reprendre son nom, sa marque, sa quantité ou son code-barres.",
+            "Reprendre de nouvelles informations de la même fiche Open Food Facts garde la trace des précédentes."
+          ]
+        },
+        "application": {
+          "version": "0.1.144",
+          "notes": [
+            "Le serveur ne contacte plus Open Food Facts : plus de limite de consultation partagée entre les visiteurs."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.145",
+      "components": {
+        "products": {
+          "version": "0.1.70",
+          "notes": [
+            "Un code-barres absent du catalogue est cherché chez Open Food Facts par votre navigateur, avec un lien pour ouvrir sa fiche ici.",
+            "Une fiche peut ne contenir que le code-barres : son nom et ses informations sont lus chez Open Food Facts, et on peut y noter des prix.",
+            "Les administrateurs choisissent après combien de jours sans utilisation ces fiches, sans rien de notre côté, sont supprimées."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.37",
+          "notes": [
+            "La page d’un produit connu par son seul code-barres lit son nom et ses informations chez Open Food Facts à l’ouverture."
+          ]
+        },
+        "basket": {
+          "version": "0.1.52",
+          "notes": [
+            "Un produit connu par son seul code-barres garde dans le panier le nom lu chez Open Food Facts."
+          ]
+        },
+        "application": {
+          "version": "0.1.145",
+          "notes": [
+            "Proposer une fiche complète pour un produit connu par son seul code-barres l’ajoute au catalogue en gardant ses prix."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.146",
+      "components": {
+        "products": {
+          "version": "0.1.71",
+          "notes": [
+            "La page des produits cherche aussi chez Open Food Facts, sur demande : produits vendus en France, avec ceux déjà présents ici signalés.",
+            "Un résultat d’Open Food Facts s’ouvre ici d’un clic pour l’ajouter au panier ou y noter un prix."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.38",
+          "notes": [
+            "Un nom de produit d’Open Food Facts qui contient déjà la marque n’est plus précédé d’elle."
+          ]
+        },
+        "application": {
+          "version": "0.1.146",
+          "notes": [
+            "Le réglage de nettoyage des fiches à code-barres seul se trouve dans l’onglet Serveur des paramètres."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.147",
+      "components": {
+        "products": {
+          "version": "0.1.72",
+          "notes": [
+            "Une recherche validée (Entrée) affiche aussi les produits d’Open Food Facts vendus en France, sous ceux du catalogue.",
+            "Ouvrir un de ces produits n’importe que son code-barres : on peut alors l’ajouter au panier ou y noter un prix."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.39",
+          "notes": [
+            "La recherche chez Open Food Facts ne part jamais pendant la saisie, et une recherche déjà faite n’est pas refaite au retour."
+          ]
+        },
+        "application": {
+          "version": "0.1.147",
+          "notes": [
+            "La barre de recherche de l’en-tête mène aussi aux produits d’Open Food Facts absents du catalogue."
+          ]
+        }
+      }
     }
   ]
 }

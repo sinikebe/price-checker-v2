@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import V2BarcodeScanner from "./V2BarcodeScanner";
+import V2OffBarcodeResult from "./V2OffBarcodeResult";
 import { resolveBarcodePath } from "./v2-barcode";
 import { isBarcode } from "./v2-catalogue-search";
 
@@ -11,6 +12,8 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
   const busyRef = useRef(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [error, setError] = useState("");
+  // A barcode our catalogue does not know: Open Food Facts is read for it below the form.
+  const [unknown, setUnknown] = useState("");
 
   async function resolveBarcode(code: string) {
     if (busyRef.current) return;
@@ -20,9 +23,10 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
     }
     busyRef.current = true;
     setBusy(true);
-    setError("");
+    setError(""); setUnknown("");
     try {
-      navigate(await resolveBarcodePath(code));
+      const path = await resolveBarcodePath(code);
+      if (path) navigate(path); else setUnknown(code);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez.");
     } finally {
@@ -47,13 +51,14 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
     <div className="v2-barcode-search-row">
       <input id={compact ? "v2-home-barcode" : "v2-catalogue-barcode"} type="text"
         inputMode="numeric" autoComplete="off" value={barcode} disabled={busy}
-        onChange={event => { setBarcode(event.target.value); setError(""); }}
+        onChange={event => { setBarcode(event.target.value); setError(""); setUnknown(""); }}
         placeholder="EAN / GTIN" aria-describedby={error ? (compact ? "v2-home-barcode-error" : "v2-catalogue-barcode-error") : undefined} />
       <button className="v2-button v2-button-primary" type="submit" disabled={busy}>{busy ? "Recherche…" : "Rechercher"}</button>
       <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => setScannerOpen(true)}>📷 Scanner</button>
     </div>
     {error && <p id={compact ? "v2-home-barcode-error" : "v2-catalogue-barcode-error"} role="alert">{error}</p>}
-    <small>Un code connu ouvre sa fiche ; sinon, il prépare un nouveau produit.</small>
+    <small>Un code connu ouvre sa fiche ; sinon, Open Food Facts est consulté depuis votre navigateur.</small>
+    {unknown && <V2OffBarcodeResult key={unknown} code={unknown} />}
     {scannerOpen && <V2BarcodeScanner onClose={() => setScannerOpen(false)} onDetected={handleDetected} />}
   </form>;
 }

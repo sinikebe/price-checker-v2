@@ -1,10 +1,11 @@
 import { useContext, useState } from "react";
+import { useConfirm } from "./useConfirm";
 import V2BasketLink from "./V2BasketLink";
 import V2BasketReplace from "./V2BasketReplace";
 import V2BasketTextAdd from "./V2BasketTextAdd";
 import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketItemKey, isFreeText, validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
-import { alternatives, itemHref, itemKind, itemName, type Category } from "./v2-basket-view";
+import { alternatives, itemHref, itemKind, itemName, selectionSummary, type Category } from "./v2-basket-view";
 
 function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value: BasketQuantity) => void }) {
   const readOnly = !!useContext(BasketReadOnlyContext);
@@ -40,6 +41,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
   /** Add free text to the basket; absent where the basket has no free text (the demo). */
   onAddText?: (name: string) => string | null;
 }) {
+  const confirm = useConfirm();
   const readOnly = !!useContext(BasketReadOnlyContext);
   // The free text line whose replacement is being chosen.
   const [replacing, setReplacing] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span>{isFreeText(item)
           ? <span className="v2-basket-unlinked">{item.name}</span> : <V2BasketLink to={itemHref(item)}>{itemName(item)}</V2BasketLink>}
           {!("kind" in item) && <small>{item.data.quantity || "Quantité non précisée"}</small>}
+          {"kind" in item && item.kind === "selection" && <small className="v2-basket-selection">{selectionSummary(item)}</small>}
           {addedBy?.(item) && <small className="v2-basket-added-by">Ajouté par {addedBy(item)}</small>}</div>
           <label className="v2-basket-toggle"><input type="checkbox" checked={!item.disabled} disabled={readOnly} onChange={event => actions.setEnabled(item, event.target.checked)} />Inclure</label></div>
         <div className="v2-basket-editor-controls">
@@ -72,6 +75,6 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
         {advanced && <QuantityEditor key={`${itemKey}:${item.quantity?.amount}:${item.quantity?.unit}`} item={item} onChange={quantity => actions.setQuantity(item, quantity)} />}
       </li>;
     })}</ul>
-    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" disabled={readOnly} onClick={() => { if (window.confirm(sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ?")) actions.clear(); }}>Vider le panier</button>
+    <button type="button" className="v2-button v2-button-secondary v2-basket-clear" disabled={readOnly} onClick={async () => { if (await confirm({ title: "Vider le panier", message: sharedName ? `Vider « ${sharedName} » pour tous ses membres ?` : "Vider le panier ? Tous ses articles seront retirés.", confirmLabel: "Vider", danger: true })) actions.clear(); }}>Vider le panier</button>
   </section>;
 }

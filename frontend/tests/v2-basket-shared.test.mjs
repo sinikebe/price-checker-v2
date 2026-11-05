@@ -207,3 +207,24 @@ test("free text lines of a shared basket, and the prices a member fetched, match
   assert.equal(readSharedPrices(12, 4), null, "an older per-member copy is not taken for the basket's prices");
   delete globalThis.localStorage;
 });
+
+
+test("a selection line becomes a basket item and back", () => {
+  const line = { id: 9, kind: "selection", label: "Jus bio", product_id: null, department: null, family: null, quantity: null, disabled: false,
+    created_at: "2026-11-04T10:00:00+00:00", product: null, spec: { include: [{ family: "Jus de fruits" }], exclude: [], words: ["bio"] } };
+  const { items, unavailable } = sharedItems([line, { ...line, id: 10, label: "Vide", spec: undefined }]);
+  assert.deepEqual(items, [{ kind: "selection", name: "Jus bio", include: [{ family: "Jus de fruits" }], exclude: [], words: ["bio"] }]);
+  assert.equal(unavailable.length, 1);
+  assert.deepEqual(lineRef(items[0]), { kind: "selection", name: "Jus bio", include: [{ family: "Jus de fruits" }], exclude: [], words: ["bio"] });
+});
+
+test("a barcode-only product travels with its label, and comes back named by it", () => {
+  const item = { id: 9, revision: 1, off_reference: true, data: { name: "Pâte à tartiner", brand: "Nutella", quantity: "400 g", ean: "3017620422003" } };
+  assert.deepEqual(lineRef(item), { kind: "product", product_id: 9, label: "Nutella Pâte à tartiner" });
+  assert.deepEqual(lineRef({ ...item, off_reference: undefined }), { kind: "product", product_id: 9 });
+  const line = { id: 1, kind: "product", label: "Nutella Pâte à tartiner", product_id: 9, department: null, family: null, quantity: null, disabled: false,
+    created_at: "2026-11-05T10:00:00+00:00", product: { id: 9, revision: 1, off_reference: true, data: { name: "", brand: "", ean: "3017620422003" } } };
+  const { items } = sharedItems([line]);
+  assert.equal(items[0].data.name, "Nutella Pâte à tartiner");
+  assert.equal(items[0].off_reference, true);
+});
