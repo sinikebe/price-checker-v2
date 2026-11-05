@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.api.v2.credits import charge
 from app.services import v2_basket_credits as credits
-from app.api.v2.off import normalize_barcode
+from app.services.barcodes import normalize_barcode
 from app.api.v2.products import ProductData
 from app.api.v2.stores import AliasSource, propose_alias, visible_store
 from app.core.url_validation import validate_clickable_url
