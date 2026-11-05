@@ -138,7 +138,8 @@ async def export_products_prices(request: Request):
                 detail="Export bloqué : un contenu retiré nécessite une sélection manuelle.",
             )
         products = await connection.fetch(
-            "SELECT id, predecessor_id, data FROM v2_products ORDER BY id"
+            # Barcode-only products (details at Open Food Facts) and their prices stay on this instance.
+            "SELECT id, predecessor_id, data FROM v2_products WHERE NOT off_reference ORDER BY id"
         )
         prices = await connection.fetch(
             "SELECT id, product_id, store_id, source, source_provider, "
@@ -146,7 +147,8 @@ async def export_products_prices(request: Request):
             "observed_at, note, sales_channel FROM v2_price_observations "
             "WHERE product_id IS NOT NULL AND NOT superseded "
             "AND correction_status IS DISTINCT FROM 'active' "
-            "AND EXISTS (SELECT 1 FROM v2_stores s WHERE s.id=store_id AND s.active) ORDER BY id"
+            "AND EXISTS (SELECT 1 FROM v2_stores s WHERE s.id=store_id AND s.active) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_products r WHERE r.id=product_id AND r.off_reference) ORDER BY id"
         )
         stores = await connection.fetch(
             "SELECT id, retailer_id, name, city, postal_code, supports_drive, "

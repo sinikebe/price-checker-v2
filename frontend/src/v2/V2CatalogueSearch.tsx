@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import V2BarcodeScanner from "./V2BarcodeScanner";
 import { BarcodeIcon, SearchIcon } from "./V2SiteIcons";
 import { useCatalogueSearch, type Suggest } from "./useCatalogueSearch";
+import V2OffBarcodeResult from "./V2OffBarcodeResult";
 import { resolveBarcodePath } from "./v2-barcode";
 import {
   SEARCH_MAX_LENGTH, SEARCH_MIN_CHARS, isBarcode, sameBarcode, type SearchScope, type SearchableProduct,
@@ -25,12 +26,13 @@ export default function V2CatalogueSearch<T extends SearchableProduct & { id: nu
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState("");
+  const [unknown, setUnknown] = useState("");
   const code = isBarcode(value) ? value.trim() : "";
 
   async function open(barcode: string) {
     if (busyRef.current) return;
-    busyRef.current = true; setBusy(true); setError("");
-    try { navigate(await resolveBarcodePath(barcode)); }
+    busyRef.current = true; setBusy(true); setError(""); setUnknown("");
+    try { const path = await resolveBarcodePath(barcode); if (path) navigate(path); else setUnknown(barcode); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez."); }
     finally { busyRef.current = false; setBusy(false); }
   }
@@ -61,6 +63,7 @@ export default function V2CatalogueSearch<T extends SearchableProduct & { id: nu
         : view.kind === "list" ? `Préparer une fiche pour le code-barres ${code} →` : `Ouvrir ou préparer la fiche du code-barres ${code} →`}
     </button>}
     {error && <p role="alert">{error}</p>}
+    {unknown && unknown === code && <V2OffBarcodeResult key={unknown} code={unknown} />}
     {view.kind === "list" && view.items.length > 0 && <div className="v2-workspace-list">
       {view.items.map(item => <Fragment key={item.id}>{renderProduct(item)}</Fragment>)}
     </div>}

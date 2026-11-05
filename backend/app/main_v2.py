@@ -40,6 +40,7 @@ from app.api.v2.shared_baskets import router as shared_baskets_router
 from app.api.v2.demo_basket import router as demo_basket_router
 from app.api.v2.stats import router as stats_router
 from app.api.v2.stores import router as stores_router
+from app.api.v2.product_references import router as product_references_router
 from app.api.v2.sync import router as sync_router
 from app.api.v2.transfers import router as transfers_router
 from app.api.v2.updates import router as updates_router
@@ -48,6 +49,7 @@ from app.services.v2_db_pool import close_v2_pool
 from app.services import v2_observability, v2_request_stats
 from app.services.v2_open_prices_sync import open_prices_worker
 from app.services.v2_private_retention import purge_private_data
+from app.services.v2_product_references import purge_unused as purge_unused_references
 from app.services.v2_request_stats import RequestStatsMiddleware
 from app.services.v2_trusted_proxy import TrustedWebProxyMiddleware
 
@@ -59,6 +61,7 @@ async def retention_worker():
             try:
                 await purge_ephemeral_auth_data(connection)
                 await purge_private_data(connection)
+                await purge_unused_references(connection)
                 await v2_request_stats.purge(connection)
             finally:
                 await connection.close()
@@ -123,6 +126,7 @@ ROUTERS = (
     account_data_router,
     account_security_router,
     products_router,
+    product_references_router,
     catalogue_router,
     basket_router,
     shared_baskets_router,

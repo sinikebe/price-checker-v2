@@ -11,7 +11,7 @@ export function validBasketQuantity(value: unknown): value is BasketQuantity {
 const ACTIVE_USER_KEY = "v2:basket:active-user";
 const ANON_KEY = "v2:basket:anonymous";
 type BasketOptions = { disabled?: boolean; quantity?: BasketQuantity };
-export type BasketProduct = Pick<Product, "id" | "data" | "revision"> & BasketOptions;
+export type BasketProduct = Pick<Product, "id" | "data" | "revision" | "off_reference"> & BasketOptions;
 export type BasketGroup = { kind: "group"; name: string } & BasketOptions;
 export type BasketScope = { kind: "scope"; name: string; department: string; family: string } & BasketOptions;
 /** Free text: an article not in the catalogue yet, kept for the list and replaced later by a product, group or ensemble. */
@@ -57,8 +57,16 @@ export const isPriceable = (item: BasketItem) => !isFreeText(item);
 /** The longest free text line. */
 export const FREE_TEXT_MAX = 100;
 /** A basket line with fresher product data: its quantity and its excluded flag stay. */
-export function withProductData(item: BasketProduct, product: Pick<Product, "data" | "revision">): BasketProduct {
-  return { ...item, data: product.data, revision: product.revision };
+export function withProductData(item: BasketProduct, product: Pick<Product, "data" | "revision" | "off_reference">): BasketProduct {
+  if (!product.off_reference) {
+    const { off_reference: _reference, ...rest } = item; void _reference;
+    return { ...rest, data: product.data, revision: product.revision };
+  }
+  // Known only by its barcode: the server has no name, so the one this browser read from Open Food
+  // Facts when the product was added stays (on this device only).
+  const kept = { name: item.data.name, brand: item.data.brand, quantity: item.data.quantity };
+  return { ...item, off_reference: true, revision: product.revision,
+    data: { ...product.data, name: product.data.name || kept.name, brand: product.data.brand || kept.brand, quantity: product.data.quantity || kept.quantity } };
 }
 export const basketItemKey = (item: BasketItem): string => "kind" in item
   ? item.kind === "group" || item.kind === "text" || item.kind === "selection" ? item.kind + ":" + item.name.toLocaleLowerCase("fr")

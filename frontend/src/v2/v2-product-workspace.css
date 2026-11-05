@@ -161,3 +161,12 @@
 .v2-product-simple-group a { color: #317c54; font-weight: 700; }
 html[data-v2-theme="dark"] .v2-shopping-price small { color: #a9c2b8; }
 html[data-v2-theme="dark"] .v2-product-simple-group a { color: #aee1a8; }
+/* A product known only by its barcode, and a barcode our catalogue does not know. */
+.v2-reference-notice { margin: 10px 0 0; padding: 10px 14px; border: 1px solid #d6e4f0; border-radius: 12px; background: #f1f7fc; color: #284b66; font-size: .92rem; }
+.v2-reference-notice a, .v2-off-barcode a { font-weight: 700; }
+.v2-off-barcode { margin-top: 14px; padding: 16px; border: 1px solid #dce8db; border-radius: 16px; background: #fbfdf9; }
+.v2-off-barcode-lead { margin: 0 0 10px; font-weight: 700; }
+.v2-off-barcode .v2-off-selected img { width: 64px; height: 64px; object-fit: contain; }
+.v2-off-barcode .v2-off-selected small { display: block; }
+html[data-v2-theme="dark"] .v2-reference-notice { border-color: #34506a; background: #18283a; color: #cfe2f3; }
+html[data-v2-theme="dark"] .v2-off-barcode { border-color: #2f4a3f; background: #172822; }
