@@ -844,6 +844,11 @@
       "component": "open_food_facts",
       "version": "0.1.35",
       "reason": "Confirmation des brouillons de produit dans la page, sans changement de la lecture Open Food Facts."
+    },
+    {
+      "component": "database",
+      "version": "0.1.56",
+      "reason": "Suppression des tables Open Food Facts du serveur (migration 0050)."
     }
   ]
 }
