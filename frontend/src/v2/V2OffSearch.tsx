@@ -7,6 +7,7 @@ import { OFF_PRODUCT_PAGE, searchOff, type OffMatch } from "./v2-off-browser";
 type Found = { results: OffMatch[]; ours: Record<string, number> };
 // Searches already made in this tab: going back to a results page does not ask Open Food Facts again.
 const made = new Map<string, Found>();
+const madeKey = (terms: string, world: boolean) => (world ? "world|" : "france|") + terms;
 
 async function ourProducts(codes: string[]): Promise<Record<string, number>> {
   if (!codes.length) return {};
@@ -29,17 +30,22 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
   const navigate = useNavigate();
   const { mode, canSwitch: signedIn } = useAppMode();
   const terms = query.trim();
-  const [found, setFound] = useState<{ terms: string; value: Found } | null>(() => made.has(terms) ? { terms, value: made.get(terms)! } : null);
+  // Products sold in France by default; the switch widens the search to every country.
+  const [world, setWorld] = useState(false);
+  const [found, setFound] = useState<{ key: string; value: Found } | null>(() =>
+    made.has(madeKey(terms, false)) ? { key: madeKey(terms, false), value: made.get(madeKey(terms, false))! } : null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
-  async function search() {
+  async function search(everywhere = world) {
     if (terms.length < 2 || busy) return;
+    const key = madeKey(terms, everywhere);
+    if (made.has(key)) { setFound({ key, value: made.get(key)! }); return; }
     setBusy("search"); setError("");
     try {
-      const results = await searchOff(terms, undefined, { france: true });
+      const results = await searchOff(terms, undefined, { france: !everywhere });
       const value = { results, ours: await ourProducts(results.map(item => item.code)) };
-      made.set(terms, value);
-      setFound({ terms, value });
+      made.set(key, value);
+      setFound({ key, value });
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Recherche indisponible."); }
     finally { setBusy(null); }
   }
@@ -48,23 +54,30 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
   useEffect(() => { searchRef.current = search; });
   const autoTerms = submitted.trim();
   useEffect(() => {
-    if (autoTerms.length >= 2 && !made.has(autoTerms)) void searchRef.current();
+    if (autoTerms.length >= 2 && !made.has(madeKey(autoTerms, false))) void searchRef.current();
   }, [autoTerms]);
   async function open(code: string) {
     setBusy(code); setError("");
     try { navigate("/v2/produits/" + (await barcodeProduct(code)).id); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Ouverture impossible."); setBusy(null); }
   }
-  const shown = found && found.terms === terms ? found.value : null;
+  const shown = found && found.key === madeKey(terms, world) ? found.value : null;
+  function changeWorld(next: boolean) {
+    setWorld(next);
+    // Already showing results: switching is a request for the other set (one search, or none if made).
+    if (found && found.key === madeKey(terms, world)) void search(next);
+  }
   return <section className="v2-off-search-catalogue" aria-labelledby="v2-off-search-heading">
     <div className="v2-off-search-catalogue-head">
       <h2 id="v2-off-search-heading">Chez Open Food Facts</h2>
       <button type="button" className="v2-button v2-button-secondary" disabled={terms.length < 2 || busy !== null} onClick={() => { void search(); }}>
         {busy === "search" ? "Recherche…" : terms.length >= 2 ? `Chercher « ${terms.slice(0, 40)} » chez Open Food Facts` : "Chercher aussi chez Open Food Facts"}</button>
     </div>
+    <label className="v2-off-world"><input type="checkbox" checked={world} disabled={busy !== null} onChange={event => changeWorld(event.target.checked)} />
+      Inclure les produits vendus hors de France</label>
     <p className="v2-catalogue-source">Leur catalogue compte bien plus de produits. La recherche part de votre navigateur quand vous validez une recherche (Entrée) ou cliquez, jamais pendant la saisie : votre adresse IP est alors transmise à Open Food Facts.</p>
     {error && <p role="alert">{error}</p>}
-    {shown && (shown.results.length === 0 ? <p>Aucun produit vendu en France trouvé chez Open Food Facts.</p>
+    {shown && (shown.results.length === 0 ? <p>{world ? "Aucun produit trouvé chez Open Food Facts." : "Aucun produit vendu en France trouvé chez Open Food Facts."}</p>
       : <ul className="v2-off-search-results">{shown.results.map(item => {
         const ours = shown.ours[item.code];
         return <li key={item.code}>
