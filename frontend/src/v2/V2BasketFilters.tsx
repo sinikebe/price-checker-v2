@@ -44,10 +44,13 @@ export default function V2BasketFilters({ filters, onChange, storeOptions, store
 }) {
   const site = useSiteFilter();
   const active = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
+  // Turned off on this device, as from the profile menu; the account settings keep its stores.
+  const disableSiteFilter = () => { try { site.save({ ...site.filter, enabled: false }); } catch { /* storage unavailable */ } };
   if (siteFilter && site.active) return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
     <p role="status"><strong>Le filtre de magasins du site est actif</strong> ({siteFilterSummary(site.filter)}) : {shared
       ? "vous voyez ce panier avec lui, à la place du filtre partagé." : "il remplace les filtres de ce panier."}{" "}
       <Link to="/v2/parametres/compte">Le modifier dans les paramètres du compte</Link>.</p>
+    <div className="v2-basket-default-actions"><button type="button" className="v2-button v2-button-secondary" onClick={disableSiteFilter}>Désactiver mon filtre</button></div>
     {shared && <>
       <p>Filtre partagé avec les membres : {basketFiltersSummary(filters)}.</p>
       <AccountFilterToShare filters={filters} onChange={onChange} />
