@@ -393,7 +393,9 @@ function Editor({ mode, id, user, onLogout }: Props) {
 function withOffFacts(product: Product, read: OffRead): Product {
   if (!product.off_reference || read.phase !== "done") return product;
   const off = read.product;
-  return { ...product, data: { ...product.data, name: product.data.name || off.name, brand: product.data.brand || off.brand,
+  // Open Food Facts names often hold the brand already ("Nutella" by Nutella): it is not repeated.
+  const brand = off.brand && off.name.toLocaleLowerCase("fr").includes(off.brand.toLocaleLowerCase("fr")) ? "" : off.brand;
+  return { ...product, data: { ...product.data, name: product.data.name || off.name, brand: product.data.brand || brand,
     quantity: product.data.quantity || off.quantity } };
 }
 const productTitle = (product: Product) => [product.data.brand, product.data.name].filter(Boolean).join(" ")

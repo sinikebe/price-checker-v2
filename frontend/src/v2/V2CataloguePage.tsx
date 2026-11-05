@@ -8,6 +8,7 @@ import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
 import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
 import { productRequest, type Product } from "./v2-products-api";
 import V2BasketAddButtons from "./V2BasketAddButtons";
+import V2OffSearch from "./V2OffSearch";
 import { useAppMode } from "./useAppMode";
 import { productSizeIn } from "./v2-basket-quantity";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
@@ -534,6 +535,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
       {filterError && <p role="alert">{filterError}</p>}
     </form>
     </V2CatalogueSearch>
+    {normalizeQuery(queryDraft).length >= SEARCH_MIN_CHARS && <V2OffSearch query={queryDraft} />}
     {dynamicActive ? null : searching ? <>
       <div className="v2-catalogue-result-heading"><h2>Références</h2><Link to="/v2/produits">Effacer les filtres</Link></div>
       {search.error ? <p role="alert">{search.error}</p> : !result ? <p>Recherche…</p>

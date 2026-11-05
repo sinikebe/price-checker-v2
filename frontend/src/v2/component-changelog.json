@@ -1357,6 +1357,30 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.146",
+      "components": {
+        "products": {
+          "version": "0.1.71",
+          "notes": [
+            "La page des produits cherche aussi chez Open Food Facts, sur demande : produits vendus en France, avec ceux déjà présents ici signalés.",
+            "Un résultat d’Open Food Facts s’ouvre ici d’un clic pour l’ajouter au panier ou y noter un prix."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.38",
+          "notes": [
+            "Un nom de produit d’Open Food Facts qui contient déjà la marque n’est plus précédé d’elle."
+          ]
+        },
+        "application": {
+          "version": "0.1.146",
+          "notes": [
+            "Le réglage de nettoyage des fiches à code-barres seul se trouve dans l’onglet Serveur des paramètres."
+          ]
+        }
+      }
     }
   ]
 }
