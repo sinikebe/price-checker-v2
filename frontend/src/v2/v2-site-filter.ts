@@ -6,6 +6,9 @@
 import { matchesBasketFilters, type BasketFilters, type BasketPrice } from "./v2-basket-comparison";
 
 export type SiteFilterStore = { id: number; label: string };
+/** A store of the public directory (GET /api/v2/stores), as the filter choices use it. */
+export type DirectoryStore = { id: number; name: string; retailer: string; city: string | null; postal_code: string | null; online?: boolean };
+export const directoryStoreLabel = (store: DirectoryStore) => [store.retailer, store.name, store.online ? "En ligne" : store.city].filter(Boolean).join(" · ");
 export type SiteFilter = { enabled: boolean; stores: SiteFilterStore[]; cities: string[]; departments: string[] };
 export const EMPTY_SITE_FILTER: SiteFilter = { enabled: false, stores: [], cities: [], departments: [] };
 const LIMITS = { stores: 200, cities: 100, departments: 100 };
@@ -45,10 +48,22 @@ export function writeSiteFilter(storage: Storage, userId: number, filter: SiteFi
   return clean;
 }
 
+/** The filter's criteria as basket filters, whether it is on or off; null when it names nothing. */
+export function siteFilterCriteria(filter: SiteFilter): BasketFilters | null {
+  if (!filter.stores.length && !filter.cities.length && !filter.departments.length) return null;
+  return { storeIds: filter.stores.map(store => store.id), cities: filter.cities, departments: filter.departments };
+}
+
 /** The filters in force across the site, or null when the site filter is off or empty. */
 export function activeSiteFilters(filter: SiteFilter): BasketFilters | null {
-  if (!filter.enabled || (!filter.stores.length && !filter.cities.length && !filter.departments.length)) return null;
-  return { storeIds: filter.stores.map(store => store.id), cities: filter.cities, departments: filter.departments };
+  return filter.enabled ? siteFilterCriteria(filter) : null;
+}
+
+/** Whether two sets of basket filters keep the same stores, whatever their order. */
+export function sameBasketFilters(left: BasketFilters, right: BasketFilters): boolean {
+  const key = (filters: BasketFilters) => JSON.stringify([
+    [...filters.storeIds].sort((a, b) => a - b), [...filters.cities].map(city => city.toLocaleLowerCase("fr")).sort(), [...filters.departments].sort()]);
+  return key(left) === key(right);
 }
 
 /** Whether a price reading passes the site filter (online platforms pass the commune and department filters). */
@@ -58,8 +73,13 @@ export function passesSiteFilter(row: Pick<BasketPrice, "store_id" | "city" | "p
 
 /** One line describing the filter: "3 magasins · 2 communes · département 78". */
 export function siteFilterSummary(filter: SiteFilter): string {
+  return basketFiltersSummary({ storeIds: filter.stores.map(store => store.id), cities: filter.cities, departments: filter.departments });
+}
+
+/** The same line for a basket's filters (a shared basket's, for instance). */
+export function basketFiltersSummary(filter: BasketFilters): string {
   const parts = [
-    filter.stores.length ? `${filter.stores.length} magasin${filter.stores.length > 1 ? "s" : ""}` : null,
+    filter.storeIds.length ? `${filter.storeIds.length} magasin${filter.storeIds.length > 1 ? "s" : ""}` : null,
     filter.cities.length ? `${filter.cities.length} commune${filter.cities.length > 1 ? "s" : ""}` : null,
     filter.departments.length ? `département${filter.departments.length > 1 ? "s" : ""} ${filter.departments.join(", ")}` : null,
   ].filter(Boolean);

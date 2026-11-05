@@ -18,6 +18,8 @@
 .v2-basket-default-stores { margin: 0 0 12px; padding-top: 10px; border-top: 1px solid var(--v2-line, #dce8db); }
 .v2-basket-default-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .v2-basket-default-actions .v2-button { white-space: normal; text-align: left; }
+.v2-basket-shared-filter { margin: 0 0 12px; padding: 10px 0 0; border-top: 1px solid var(--v2-line, #dce8db); }
+.v2-basket-shared-filter p { margin: 0 0 8px; }
 .v2-basket-choice { display: grid; gap: 2px; min-width: 0; }
 .v2-basket-choice small { color: var(--v2-muted, #617467); }
 .v2-basket-store-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
@@ -138,6 +140,7 @@ html[data-v2-theme="dark"] .v2-basket-remove { color: #ffb7ac; }
 .v2-basket-status .v2-recipes-error { color: #9b2839; }
 .v2-basket-panel { margin: 0 0 14px; padding: 14px 15px; border: 1px solid var(--v2-line, #dce8db); border-radius: 11px; background: var(--v2-surface, #fff); }
 .v2-basket-panel > p { margin: 0 0 12px; color: var(--v2-muted, #617467); font-size: .85rem; }
+.v2-basket-panel > p a { color: var(--v2-ink, #173b2e); font-weight: 700; text-decoration: underline; }
 .v2-basket-stale { margin: 0 0 14px; padding: 10px 13px; border-radius: 9px; background: #fff2da; color: #6b4600; font-size: .88rem; }
 .v2-basket-comparison > h2 { margin: 0 0 6px; }
 .v2-basket-comparison > p { margin: 0 0 12px; color: var(--v2-muted, #617467); }

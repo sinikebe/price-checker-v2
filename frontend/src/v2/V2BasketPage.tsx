@@ -14,6 +14,8 @@ import V2SharedBasketView from "./V2SharedBasketView";
 import V2ShoppingList from "./V2ShoppingList";
 import { listSetting, shoppingListPath, type ListView } from "./v2-shopping-list";
 import V2BasketFilters from "./V2BasketFilters";
+import { useSiteFilter } from "./useSiteFilter";
+import { useStoreDirectoryLabels } from "./useStoreDirectoryLabels";
 import V2BasketResults from "./V2BasketResults";
 import V2BasketToolbar, { V2BasketFetch, type BasketPanel } from "./V2BasketToolbar";
 import { basketFetchCost, useBasketPrices } from "./useBasketPrices";
@@ -57,6 +59,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   // Offline, the basket and its list are read only, ticks apart.
   const readOnly = !useOnline();
   const { advanced, mode, filters, setFilters } = display;
+  const siteFilter = useSiteFilter().filter;
   const toggleAdvanced = display.setAdvanced;
   const changeMode = display.setMode;
   const location = useLocation();
@@ -158,8 +161,14 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   const chooseUnit = (item: BasketItem, unit: BaseUnit) =>
     display.setUnits(withUnitChoice(display.units, basketItemKey(item), unit, items.map(basketItemKey)));
   for (const store of defaultStores) if (!storeNames.has(store.id)) storeNames.set(store.id, store.name);
+  // A shared filter can name stores without a price in this basket (another member's account filter):
+  // their names come from this account's filter, or else from the store directory, read only then.
+  const siteLabels = new Map(siteFilter.stores.map(store => [store.id, store.label]));
+  const directoryLabels = useStoreDirectoryLabels(sharing && panel === "filters"
+    && filters.storeIds.some(id => !storeNames.has(id) && !siteLabels.has(id)));
+  const storeLabel = (id: number) => storeNames.get(id) ?? siteLabels.get(id) ?? directoryLabels?.get(id) ?? `Magasin ${id}`;
   const storeOptions = [...new Set([...storeNames.keys(), ...filters.storeIds])]
-    .sort((a, b) => (storeNames.get(a) ?? "").localeCompare(storeNames.get(b) ?? "", "fr"));
+    .sort((a, b) => storeLabel(a).localeCompare(storeLabel(b), "fr"));
   const defaultsMatch = filters.storeIds.length === defaultStores.length
     && filters.storeIds.every(id => defaultStores.some(store => store.id === id));
   const defaults = {
@@ -257,7 +266,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           actions={{ setEnabled, setQuantity, replace, remove, clear }} onAddText={addText}
           addedBy={sharing ? shared.addedBy : undefined} sharedName={shared.basket?.name} />}
         {panel === "filters" && comparison && !readOnly && <V2BasketFilters filters={filters} onChange={setFilters} storeOptions={storeOptions}
-          storeLabel={id => storeNames.get(id) ?? String(id)} cityOptions={cityOptions} departmentOptions={departmentOptions} defaults={defaults} />}
+          storeLabel={storeLabel} cityOptions={cityOptions} departmentOptions={departmentOptions} defaults={defaults} shared={sharing} />}
         {!priceItems.length ? <div className="v2-recipes-card"><p>{activeItems.length
           ? "Les textes libres n’ont pas de prix : remplacez-les par un produit, un groupe ou un ensemble (Articles) pour comparer les prix."
           : "Activez au moins un article pour comparer les prix."}</p></div>
