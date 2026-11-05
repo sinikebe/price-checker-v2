@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.148",
+    "version": "0.1.149",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.73",
+    "version": "0.1.74",
     "status": "active"
   },
   "recipes": {
@@ -26,7 +26,7 @@
   },
   "open_food_facts": {
     "label": "Connecteur Open Food Facts",
-    "version": "0.1.40",
+    "version": "0.1.41",
     "status": "active"
   },
   "accounts": {

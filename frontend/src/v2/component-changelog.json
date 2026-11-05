@@ -1422,6 +1422,29 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.149",
+      "components": {
+        "products": {
+          "version": "0.1.74",
+          "notes": [
+            "La page d’un produit absent du catalogue affiche toutes ses informations d’Open Food Facts : image, Nutri-Score, NOVA, composition et valeurs nutritionnelles."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.41",
+          "notes": [
+            "Ces informations viennent de la lecture déjà faite à l’ouverture de la page, sans requête supplémentaire."
+          ]
+        },
+        "application": {
+          "version": "0.1.149",
+          "notes": [
+            "En thème sombre, les valeurs des fiches (quantité, Nutri-Score…) sont de nouveau lisibles."
+          ]
+        }
+      }
     }
   ]
 }
