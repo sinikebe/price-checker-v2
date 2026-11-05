@@ -1,12 +1,12 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.151",
+    "version": "0.1.152",
     "status": "active"
   },
   "products": {
     "label": "Produits",
-    "version": "0.1.76",
+    "version": "0.1.77",
     "status": "active"
   },
   "recipes": {
@@ -16,7 +16,7 @@
   },
   "basket": {
     "label": "Panier",
-    "version": "0.1.53",
+    "version": "0.1.54",
     "status": "active"
   },
   "database": {
@@ -31,7 +31,7 @@
   },
   "accounts": {
     "label": "Comptes",
-    "version": "0.1.48",
+    "version": "0.1.49",
     "status": "active"
   },
   "pwa": {

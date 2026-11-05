@@ -909,6 +909,21 @@
       "component": "open_prices",
       "version": "0.1.38",
       "reason": "Filtre de magasins du site appliqué à l’affichage des prix, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.152",
+      "reason": "Partage du filtre de compte dans un panier partagé, annoncé dans le panier."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.49",
+      "reason": "Le filtre de compte peut servir de filtre partagé, sans changement des comptes."
+    },
+    {
+      "component": "products",
+      "version": "0.1.77",
+      "reason": "Libellés de magasins mis en commun avec le panier, sans changement visible des fiches produits."
     }
   ]
 }

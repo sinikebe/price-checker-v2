@@ -1495,6 +1495,18 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.152",
+      "components": {
+        "basket": {
+          "version": "0.1.54",
+          "notes": [
+            "Dans un panier partagé, un membre peut faire de son filtre de magasins de compte le filtre partagé, vu par tous les autres membres.",
+            "Les magasins d’un filtre partagé sans prix dans le panier gardent leur nom dans la liste des filtres."
+          ]
+        }
+      }
     }
   ]
 }
