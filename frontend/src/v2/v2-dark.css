@@ -166,3 +166,5 @@ html[data-v2-theme="dark"] .v2-setup-error { background: #512c31; color: #ffd5d4
 html[data-v2-theme="dark"] .v2-setup-success { background: #254d35; color: #c6edc3; }
 html[data-v2-theme="dark"] .v2-workspace-conflict { background: #493b26; border-color: #b18a4f; color: #ffe9c5; }
 html[data-v2-theme="dark"] .v2-workspace-conflict button { color: #fff0d2; }
+/* Values of fact lists (product sheets, store pages): readable on the dark background. */
+html[data-v2-theme="dark"] .v2-workspace-facts dd { color: #e8f3ec; }
