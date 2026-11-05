@@ -889,6 +889,26 @@
       "component": "application",
       "version": "0.1.150",
       "reason": "Vérification Open Prices au moment de l’ajout d’un produit, sans autre changement de l’application."
+    },
+    {
+      "component": "database",
+      "version": "0.1.58",
+      "reason": "Relevés du catalogue complétés pour le filtre de magasins du site, sans nouveauté propre à ce composant."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.42",
+      "reason": "Fiche produit réorganisée en mode courses, sans changement de la lecture Open Food Facts."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.34",
+      "reason": "Nouvelle carte dans les paramètres du compte, sans changement du mode hors ligne."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.38",
+      "reason": "Filtre de magasins du site appliqué à l’affichage des prix, sans changement de l’import Open Prices."
     }
   ]
 }
