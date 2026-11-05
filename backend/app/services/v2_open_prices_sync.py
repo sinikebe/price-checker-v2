@@ -2,6 +2,10 @@
 
 The persisted global slot admits at most one four-product cycle per hour across
 workers and restarts. Each barcode is checked at most once every 24 hours.
+
+A product created on demand (known only by its barcode) is also checked once at once, so that its
+Open Prices readings show when its page opens: at most ON_DEMAND_PER_HOUR such checks an hour for the
+whole installation, each bounded by ON_DEMAND_TIMEOUT seconds.
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from app.api.v2.auth import _connect
+from app.api.v2.auth import _bump_limit, _connect
 from app.api.v2.setup import _read_config
 from app.api.v2.stores import name_key
 from app.core.config import get_settings
@@ -25,6 +29,10 @@ PARIS = ZoneInfo("Europe/Paris")
 MAX_PRODUCTS_PER_CYCLE = 4
 PRICE_PAGE_SIZE = 100
 MIN_INTERVAL_SECONDS = 15
+ON_DEMAND_PER_HOUR = 30
+ON_DEMAND_TIMEOUT = 5  # seconds the person waits at most before the page opens
+USER_AGENT = "PriceCheckerV2/0.1 (+https://github.com/sinikebe/price-checker-v2)"
+ON_DEMAND_KEY = hashlib.sha256(b"open-prices-on-demand").hexdigest()  # one allowance for the installation
 ORIGINS = {
     "dev": "https://prices.openfoodfacts.net",
     "prod": "https://prices.openfoodfacts.org",
@@ -263,10 +271,7 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
     connection = await _connect()
     owns_client = client is None
     if client is None:
-        client = httpx.AsyncClient(
-            timeout=10, follow_redirects=False,
-            headers={"User-Agent": "PriceCheckerV2/0.1 (+https://github.com/sinikebe/price-checker-v2)"},
-        )
+        client = httpx.AsyncClient(timeout=10, follow_redirects=False, headers={"User-Agent": USER_AGENT})
     try:
         # Atomic global claim: no other worker, including on another host, can
         # start a cycle until the next slot. Never hold a transaction over HTTP.
@@ -311,35 +316,87 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
             if index:
                 await asyncio.sleep(MIN_INTERVAL_SECONDS)
             try:
-                response = await client.get(
-                    origin + "/api/v1/prices",
-                    params={"product_code": row["barcode"], "size": PRICE_PAGE_SIZE,
-                            "order_by": "-date", "duplicate_of__isnull": "true"},
-                )
                 requested += 1
-                if response.status_code in {429, 503}:
-                    await _postpone(connection, _retry_seconds(response.headers.get("Retry-After")))
-                    status = "rate_limited" if response.status_code == 429 else "unavailable"
-                    break
-                response.raise_for_status()
-                payload = response.json()
-                if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
-                    raise TypeError("Malformed Open Prices response")
-                count = await _save_items(connection, row["id"], row["barcode"], payload["items"])
-                imported += count
-                await connection.execute(
-                    """INSERT INTO v2_open_prices_sync_state(product_id,barcode,checked_at,imported_count)
-                       VALUES($1,$2,now(),$3) ON CONFLICT(product_id,barcode) DO UPDATE SET
-                       checked_at=excluded.checked_at,
-                       imported_count=v2_open_prices_sync_state.imported_count+$3""",
-                    row["id"], row["barcode"], count,
-                )
+                imported += await _check_barcode(connection, client, origin, row["id"], row["barcode"])
+            except _Busy as busy:
+                await _postpone(connection, busy.retry_after)
+                status = busy.status
+                break
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 logger.warning("Open Prices sync paused after %s", type(exc).__name__)
                 await _postpone(connection, 6 * 3600)
                 status = "error"
                 break
         return {"status": status, "requested": requested, "imported": imported}
+    finally:
+        if owns_client:
+            await client.aclose()
+        await connection.close()
+
+
+class _Busy(Exception):
+    """Open Prices asks to wait (429) or is unavailable (503)."""
+
+    def __init__(self, status: str, retry_after: int) -> None:
+        super().__init__(status)
+        self.status, self.retry_after = status, retry_after
+
+
+async def _check_barcode(connection, client: httpx.AsyncClient, origin: str, product_id: int, barcode: str) -> int:
+    """Read the latest Open Prices readings of one barcode, save the new ones, record the check."""
+    response = await client.get(
+        origin + "/api/v1/prices",
+        params={"product_code": barcode, "size": PRICE_PAGE_SIZE,
+                "order_by": "-date", "duplicate_of__isnull": "true"},
+    )
+    if response.status_code in {429, 503}:
+        raise _Busy("rate_limited" if response.status_code == 429 else "unavailable",
+                    _retry_seconds(response.headers.get("Retry-After")))
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        raise TypeError("Malformed Open Prices response")
+    count = await _save_items(connection, product_id, barcode, payload["items"])
+    await connection.execute(
+        """INSERT INTO v2_open_prices_sync_state(product_id,barcode,checked_at,imported_count)
+           VALUES($1,$2,now(),$3) ON CONFLICT(product_id,barcode) DO UPDATE SET
+           checked_at=excluded.checked_at,
+           imported_count=v2_open_prices_sync_state.imported_count+$3""",
+        product_id, barcode, count,
+    )
+    return count
+
+
+async def check_now(product_id: int, barcode: str, client: httpx.AsyncClient | None = None) -> dict:
+    """Check one product created on demand at once, within the installation's hourly allowance.
+
+    Never raises: when Open Prices is slow, busy or out of allowance, the product simply waits for
+    the regular cycle, which takes never-checked products first.
+    """
+    if _read_config() is None:
+        return {"status": "unconfigured", "imported": 0}
+    connection = await _connect()
+    owns_client = client is None
+    if client is None:
+        client = httpx.AsyncClient(timeout=ON_DEMAND_TIMEOUT, follow_redirects=False, headers={"User-Agent": USER_AGENT})
+    try:
+        paused = await connection.fetchval(
+            "SELECT next_run_at > now() + interval '1 hour' FROM v2_open_prices_sync_control WHERE singleton=true")
+        if paused:
+            return {"status": "paused", "imported": 0}  # Open Prices asked us to wait
+        if await _bump_limit(connection, ON_DEMAND_KEY, 3600) > ON_DEMAND_PER_HOUR:
+            return {"status": "busy", "imported": 0}
+        origin = ORIGINS["dev" if get_settings().APP_ENV == "dev" else "prod"]
+        try:
+            imported = await asyncio.wait_for(
+                _check_barcode(connection, client, origin, product_id, barcode), ON_DEMAND_TIMEOUT)
+        except _Busy as busy:
+            await _postpone(connection, busy.retry_after)
+            return {"status": busy.status, "imported": 0}
+        except (TimeoutError, httpx.HTTPError, ValueError, TypeError) as exc:
+            logger.warning("Open Prices check on demand skipped after %s", type(exc).__name__)
+            return {"status": "error", "imported": 0}
+        return {"status": "ok", "imported": imported}
     finally:
         if owns_client:
             await client.aclose()

@@ -884,6 +884,11 @@
       "component": "application",
       "version": "0.1.148",
       "reason": "Style de l’interrupteur de recherche Open Food Facts, sans autre changement de l’application."
+    },
+    {
+      "component": "application",
+      "version": "0.1.150",
+      "reason": "Vérification Open Prices au moment de l’ajout d’un produit, sans autre changement de l’application."
     }
   ]
 }

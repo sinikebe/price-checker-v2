@@ -6,7 +6,9 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -15,6 +17,7 @@ from fastapi import HTTPException
 from app.api.v2 import basket, catalogue, product_references, products, shared_baskets
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from app.services import v2_open_prices_sync as open_prices
 from app.services import v2_product_references as references
 
 pytestmark = pytest.mark.skipif(
@@ -60,6 +63,9 @@ async def setup(monkeypatch):
     for module in (product_references, basket, shared_baskets):
         monkeypatch.setattr(module, "_session_user", fake_session_user)
     monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
+    # No Open Prices traffic unless a test asks for it.
+    monkeypatch.setattr(open_prices, "_connect", fake_connect)
+    monkeypatch.setattr(open_prices, "_read_config", lambda: None)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
     try:
         yield client, connection, users
@@ -197,3 +203,61 @@ async def test_search_results_are_marked_with_the_products_we_have(setup):
     assert found.status_code == 200, found.text
     assert found.json() == {"matches": {COKE: ours, NUTELLA: reference}}
     assert (await client.post("/api/v2/products/by-barcodes", json={"codes": [COKE] * 21})).status_code == 422
+
+
+def open_price(code: str, price_id: int) -> dict:
+    return {"id": price_id, "type": "PRODUCT", "product_code": code, "price": 3.29, "currency": "EUR",
+            "price_is_discounted": False, "date": (datetime.now(open_prices.PARIS).date() - timedelta(days=1)).isoformat(),
+            "duplicate_of": None, "location": {
+                "id": 55001, "type": "OSM", "osm_type": "NODE", "osm_id": 880001, "osm_name": "Épicerie du coin",
+                "osm_brand": "Coin", "osm_address_city": "Lyon", "osm_address_postcode": "69001", "osm_address_country_code": "FR"}}
+
+
+@pytest.mark.asyncio
+async def test_a_new_barcode_only_product_gets_its_open_prices_readings_at_once(setup, monkeypatch):
+    client, connection, _users = setup
+    calls = []
+
+    def respond(request):
+        calls.append(request)
+        code = request.url.params["product_code"]
+        return httpx.Response(200, json={"items": [open_price(code, 70001)] if code == NUTELLA else []})
+
+    monkeypatch.setattr(open_prices, "_read_config", lambda: {"configured": True})
+    monkeypatch.setattr(open_prices, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
+    mock = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    real_check = open_prices.check_now
+    monkeypatch.setattr(open_prices, "check_now", lambda product_id, barcode: real_check(product_id, barcode, mock))
+    try:
+        product_id = (await client.post(PATH, headers=ANA, json={"ean": NUTELLA})).json()["id"]
+        assert len(calls) == 1 and calls[0].url.host == "prices.openfoodfacts.net"
+        row = await connection.fetchrow(
+            "SELECT source_provider, price FROM v2_price_observations WHERE product_id=$1", product_id)
+        assert row["source_provider"] == "open_prices" and str(row["price"]) == "3.29"
+        assert await connection.fetchval("SELECT imported_count FROM v2_open_prices_sync_state WHERE product_id=$1", product_id) == 1
+        # Found again: no new check.
+        await client.post(PATH, headers=ANA, json={"ean": NUTELLA})
+        assert len(calls) == 1
+        # The installation's hourly allowance is shared by every account.
+        monkeypatch.setattr(open_prices, "ON_DEMAND_PER_HOUR", 2)
+        await client.post(PATH, headers=ANA, json={"ean": COKE})
+        await client.post(PATH, headers=ANA, json={"ean": "4006381333931"})
+        assert len(calls) == 2, "the third check of the hour waits for the regular sync"
+    finally:
+        await mock.aclose()
+
+
+@pytest.mark.asyncio
+async def test_open_prices_asking_to_wait_pauses_checks_on_demand(setup, monkeypatch):
+    _client, connection, _users = setup
+    product_id = await connection.fetchval(
+        "INSERT INTO v2_products(data,off_reference) VALUES($1::jsonb,true) RETURNING id", json.dumps({"ean": NUTELLA}))
+    monkeypatch.setattr(open_prices, "_read_config", lambda: {"configured": True})
+    monkeypatch.setattr(open_prices, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(429, headers={"Retry-After": "7200"}))) as mock:
+        assert (await open_prices.check_now(product_id, NUTELLA, mock))["status"] == "rate_limited"
+        assert (await open_prices.check_now(product_id, NUTELLA, mock))["status"] == "paused"
+    assert await connection.fetchval("SELECT count(*) FROM v2_open_prices_sync_state") == 0
+    monkeypatch.setattr(open_prices, "_read_config", lambda: None)
+    assert (await open_prices.check_now(product_id, NUTELLA))["status"] == "unconfigured"

@@ -1445,6 +1445,24 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.150",
+      "components": {
+        "open_prices": {
+          "version": "0.1.37",
+          "notes": [
+            "Un produit ajouté depuis Open Food Facts récupère aussitôt ses relevés Open Prices, s’il en a, avant l’ouverture de sa page.",
+            "Ces vérifications immédiates sont limitées pour toute l’installation et s’arrêtent quand Open Prices demande d’attendre."
+          ]
+        },
+        "products": {
+          "version": "0.1.75",
+          "notes": [
+            "La page d’un produit ajouté depuis Open Food Facts affiche dès son ouverture les prix trouvés sur Open Prices."
+          ]
+        }
+      }
     }
   ]
 }
