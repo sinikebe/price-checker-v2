@@ -1300,6 +1300,32 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.144",
+      "components": {
+        "open_food_facts": {
+          "version": "0.1.36",
+          "notes": [
+            "Open Food Facts est lu par votre navigateur, à la demande : le serveur de Price Checker n’en garde plus aucune copie.",
+            "La fiche d’un produit affiche composition, Nutri-Score, NOVA et valeurs nutritionnelles d’Open Food Facts après un clic.",
+            "Les compositions, Nutri-Score et NOVA repris d’Open Food Facts sont retirés des fiches ; ceux saisis par les contributeurs restent."
+          ]
+        },
+        "products": {
+          "version": "0.1.69",
+          "notes": [
+            "En proposant un produit, la recherche Open Food Facts permet de reprendre son nom, sa marque, sa quantité ou son code-barres.",
+            "Reprendre de nouvelles informations de la même fiche Open Food Facts garde la trace des précédentes."
+          ]
+        },
+        "application": {
+          "version": "0.1.144",
+          "notes": [
+            "Le serveur ne contacte plus Open Food Facts : plus de limite de consultation partagée entre les visiteurs."
+          ]
+        }
+      }
     }
   ]
 }

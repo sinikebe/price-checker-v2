@@ -8,7 +8,7 @@ A successful merge is atomic. The donor row remains as an audit record and its o
 
 A reviewed store merge may combine two source-retailer IDs only when they belong to the same explicit retailer group. The canonical store keeps its retailer ID. Price observations, offers and drafts move both composite keys together; their original retailer ID is retained in source_retailer_id and exposed in price history. Different groups still cannot merge. The admin comparison shows both source labels, and no stores are merged automatically.
 
-After a merge, new bookmarklet readings for an old product GTIN can attach to the canonical product and pass separate price moderation. Open Prices checks each canonical or merged GTIN under the existing global/hourly and per-GTIN/day budgets. A repeated source price ID does not create another observation. Known Open Prices location IDs and OSM IDs resolve through donor records/aliases to the canonical store, even when an upstream OSM ID changes. Existing Open Food Facts snapshots and queued refreshes remain tied to their source GTIN and can be viewed from the canonical product.
+After a merge, new bookmarklet readings for an old product GTIN can attach to the canonical product and pass separate price moderation. Open Prices checks each canonical or merged GTIN under the existing global/hourly and per-GTIN/day budgets. A repeated source price ID does not create another observation. Known Open Prices location IDs and OSM IDs resolve through donor records/aliases to the canonical store, even when an upstream OSM ID changes.
 
 ## Retailer families in the public store directory
 

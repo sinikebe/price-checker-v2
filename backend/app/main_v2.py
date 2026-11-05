@@ -44,9 +44,7 @@ from app.api.v2.sync import router as sync_router
 from app.api.v2.transfers import router as transfers_router
 from app.api.v2.updates import router as updates_router
 from app.core.config import get_settings
-from app.services.openfoodfacts_client import aclose_off_client
 from app.services.v2_db_pool import close_v2_pool
-from app.services.v2_off_refresh_queue import off_refresh_worker
 from app.services import v2_observability, v2_request_stats
 from app.services.v2_open_prices_sync import open_prices_worker
 from app.services.v2_private_retention import purge_private_data
@@ -73,8 +71,7 @@ async def retention_worker():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    workers = [asyncio.create_task(off_refresh_worker()),
-               asyncio.create_task(retention_worker()),
+    workers = [asyncio.create_task(retention_worker()),
                asyncio.create_task(open_prices_worker()),
                asyncio.create_task(connector_worker()),
                asyncio.create_task(v2_observability.worker(_connect, _ensure_state_dir))]
@@ -90,7 +87,6 @@ async def lifespan(_: FastAPI):
             with suppress(asyncio.CancelledError):
                 await worker
         await v2_observability.final_flush(_connect)
-        await aclose_off_client()
         await close_v2_pool()
 
 
@@ -166,8 +162,6 @@ BEARER_OPERATIONS = {
     ("POST", "/api/v2/products/drafts"),
     ("PUT", "/api/v2/products/drafts/{draft_id}"),
     ("DELETE", "/api/v2/products/drafts/{draft_id}"),
-    ("GET", "/api/v2/products/{product_id}/off/refresh-status"),
-    ("POST", "/api/v2/products/{product_id}/off/refresh"),
     ("GET", "/api/v2/prices/drafts/mine"),
     ("GET", "/api/v2/prices/products/{product_id}/drafts"),
     ("POST", "/api/v2/prices/capture-drafts"),

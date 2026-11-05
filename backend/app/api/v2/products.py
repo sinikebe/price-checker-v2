@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -12,23 +12,10 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
-from app.api.v2.off import (
-    get_openfoodfacts_product,
-    normalize_barcode,
-    search_openfoodfacts,
-)
 from app.core.url_validation import validate_clickable_url
-from app.services.off_presenter import build_sections
-from app.services.off_rate_limit import OffRateLimited, retry_after_headers
+from app.services.barcodes import normalize_barcode
 from app.services import v2_basket_credits as credits
 from app.services.quantity_parser import parse_measures
-from app.services.v2_off_refresh_queue import queue_off_refresh
-from app.services.v2_off_snapshot import (
-    OFF_PRODUCT_PAGE,
-    OffUnavailable,
-    fetch_full_off_product,
-    save_off_snapshot,
-)
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_PRODUCT_DRAFTS,
@@ -41,19 +28,23 @@ router = APIRouter(prefix="/api/v2/products", tags=["v2-products"])
 
 
 class OffSource(BaseModel):
+    """The Open Food Facts sheet a contributor read, and the few facts copied from it into the product.
+
+    Only identifying facts are copied (name, brand, quantity, barcode). Composition, Nutri-Score and
+    NOVA are read from Open Food Facts by the browser when someone asks, never stored here.
+    """
+
     code: str = Field(max_length=14, pattern=r"^[0-9]{8,14}$")
     checked_at: datetime
-    fields: list[
-        Literal[
-            "name",
-            "brand",
-            "composition",
-            "quantity",
-            "ean",
-            "nutriscore",
-            "nova",
-        ]
-    ] = Field(min_length=1, max_length=7)
+    fields: list[Literal["name", "brand", "quantity", "ean"]] = Field(min_length=1, max_length=4)
+
+    @field_validator("fields", mode="before")
+    @classmethod
+    def identifying_facts_only(cls, value):
+        # Sheets written before this rule may list other fields: they are no longer copied.
+        if isinstance(value, list):
+            return [field for field in value if field in {"name", "brand", "quantity", "ean"}]
+        return value
 
 
 class RetailerLink(BaseModel):
@@ -295,17 +286,6 @@ def _validate_publish(data: dict):
             status_code=422,
             detail="Une version Nutri-Score nécessite une note Nutri-Score.",
         )
-
-
-@router.get("/off/search")
-async def search_off(q: str = Query(..., min_length=2, max_length=100)):
-    # Use the shared OFF client, cache, normalisation and rate limits.
-    return await search_openfoodfacts(q=q, page_size=10)
-
-
-@router.get("/off/product/{barcode}")
-async def lookup_off(barcode: str):
-    return await get_openfoodfacts_product(barcode)
 
 
 @router.get("")
@@ -752,152 +732,6 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                 product["id"], draft_id,
             )
             return _product(product)
-    finally:
-        await connection.close()
-
-
-def _off_snapshot_response(product_id: int, row) -> dict:
-    payload = _decoded(row["payload"])
-    presentation = build_sections(payload)
-    modified = row["off_last_modified_t"]
-    return {
-        "product_id": product_id,
-        "barcode": row["barcode"],
-        "fetched_at": row["fetched_at"],
-        "off_rev": row["off_rev"],
-        "off_last_modified": (
-            datetime.fromtimestamp(modified, tz=UTC) if modified is not None else None
-        ),
-        "off_url": f"{OFF_PRODUCT_PAGE}/{row['barcode']}",
-        "field_count": len(payload),
-        "presented_field_count": presentation.presented_count,
-        "sections": presentation.sections,
-    }
-
-
-async def _off_canonical_id(connection, product_id: int) -> int:
-    canonical_id = await connection.fetchval(
-        "SELECT COALESCE(m.to_id,p.id) FROM v2_products p "
-        "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
-        "WHERE p.id=$1", product_id,
-    )
-    if canonical_id is None:
-        raise HTTPException(status_code=404, detail="Produit introuvable.")
-    await require_visible(connection, "product", canonical_id)
-    return canonical_id
-
-
-@router.get("/{product_id}/off-sources")
-async def product_off_sources(product_id: int):
-    """Existing OFF sheets from merged GTINs remain attached to the current card."""
-    connection = await _connect()
-    try:
-        canonical_id = await _off_canonical_id(connection, product_id)
-        rows = await connection.fetch(
-            "SELECT * FROM (SELECT DISTINCT ON (lpad(snap.barcode,14,'0')) "
-            "snap.product_id,snap.barcode,snap.fetched_at,"
-            "(snap.product_id=$1) AS primary_source "
-            "FROM v2_product_off_snapshots snap "
-            "JOIN v2_products p ON p.id=snap.product_id "
-            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
-            "WHERE COALESCE(m.to_id,p.id)=$1 "
-            "AND lpad(snap.barcode,14,'0')=lpad(p.data->>'ean',14,'0') "
-            "ORDER BY lpad(snap.barcode,14,'0'),primary_source DESC,"
-            "snap.fetched_at DESC,snap.product_id) sources "
-            "ORDER BY primary_source DESC,fetched_at DESC,product_id",
-            canonical_id,
-        )
-        return [dict(row) for row in rows]
-    finally:
-        await connection.close()
-
-
-@router.get("/{product_id}/off")
-async def get_product_off(product_id: int, barcode: str | None = Query(default=None)):
-    connection = await _connect()
-    try:
-        canonical_id = await _off_canonical_id(connection, product_id)
-        default_barcode = await connection.fetchval(
-            "SELECT data->>'ean' FROM v2_products WHERE id=$1", product_id,
-        )
-        requested = normalize_barcode(barcode) if barcode is not None else default_barcode
-        if not requested:
-            raise HTTPException(
-                status_code=422, detail="Ce produit n'a pas de code EAN / GTIN."
-            )
-        row = await connection.fetchrow(
-            "SELECT snap.* FROM v2_product_off_snapshots snap "
-            "JOIN v2_products p ON p.id=snap.product_id "
-            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
-            "WHERE COALESCE(m.to_id,p.id)=$1 "
-            "AND lpad(p.data->>'ean',14,'0')=lpad($2,14,'0') "
-            "AND lpad(snap.barcode,14,'0')=lpad($2,14,'0') "
-            "ORDER BY (snap.product_id=$1) DESC,snap.fetched_at DESC LIMIT 1",
-            canonical_id, requested,
-        )
-        if row is None:
-            raise HTTPException(
-                status_code=404, detail="Aucune fiche Open Food Facts enregistrée."
-            )
-        return {**_off_snapshot_response(canonical_id, row),
-                "source_product_id": row["product_id"]}
-    finally:
-        await connection.close()
-
-
-@router.get("/{product_id}/off/refresh-status")
-async def off_refresh_status(product_id: int, request: Request):
-    connection = await _connect()
-    try:
-        await _user(connection, request)
-        await require_visible(connection, "product", product_id)
-        pending = await connection.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM v2_off_refresh_queue WHERE product_id=$1)",
-            product_id,
-        )
-        return {"pending": pending}
-    finally:
-        await connection.close()
-
-
-@router.post("/{product_id}/off/refresh")
-async def refresh_product_off(product_id: int, request: Request):
-    _secure_write(request)
-    connection = await _connect()
-    try:
-        await _user(connection, request)
-        await require_visible(connection, "product", product_id)
-        product = await connection.fetchrow(
-            "SELECT data FROM v2_products WHERE id=$1", product_id
-        )
-        if product is None:
-            raise HTTPException(status_code=404, detail="Produit introuvable.")
-        barcode = _decoded(product["data"]).get("ean", "")
-        if not barcode:
-            raise HTTPException(
-                status_code=422, detail="Ce produit n'a pas de code EAN / GTIN."
-            )
-        barcode = normalize_barcode(barcode)
-        try:
-            payload = await fetch_full_off_product(barcode)
-        except OffRateLimited as exc:
-            await queue_off_refresh(connection, product_id, exc.retry_after)
-            raise HTTPException(
-                status_code=429,
-                detail="Quota OFF atteint. Actualisation serveur planifiée ; consultez provisoirement OFF sur cet appareil.",
-                headers=retry_after_headers(exc),
-            ) from exc
-        except OffUnavailable as exc:
-            raise HTTPException(
-                status_code=502,
-                detail="Open Food Facts est temporairement indisponible.",
-            ) from exc
-        if payload is None:
-            raise HTTPException(
-                status_code=404, detail="Produit introuvable sur Open Food Facts."
-            )
-        row = await save_off_snapshot(connection, product_id, barcode, payload)
-        return _off_snapshot_response(product_id, row)
     finally:
         await connection.close()
 

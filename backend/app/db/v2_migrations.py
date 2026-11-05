@@ -1197,6 +1197,45 @@ MIGRATIONS = {
             ADD COLUMN spec jsonb CHECK (spec IS NULL OR jsonb_typeof(spec) = 'object'),
             ADD CONSTRAINT v2_shared_basket_lines_selection_spec CHECK ((kind = 'selection') = (spec IS NOT NULL));
     """,
+    "0050_open_food_facts_in_browser": """
+        -- Open Food Facts is read by the visitor's browser when needed; the server keeps none of it.
+        DROP TABLE v2_product_off_snapshots;
+        DROP TABLE v2_off_refresh_queue;
+        DROP TABLE v2_off_rate_events;
+        -- Product sheets keep only the identifying facts a contributor copied (name, brand, quantity,
+        -- barcode). Composition, Nutri-Score and NOVA recorded as copied from Open Food Facts are cleared,
+        -- in products, drafts and their history; values typed by contributors stay.
+        CREATE FUNCTION pg_temp.v2_without_off_copies(data jsonb) RETURNS jsonb AS $$
+            SELECT CASE
+                WHEN data IS NULL OR coalesce(jsonb_typeof(data->'off_source'->'fields'), '') <> 'array'
+                     OR NOT coalesce(data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'], false)
+                THEN data
+                ELSE data
+                    || CASE WHEN data->'off_source'->'fields' ? 'composition'
+                            THEN '{"composition": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ? 'nutriscore'
+                            THEN '{"nutriscore": "", "nutriscore_version": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ? 'nova'
+                            THEN '{"nova": ""}'::jsonb ELSE '{}'::jsonb END
+                    || CASE WHEN data->'off_source'->'fields' ?| ARRAY['nutriscore', 'nova']
+                            THEN '{"nutrition_checked_at": null}'::jsonb ELSE '{}'::jsonb END
+                    || jsonb_build_object('off_source', (
+                        SELECT CASE WHEN count(*) = 0 THEN 'null'::jsonb
+                                    ELSE jsonb_set(data->'off_source', '{fields}', jsonb_agg(field)) END
+                        FROM jsonb_array_elements(data->'off_source'->'fields') field
+                        WHERE field #>> '{}' IN ('name', 'brand', 'quantity', 'ean')))
+            END
+        $$ LANGUAGE sql IMMUTABLE;
+        UPDATE v2_products SET data = pg_temp.v2_without_off_copies(data)
+            WHERE data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        UPDATE v2_product_drafts SET data = pg_temp.v2_without_off_copies(data)
+            WHERE data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        UPDATE v2_product_events SET after_data = pg_temp.v2_without_off_copies(after_data),
+                before_data = pg_temp.v2_without_off_copies(before_data)
+            WHERE after_data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova']
+               OR before_data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
+        DROP FUNCTION pg_temp.v2_without_off_copies(jsonb);
+    """,
 }
 
 

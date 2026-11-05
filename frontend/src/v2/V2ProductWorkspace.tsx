@@ -5,7 +5,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
-import V2OffSnapshotPanel from "./V2OffSnapshotPanel";
+import V2OffPanel from "./V2OffPanel";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
@@ -145,7 +145,6 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [localError, setLocalError] = useState("");
   const localVersion = useRef(0);
   const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
-  const [allowOffDefault] = useState(() => !localRead(localKey));
   const [tagInput, setTagInput] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
   const [extraUnit, setExtraUnit] = useState<MeasureUnit>("piece");
@@ -195,9 +194,8 @@ function Editor({ mode, id, user, onLogout }: Props) {
   function persist(next: ProductData, kind: ChangeKind, fromOff = false) {
     if (!fromOff && next.off_source) {
       const changed = fields.filter(field => data[field.key] !== next[field.key]).map(field => field.key);
-      const kept = next.off_source.fields.filter(key =>
-        !changed.includes(key) && !(key === "nutriscore" && changed.includes("nutriscore_version"))
-      );
+      // A fact the contributor rewrote is no longer a copy from Open Food Facts.
+      const kept = next.off_source.fields.filter(key => !changed.includes(key));
       next = { ...next, off_source: kept.length ? { ...next.off_source, fields: kept } : null };
       if (changed.includes("nutriscore")) next.nutriscore_version = "";
     }
@@ -331,7 +329,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <small>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</small>
           </fieldset>}
         </fieldset>
-        <V2OffLookup data={data} disabled={busy || readonly} autoFillMissingComposition={allowOffDefault}
+        <V2OffLookup data={data} disabled={busy || readonly}
           onApply={next => persist(next, changeKind, true)} />
         {conflict && draft && <div className="v2-workspace-conflict" role="alert">
           <strong>Conflit de brouillon.</strong> Votre saisie locale repose sur une version différente de celle du serveur.
@@ -452,7 +450,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
-    {mode !== "history" && id && <V2OffSnapshotPanel productId={id} ean={d.ean} user={user} />}
+    {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }
