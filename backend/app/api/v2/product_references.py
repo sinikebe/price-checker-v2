@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v2.auth import _bump_limit, _connect, _current_user, _secure_write, _session_user
 from app.api.v2.auth_security import account_limit_key
+from app.services import v2_open_prices_sync as open_prices
 from app.services import v2_product_references as references
 from app.services.barcodes import normalize_barcode
 
@@ -72,6 +73,9 @@ async def create_reference(payload: ReferenceCreate, request: Request, response:
                 "INSERT INTO v2_products(data,off_reference) VALUES($1::jsonb,true) RETURNING id",
                 json.dumps({"ean": barcode}))
             await connection.execute("INSERT INTO v2_product_reference_uses(product_id) VALUES($1)", product_id)
+        # Its Open Prices readings, if any, are fetched now (a few seconds at most), so that the page
+        # shows them when it opens; otherwise the regular sync takes it first at its next run.
+        await open_prices.check_now(product_id, barcode)
         return {"id": product_id, "created": True}
     finally:
         await connection.close()
