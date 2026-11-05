@@ -237,6 +237,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/useSiteFilter.ts", ("application", "basket", "products")),
     ("frontend/src/v2/V2SiteFilter.tsx", ("application", "basket", "products")),
     ("frontend/src/v2/V2SiteFilterSettings.tsx", ("application", "accounts")),
+    ("frontend/src/v2/useStoreDirectoryLabels.ts", ("basket",)),
     ("frontend/src/v2/v2-settings-tabs.css", ("application",)),
     ("frontend/src/v2/V2Theme*.tsx", ("application",)),
     ("frontend/src/v2/V2ThemeContext.ts", ("application",)),

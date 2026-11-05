@@ -45,6 +45,18 @@ test("only an enabled filter with a criterion is in force, and it keeps the read
     "2 magasins · 1 commune · départements 69, 78");
 });
 
+test("a shared basket can take the account filter as its shared filter, on or off", () => {
+  const off = { enabled: false, stores: [{ id: 5, label: "Shop" }, { id: 2, label: "Other" }], cities: ["Houilles"], departments: ["78"] };
+  assert.deepEqual(site.siteFilterCriteria(off), { storeIds: [5, 2], cities: ["Houilles"], departments: ["78"] }, "criteria even when the filter is off");
+  assert.equal(site.siteFilterCriteria(site.EMPTY_SITE_FILTER), null);
+  assert.equal(site.sameBasketFilters({ storeIds: [5, 2], cities: ["Houilles"], departments: ["78"] }, { storeIds: [2, 5], cities: ["houilles"], departments: ["78"] }), true, "order and case do not matter");
+  assert.equal(site.sameBasketFilters({ storeIds: [5], cities: [], departments: [] }, { storeIds: [5, 2], cities: [], departments: [] }), false);
+  assert.equal(site.basketFiltersSummary({ storeIds: [], cities: [], departments: [] }), "aucun critère");
+  assert.equal(site.basketFiltersSummary({ storeIds: [1], cities: [], departments: ["78"] }), "1 magasin · département 78");
+  assert.equal(site.directoryStoreLabel({ id: 1, name: "Drive Houilles", retailer: "Auchan", city: "Houilles", postal_code: "78800" }), "Auchan · Drive Houilles · Houilles");
+  assert.equal(site.directoryStoreLabel({ id: 2, name: "Amazon", retailer: "Amazon", city: null, postal_code: null, online: true }), "Amazon · Amazon · En ligne");
+});
+
 test("a group page's lowest price per product counts only the latest reading of each store", () => {
   const row = (id, product_id, store_id, price, observed_at) => ({ id, product_id, store_id, price, observed_at, retailer: "R" + store_id, store_name: "S", city: "Lyon", postal_code: "69003", sales_channel: "in_store" });
   const prices = bestPrices([row(1, 10, 1, "1.00", "2026-10-01"), row(2, 10, 1, "2.00", "2026-11-01"), row(3, 10, 2, "1.50", "2026-10-15"), row(4, 11, 1, "3.00", "2026-11-02")]);

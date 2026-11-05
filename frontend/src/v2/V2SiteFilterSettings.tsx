@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSiteFilter } from "./useSiteFilter";
 import { postalDepartment } from "./v2-basket-comparison";
-import { siteFilterSummary, type SiteFilter, type SiteFilterStore } from "./v2-site-filter";
+import { directoryStoreLabel as storeLabel, siteFilterSummary, type DirectoryStore, type SiteFilter, type SiteFilterStore } from "./v2-site-filter";
 
-type DirectoryStore = { id: number; name: string; retailer: string; city: string | null; postal_code: string | null; online?: boolean };
-
-const storeLabel = (store: DirectoryStore) => [store.retailer, store.name, store.online ? "En ligne" : store.city].filter(Boolean).join(" · ");
 const fold = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("fr");
 const same = (left: SiteFilter, right: SiteFilter) => JSON.stringify(left) === JSON.stringify(right);
 
