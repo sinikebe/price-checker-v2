@@ -5,7 +5,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
-import V2OffPanel from "./V2OffPanel";
+import V2OffPanel, { OffDetails } from "./V2OffPanel";
 import { useOffProduct, type OffRead } from "./useOffProduct";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
@@ -411,6 +411,15 @@ function ReferenceNotice({ product, read, contributing }: { product: Product; re
   </p>;
 }
 
+/** The full price history, folded: opened (and only then loaded), without the contribution tools. */
+function ShoppingPriceHistory({ productId, user, current }: { productId: number; user: V2User | null; current: boolean }) {
+  const [open, setOpen] = useState(false);
+  return <details className="v2-workspace-card v2-shopping-history" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>Historique des prix et prix par magasin</summary>
+    {open && <V2PriceHistory key={`${productId}:${user?.id ?? "visitor"}`} productId={productId} user={user} current={current} shopper />}
+  </details>;
+}
+
 function ShoppingDetail({ product, id, user, onLogout, read }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void>; read: OffRead }) {
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
@@ -426,6 +435,13 @@ function ShoppingDetail({ product, id, user, onLogout, read }: { product: Produc
           {d.group && <p className="v2-product-simple-group"><Link to={"/v2/categories/" + encodeURIComponent(d.group)}>Voir les produits comparables · {d.group} →</Link></p>}
         </> : null}
     </section>
+    {id && <ShoppingPriceHistory productId={id} user={user} current={!product.successor_id} />}
+    {/* Not in our catalogue: everything Open Food Facts knows about it, already read for this page. */}
+    {product.off_reference && read.phase === "done" && <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-product-off-heading">
+      <span className="v2-section-kicker">SOURCE EXTERNE</span>
+      <h2 id="v2-product-off-heading">Chez Open Food Facts</h2>
+      <OffDetails product={read.product} />
+    </section>}
   </Frame>;
 }
 

@@ -8,6 +8,8 @@ import { loadWithdrawn, lookAgain, withdrawnAt, withdrawnText, type Withdrawn } 
 import { usePaidPrices } from "./usePaidPrices";
 import V2PriceGate from "./V2PriceGate";
 import { rewardHint } from "./v2-basket-credits-api";
+import { useSiteFilter } from "./useSiteFilter";
+import { passesSiteFilter } from "./v2-site-filter";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -254,7 +256,13 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
   </>;
 }
 
-export default function V2PriceHistory({ productId, user, current }: { productId: number; user: V2User | null; current: boolean }) {
+/**
+ * The prices of a product: chart, latest reading per store and channel, every reading. `shopper` (the
+ * shopping view) leaves out the contribution tools: proposing a reading, the proposals, re-checks. The
+ * account's site-wide store filter, when on, limits every reading shown.
+ */
+export default function V2PriceHistory({ productId, user, current, shopper = false }: { productId: number; user: V2User | null; current: boolean; shopper?: boolean }) {
+  const site = useSiteFilter().active;
   const queueBadges = useConnectorQueue(current ? [productId] : [], user?.role === "admin");
   const userId = user?.id;
   // Prices cost one credit: shown from this browser when already paid for, fetched on request.
@@ -331,8 +339,11 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     } finally { setBusy(false); }
   }
 
-  const observations = prices?.observations ?? [];
-  const series = buildPriceSeries(observations, prices?.latest_by_store ?? []);
+  const allObservations = prices?.observations ?? [];
+  const observations = allObservations.filter(row => passesSiteFilter(row, site));
+  const latestRows = (prices?.latest_by_store ?? []).filter(row => passesSiteFilter(row, site));
+  const hidden = site ? (prices?.latest_by_store ?? []).length - latestRows.length : 0;
+  const series = buildPriceSeries(observations, latestRows);
   const gone = (row: Observation) => withdrawnAt(withdrawn.stores, row.store_id, row.sales_channel);
   const comparison = [...series].sort((a, b) => {
     const aComparable = plottable(a.latest) && !gone(a.latest), bComparable = plottable(b.latest) && !gone(b.latest);
@@ -349,13 +360,14 @@ export default function V2PriceHistory({ productId, user, current }: { productId
     {withdrawn.stores.filter(entry => !comparison.some(item => item.latest.store_id === entry.store_id && item.latest.sales_channel === entry.sales_channel))
       .map(entry => <p key={`${entry.store_id}:${entry.sales_channel}`} className="v2-price-note">
         <strong>{entry.store_name}</strong>{entry.city && ` · ${entry.city}`} : {withdrawnText(entry)}.
-        {user?.role === "admin" && <> <button type="button" className="v2-button v2-button-secondary" disabled={busy}
+        {user?.role === "admin" && !shopper && <> <button type="button" className="v2-button v2-button-secondary" disabled={busy}
           onClick={() => { void recheck(entry.store_id, entry.sales_channel); }}>Revérifier</button></>}
       </p>)}
+    {site && prices && <p className="v2-price-note" role="status">Filtre de magasins du site actif{hidden > 0 ? ` : ${hidden} magasin${hidden > 1 ? "s" : ""} masqué${hidden > 1 ? "s" : ""}` : ""}.</p>}
     <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy} error={paid.error}
       newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce produit" />
     {!prices && paid.credits?.unlimited && !error && <p>Chargement des prix…</p>}
-    {prices && (observations.length || prices.latest_by_store.length ? <>
+    {prices && (observations.length || latestRows.length ? <>
       <div className="v2-price-store-summary" aria-labelledby="v2-price-store-heading">
         <h3 id="v2-price-store-heading">Dernier relevé par magasin et canal</h3>
         <p>Prix comparables classés du moins cher au plus cher. La date indique le relevé, pas une garantie de prix actuel.</p>
@@ -404,8 +416,9 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         </tr>)}</tbody>
       </table></div>
       {prices.truncated && <p className="v2-price-note">Seuls les 200 relevés les plus récents sont affichés.</p>}
-    </> : <p>Aucun prix publié pour cette référence. Un relevé validé apparaîtra ici.</p>)}
-    {user && current && <div className="v2-price-contribute">
+    </> : <p>{site && (allObservations.length || prices.latest_by_store.length) ? "Aucun prix relevé dans les magasins du filtre du site."
+      : "Aucun prix publié pour cette référence. Un relevé validé apparaîtra ici."}</p>)}
+    {user && current && !shopper && <div className="v2-price-contribute">
       <h3>Proposer un relevé</h3>
       <p>Votre prix restera privé jusqu’à validation. Indiquez le prix du conditionnement affiché sur cette fiche.</p>
       <form onSubmit={event => void submit(event)}>
@@ -441,7 +454,7 @@ export default function V2PriceHistory({ productId, user, current }: { productId
         {rewardHint("price", paid.credits) && <small className="v2-reward-hint">{rewardHint("price", paid.credits)}</small>}
       </form>
     </div>}
-    {user && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
+    {user && !shopper && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
         <ul>{drafts.map(draft => <li key={draft.id}>
           <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
             {draft.source_retailer && draft.source_retailer !== draft.retailer && ` · enseigne d’origine : ${draft.source_retailer}`}

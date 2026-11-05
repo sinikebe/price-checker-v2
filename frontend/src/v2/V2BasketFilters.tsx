@@ -1,4 +1,7 @@
+import { Link } from "react-router-dom";
+import { useSiteFilter } from "./useSiteFilter";
 import { emptyBasketFilters, type BasketFilters } from "./v2-basket-comparison";
+import { basketFiltersSummary, sameBasketFilters, siteFilterCriteria, siteFilterSummary } from "./v2-site-filter";
 
 function MultiFilter<T extends string | number>({ title, options, selected, onChange, label }: {
   title: string; options: T[]; selected: T[]; onChange: (next: T[]) => void; label: (value: T) => string;
@@ -15,22 +18,55 @@ export type DefaultStores = {
   save: () => void; restore: () => void; remove: () => void;
 };
 
+/** In a shared basket: the member's account filter can become the filter shared with every member. */
+function AccountFilterToShare({ filters, onChange }: { filters: BasketFilters; onChange: (next: BasketFilters) => void }) {
+  const site = useSiteFilter();
+  const mine = siteFilterCriteria(site.filter);
+  if (!mine) return null;
+  return <div className="v2-basket-shared-filter">
+    <p>Filtre de magasins de votre compte : {siteFilterSummary(site.filter)}.</p>
+    {sameBasketFilters(mine, filters) ? <p role="status">Le filtre partagé de ce panier est celui de votre compte.</p>
+      : <button type="button" className="v2-button v2-button-secondary" onClick={() => onChange(mine)}>Utiliser mon filtre comme filtre partagé</button>}
+  </div>;
+}
+
 /** Which stores are compared. The filters narrow the prices already fetched: no credit is spent. */
-export default function V2BasketFilters({ filters, onChange, storeOptions, storeLabel, cityOptions, departmentOptions, defaults }: {
+export default function V2BasketFilters({ filters, onChange, storeOptions, storeLabel, cityOptions, departmentOptions, defaults, siteFilter = true, shared = false }: {
   filters: BasketFilters; onChange: (next: BasketFilters) => void;
   storeOptions: number[]; storeLabel: (id: number) => string;
   cityOptions: string[]; departmentOptions: string[];
   /** The stores chosen by default in this browser; absent in the demo basket, which changes nothing outside its tab. */
   defaults?: DefaultStores;
+  /** Whether the account's site-wide filter applies here (not in the demo basket). */
+  siteFilter?: boolean;
+  /** A shared basket: these filters are the ones every member sees. */
+  shared?: boolean;
 }) {
+  const site = useSiteFilter();
   const active = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
+  // Turned off on this device, as from the profile menu; the account settings keep its stores.
+  const disableSiteFilter = () => { try { site.save({ ...site.filter, enabled: false }); } catch { /* storage unavailable */ } };
+  if (siteFilter && site.active) return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
+    <p role="status"><strong>Le filtre de magasins du site est actif</strong> ({siteFilterSummary(site.filter)}) : {shared
+      ? "vous voyez ce panier avec lui, à la place du filtre partagé." : "il remplace les filtres de ce panier."}{" "}
+      <Link to="/v2/parametres/compte">Le modifier dans les paramètres du compte</Link>.</p>
+    <div className="v2-basket-default-actions"><button type="button" className="v2-button v2-button-secondary" onClick={disableSiteFilter}>Désactiver mon filtre</button></div>
+    {shared && <>
+      <p>Filtre partagé avec les membres : {basketFiltersSummary(filters)}.</p>
+      <AccountFilterToShare filters={filters} onChange={onChange} />
+      {active && <div className="v2-basket-default-actions">
+        <button type="button" className="v2-button v2-button-secondary" onClick={() => onChange(emptyBasketFilters)}>Effacer le filtre partagé</button></div>}
+    </>}
+  </section>;
   return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
-    <p>Filtrez les magasins déjà récupérés, sans dépenser de crédit. Les filtres se cumulent.</p>
+    <p>Filtrez les magasins déjà récupérés, sans dépenser de crédit. Les filtres se cumulent.{shared
+      ? " Ils sont partagés : chaque membre voit ce panier avec eux, sauf s’il a activé le filtre de magasins du site." : ""}</p>
     <div className="v2-basket-filter-grid">
       <MultiFilter title="Magasins" options={storeOptions} selected={filters.storeIds} onChange={storeIds => onChange({ ...filters, storeIds })} label={storeLabel} />
       <MultiFilter title="Communes" options={cityOptions} selected={filters.cities} onChange={cities => onChange({ ...filters, cities })} label={city => city} />
       <MultiFilter title="Départements" options={departmentOptions} selected={filters.departments} onChange={departments => onChange({ ...filters, departments })} label={department => department} />
     </div>
+    {shared && <AccountFilterToShare filters={filters} onChange={onChange} />}
     {defaults ? <div className="v2-basket-default-stores">
       <p>{defaults.count ? `${defaults.count} magasin${defaults.count > 1 ? "s" : ""} par défaut sur ce navigateur.` : "Aucun magasin par défaut sur ce navigateur."}</p>
       <div className="v2-basket-default-actions">

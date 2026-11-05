@@ -146,6 +146,9 @@ async def test_a_group_page_says_its_cost_and_never_charges_more(connected):
         assert paid.status_code == 200, paid.text
         assert (paid.json()["cost"], paid.json()["credits"]["balance"]) == (2, 48)
         assert {row["product_id"] for row in paid.json()["observations"]} == set(products[:2])
+        # Each reading names its store and place, so the site-wide store filter can apply in the browser.
+        reading = paid.json()["observations"][0]
+        assert {"store_id", "city", "postal_code", "online", "sales_channel"} <= set(reading)
         assert (await http.get("/api/v2/catalogue/prices/category", params={"name": "Nothing", "max_cost": 5})).status_code == 404
         assert (await http.get("/api/v2/catalogue/prices/category", params={"name": "Lait", "max_cost": 5000})).status_code == 422
     assert await balance(config, ana) == 48

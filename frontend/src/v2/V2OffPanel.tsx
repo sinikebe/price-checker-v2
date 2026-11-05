@@ -39,7 +39,8 @@ export default function V2OffPanel({ ean, initial }: { ean: string; initial?: Of
   </section>;
 }
 
-function OffDetails({ product }: { product: OffProduct }) {
+/** What Open Food Facts says about a product, already read: image, scores, composition and nutrition. */
+export function OffDetails({ product }: { product: OffProduct }) {
   return <div className="v2-off-browser">
     <div className="v2-off-selected"><div>{product.image && <img src={product.image} alt="" loading="lazy" />}
       <div><strong>{product.name || "Produit sans nom"}</strong>

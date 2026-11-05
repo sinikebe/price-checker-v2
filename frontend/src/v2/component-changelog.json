@@ -1405,6 +1405,125 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.148",
+      "components": {
+        "open_food_facts": {
+          "version": "0.1.40",
+          "notes": [
+            "Les recherches chez Open Food Facts se limitent aux produits vendus en France, sauf si vous cochez « Inclure les produits vendus hors de France »."
+          ]
+        },
+        "products": {
+          "version": "0.1.73",
+          "notes": [
+            "En proposant un produit, la recherche Open Food Facts par nom se limite aussi aux produits vendus en France par défaut."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.149",
+      "components": {
+        "products": {
+          "version": "0.1.74",
+          "notes": [
+            "La page d’un produit absent du catalogue affiche toutes ses informations d’Open Food Facts : image, Nutri-Score, NOVA, composition et valeurs nutritionnelles."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.41",
+          "notes": [
+            "Ces informations viennent de la lecture déjà faite à l’ouverture de la page, sans requête supplémentaire."
+          ]
+        },
+        "application": {
+          "version": "0.1.149",
+          "notes": [
+            "En thème sombre, les valeurs des fiches (quantité, Nutri-Score…) sont de nouveau lisibles."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.150",
+      "components": {
+        "open_prices": {
+          "version": "0.1.37",
+          "notes": [
+            "Un produit ajouté depuis Open Food Facts récupère aussitôt ses relevés Open Prices, s’il en a, avant l’ouverture de sa page.",
+            "Ces vérifications immédiates sont limitées pour toute l’installation et s’arrêtent quand Open Prices demande d’attendre."
+          ]
+        },
+        "products": {
+          "version": "0.1.75",
+          "notes": [
+            "La page d’un produit ajouté depuis Open Food Facts affiche dès son ouverture les prix trouvés sur Open Prices."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.151",
+      "components": {
+        "application": {
+          "version": "0.1.151",
+          "notes": [
+            "Un filtre de magasins pour tout le site, réglé dans les paramètres du compte, limite les prix affichés sur toutes les pages.",
+            "Le filtre s’enregistre sur cet appareil ; l’enregistrement dans le cloud, pour le retrouver partout, arrive bientôt."
+          ]
+        },
+        "products": {
+          "version": "0.1.76",
+          "notes": [
+            "En mode courses, l’historique des prix et les prix par magasin restent disponibles dans une section repliée de la fiche produit.",
+            "En mode courses, chaque produit d’un groupe affiche son prix le plus bas sur sa ligne.",
+            "Quand le filtre de magasins du site est actif, fiches produits et groupes ne montrent que les prix des magasins choisis."
+          ]
+        },
+        "basket": {
+          "version": "0.1.53",
+          "notes": [
+            "Quand le filtre de magasins du site est actif, il remplace les filtres du panier et de la liste de courses (sauf le panier de démonstration)."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.48",
+          "notes": [
+            "Le filtre de magasins du site est propre à chaque compte et disparaît de l’appareil à la suppression du compte."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.152",
+      "components": {
+        "basket": {
+          "version": "0.1.54",
+          "notes": [
+            "Dans un panier partagé, un membre peut faire de son filtre de magasins de compte le filtre partagé, vu par tous les autres membres.",
+            "Les magasins d’un filtre partagé sans prix dans le panier gardent leur nom dans la liste des filtres."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.153",
+      "components": {
+        "application": {
+          "version": "0.1.153",
+          "notes": [
+            "Le menu du compte affiche le filtre de magasins enregistré et permet de l’activer ou de le désactiver d’un geste."
+          ]
+        },
+        "basket": {
+          "version": "0.1.55",
+          "notes": [
+            "Quand le filtre de magasins du site remplace les filtres du panier, un bouton le désactive aussitôt, par exemple pour revenir au filtre partagé."
+          ]
+        }
+      }
     }
   ]
 }

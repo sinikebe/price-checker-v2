@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { useAppMode } from "./useAppMode";
+import { useSiteFilter } from "./useSiteFilter";
+import { siteFilterCriteria, siteFilterSummary } from "./v2-site-filter";
 import { PersonIcon } from "./V2SiteIcons";
 import { initials, nextMenuIndex, profileMenuSections, roleLabel } from "./v2-site-nav";
 import "./v2-site-nav.css";
@@ -17,6 +19,11 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
   const menuId = useId();
   const { mode, canSwitch, setMode } = useAppMode();
   const sections = profileMenuSections(user, mode);
+  const site = useSiteFilter();
+  const hasSiteFilter = siteFilterCriteria(site.filter) !== null;
+  function toggleSiteFilter() {
+    try { site.save({ ...site.filter, enabled: !site.filter.enabled }); } catch { /* storage unavailable: nothing changes */ }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +72,12 @@ export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null;
         <button type="button" role="menuitemcheckbox" aria-checked={mode === "contribute"} className="v2-profile-mode"
           onClick={() => { setOpen(false); setMode(mode === "contribute" ? "shopping" : "contribute"); }}>
           <span>Mode contribution<small>{mode === "contribute" ? "Produits, prix, magasins, recettes" : "Proposer produits, prix et recettes"}</small></span>
+          <span className="v2-profile-mode-switch" aria-hidden="true" />
+        </button>
+      </div>}
+      {user && hasSiteFilter && <div role="group" aria-label="Filtre de magasins" className="v2-profile-menu-section">
+        <button type="button" role="menuitemcheckbox" aria-checked={site.filter.enabled} className="v2-profile-mode" onClick={toggleSiteFilter}>
+          <span>Filtre de magasins<small>{site.filter.enabled ? siteFilterSummary(site.filter) : `Désactivé · ${siteFilterSummary(site.filter)}`}</small></span>
           <span className="v2-profile-mode-switch" aria-hidden="true" />
         </button>
       </div>}

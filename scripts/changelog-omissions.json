@@ -879,6 +879,56 @@
       "component": "open_prices",
       "version": "0.1.36",
       "reason": "Page du catalogue : recherche validée transmise à Open Food Facts, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.148",
+      "reason": "Style de l’interrupteur de recherche Open Food Facts, sans autre changement de l’application."
+    },
+    {
+      "component": "application",
+      "version": "0.1.150",
+      "reason": "Vérification Open Prices au moment de l’ajout d’un produit, sans autre changement de l’application."
+    },
+    {
+      "component": "database",
+      "version": "0.1.58",
+      "reason": "Relevés du catalogue complétés pour le filtre de magasins du site, sans nouveauté propre à ce composant."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.42",
+      "reason": "Fiche produit réorganisée en mode courses, sans changement de la lecture Open Food Facts."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.34",
+      "reason": "Nouvelle carte dans les paramètres du compte, sans changement du mode hors ligne."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.38",
+      "reason": "Filtre de magasins du site appliqué à l’affichage des prix, sans changement de l’import Open Prices."
+    },
+    {
+      "component": "application",
+      "version": "0.1.152",
+      "reason": "Partage du filtre de compte dans un panier partagé, annoncé dans le panier."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.49",
+      "reason": "Le filtre de compte peut servir de filtre partagé, sans changement des comptes."
+    },
+    {
+      "component": "products",
+      "version": "0.1.77",
+      "reason": "Libellés de magasins mis en commun avec le panier, sans changement visible des fiches produits."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.50",
+      "reason": "La carte du filtre de magasins suit un changement fait depuis le menu, sans nouveauté propre aux comptes."
     }
   ]
 }
