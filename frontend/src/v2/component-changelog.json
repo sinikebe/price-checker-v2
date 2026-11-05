@@ -1507,6 +1507,23 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.153",
+      "components": {
+        "application": {
+          "version": "0.1.153",
+          "notes": [
+            "Le menu du compte affiche le filtre de magasins enregistré et permet de l’activer ou de le désactiver d’un geste."
+          ]
+        },
+        "basket": {
+          "version": "0.1.55",
+          "notes": [
+            "Quand le filtre de magasins du site remplace les filtres du panier, un bouton le désactive aussitôt, par exemple pour revenir au filtre partagé."
+          ]
+        }
+      }
     }
   ]
 }

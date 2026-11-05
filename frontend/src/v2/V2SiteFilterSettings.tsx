@@ -29,6 +29,9 @@ function Choices<T extends string | number>({ title, options, selected, label, o
 export default function V2SiteFilterSettings() {
   const { filter: saved, save, signedIn } = useSiteFilter();
   const [draft, setDraft] = useState<SiteFilter>(saved);
+  // Switched on or off elsewhere (the profile menu, another tab): an untouched draft follows.
+  const [base, setBase] = useState(saved);
+  if (saved !== base) { setBase(saved); if (same(draft, base)) setDraft(saved); }
   const [directory, setDirectory] = useState<DirectoryStore[] | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");

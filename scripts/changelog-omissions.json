@@ -924,6 +924,11 @@
       "component": "products",
       "version": "0.1.77",
       "reason": "Libellés de magasins mis en commun avec le panier, sans changement visible des fiches produits."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.50",
+      "reason": "La carte du filtre de magasins suit un changement fait depuis le menu, sans nouveauté propre aux comptes."
     }
   ]
 }
