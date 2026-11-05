@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
@@ -9,6 +9,9 @@ import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from
 import { productRequest, type Product } from "./v2-products-api";
 import V2BasketAddButtons from "./V2BasketAddButtons";
 import V2OffSearch from "./V2OffSearch";
+import { useSiteFilter } from "./useSiteFilter";
+import { passesSiteFilter } from "./v2-site-filter";
+import { bestPrices, type BestPrice } from "./v2-product-best-price";
 import { useAppMode } from "./useAppMode";
 import { productSizeIn } from "./v2-basket-quantity";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
@@ -45,7 +48,8 @@ function browsePath(department?: string, family?: string, scope?: string): strin
 }
 type Store = { id: number; retailer: string; name: string; city: string | null; postal_code: string | null };
 type SearchResult = { items: Product[]; total: number; limit: number; offset: number };
-type Observation = { id: number; product_id: number; price: string; observed_at: string; retailer: string; store_name: string; city: string | null };
+type Observation = { id: number; product_id: number; price: string; observed_at: string; retailer: string; store_name: string; city: string | null;
+  store_id: number; postal_code: string | null; online?: boolean; sales_channel?: string };
 type PriceDetail = { name: string; products: Product[]; observations: Observation[]; history_limit_per_product: number;
   /** What its prices cost (one credit per product with a price); absent offline. */
   prices_cost?: number };
@@ -190,12 +194,18 @@ function Pagination({ total, page, size, onChange }: { total: number; page: numb
 /** The contribution mode shows the catalogue's tools; shopping keeps names and quantities. */
 const useContributing = () => useAppMode().mode === "contribute";
 
-function ProductLink({ product, showGroup = false }: { product: Product; showGroup?: boolean }) {
+const euros = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+
+function ProductLink({ product, showGroup = false, price }: { product: Product; showGroup?: boolean;
+  /** Shopping view of a group with its prices fetched: the lowest current price, or null without one. */
+  price?: BestPrice | null }) {
   const contributing = useContributing();
   return <Link className="v2-workspace-list-item" to={"/v2/produits/" + product.id}>
     <div><LevelBadge level="product" /><strong>{productName(product)}</strong><small>{(contributing ? [showGroup && product.data.group, product.data.commercial_name, product.data.quantity || "Quantité à préciser"]
       : [product.data.quantity || "Quantité à préciser"]).filter(Boolean).join(" · ")}</small></div>
-    <span>Voir la fiche →</span>
+    {price !== undefined ? <span className="v2-catalogue-line-price">{price ? <><strong>{euros(price.cents)}</strong>
+      <small>{price.stores > 1 ? `le moins cher de ${price.stores} magasins` : price.reading.retailer}</small></> : <small>Pas de prix relevé</small>}</span>
+      : <span>Voir la fiche →</span>}
   </Link>;
 }
 function CategoryChart({ detail, products, metric, showGroup = false }: { detail: PriceDetail; products: Product[]; metric: ChartMetric; showGroup?: boolean }) {
@@ -360,7 +370,9 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
 }
 
 /** Shopping: the products of a group, by name and quantity, without prices or charts. */
-function SimpleProducts({ products }: { products: Product[] }) {
+function SimpleProducts({ products, prices }: { products: Product[];
+  /** The lowest current price of each product, once the page's prices are fetched (filtered by the site filter). */
+  prices?: Map<number, BestPrice> }) {
   const [params, setParams] = useSearchParams();
   const page = pageNumber(params), size = pageSize(params);
   function changePage(nextPage: number, nextSize: number) {
@@ -370,7 +382,8 @@ function SimpleProducts({ products }: { products: Product[] }) {
   if (!products.length) return <p>Aucun produit publié dans ce groupe pour le moment.</p>;
   return <>
     <h2>Produits</h2>
-    <div className="v2-workspace-list">{products.slice((page - 1) * size, page * size).map(product => <ProductLink key={product.id} product={product} />)}</div>
+    <div className="v2-workspace-list">{products.slice((page - 1) * size, page * size).map(product =>
+      <ProductLink key={product.id} product={product} price={prices ? prices.get(product.id) ?? null : undefined} />)}</div>
     <Pagination total={products.length} page={page} size={size} onChange={changePage} />
   </>;
 }
@@ -383,7 +396,12 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
   // Prices cost one credit per product with a price: said on the button, spent only on request.
   const paid = usePaidPrices<PaidObservations>(user?.id ?? null, "category", data && data.prices_cost !== undefined ? groupName : null,
     data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/category?" + new URLSearchParams({ name: groupName, max_cost: String(cost) }));
-  const priced = data ? { ...data, observations: paid.data?.observations ?? data.observations } : null;
+  // The account's site-wide store filter, when on, keeps the readings of its stores only.
+  const site = useSiteFilter().active;
+  const observations = useMemo(() => (paid.data?.observations ?? data?.observations ?? []).filter(row => passesSiteFilter(row, site)),
+    [paid.data, data, site]);
+  const priced = data ? { ...data, observations } : null;
+  const lowest = useMemo(() => paid.data ? bestPrices(observations) : undefined, [paid.data, observations]);
   const [savedClassification, setSavedClassification] = useState<Classification | null>(null);
   const classification = savedClassification ?? data;
   const products = data?.products ?? [];
@@ -401,7 +419,12 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       <div className="v2-share-title-row"><h1>{data?.name || name}<span>.</span></h1>
       {data && <V2ShareButton title={"Groupe comparable · " + (data.name || name)} url={window.location.origin + "/v2/categories/" + encodeURIComponent(data.name || name)} />}</div><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
       {data && <V2BasketAddButtons item={basketGroup} what="group" />}</div>
-    {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : !contributing ? <SimpleProducts products={products} /> : <>
+    {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : !contributing ? <>
+      {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
+        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
+      {site && paid.data && <p className="v2-catalogue-source" role="status">Filtre de magasins du site actif : seuls ses magasins comptent.</p>}
+      <SimpleProducts products={products} prices={lowest} />
+    </> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
       {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
@@ -417,7 +440,8 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
   const { data, error } = useCatalogue<ScopeDetail>("/comparison?" + query.toString());
   const paid = usePaidPrices<PaidObservations>(user?.id ?? null, "comparison", data && data.prices_cost !== undefined ? [department, family, scope].join("|") : null,
     data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/comparison?" + new URLSearchParams({ department, family, scope, max_cost: String(cost) }));
-  const priced = data ? { ...data, observations: paid.data?.observations ?? data.observations } : null;
+  const site = useSiteFilter().active;
+  const priced = data ? { ...data, observations: (paid.data?.observations ?? data.observations).filter(row => passesSiteFilter(row, site)) } : null;
   return <Frame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>

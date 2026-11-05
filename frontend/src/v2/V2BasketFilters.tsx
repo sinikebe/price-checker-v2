@@ -1,4 +1,7 @@
+import { Link } from "react-router-dom";
+import { useSiteFilter } from "./useSiteFilter";
 import { emptyBasketFilters, type BasketFilters } from "./v2-basket-comparison";
+import { siteFilterSummary } from "./v2-site-filter";
 
 function MultiFilter<T extends string | number>({ title, options, selected, onChange, label }: {
   title: string; options: T[]; selected: T[]; onChange: (next: T[]) => void; label: (value: T) => string;
@@ -16,13 +19,20 @@ export type DefaultStores = {
 };
 
 /** Which stores are compared. The filters narrow the prices already fetched: no credit is spent. */
-export default function V2BasketFilters({ filters, onChange, storeOptions, storeLabel, cityOptions, departmentOptions, defaults }: {
+export default function V2BasketFilters({ filters, onChange, storeOptions, storeLabel, cityOptions, departmentOptions, defaults, siteFilter = true }: {
   filters: BasketFilters; onChange: (next: BasketFilters) => void;
   storeOptions: number[]; storeLabel: (id: number) => string;
   cityOptions: string[]; departmentOptions: string[];
   /** The stores chosen by default in this browser; absent in the demo basket, which changes nothing outside its tab. */
   defaults?: DefaultStores;
+  /** Whether the account's site-wide filter applies here (not in the demo basket). */
+  siteFilter?: boolean;
 }) {
+  const site = useSiteFilter();
+  if (siteFilter && site.active) return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
+    <p role="status"><strong>Le filtre de magasins du site est actif</strong> ({siteFilterSummary(site.filter)}) : il remplace les filtres de ce panier.{" "}
+      <Link to="/v2/parametres/compte">Le modifier dans les paramètres du compte</Link>.</p>
+  </section>;
   const active = filters.storeIds.length + filters.cities.length + filters.departments.length > 0;
   return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
     <p>Filtrez les magasins déjà récupérés, sans dépenser de crédit. Les filtres se cumulent.</p>

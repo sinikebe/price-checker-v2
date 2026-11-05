@@ -75,7 +75,7 @@ function DemoBasket({ source, listMode, admin }: { source: DemoSource; listMode:
   const navigate = useNavigate();
   const activeItems = useMemo(() => items.filter(item => !item.disabled), [items]);
   const { view, comparison, split, savings, lineItems, offStores, storeNames, cityOptions, departmentOptions, hasOpenPrices, filterCount } =
-    useBasketComparison(source.snapshot, activeItems, display);
+    useBasketComparison(source.snapshot, activeItems, display, { siteFilter: false });
   const [panel, setPanel] = useState<BasketPanel | null>(null);
   const [shown, setShown] = useState({ key: "", count: FIRST_STORES });
   const listKey = JSON.stringify(filters) + (advanced ? "A" : "S") + mode + activeItems.map(basketItemKey).join();
@@ -132,7 +132,7 @@ function DemoBasket({ source, listMode, admin }: { source: DemoSource; listMode:
           filterCount={filterCount} filtersAvailable={!!comparison} shareable={false}
           action={<span className="v2-demo-badge">{source.fictional ? "Prix fictifs" : `Prix du ${day(source.savedAt!)}`} · sans crédit</span>} />
         {panel === "items" && <V2BasketItems items={items} advanced={advanced} categories={null} categoryError={false} actions={actions} />}
-        {panel === "filters" && comparison && !readOnly && <V2BasketFilters filters={filters} onChange={setFilters} storeOptions={storeOptions}
+        {panel === "filters" && comparison && !readOnly && <V2BasketFilters siteFilter={false} filters={filters} onChange={setFilters} storeOptions={storeOptions}
           storeLabel={id => storeNames.get(id) ?? String(id)} cityOptions={cityOptions} departmentOptions={departmentOptions} />}
         {!activeItems.length ? <div className="v2-recipes-card"><p>Incluez au moins un article pour comparer les prix.</p></div>
           : <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">

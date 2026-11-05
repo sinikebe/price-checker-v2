@@ -4,6 +4,7 @@ import { snapshotView, type BasketSnapshot } from "./v2-basket-snapshot";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import type { BasketView } from "./useBasketView";
 import type { OffStore } from "./V2BasketResults";
+import { useSiteFilter } from "./useSiteFilter";
 
 type Display = Pick<BasketView, "filters" | "advanced" | "mode" | "units" | "storesOff">;
 
@@ -11,9 +12,14 @@ type Display = Pick<BasketView, "filters" | "advanced" | "mode" | "units" | "sto
  * Everything a basket shows from its prices: the store ranking, the split (without the stores switched
  * off), what each store of the split saves, what each store off would bring back, and the filter options.
  * Computed in the browser from the prices already at hand, for the personal, shared and demo baskets.
+ * The account's site-wide filter, when on, replaces the basket's own filters (not in the demo basket,
+ * whose stores are fictional).
  */
-export function useBasketComparison(snapshot: BasketSnapshot | null, activeItems: readonly BasketItem[], display: Display) {
-  const { filters, advanced, mode } = display;
+export function useBasketComparison(snapshot: BasketSnapshot | null, activeItems: readonly BasketItem[], display: Display,
+  { siteFilter = true }: { siteFilter?: boolean } = {}) {
+  const site = useSiteFilter().active;
+  const filters = siteFilter && site ? site : display.filters;
+  const { advanced, mode } = display;
   const unitChoices = useMemo<UnitChoices>(() => item => display.units[basketItemKey(item)], [display.units]);
   const storesOff = useMemo(() => new Set(display.storesOff), [display.storesOff]);
   const view = useMemo(() => snapshotView(snapshot, activeItems), [snapshot, activeItems]);

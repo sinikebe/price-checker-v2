@@ -78,3 +78,9 @@ html[data-v2-theme="dark"] .v2-off-search-catalogue { border-color: #2f4a3f; bac
 html[data-v2-theme="dark"] .v2-off-search-results li { border-color: #2f4a3f; }
 html[data-v2-theme="dark"] .v2-off-search-results img, html[data-v2-theme="dark"] .v2-off-search-noimage { background: #1d3129; }
 html[data-v2-theme="dark"] .v2-off-search-text small { color: #a9c2b8; }
+/* Shopping view of a group: the lowest current price on each product line. */
+.v2-catalogue-line-price { display: grid; justify-items: end; text-align: right; }
+.v2-catalogue-line-price strong { font-size: 1.05rem; }
+.v2-catalogue-line-price small { color: var(--v2-muted, #61736d); }
+html[data-v2-theme="dark"] .v2-catalogue-line-price small { color: #a9c2b8; }
+@media (max-width: 600px) { .v2-catalogue-line-price { justify-items: start; text-align: left; } }

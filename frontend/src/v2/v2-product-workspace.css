@@ -173,3 +173,7 @@ html[data-v2-theme="dark"] .v2-off-barcode { border-color: #2f4a3f; background: 
 /* The switch that widens an Open Food Facts search beyond products sold in France (off by default). */
 .v2-off-world { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; font-size: .92rem; cursor: pointer; }
 .v2-off-world input { width: auto; margin: 0; }
+/* Shopping view: the price history, folded until opened. */
+.v2-shopping-history { margin-top: 18px; }
+.v2-shopping-history > summary { font-weight: 800; font-size: 1.05rem; cursor: pointer; }
+.v2-shopping-history > .v2-price-history { margin-top: 14px; padding: 0; border: 0; background: none; box-shadow: none; }
