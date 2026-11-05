@@ -19,7 +19,8 @@ MAX_PRICE_COST = 1000  # the highest amount a page of prices may announce
 
 # A catalogue category is the existing comparable group, never a second field.
 CATEGORY = "COALESCE(NULLIF(btrim(p.data->>'group'), ''), 'Sans groupe')"
-CURRENT = """NOT EXISTS (
+# Current, and part of the catalogue: barcode-only products (details at Open Food Facts) are left out.
+CURRENT = """NOT p.off_reference AND NOT EXISTS (
     SELECT 1 FROM v2_content_withdrawals w
     WHERE w.kind='product' AND w.content_id=p.id
 ) AND NOT EXISTS (

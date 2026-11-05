@@ -1326,6 +1326,37 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.145",
+      "components": {
+        "products": {
+          "version": "0.1.70",
+          "notes": [
+            "Un code-barres absent du catalogue est cherché chez Open Food Facts par votre navigateur, avec un lien pour ouvrir sa fiche ici.",
+            "Une fiche peut ne contenir que le code-barres : son nom et ses informations sont lus chez Open Food Facts, et on peut y noter des prix.",
+            "Les administrateurs choisissent après combien de jours sans utilisation ces fiches, sans rien de notre côté, sont supprimées."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.37",
+          "notes": [
+            "La page d’un produit connu par son seul code-barres lit son nom et ses informations chez Open Food Facts à l’ouverture."
+          ]
+        },
+        "basket": {
+          "version": "0.1.52",
+          "notes": [
+            "Un produit connu par son seul code-barres garde dans le panier le nom lu chez Open Food Facts."
+          ]
+        },
+        "application": {
+          "version": "0.1.145",
+          "notes": [
+            "Proposer une fiche complète pour un produit connu par son seul code-barres l’ajoute au catalogue en gardant ses prix."
+          ]
+        }
+      }
     }
   ]
 }

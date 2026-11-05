@@ -15,6 +15,7 @@ from app.api.v2.prices import _day
 from app.api.v2.products import _product
 from app.api.v2.selections import Selection, SelectionRef, member_counts, selection_rows
 from app.services import v2_basket_credits as credits
+from app.services import v2_product_references as references
 from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/basket", tags=["v2-basket"])
@@ -172,6 +173,8 @@ async def _gather(connection, items) -> dict:
                                        "data": data["data"]}
             ids.append(row["id"])
         lines.append({"product_ids": ids, "truncated": truncated})
+    # A barcode-only product priced in a basket is in use: the cleanup keeps it.
+    await references.touch(connection, [ref.id for ref in items if ref.kind == "product"])
     prices = await _latest_prices(connection, list(products)) if products else {}
     return {
         "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),

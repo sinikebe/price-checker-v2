@@ -15,6 +15,7 @@ from app.api.v2.auth import _connect, _current_user, _secure_write
 from app.core.url_validation import validate_clickable_url
 from app.services.barcodes import normalize_barcode
 from app.services import v2_basket_credits as credits
+from app.services import v2_product_references as references
 from app.services.quantity_parser import parse_measures
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
@@ -209,6 +210,8 @@ def _product(row):
         "revision": row["revision"],
         "predecessor_id": row["predecessor_id"],
         "updated_at": row["updated_at"].astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
+        # Known only by its barcode: the browser reads its name and details from Open Food Facts.
+        "off_reference": bool(row.get("off_reference", False)),
     }
 
 
@@ -293,7 +296,7 @@ async def list_products():
     connection = await _connect()
     try:
         rows = await connection.fetch(
-            "SELECT p.* FROM v2_products p WHERE NOT EXISTS ("
+            "SELECT p.* FROM v2_products p WHERE NOT p.off_reference AND NOT EXISTS ("
             "SELECT 1 FROM v2_content_withdrawals w "
             "WHERE w.kind='product' AND w.content_id=p.id) "
             "AND NOT EXISTS (SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
@@ -598,6 +601,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             )
             _validate_publish(data)
             before = None
+            reference = False
             if draft["product_id"] is not None:
                 await require_visible(connection, "product", draft["product_id"])
                 if await connection.fetchval(
@@ -624,6 +628,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                         detail="Cette référence possède déjà une version suivante.",
                     )
                 before = _decoded(existing["data"])
+                reference = existing["off_reference"]
                 # Filling a previously blank composition documents the existing
                 # reference; changing an established recipe or pack size creates
                 # a new version. Writing the same pack differently, or fixing its
@@ -638,7 +643,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                         before["composition"].strip() != data["composition"].strip()
                     )
                 )
-                if material and draft["change_kind"] != "new_version":
+                if material and not reference and draft["change_kind"] != "new_version":
                     raise HTTPException(
                         status_code=422,
                         detail=(
@@ -669,12 +674,24 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     draft["product_id"],
                 )
                 if collision is not None:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Ce code-barres appartient déjà à un produit publié.",
-                    )
-            if existing_id := draft["product_id"]:
-                if draft["change_kind"] == "new_version":
+                    # A barcode-only product is completed by the first approved proposal for its barcode.
+                    if draft["product_id"] is None and await connection.fetchval(
+                        "SELECT off_reference FROM v2_products WHERE id=$1 FOR UPDATE", collision,
+                    ):
+                        reference_id = collision
+                    else:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Ce code-barres appartient déjà à un produit publié.",
+                        )
+                else:
+                    reference_id = None
+            else:
+                reference_id = None
+            if reference_id is not None:
+                before = _decoded(await connection.fetchval("SELECT data FROM v2_products WHERE id=$1", reference_id))
+            if existing_id := draft["product_id"] or reference_id:
+                if draft["change_kind"] == "new_version" and reference_id is None and not reference:
                     product = await connection.fetchrow(
                         "INSERT INTO v2_products(data,predecessor_id) "
                         "VALUES($1::jsonb,$2) RETURNING *",
@@ -685,7 +702,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                 else:
                     product = await connection.fetchrow(
                         "UPDATE v2_products SET data=$1::jsonb,revision=revision+1,"
-                        "updated_at=now() WHERE id=$2 RETURNING *",
+                        "off_reference=false,updated_at=now() WHERE id=$2 RETURNING *",
                         json.dumps(data),
                         existing_id,
                     )
@@ -770,6 +787,8 @@ async def get_product(product_id: int):
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Produit introuvable.")
+        if row["off_reference"]:
+            await references.touch(connection, [product_id])  # opened: in use
         product = _product(row)
         product["merged_to_id"] = await connection.fetchval(
             "SELECT to_id FROM v2_content_merges WHERE kind='product' AND from_id=$1",product_id)

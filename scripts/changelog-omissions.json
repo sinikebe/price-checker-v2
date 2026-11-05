@@ -849,6 +849,21 @@
       "component": "database",
       "version": "0.1.56",
       "reason": "Suppression des tables Open Food Facts du serveur (migration 0050)."
+    },
+    {
+      "component": "database",
+      "version": "0.1.57",
+      "reason": "Fiches à code-barres seul, index par code-barres et réglage de nettoyage (migration 0051)."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.47",
+      "reason": "Libellé des lignes de panier partagé pour ces fiches, sans changement des comptes."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.32",
+      "reason": "Ces fiches restent hors du catalogue hors ligne, sans changement du fonctionnement hors ligne."
     }
   ]
 }

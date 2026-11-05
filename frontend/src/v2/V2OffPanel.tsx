@@ -8,9 +8,11 @@ const amount = (value: number) => value.toLocaleString("fr-FR", { maximumFractio
  * What Open Food Facts says about a product, read by this browser on request. Nothing reaches Open Food
  * Facts before the click, and nothing read here is kept by Price Checker.
  */
-export default function V2OffPanel({ ean }: { ean: string }) {
+export default function V2OffPanel({ ean, initial }: { ean: string; initial?: OffProduct }) {
   const barcode = ean.trim();
   const [state, setState] = useState<{ phase: "idle" | "loading" | "missing" } | { phase: "error"; message: string } | { phase: "done"; product: OffProduct }>({ phase: "idle" });
+  // Already read for this page (a product known only by its barcode): shown without a second request.
+  const shown = state.phase === "idle" && initial ? { phase: "done" as const, product: initial } : state;
   async function read() {
     setState({ phase: "loading" });
     try {
@@ -23,17 +25,17 @@ export default function V2OffPanel({ ean }: { ean: string }) {
   return <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-off-heading">
     <div className="v2-off-full-header"><div><span className="v2-section-kicker">SOURCE EXTERNE</span>
       <h2 id="v2-off-heading">Open Food Facts</h2></div>
-      {validBarcode(barcode) && state.phase !== "done" && <button type="button" className="v2-button v2-button-secondary"
-        disabled={state.phase === "loading"} onClick={() => { void read(); }}>
-        {state.phase === "loading" ? "Lecture…" : "Afficher les informations d’Open Food Facts"}</button>}
+      {validBarcode(barcode) && shown.phase !== "done" && <button type="button" className="v2-button v2-button-secondary"
+        disabled={shown.phase === "loading"} onClick={() => { void read(); }}>
+        {shown.phase === "loading" ? "Lecture…" : "Afficher les informations d’Open Food Facts"}</button>}
     </div>
     {!validBarcode(barcode) ? <p>Ajoutez un code-barres au produit pour consulter Open Food Facts.</p>
-      : state.phase !== "done" && <p>Composition, Nutri-Score, groupe NOVA et valeurs nutritionnelles, lus directement par votre navigateur
+      : shown.phase !== "done" && <p>Composition, Nutri-Score, groupe NOVA et valeurs nutritionnelles, lus directement par votre navigateur
         chez Open Food Facts : votre adresse IP leur est transmise, et Price Checker ne conserve rien de cette lecture.</p>}
-    {state.phase === "missing" && <p role="status">Ce code-barres n’est pas encore sur Open Food Facts.{" "}
+    {shown.phase === "missing" && <p role="status">Ce code-barres n’est pas encore sur Open Food Facts.{" "}
       <a href={OFF_PRODUCT_PAGE + barcode} target="_blank" rel="noreferrer">L’y ajouter ↗</a></p>}
-    {state.phase === "error" && <p role="alert" className="v2-off-error">{state.message}</p>}
-    {state.phase === "done" && <OffDetails product={state.product} />}
+    {shown.phase === "error" && <p role="alert" className="v2-off-error">{shown.message}</p>}
+    {shown.phase === "done" && <OffDetails product={shown.product} />}
   </section>;
 }
 

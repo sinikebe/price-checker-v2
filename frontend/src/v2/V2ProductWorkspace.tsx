@@ -6,6 +6,7 @@ import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffPanel from "./V2OffPanel";
+import { useOffProduct, type OffRead } from "./useOffProduct";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
@@ -385,12 +386,36 @@ function Editor({ mode, id, user, onLogout }: Props) {
  * The product as a shopper needs it: its name, its quantity, its lowest known price, the comparable
  * products and the baskets. The rest is the contribution mode's.
  */
-function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void> }) {
+/**
+ * A product known only by its barcode, shown with what Open Food Facts says about it (read by this
+ * browser when the page opens). The facts are kept with the basket line on this device only.
+ */
+function withOffFacts(product: Product, read: OffRead): Product {
+  if (!product.off_reference || read.phase !== "done") return product;
+  const off = read.product;
+  return { ...product, data: { ...product.data, name: product.data.name || off.name, brand: product.data.brand || off.brand,
+    quantity: product.data.quantity || off.quantity } };
+}
+const productTitle = (product: Product) => [product.data.brand, product.data.name].filter(Boolean).join(" ")
+  || (product.data.ean ? "Code-barres " + product.data.ean : "Produit");
+
+function ReferenceNotice({ product, read, contributing }: { product: Product; read: OffRead; contributing: boolean }) {
+  return <p className="v2-reference-notice" role="note">
+    {read.phase === "loading" ? "Lecture chez Open Food Facts…"
+      : read.phase === "missing" ? "Ce produit n’est connu que par son code-barres, et Open Food Facts ne le connaît pas."
+      : read.phase === "error" ? read.message
+      : "Ce produit n’est connu ici que par son code-barres : son nom et ses informations sont lus chez Open Food Facts par votre navigateur."}
+    {contributing && <> <Link to={"/v2/produits/" + product.id + "/modifier"}>Proposer une fiche complète</Link> l’ajoute au catalogue.</>}
+  </p>;
+}
+
+function ShoppingDetail({ product, id, user, onLogout, read }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void>; read: OffRead }) {
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
     <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
       <span className="v2-section-kicker">PRODUIT</span>
-      <h1 id="v2-product-simple-name">{[d.brand, d.name].filter(Boolean).join(" ")}<span>.</span></h1>
+      <h1 id="v2-product-simple-name">{productTitle(product)}<span>.</span></h1>
+      {product.off_reference && <ReferenceNotice product={product} read={read} contributing={false} />}
       <dl className="v2-workspace-facts"><div><dt>Quantité</dt><dd>{d.quantity || "À préciser"}</dd></div></dl>
       {product.successor_id ? <p><Link to={"/v2/produits/" + product.successor_id}>Cette référence a changé : voir la version actuelle →</Link></p>
         : id ? <>
@@ -404,18 +429,22 @@ function ShoppingDetail({ product, id, user, onLogout }: { product: Product; id?
 
 function Detail({ mode, id, user, onLogout }: Props) {
   const contributing = useAppMode().mode === "contribute";
-  const { data: product, error } = useCollection<Product>("/" + id);
+  const { data: loaded, error } = useCollection<Product>("/" + id);
+  // Known only by its barcode: opening its page reads its name and details at Open Food Facts.
+  const read = useOffProduct(loaded?.off_reference ? loaded.data.ean : null);
+  const product = loaded ? withOffFacts(loaded, read) : null;
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", contributing && mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
   if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
   if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
-  if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} />;
+  if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} read={read} />;
   const d = completeProductData(product.data);
   return <Frame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">PRODUIT PUBLIÉ · V2</span><div className="v2-share-title-row"><h1>{d.brand} {d.name}<span>.</span></h1>
-      <V2ShareButton title={[d.brand, d.name].filter(Boolean).join(" ")} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
-      <p>{d.commercial_name || d.quantity}</p></div>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">{product.off_reference ? "PRODUIT · CODE-BARRES SEUL" : "PRODUIT PUBLIÉ · V2"}</span><div className="v2-share-title-row"><h1>{productTitle(product)}<span>.</span></h1>
+      <V2ShareButton title={productTitle(product)} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
+      <p>{d.commercial_name || d.quantity}</p>
+      {product.off_reference && <ReferenceNotice product={product} read={read} contributing />}</div>
       <div className="v2-recipes-actions"><V2BasketAddButtons item={product} what="product" /><Link className="v2-button v2-button-secondary" to={"/v2/produits/" + (product.successor_id ?? id) + "/modifier"}>Proposer une modification</Link></div>
     </div>
     <nav className="v2-workspace-subnav"><Link to={"/v2/produits/" + id}>Fiche</Link><Link to={"/v2/produits/" + id + "/historique"}>Historique</Link></nav>
@@ -450,7 +479,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
-    {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} />}
+    {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} initial={read.phase === "done" ? read.product : undefined} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
   </Frame>;
 }

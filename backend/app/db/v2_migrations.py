@@ -1236,6 +1236,39 @@ MIGRATIONS = {
                OR before_data->'off_source'->'fields' ?| ARRAY['composition', 'nutriscore', 'nova'];
         DROP FUNCTION pg_temp.v2_without_off_copies(jsonb);
     """,
+    "0051_barcode_products": """
+        -- A product known only by its barcode: created on demand when someone uses an Open Food
+        -- Facts product we do not have (adds it to a basket, records a price), so that prices can
+        -- point to it. Everything else about it is read from Open Food Facts by the browser.
+        ALTER TABLE v2_products ADD COLUMN off_reference boolean NOT NULL DEFAULT false;
+        -- When it was last used, apart from the row so that a use does not change the product.
+        CREATE TABLE v2_product_reference_uses (
+            product_id bigint PRIMARY KEY REFERENCES v2_products(id) ON DELETE CASCADE,
+            last_used_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX v2_product_reference_uses_last_idx ON v2_product_reference_uses(last_used_at);
+        -- How long an unused barcode-only product with nothing on our side is kept (0: forever).
+        CREATE TABLE v2_product_reference_settings (
+            singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+            unused_days integer NOT NULL DEFAULT 90 CHECK (unused_days BETWEEN 0 AND 3650),
+            revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO v2_product_reference_settings (singleton) VALUES (true);
+        -- Lookups by barcode and by previous version use indexes from now on.
+        CREATE INDEX v2_products_ean_idx ON v2_products (lpad(data->>'ean', 14, '0')) WHERE data->>'ean' <> '';
+        CREATE INDEX v2_products_predecessor_idx ON v2_products (predecessor_id) WHERE predecessor_id IS NOT NULL;
+        -- Barcode-only products are not part of the catalogue the devices keep offline: creating
+        -- or removing one does not make every device download the catalogue again.
+        DROP TRIGGER v2_products_pwa_version ON v2_products;
+        CREATE TRIGGER v2_products_pwa_version_insert AFTER INSERT ON v2_products
+            FOR EACH ROW WHEN (NOT NEW.off_reference) EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_products_pwa_version_update AFTER UPDATE ON v2_products
+            FOR EACH ROW WHEN (NOT OLD.off_reference OR NOT NEW.off_reference)
+            EXECUTE FUNCTION v2_bump_pwa_version();
+        CREATE TRIGGER v2_products_pwa_version_delete AFTER DELETE ON v2_products
+            FOR EACH ROW WHEN (NOT OLD.off_reference) EXECUTE FUNCTION v2_bump_pwa_version();
+    """,
 }
 
 

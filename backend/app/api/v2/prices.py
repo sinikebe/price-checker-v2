@@ -408,7 +408,8 @@ async def _draft_inbox(connection, *, owner_id: int | None, limit: int, offset: 
                d.status,d.note,d.capture_ean,d.quantity_text,d.captured_store_name,
                r.name AS retailer,sr.name AS source_retailer,
                s.name AS store_name,s.city,s.active AS store_active,
-               COALESCE(p.data->>'name',pd.data->>'name','') AS product_name,
+               COALESCE(NULLIF(p.data->>'name',''),pd.data->>'name',
+                        CASE WHEN p.off_reference THEN 'Code-barres '||(p.data->>'ean') END,'') AS product_name,
                COALESCE(p.data->>'brand',pd.data->>'brand','') AS product_brand
         FROM v2_price_drafts d
         JOIN v2_users u ON u.id=d.author_id

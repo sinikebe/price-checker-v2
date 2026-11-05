@@ -77,3 +77,15 @@ test("a selection is kept with its parts, keyed by its name, and priced like a g
   localStorage.setItem("v2:basket:anonymous", JSON.stringify([selection, { ...selection, name: "Cassé", include: [] }]));
   assert.deepEqual(readV2Basket(null), [selection]);
 });
+
+test("a product known only by its barcode keeps the name this browser read when the server refreshes it", () => {
+  const local = { id: 9, revision: 1, off_reference: true, data: { name: "Pâte à tartiner", brand: "Nutella", quantity: "400 g", ean: "3017620422003" } };
+  const refreshed = withProductData(local, { revision: 1, off_reference: true, data: { name: "", brand: "", quantity: "", ean: "3017620422003" } });
+  assert.equal(refreshed.data.name, "Pâte à tartiner");
+  assert.equal(refreshed.data.brand, "Nutella");
+  assert.equal(refreshed.off_reference, true);
+  // Once completed by an approved proposal, the catalogue's facts win and the mark goes.
+  const completed = withProductData(local, { revision: 2, off_reference: false, data: { name: "Nutella", brand: "Ferrero", quantity: "400 g", ean: "3017620422003" } });
+  assert.equal(completed.data.name, "Nutella");
+  assert.equal("off_reference" in completed, false);
+});

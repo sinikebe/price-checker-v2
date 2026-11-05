@@ -115,6 +115,10 @@ class Quantity(BaseModel):
 class ProductLine(BaseModel):
     kind: Literal["product"]
     product_id: int = Field(ge=1, le=MAX_BIGINT)
+    # For a barcode-only product, which has no name on our side: the name the member's browser read
+    # from Open Food Facts, shown to the other members. Ignored for a product with a name.
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    _clean_label = field_validator("label")(_clean)
 
 
 class GroupLine(BaseModel):
@@ -320,7 +324,7 @@ async def _lines(connection, basket_id: int, user_id: int | None) -> list[dict]:
     rows = await connection.fetch(
         "SELECT l.id,l.kind,l.product_id,l.label,l.department,l.family,l.quantity,l.disabled,l.spec,"
         "l.created_at,l.added_by=$2 AS mine,u.username AS added_by,p.data AS product_data,"
-        "p.revision AS product_revision FROM v2_shared_basket_lines l "
+        "p.revision AS product_revision,p.off_reference FROM v2_shared_basket_lines l "
         "LEFT JOIN v2_users u ON u.id=l.added_by "
         "LEFT JOIN v2_products p ON p.id=l.product_id AND NOT EXISTS (SELECT 1 FROM "
         "v2_content_withdrawals w WHERE w.kind='product' AND w.content_id=p.id) "
@@ -333,7 +337,8 @@ async def _lines(connection, basket_id: int, user_id: int | None) -> list[dict]:
             "quantity": _decoded(line["quantity"]), "disabled": line["disabled"],
             "created_at": line["created_at"].isoformat(),
             "product": {"id": line["product_id"], "revision": line["product_revision"],
-                        "data": _decoded(line["product_data"])} if line["product_data"] else None,
+                        "data": _decoded(line["product_data"]),
+                        **({"off_reference": True} if line["off_reference"] else {})} if line["product_data"] else None,
             **({"added_by": line["added_by"], "mine": bool(line["mine"])} if user_id is not None else {}),
         } for line in rows]
 
@@ -364,7 +369,8 @@ async def _add(connection, basket_id: int, item: NewLine, user: dict) -> bool:
         line = ProductLine(kind="product", product_id=product_id)
         data = _decoded(product["data"]) or {}
         label = " ".join(str(part) for part in (data.get("brand"), data.get("name")) if part)[:200].strip() \
-            or f"Produit {product_id}"
+            or (item.line.label if product["off_reference"] and item.line.label else "") \
+            or f"Code-barres {data.get('ean') or product_id}"
     elif isinstance(line, GroupLine | TextLine):
         label = line.name
     elif isinstance(line, SelectionLine):

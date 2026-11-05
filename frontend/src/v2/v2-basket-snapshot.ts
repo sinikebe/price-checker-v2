@@ -32,13 +32,19 @@ export type SnapshotView = {
   limited: BasketItem[];
 };
 
+/** A product known only by its barcode has no name on the server: the basket line's own name stands in. */
+function named(product: BasketProduct, item: BasketItem): BasketProduct {
+  if (product.data.name || "kind" in item || item.id !== product.id) return product;
+  return { ...product, data: { ...product.data, name: item.data.name, brand: product.data.brand || item.data.brand, quantity: product.data.quantity || item.data.quantity } };
+}
+
 export function snapshotView(snapshot: BasketSnapshot | null, activeItems: readonly BasketItem[]): SnapshotView {
   const lines: BasketLine[] = [], stale: BasketItem[] = [], limited: BasketItem[] = [];
   const responses = new Map<number, BasketPriceResponse | null>();
   for (const item of activeItems) {
     const entry = snapshot?.entries[basketItemKey(item)];
     if (!snapshot || !entry) { stale.push(item); continue; }
-    const candidates = entry.productIds.flatMap(id => snapshot.products[id] ? [snapshot.products[id]] : []);
+    const candidates = entry.productIds.flatMap(id => snapshot.products[id] ? [named(snapshot.products[id], item)] : []);
     lines.push({ item, candidates });
     if (entry.truncated) limited.push(item);
     for (const product of candidates) responses.set(product.id, snapshot.prices[product.id] ?? null);
