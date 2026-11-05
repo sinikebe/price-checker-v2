@@ -185,3 +185,15 @@ async def test_the_cleanup_delay_is_an_administrator_setting(setup):
     stale = await client.put(f"{PATH}/settings", headers=ROOT, json={"unused_days": 10, "expected_revision": current["revision"]})
     assert stale.status_code == 409
     assert (await client.put(f"{PATH}/settings", headers=ANA, json={"unused_days": 10, "expected_revision": 1})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_search_results_are_marked_with_the_products_we_have(setup):
+    client, connection, _users = setup
+    ours = await connection.fetchval(
+        "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id", json.dumps({"name": "Coca", "brand": "Coca-Cola", "ean": "0" + COKE}))
+    reference = (await client.post(PATH, headers=ANA, json={"ean": NUTELLA})).json()["id"]
+    found = await client.post("/api/v2/products/by-barcodes", json={"codes": [COKE, NUTELLA, "4006381333931", "nonsense"]})
+    assert found.status_code == 200, found.text
+    assert found.json() == {"matches": {COKE: ours, NUTELLA: reference}}
+    assert (await client.post("/api/v2/products/by-barcodes", json={"codes": [COKE] * 21})).status_code == 422

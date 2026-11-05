@@ -352,6 +352,40 @@ async def product_by_barcode(barcode: str, request: Request):
         await connection.close()
 
 
+class BarcodeList(BaseModel):
+    codes: list[str] = Field(min_length=1, max_length=20)
+
+
+@router.post("/by-barcodes")
+async def products_by_barcodes(payload: BarcodeList):
+    """Which of these barcodes (up to 20) have a current product here, and its id: the results of a
+    search at Open Food Facts are marked with it. Invalid codes are left out."""
+    codes = []
+    for raw in payload.codes:
+        try:
+            codes.append(normalize_barcode(raw))
+        except HTTPException:
+            continue
+    if not codes:
+        return {"matches": {}}
+    connection = await _connect()
+    try:
+        rows = await connection.fetch(
+            "SELECT DISTINCT ON (lpad(p.data->>'ean',14,'0')) lpad(p.data->>'ean',14,'0') AS key, "
+            "COALESCE(m.to_id,p.id) AS id FROM v2_products p "
+            "LEFT JOIN v2_content_merges m ON m.kind='product' AND m.from_id=p.id "
+            "WHERE p.data->>'ean' <> '' AND lpad(p.data->>'ean',14,'0')=ANY($1::text[]) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+            "WHERE w.kind='product' AND w.content_id=COALESCE(m.to_id,p.id)) "
+            "AND NOT EXISTS (SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
+            "ORDER BY lpad(p.data->>'ean',14,'0'), p.updated_at DESC, p.id DESC",
+            [code.zfill(14) for code in codes])
+        found = {row["key"]: row["id"] for row in rows}
+        return {"matches": {code: found[code.zfill(14)] for code in codes if code.zfill(14) in found}}
+    finally:
+        await connection.close()
+
+
 @router.get("/drafts/mine")
 async def my_drafts(request: Request):
     connection = await _connect()

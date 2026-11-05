@@ -94,6 +94,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-off-browser.ts", ("open_food_facts",)),
     ("frontend/src/v2/V2OffPanel.tsx", ("open_food_facts", "products")),
     ("frontend/src/v2/V2OffBarcodeResult.tsx", ("open_food_facts", "products")),
+    ("frontend/src/v2/V2OffSearch.tsx", ("open_food_facts", "products")),
     ("frontend/src/v2/useOffProduct.ts", ("open_food_facts",)),
     ("frontend/src/v2/V2ReferenceSettings.tsx", ("products",)),
     ("frontend/src/v2/v2-products-api.ts", ("products", "open_food_facts")),

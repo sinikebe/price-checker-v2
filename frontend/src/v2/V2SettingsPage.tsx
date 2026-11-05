@@ -53,12 +53,12 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
       case "connectors": return user?.role === "admin" && <>
         <V2ConnectorStores key={`stores-${user.id}`} />
         <V2AvailabilitySettings key={`availability-${user.id}`} />
-        <V2ReferenceSettings key={`references-${user.id}`} />
         <V2ExtensionDownload key={`extension-${user.id}`} />
       </>;
       case "server": return user?.role === "admin" && <>
         <V2SettingsServer userId={user.id} />
         <V2CreditSettings key={`credits-${user.id}`} />
+        <V2ReferenceSettings key={`references-${user.id}`} />
       </>;
       case "logs": return user?.role === "admin" && <V2ServerLogs key={`logs-${user.id}`} active={active} />;
       case "stats": return user?.role === "admin" && <V2ServerStats key={`stats-${user.id}`} active={active} />;

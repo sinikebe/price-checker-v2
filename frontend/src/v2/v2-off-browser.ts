@@ -93,10 +93,11 @@ export async function readOffProduct(barcode: string, signal?: AbortSignal): Pro
   return parseOffProduct(await getJson(`${PRODUCT_API}${barcode}.json?fields=${PRODUCT_FIELDS}&lc=fr`, signal));
 }
 
-/** A text search (10 results), read from this browser. */
-export async function searchOff(query: string, signal?: AbortSignal): Promise<OffMatch[]> {
+/** A text search (10 results), read from this browser; `france` keeps products sold in France. */
+export async function searchOff(query: string, signal?: AbortSignal, options: { france?: boolean } = {}): Promise<OffMatch[]> {
   const terms = query.trim().slice(0, 100);
   if (terms.length < 2) return [];
   const params = new URLSearchParams({ search_terms: terms, search_simple: "1", action: "process", json: "1", page_size: "10", fields: SEARCH_FIELDS, lc: "fr" });
+  if (options.france) { params.set("tagtype_0", "countries"); params.set("tag_contains_0", "contains"); params.set("tag_0", "france"); }
   return parseOffSearch(await getJson(`${SEARCH_API}?${params.toString()}`, signal));
 }
