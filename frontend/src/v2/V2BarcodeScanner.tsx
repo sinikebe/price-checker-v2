@@ -11,16 +11,20 @@ export default function V2BarcodeScanner({ onClose, onDetected }: {
   const videoRef = useRef<HTMLVideoElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const detectedRef = useRef(false);
+  // The parents pass new functions on every render: kept in refs, so that a render of the page behind
+  // the dialog does not move the focus back to the close button.
   const onDetectedRef = useRef(onDetected);
+  const onCloseRef = useRef(onClose);
   const [state, setState] = useState<ScannerState>("requesting");
 
   useEffect(() => { onDetectedRef.current = onDetected; }, [onDetected]);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
     closeRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onCloseRef.current(); };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     let active = true;
