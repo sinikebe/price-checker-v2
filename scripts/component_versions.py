@@ -69,6 +69,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2RetailerGroupsAdmin.tsx", ("products", "open_prices")),
     ("frontend/src/v2/v2-stores-page.css", ("products",)),
     ("frontend/src/v2/V2DuplicateReview.tsx", ("products",)),
+    ("frontend/src/v2/v2-duplicate-query.ts", ("products",)),
     ("frontend/src/v2/v2-duplicate-review.css", ("products",)),
     ("frontend/src/v2/v2-store-alias.css", ("products",)),
     ("frontend/src/v2/bookmarklet-capture.js", ("products", "bookmarklet")),
