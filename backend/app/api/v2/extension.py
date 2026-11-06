@@ -30,6 +30,10 @@ CHANNEL = "drive"
 # one site can never be filed under another chain's store.
 ADAPTERS = {"carrefour": {"keyword": "carrefour", "host": "https://www.carrefour.fr/"}}
 Adapter = Literal["carrefour"]
+# A recent reading of product `o.product_id` at store $2 on channel $3, from the last $4 days: the plan
+# skips such products and a new reading of one is not recorded.
+_FRESH_READING = ("o.store_id=$2 AND o.sales_channel=$3 AND o.observed_at>=now()-($4::int * interval '1 day') "
+                  "AND NOT o.superseded AND o.merge_duplicate_of_id IS NULL")
 
 
 async def _admin(connection, request: Request) -> dict:
@@ -98,10 +102,7 @@ async def plan(payload: PlanRequest, request: Request, response: Response):
                 FROM unnest($1::bigint[]) WITH ORDINALITY AS wanted(id,position)
                 JOIN v2_products p ON p.id=wanted.id
                 WHERE {CURRENT_PRODUCT} AND p.data->>'ean' ~ '^([0-9]{{8}}|[0-9]{{12,14}})$'
-                  AND NOT EXISTS (SELECT 1 FROM v2_price_observations o
-                                  WHERE o.product_id=p.id AND o.store_id=$2 AND o.sales_channel=$3
-                                    AND o.observed_at>=now()-($4::int * interval '1 day')
-                                    AND NOT o.superseded AND o.merge_duplicate_of_id IS NULL)
+                  AND NOT EXISTS (SELECT 1 FROM v2_price_observations o WHERE o.product_id=p.id AND {_FRESH_READING})
                   AND NOT v2_store_product_held(p.id,$2,$3)
                 ORDER BY wanted.position LIMIT $5""",
             payload.product_ids, store["id"], CHANNEL, FRESH_DAYS, MAX_PLAN_ITEMS)
@@ -151,13 +152,13 @@ async def record_reading(payload: ReadingCreate, request: Request, response: Res
             if store is None or ADAPTERS[payload.adapter]["keyword"] not in store["retailer"].lower():
                 raise HTTPException(status_code=422, detail="Ce magasin n’est pas celui de l’enseigne lue.")
             product = await connection.fetchrow(f"SELECT p.data FROM v2_products p WHERE p.id=$1 AND {CURRENT_PRODUCT}", payload.product_id)
-            data = decoded(product["data"]) if product else {}
-            ean = data.get("ean", "")
-            if product is None or not isinstance(ean, str) or not _same_ean(ean, payload.ean):
+            if product is None:
+                raise HTTPException(status_code=422, detail="Le code-barres ne correspond pas à ce produit.")
+            ean = decoded(product["data"]).get("ean", "")
+            if not isinstance(ean, str) or not _same_ean(ean, payload.ean):
                 raise HTTPException(status_code=422, detail="Le code-barres ne correspond pas à ce produit.")
             fresh = await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_price_observations o WHERE o.product_id=$1 AND o.store_id=$2 AND o.sales_channel=$3 "
-                "AND o.observed_at>=now()-($4::int * interval '1 day') AND NOT o.superseded AND o.merge_duplicate_of_id IS NULL)",
+                f"SELECT EXISTS(SELECT 1 FROM v2_price_observations o WHERE o.product_id=$1 AND {_FRESH_READING})",
                 payload.product_id, payload.store_id, CHANNEL, FRESH_DAYS)
             if fresh:
                 return {"saved": False, "reason": "fresh"}
@@ -169,17 +170,17 @@ async def record_reading(payload: ReadingCreate, request: Request, response: Res
             await connection.execute("UPDATE v2_stores SET supports_drive=true WHERE id=$1 AND NOT supports_drive", payload.store_id)
             offer_id = await connection.fetchval(
                 "INSERT INTO v2_offers(retailer_id,store_id,source_kind,source_provider,channel,external_product_id,title,ean,price_amount,"
-                "available,product_url,collected_at) VALUES($1,$2,'connector',$3,'drive',$4,$5,$6,$7,$8,$9,now()) RETURNING id",
+                "available,product_url,collected_at) VALUES($1,$2,'connector',$3,$10,$4,$5,$6,$7,$8,$9,now()) RETURNING id",
                 store["retailer_id"], payload.store_id, provider, payload.ean, payload.title or payload.ean, payload.ean,
-                payload.price, payload.available, payload.source_url)
+                payload.price, payload.available, payload.source_url, CHANNEL)
             await connection.execute(
                 "INSERT INTO v2_offer_product_links(offer_id,product_id,link_type,confidence,verified,note) "
                 "VALUES($1,$2,'ean',1,true,'EAN exact lu sur la fiche par l’extension du navigateur')", offer_id, payload.product_id)
             await connection.execute(
                 "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,offer_id,source,source_provider,price,available,"
-                "observed_at,sales_channel,source_url,capture_ean) VALUES($1,$2,$3,$4,'connector',$5,$6,$7,now(),'drive',$8,$9)",
+                "observed_at,sales_channel,source_url,capture_ean) VALUES($1,$2,$3,$4,'connector',$5,$6,$7,now(),$10,$8,$9)",
                 payload.product_id, store["retailer_id"], payload.store_id, offer_id, provider, payload.price, payload.available,
-                payload.source_url, payload.ean)
+                payload.source_url, payload.ean, CHANNEL)
             await connection.execute("SELECT v2_clear_store_product_status($1,$2,$3)", payload.product_id, payload.store_id, CHANNEL)
             await logbook.log_event(connection, "connector.reading.finished", connector=provider, product_id=payload.product_id, outcome="complete")
         return {"saved": True, "reason": None}

@@ -150,6 +150,7 @@ async def test_a_price_is_recorded_like_a_connectors_and_clears_the_withdrawn_st
         assert (row["price"], row["source"], row["source_provider"], row["sales_channel"], row["available"], row["source_url"], row["capture_ean"]) == (
             Decimal("2.89"), "connector", "carrefour", "drive", True, PAGE, "07613039830727")
         assert await db.fetchval("SELECT title FROM v2_offers WHERE source_provider='carrefour'") == "Fond de Veau MAGGI"
+        assert await db.fetchval("SELECT channel FROM v2_offers WHERE source_provider='carrefour'") == extension.CHANNEL == "drive"
         assert await db.fetchval("SELECT count(*) FROM v2_store_product_status") == 0
         assert await db.fetchval("SELECT count(*) FROM v2_logs WHERE connector='carrefour' AND event='connector.reading.finished'") == 1
         again = await client.post("/api/v2/extension/readings", headers=ADMIN, json=body)
