@@ -227,6 +227,21 @@ async def test_a_product_page_lists_where_it_is_withdrawn_bounded_and_public(db,
 
 
 @pytest.mark.asyncio
+async def test_withdrawal_dates_are_paris_days(db, served):
+    _retailer, (nord, _sud), product = await seed(db)
+    await mark(db, product, nord)
+    # 23:30 UTC on 1 March is already 2 March in Paris.
+    await db.execute(
+        "UPDATE v2_store_product_status SET since='2026-03-01 23:30+00', checked_at='2026-03-01 23:30+00' "
+        "WHERE product_id=$1 AND store_id=$2", product, nord)
+    await db.execute("UPDATE v2_availability_settings SET recheck_days=30")
+    async with served as client:
+        row = (await client.get(f"/api/v2/availability/products/{product}")).json()["stores"][0]
+    assert row["since"] == row["checked"] == "2026-03-02"
+    assert row["next_check"] == "2026-04-01"
+
+
+@pytest.mark.asyncio
 async def test_an_administrator_can_make_a_connector_look_again(db, served):
     _retailer, (nord, sud), product = await seed(db)
     await mark(db, product, nord)
