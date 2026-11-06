@@ -125,6 +125,8 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             assert (await client.get(path)).status_code == 404
             assert (await client.get(f"/api/v2/stores/{donor_id}")).status_code == 404
             assert (await client.get(path, headers=admin)).json()["active"] is False
+            assert (await client.get(path, headers=admin)).json()["impact"] == {
+                "prices": 2, "drafts": 1, "offers": 1}, "what a permanent deletion would remove"
             assert target_id not in {row["id"] for row in (await client.get("/api/v2/stores")).json()}
             assert target_id in {row["id"] for row in (await client.get("/api/v2/stores", headers=admin)).json()}
             history = (await client.get(f"/api/v2/prices/products/{product_id}")).json()
