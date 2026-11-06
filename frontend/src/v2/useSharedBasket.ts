@@ -5,9 +5,10 @@ import {
 } from "./v2-shared-basket-api";
 import {
   MAX_OPS, activityText, allowedOffline, applyOps, applySettings, diffOps, forgetSharedCache, newFromOthers, queueOps, readSharedCache, readSharedId,
-  sharedItems, sharedSettings, tickOps, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedSettings,
+  sharedItems, sharedLookedKey, sharedSettings, tickOps, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedSettings,
 } from "./v2-shared-basket";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
+import { errorText } from "./v2-http";
 
 export type SharedStatus = "connecting" | "live" | "retrying" | "offline";
 const GONE = "Ce panier partagé n’est plus accessible : il a été supprimé ou vous en avez été retiré. Vous retrouvez votre panier.";
@@ -28,7 +29,7 @@ function visible(signal: AbortSignal) {
     signal.addEventListener("abort", done, { once: true });
   });
 }
-const message = (error: unknown) => error instanceof Error && error.message ? error.message : "Le panier partagé ne répond pas. Réessayez.";
+const message = (error: unknown) => errorText(error, "Le panier partagé ne répond pas. Réessayez.");
 
 /**
  * The shared basket this account has open in this browser, kept live: a read waits on the server
@@ -139,7 +140,7 @@ export function useSharedBasket(userId: number | null) {
   // entry shows here too.
   useEffect(() => {
     if (!userId || sharedId) return;
-    const flag = `v2:basket:shared-looked:${userId}`;
+    const flag = sharedLookedKey(userId);
     try { if (sessionStorage.getItem(flag)) return; sessionStorage.setItem(flag, "1"); } catch { return; }
     let active = true;
     listSharedBaskets().then(result => {

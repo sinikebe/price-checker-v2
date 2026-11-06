@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import V2Brand from "./V2Brand";
+import { useDocumentTitle } from "./useDocumentTitle";
 import "./v2-home.css";
 import "./v2-setup.css";
 import "./v2-auth.css";
@@ -22,11 +24,7 @@ export default function V2AuthPage({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const previous = document.title;
-    document.title = (mode === "admin" ? "Initialisation" : mode === "register" ? "Créer un compte" : "Connexion") + " | Price Checker";
-    return () => { document.title = previous; };
-  }, [mode]);
+  useDocumentTitle((mode === "admin" ? "Initialisation" : mode === "register" ? "Créer un compte" : "Connexion") + " | Price Checker");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,10 +60,7 @@ export default function V2AuthPage({
       <a className="v2-skip" href="#v2-auth-main">Aller au contenu</a>
       <header className="v2-header">
         <div className="v2-wrap v2-header-inner">
-          <Link className="v2-brand" to="/v2" aria-label="Price Checker, accueil V2">
-            <span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
-            <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span>
-          </Link>
+          <V2Brand />
           <span className="v2-setup-header-label">{isAdmin ? "Premier démarrage" : "Votre espace"}</span>
         </div>
       </header>

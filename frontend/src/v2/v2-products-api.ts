@@ -1,5 +1,6 @@
 import { cacheApprovedProduct } from "../pwa/cache-writes";
 import { productErrorText } from "./v2-product-errors";
+import { errorDetail } from "./v2-http";
 
 /** The identifying facts a contributor may copy from Open Food Facts. */
 export type OffField = "name" | "brand" | "quantity" | "ean";
@@ -66,12 +67,7 @@ export async function productRequest<T>(path: string, method = "GET", body?: obj
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    throw new ProductApiError(productErrorText(detail), response.status);
-  }
+  if (!response.ok) throw new ProductApiError(productErrorText(await errorDetail(response)), response.status);
   const result = await response.json() as T;
   if (method === "POST" && /^\/drafts\/\d+\/approve$/.test(path)) await cacheApprovedProduct(result as Product);
   return result;

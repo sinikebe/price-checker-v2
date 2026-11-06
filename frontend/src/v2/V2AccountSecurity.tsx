@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
+import { errorText, requestJson } from "./v2-http";
 import {
   REGENERATE_CONFIRMATION, activationNotice, activationWarning, disableConfirmation,
 } from "./v2-account-security-text";
@@ -13,19 +14,8 @@ type SetupResult = { secret: string; provisioning_uri: string };
 type RecoveryResult = { recovery_codes: string[] };
 type TokenResult = TokenRecord & { token: string };
 
-async function securityRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
-  const response = await fetch("/api/v2/account/security/" + path, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "L’opération a échoué.");
-  }
-  return response.status === 204 ? undefined as T : response.json() as Promise<T>;
+function securityRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
+  return requestJson<T>("/api/v2/account/security/" + path, { method, body, cache: "no-store", fallback: "L’opération a échoué." });
 }
 
 function date(value: string): string {
@@ -64,7 +54,7 @@ export default function V2AccountSecurity() {
     ]);
     setMfa(nextMfa); setTokens(nextTokens);
   }
-  useEffect(() => { void refresh().catch(reason => setError(String(reason))); }, []);
+  useEffect(() => { void refresh().catch(reason => setError(errorText(reason, "L’opération a échoué."))); }, []);
 
   async function run(action: () => Promise<void>) {
     if (busy) return;

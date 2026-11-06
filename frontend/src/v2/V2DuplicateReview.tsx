@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
+import { errorText } from "./v2-http";
 import "./v2-duplicate-review.css";
 
 type Kind = "product" | "store";
@@ -59,7 +60,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
     moderationRequest<Detail>("/reports/" + reportId + "/duplicate")
       .then(value => { if (active) { setDetail(value); setQuery(String(value.origin.data.name ?? value.origin.data.city ?? ""));
         if (value.report.duplicate_id) setSelected(value.report.duplicate_id); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active=false; };
   },[reportId]);
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
     let active=true;
     moderationRequest<Candidate[]>("/duplicate-candidates?kind=" + detail.report.kind + "&q=" + encodeURIComponent(query))
       .then(value => { if (active) setCandidates(value.filter(item => item.id !== detail.origin.id)); })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active=false; };
   },[detail,query]);
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
     let active=true;
     moderationRequest<Preview>("/reports/" + reportId + "/merge-preview?duplicate_id=" + selected)
       .then(value => { if (active) { setPreview(value); setValues(Object.fromEntries(value.fields.map(field => [field.key,editable(field.suggested)]))); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active=false; };
   },[reportId,selected]);
   const required = useMemo(() => preview?.fields.filter(field => field.state !== "identical") ?? [],[preview]);
@@ -94,7 +95,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
         duplicate_fingerprint: preview.duplicate_fingerprint, result, confirmed_fields: confirmed,
       });
       onMerged();
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   return <section className="v2-duplicate-review" aria-label="Examen du doublon">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { usePwaInstall } from "./PwaInstallContext";
 import { usePwaUpdate } from "./PwaUpdateState";
+import { AUTH_READY_EVENT } from "../v2/v2-account-session";
 import "./pwa-controls.css";
 import { syncV2Data } from "./data-sync";
 
@@ -17,13 +18,13 @@ export default function PwaControls() {
     window.addEventListener("online", connected);
     window.addEventListener("offline", connected);
     document.addEventListener("visibilitychange", opened);
-    window.addEventListener("v2-auth-ready", authenticated);
+    window.addEventListener(AUTH_READY_EVENT, authenticated);
     void syncV2Data();
     return () => {
       window.removeEventListener("online", connected);
       window.removeEventListener("offline", connected);
       document.removeEventListener("visibilitychange", opened);
-      window.removeEventListener("v2-auth-ready", authenticated);
+      window.removeEventListener(AUTH_READY_EVENT, authenticated);
     };
   }, []);
   const showInstall = !isHome && !installed && canPrompt;

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { V2_BASKET_EVENT, activateBasketUser, activeBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
+import { V2_BASKET_EVENT, activeBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
 import { addedProductIds, requestBasketConnectorRefresh } from "./v2-connector-refresh";
 import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
@@ -22,7 +22,6 @@ export type BasketApi = {
 };
 /** The personal basket (on this device) at the top level, as before; the shared one beside it. */
 type BasketValue = BasketApi & {
-  setUser: (userId: number | null, preserveOffline?: boolean) => void;
   /** The shared basket followed in this browser: its live state, members and settings. */
   shared: SharedBasketControls;
   /** The same actions on the shared basket, or null when this account follows none. */
@@ -105,7 +104,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/refs
   const personal = basketApi(local, currentLocal, writeLocal);
   const sharedBasket = shared.sharedId !== null ? basketApi(shared.items, shared.view, shared.edit) : null;
-  return <Context.Provider value={{ ...personal, setUser: activateBasketUser, shared, sharedBasket }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ...personal, shared, sharedBasket }}>{children}</Context.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

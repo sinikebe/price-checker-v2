@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { storeMatchesPath, storeRequest, type AliasProposal, type AliasSource,
   type StoreCandidate, type StoreMatches } from "./v2-stores-api";
+import { errorText } from "./v2-http";
 import "./v2-store-alias.css";
 
 const sourceLabels: Record<AliasSource, string> = {
@@ -25,7 +26,7 @@ export default function V2StoreAliasReview() {
     let active = true;
     storeRequest<AliasProposal[]>("/alias-proposals/pending")
       .then(rows => { if (active) setPending(rows); })
-      .catch(reason => { if (active) setError(String(reason)); });
+      .catch(reason => { if (active) setError(errorText(reason, "Opération impossible.")); });
     return () => { active = false; };
   }, [reload]);
   async function review(id: number, action: "approve" | "reject") {
@@ -33,7 +34,7 @@ export default function V2StoreAliasReview() {
     try {
       await storeRequest("/alias-proposals/" + id + "/review", "POST", { action });
       setReload(value => value + 1);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function search(event: FormEvent) {
@@ -43,7 +44,7 @@ export default function V2StoreAliasReview() {
         retailer, store_name: query, city: "", postal_code: "",
       }, source));
       setCandidates(matches.matches);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function submit(event: FormEvent) {
@@ -56,7 +57,7 @@ export default function V2StoreAliasReview() {
       setNotice(result.status === "already_known" ? "Ce nom est déjà connu pour ce magasin."
         : "Nom proposé. Sa validation reste une action distincte.");
       setAlias(""); setReload(value => value + 1);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   return <section className="v2-settings-card v2-store-alias-review" aria-labelledby="v2-store-alias-heading">

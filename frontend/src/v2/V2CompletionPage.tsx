@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import { storeRequest } from "./v2-stores-api";
+import { errorText } from "./v2-http";
 import "./v2-completion.css";
 
 type ProductItem = { kind: "product"; id: number; name: string; brand: string; missing: string[] };
@@ -59,7 +60,7 @@ function CompletionList({ priority, user, refresh, onSaved }: {
       if (page > 0 && page * PAGE_SIZE >= value.total) setPage(page - 1);
       else { setResult(value); setError(""); }
     })
-      .catch(reason => { if (active) { setResult(null); setError(String(reason)); } });
+      .catch(reason => { if (active) { setResult(null); setError(errorText(reason, "La liste des fiches à compléter est indisponible.")); } });
     return () => { active = false; };
   }, [priority, page, refresh]);
   const title = priority === "required" ? "Priorité : champs obligatoires" : "Informations facultatives";
@@ -90,12 +91,12 @@ function CompletionList({ priority, user, refresh, onSaved }: {
 
 export default function V2CompletionPage({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
   const [refresh, setRefresh] = useState(0);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE PUBLIC</span>
       <h1>À compléter<span>.</span></h1>
       <p>Fiches publiées auxquelles il manque encore des informations.</p>
     </div></div>
     <CompletionList priority="required" user={user} refresh={refresh} onSaved={() => setRefresh(value => value + 1)} />
     <CompletionList priority="optional" user={user} refresh={refresh} onSaved={() => setRefresh(value => value + 1)} />
-  </Frame>;
+  </V2PageFrame>;
 }

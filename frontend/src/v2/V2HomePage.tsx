@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallContext";
 import { useV2Basket } from "./V2BasketContext";
@@ -8,6 +8,7 @@ import type { V2User } from "./v2-auth-api";
 import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2HomeDemo from "./V2HomeDemo";
 import V2CatalogueDemo from "./V2CatalogueDemo";
+import { useDocumentTitle } from "./useDocumentTitle";
 import "./v2-product-workspace.css";
 import "./v2-home.css";
 
@@ -70,18 +71,7 @@ export default function V2HomePage({ user, onLogout }: {
     setInstallMessage(installMessages[await requestInstall()]);
   }
 
-  useEffect(() => {
-    const previousTitle = document.title;
-    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    const previousIcon = icon?.getAttribute("href");
-    document.title = "Accueil | Price Checker";
-    icon?.setAttribute("href", "/v2-mark.svg");
-
-    return () => {
-      document.title = previousTitle;
-      if (previousIcon) icon?.setAttribute("href", previousIcon);
-    };
-  }, []);
+  useDocumentTitle("Accueil | Price Checker");
 
   return (
     <div className="v2-home">

@@ -1,19 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { requestJson } from "./v2-http";
 
 type Settings = { complete_list_max: number; revision: number; min: number; max: number; per_minute: number; per_hour: number };
 
-async function settingsRequest(method: "GET" | "PUT", body?: object): Promise<Settings> {
-  const response = await fetch("/api/v2/catalogue/search-settings", {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Le réglage n’a pas pu être enregistré.");
-  }
-  return response.json() as Promise<Settings>;
+function settingsRequest(method: "GET" | "PUT", body?: object): Promise<Settings> {
+  return requestJson<Settings>("/api/v2/catalogue/search-settings", { method, body, cache: "no-store", fallback: "Le réglage n’a pas pu être enregistré." });
 }
 
 /** Administrator setting of the catalogue search: how many matches the server lists in full. */

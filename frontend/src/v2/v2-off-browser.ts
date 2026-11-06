@@ -21,6 +21,7 @@ export type OffProduct = {
 /** A search result or a barcode match, for filling a new product's identifying facts. */
 export type OffMatch = { code: string; name: string; brand: string; quantity: string; image: string | null };
 
+// The same rule as GTIN_PATTERN (v2-catalogue-search), written here because tests load this module on its own.
 export const validBarcode = (code: string) => /^(?:[0-9]{8}|[0-9]{12,14})$/.test(code);
 
 const NUTRIENTS: [key: string, label: string, unit: string][] = [

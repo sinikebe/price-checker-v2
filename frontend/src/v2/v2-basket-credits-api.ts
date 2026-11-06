@@ -39,6 +39,30 @@ export class CostChangedError extends Error {
 /** The session is gone: signing in again is needed. */
 export class SignedOutError extends Error {}
 
+type Refusal = { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } };
+/**
+ * Why a paid price request was refused with nothing spent: not enough credits (`fallbackCost` when the
+ * server does not say the cost), a cost that changed meanwhile, or too many requests.
+ */
+export async function creditRefusal(response: Response, fallbackCost: number): Promise<Error> {
+  const detail = (await response.json().catch(() => null) as Refusal | null)?.detail;
+  if (detail?.code === "no_credits" && detail.credits) return new NoCreditsError(detail.credits, detail.cost ?? fallbackCost, detail.message);
+  if (detail?.code === "cost_changed" && typeof detail.cost === "number") return new CostChangedError(detail.cost);
+  return new Error("Trop de requêtes. Réessayez dans un instant.");
+}
+/**
+ * A paid price request: a lost connection may have spent credits without an answer, so it says to check
+ * the balance before trying again. A cancelled request stays an AbortError.
+ */
+export async function creditedFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error;
+    throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer.");
+  }
+}
+
 type WireItem =
   | { kind: "product"; id: number }
   | { kind: "group"; name: string }
@@ -61,19 +85,12 @@ export async function readBasketCredits(signal?: AbortSignal): Promise<BasketCre
 
 /** One request, and one credit per line, for the candidates and latest prices of every line. */
 export async function fetchBasketPrices(items: readonly BasketItem[]): Promise<BasketFetchResult> {
-  let response: Response;
-  try {
-    response = await fetch("/api/v2/basket/prices", {
-      method: "POST", credentials: "same-origin", cache: "no-store",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: wireItems(items) }),
-    });
-  } catch { throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer."); }
+  const response = await creditedFetch("/api/v2/basket/prices", {
+    method: "POST", credentials: "same-origin", cache: "no-store",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: wireItems(items) }),
+  });
   if (response.status === 401) throw new SignedOutError();
-  if (response.status === 429) {
-    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
-    if (body?.detail?.code === "no_credits" && body.detail.credits) throw new NoCreditsError(body.detail.credits, body.detail.cost ?? items.length, body.detail.message);
-    throw new Error("Trop de requêtes. Réessayez dans un instant.");
-  }
+  if (response.status === 429) throw await creditRefusal(response, items.length);
   if (!response.ok) throw new Error("Impossible de récupérer les prix. Aucun crédit n’a été dépensé.");
   return response.json() as Promise<BasketFetchResult>;
 }
@@ -90,20 +107,8 @@ export async function readCredits(signal?: AbortSignal): Promise<BasketCredits> 
  * The answer carries the credits left (`credits`).
  */
 export async function paidFetch<T>(url: string, signal?: AbortSignal): Promise<T & { credits: BasketCredits }> {
-  let response: Response;
-  try {
-    response = await fetch(url, { credentials: "same-origin", cache: "no-store", signal });
-  } catch (error) {
-    if ((error as Error)?.name === "AbortError") throw error;
-    throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer.");
-  }
-  if (response.status === 429 || response.status === 409) {
-    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
-    const detail = body?.detail;
-    if (detail?.code === "no_credits" && detail.credits) throw new NoCreditsError(detail.credits, detail.cost ?? 1, detail.message);
-    if (detail?.code === "cost_changed" && typeof detail.cost === "number") throw new CostChangedError(detail.cost);
-    throw new Error("Trop de requêtes. Réessayez dans un instant.");
-  }
+  const response = await creditedFetch(url, { credentials: "same-origin", cache: "no-store", signal });
+  if (response.status === 429 || response.status === 409) throw await creditRefusal(response, 1);
   if (response.status === 404) throw new Error("Introuvable.");
   if (!response.ok) throw new Error("Impossible de récupérer les prix. Aucun crédit n’a été dépensé.");
   return response.json() as Promise<T & { credits: BasketCredits }>;

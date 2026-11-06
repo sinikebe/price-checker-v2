@@ -1,18 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { requestJson } from "./v2-http";
 
 type ReferenceSettings = { unused_days: number; revision: number; count: number; min: number; max: number };
 
-async function request(method: "GET" | "PUT", body?: object): Promise<ReferenceSettings> {
-  const response = await fetch("/api/v2/product-references/settings", {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined,
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Le réglage n’a pas pu être chargé.");
-  }
-  return payload as ReferenceSettings;
+function request(method: "GET" | "PUT", body?: object): Promise<ReferenceSettings> {
+  return requestJson<ReferenceSettings>("/api/v2/product-references/settings", { method, body, cache: "no-store", fallback: "Le réglage n’a pas pu être chargé." });
 }
 
 /** Administrator setting: how long an unused product known only by its barcode is kept. */

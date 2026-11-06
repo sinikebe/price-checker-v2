@@ -7,8 +7,11 @@ export type Category = { name: string; department: string; family: string; compa
 const channelNames: Record<BasketPrice["sales_channel"], string> = {
   in_store: "En magasin", drive: "Drive", delivery: "Livraison",
 };
-const euros = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
-export const money = (cents: number) => euros.format(cents / 100);
+const euroFormat = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+/** An amount in cents, in euros the French way ("1,50 €"). */
+export const money = (cents: number) => euroFormat.format(cents / 100);
+/** An amount in euros: a number, or a decimal string from the API ("1.50"). */
+export const euros = (value: number | string) => euroFormat.format(Number(value));
 export const productName = (product: BasketProduct) => [product.data.brand, product.data.name].filter(Boolean).join(" ");
 export const itemName = (item: BasketItem) => "kind" in item ? item.name : productName(item);
 export const itemKind = (item: BasketItem) => !("kind" in item) ? "Produit" : item.kind === "group" ? "Groupe comparable"

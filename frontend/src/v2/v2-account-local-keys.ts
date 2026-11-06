@@ -7,15 +7,23 @@
  */
 export function accountLocalKeys(keys: readonly string[], userId: number, exactKeys: readonly string[] = []): string[] {
   const id = String(userId);
-  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, `v2:auth:offline-user:${id}`, `v2:mode:${id}`, `v2:site-filter:${id}`, ...exactKeys]);
-  const prefixes = [
-    `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
-    `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
-    `v2:prices:user:${id}:`,
-  ];
+  const drafts = draftKeys(id);
+  const own = new Set([...drafts.exact, `v2:auth:offline-user:${id}`, `v2:mode:${id}`, `v2:site-filter:${id}`, ...exactKeys]);
+  const prefixes = [...drafts.prefixes, `v2:prices:user:${id}:`];
   return keys.filter(key => own.has(key)
     || prefixes.some(prefix => key.startsWith(prefix))
     || (key.startsWith("v2:basket:") && key.endsWith(":" + id)));
+}
+
+/** The account's unsent work: new products and recipes, and its edits, drafts and proposals. */
+function draftKeys(id: string) {
+  return {
+    exact: [`v2:product:new:${id}`, `v2:recipe:new:${id}`],
+    prefixes: [
+      `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
+      `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
+    ],
+  };
 }
 
 /**
@@ -26,11 +34,9 @@ export function accountLocalKeys(keys: readonly string[], userId: number, exactK
  */
 export function logoutLocalKeys(keys: readonly string[], userId: number): string[] {
   const id = String(userId);
-  const own = new Set([`v2:product:new:${id}`, `v2:recipe:new:${id}`, `v2:basket:shared:${id}`, `v2:auth:offline-user:${id}`]);
-  const prefixes = [
-    `v2:product:new:${id}:`, `v2:product:edit:${id}:`, `v2:product:draft:${id}:`,
-    `v2:recipe:new:${id}:`, `v2:recipe:edit:${id}:`, `v2:recipe:proposal:${id}:`,
-  ];
+  const drafts = draftKeys(id);
+  const own = new Set([...drafts.exact, `v2:basket:shared:${id}`, `v2:auth:offline-user:${id}`]);
+  const prefixes = drafts.prefixes;
   const shared = /^v2:basket:shared-(?:state|queue|prices):\d+:(\d+)$/;
   return keys.filter(key => own.has(key) || prefixes.some(prefix => key.startsWith(prefix)) || shared.exec(key)?.[1] === id);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { apiError } from "./v2-http";
 import "./v2-legal.css";
 
 type Name = "mentions" | "confidentialite" | "conditions";
@@ -14,11 +15,7 @@ const when = (value: string) => new Date(value).toLocaleString("fr-FR", { day: "
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch("/api/v2/legal" + path, { credentials: "same-origin", cache: "no-store", ...init });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Les documents légaux ne répondent pas. Réessayez.");
-  }
+  if (!response.ok) throw await apiError(response, "Les documents légaux ne répondent pas. Réessayez.");
   return response.json() as Promise<T>;
 }
 

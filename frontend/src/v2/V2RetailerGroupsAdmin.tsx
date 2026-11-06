@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { storeRequest } from "./v2-stores-api";
+import { errorText } from "./v2-http";
 
 type Retailer = { id: number; name: string; group_id: number; store_count: number };
 type Group = { id: number; name: string; retailers: Retailer[] };
@@ -14,7 +15,7 @@ export default function V2RetailerGroupsAdmin({ onChanged }: { onChanged: () => 
     let active = true;
     storeRequest<Group[]>("/retailer-groups")
       .then(value => { if (active) { setGroups(value); setError(""); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active = false; };
   }, [reload]);
   async function create(event: React.FormEvent<HTMLFormElement>) {
@@ -24,7 +25,7 @@ export default function V2RetailerGroupsAdmin({ onChanged }: { onChanged: () => 
     try {
       await storeRequest("/retailer-groups", "POST", { name });
       setName(""); setReload(value => value + 1);
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function assign(retailerId: number, groupId: number) {
@@ -34,7 +35,7 @@ export default function V2RetailerGroupsAdmin({ onChanged }: { onChanged: () => 
       await storeRequest("/retailers/" + retailerId + "/group", "PUT", { group_id: groupId });
       setReload(value => value + 1);
       onChanged();
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   return <details className="v2-workspace-card v2-retailer-groups-admin">

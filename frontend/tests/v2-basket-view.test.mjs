@@ -5,8 +5,16 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/v2/v2-basket-view.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { reactivationText, savingText, unitPriceText, surplusText, selectionSummary, itemKind, itemHref } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { reactivationText, savingText, unitPriceText, surplusText, selectionSummary, itemKind, itemHref, money, euros } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const plain = text => text.replace(/[  ]/g, " ");
+
+test("amounts read the French way, from cents or from the API's decimal text", () => {
+  assert.equal(plain(money(150)), "1,50 €");
+  // Prices of drafts and captures used to show as "1.50 €".
+  assert.equal(plain(euros("1.50")), "1,50 €");
+  assert.equal(plain(euros(1.5)), "1,50 €");
+  assert.equal(plain(euros("1234.5")), "1 234,50 €");
+});
 
 test("a store that lowers the basket says how much, and what share of the price without it", () => {
   const note = savingText({ extraCents: 120, unpriced: 0 }, 3880, false);

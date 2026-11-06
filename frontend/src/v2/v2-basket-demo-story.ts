@@ -42,7 +42,7 @@ function quantityLabel(quantity: BasketQuantity): string {
 }
 
 /** The story of a demo, or null when it has nothing to compare. */
-export function demoStory(source: DemoSource): DemoStory | null {
+function demoStory(source: DemoSource): DemoStory | null {
   const { advanced, compare: mode, filters, stores_off: storesOff, units } = source.settings;
   const items = demoItems(initialDemoState(source), source).filter(item => !item.disabled);
   const view = snapshotView(source.snapshot, items);

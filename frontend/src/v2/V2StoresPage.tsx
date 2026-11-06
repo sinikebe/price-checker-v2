@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import V2ReportControl from "./V2ReportControl";
 import V2RetailerGroupsAdmin from "./V2RetailerGroupsAdmin";
 import { storeRequest } from "./v2-stores-api";
+import { errorText } from "./v2-http";
 import "./v2-stores-page.css";
 
 type Store = {
@@ -35,7 +36,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
     try {
       await storeRequest("/" + store.id + "/activity", "PUT", { active });
       setReload(value => value + 1);
-    } catch (cause) { setActionError(String(cause)); }
+    } catch (cause) { setActionError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function changeOnline(online: boolean) {
@@ -44,7 +45,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
     try {
       await storeRequest("/" + store.id + "/online", "PUT", { online });
       setReload(value => value + 1);
-    } catch (cause) { setActionError(String(cause)); }
+    } catch (cause) { setActionError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function removeStore(event: React.FormEvent<HTMLFormElement>) {
@@ -54,13 +55,13 @@ export default function V2StoresPage({ id, user, onLogout }: {
     try {
       await storeRequest("/" + store.id + "/delete", "POST", { confirmation });
       navigate("/v2/magasins", { replace: true });
-    } catch (cause) { setActionError(String(cause)); setBusy(false); }
+    } catch (cause) { setActionError(errorText(cause, "Opération impossible.")); setBusy(false); }
   }
   useEffect(() => {
     let active = true;
     const task = id ? storeRequest<Store>("/" + id).then(value => { if (active) setStore(value); })
       : storeRequest<Store[]>("").then(value => { if (active) setStores(value); });
-    task.catch(cause => { if (active) setError(String(cause)); });
+    task.catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active = false; };
   }, [id,reload]);
   const groups = useMemo(() => {
@@ -75,7 +76,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
     return [...result];
   }, [stores,query]);
   if (id && store?.id === id && store.merged_to_id) return <Navigate to={"/v2/magasins/" + store.merged_to_id} replace />;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     {id ? <>
       <Link to="/v2/magasins">← Tous les magasins</Link>
       {error && <p role="alert">{error}</p>}
@@ -134,5 +135,5 @@ export default function V2StoresPage({ id, user, onLogout }: {
         </li>)}</ul>
       </section>)}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }

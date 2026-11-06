@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { initialDraft, secretHint, settingsPayload, type SettingField, type SettingValue } from "./v2-connector-settings";
+import { errorText, requestJson } from "./v2-http";
 
 type Settings = {
   revision: number; fields: SettingField[]; values: Record<string, SettingValue>;
@@ -28,7 +29,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
       return response.json() as Promise<Settings>;
     }).then(value => {
       if (active) { setSaved(value); setDraft(initialDraft(value.fields, value.values)); setStatus(value.status); setError(""); }
-    }).catch(reason => { if (active) setError(String(reason)); });
+    }).catch(reason => { if (active) setError(errorText(reason, "Impossible de lire les réglages du connecteur.")); });
     const timer = window.setInterval(() => {
       void fetch(endpoint, { credentials: "same-origin", cache: "no-store" })
         .then(response => response.ok ? response.json() as Promise<Settings> : null)
@@ -43,17 +44,12 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
     if (!saved || busy) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const response = await fetch(endpoint, { method: "PUT", credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expected_revision: saved.revision, values: settingsPayload(saved.fields, draft) }) });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { detail?: string } | null;
-        throw new Error(body?.detail || "Impossible d’enregistrer les réglages.");
-      }
-      const value = await response.json() as Settings;
+      const value = await requestJson<Settings>(endpoint, { method: "PUT",
+        body: { expected_revision: saved.revision, values: settingsPayload(saved.fields, draft) },
+        fallback: "Impossible d’enregistrer les réglages." });
       setSaved(value); setDraft(initialDraft(value.fields, value.values)); setStatus(value.status);
       setNotice("Réglages enregistrés.");
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Impossible d’enregistrer les réglages.")); }
     finally { setBusy(false); }
   }
 

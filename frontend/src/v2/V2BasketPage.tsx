@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "./useConfirm";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useV2Basket } from "./V2BasketContext";
 import { useBasketView } from "./useBasketView";
@@ -197,10 +197,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   const openList = (mode: ListView, anchor?: string) => { if (!readOnly) display.setListView(mode); navigate(shoppingListPath(basePath) + (anchor ? "#" + anchor : "")); };
   if (listMode) {
     const listView = display.listView;
-    return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><div className="v2-home v2-recipes">
-      <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
-      <V2SiteHeader user={user} onLogout={onLogout} />
-      <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
+    return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><V2PageFrame section="basket" user={user} onLogout={onLogout}>
         <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">{sharedMode ? "PANIER PARTAGÉ" : "VOS COURSES"}</span><h1>Liste de courses<span>.</span></h1>
           <p>{listView.kind === "all" ? "Les articles du panier, à cocher en rayon." : listView.kind === "stores" ? "Répartie entre les magasins, au meilleur prix." : "Tout le panier dans un magasin ; ce qui n’y a pas de prix vient en premier."}</p></div></div>
         {sharedMode && !basket ? <div className="v2-recipes-card"><p>Aucun panier partagé ouvert. <Link to={SHARED_BASKET_PATH}>Ouvrir ou créer un panier partagé</Link>.</p></div> : <>
@@ -212,16 +209,12 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
             addedBy={sharing ? shared.addedBy : undefined}
             fetchHint="La répartition entre magasins et la liste d’un magasin se construisent avec les prix récupérés pour ce panier." />
         </>}
-      </main>
-    </div></BasketReadOnlyContext.Provider>;
+    </V2PageFrame></BasketReadOnlyContext.Provider>;
   }
   // A shared basket created from the personal one starts with its settings too.
   const personalSettings = { advanced: display.advanced, compare: display.mode, filters: display.filters, stores_off: display.storesOff, units: display.units };
 
-  return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><div className="v2-home v2-recipes">
-    <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
+  return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><V2PageFrame section="basket" user={user} onLogout={onLogout}>
       <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharedMode ? "Panier partagé" : "Mon panier"}<span>.</span></h1><p>{sharing ? "Modifié en direct par ses membres, avec les mêmes réglages pour tous." : sharedMode ? "Un panier que plusieurs comptes remplissent ensemble, en direct." : "Comparez les prix de vos courses."}</p></div><div className="v2-basket-heading-actions">{basket && items.length > 0 && <Link className="v2-button v2-button-secondary" to={shoppingListPath(basePath)}>Liste de courses</Link>}
         {!(invite && !user) && <Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link>}</div></div>
       {readOnly && !sharing && <p className="v2-basket-offline-note" role="status">Hors connexion : le panier est en lecture seule et sa liste de courses se coche toujours. Le reste se modifie au retour de la connexion.</p>}
@@ -295,6 +288,5 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           {!readOnly && <V2BasketTextAdd onAdd={addText} />}</div>
           {!invite && !shared.sharedId && <div className="v2-recipes-card v2-shared-empty-start"><SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault={false} /></div>}</>}
       </>}
-    </main>
-  </div></BasketReadOnlyContext.Provider>;
+  </V2PageFrame></BasketReadOnlyContext.Provider>;
 }

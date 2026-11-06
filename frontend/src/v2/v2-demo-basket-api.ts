@@ -1,12 +1,12 @@
 import type { BasketItem } from "./v2-basket-storage";
 import type { SharedSettings } from "./v2-shared-basket";
 import { lineRef } from "./v2-shared-basket";
+import { errorDetail } from "./v2-http";
 
 const PATH = "/api/v2/demo-basket";
 
 async function failure(response: Response, fallback: string): Promise<Error> {
-  const data: unknown = await response.json().catch(() => null);
-  const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
+  const detail = await errorDetail(response);
   return new Error(typeof detail === "string" ? detail : response.status === 401 ? "Connectez-vous." : fallback);
 }
 

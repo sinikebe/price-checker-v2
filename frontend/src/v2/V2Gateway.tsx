@@ -1,10 +1,14 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useConfirm } from "./useConfirm";
-import { logoutLocalKeys, unsentAtLogout } from "./v2-account-local-keys";
+import { unsentAtLogout } from "./v2-account-local-keys";
+import { ACCOUNT_DELETED_KEY, AUTH_CHANGED_KEY, AUTH_READY_EVENT, clearSignedOutData } from "./v2-account-session";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import V2AuthPage from "./V2AuthPage";
+import V2Brand from "./V2Brand";
 import { authRequest, type V2AuthStatus, type V2User } from "./v2-auth-api";
-import apiClient from "../api/client";
+import { errorText } from "./v2-http";
+import { SetupNetworkError, setupRequest, type Provider, type PublicDatabase, type SetupStatus, type TlsMode } from "./v2-setup-api";
+import { useDocumentTitle } from "./useDocumentTitle";
 import V2SettingsPage from "./V2SettingsPage";
 import V2HostAlertNotice from "./V2HostAlertNotice";
 import V2HomePage from "./V2HomePage";
@@ -19,25 +23,11 @@ import V2StoresPage from "./V2StoresPage";
 import { V2AppModeProvider } from "./V2AppMode";
 import { V2SiteFilterProvider } from "./V2SiteFilter";
 import V2ShoppingOnly from "./V2ShoppingOnly";
-import { useV2Basket } from "./V2BasketContext";
 import { offlineUser, rememberOfflineUser } from "./v2-offline-user";
-import { activeBasketUser } from "./v2-basket-storage";
+import { activateBasketUser, activeBasketUser } from "./v2-basket-storage";
 import "./v2-home.css";
 import "./v2-setup.css";
 
-type Status = { configured: boolean; app_env: string };
-type Provider = "postgres" | "supabase";
-type TlsMode = "disable" | "require" | "verify-full";
-type PublicDatabase = {
-  provider: Provider;
-  project_url: string;
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  tls_mode: TlsMode;
-  public_hostname?: string;
-};
 type FormValues = PublicDatabase & { password: string };
 
 function emptyForm(): FormValues {
@@ -55,31 +45,18 @@ function emptyForm(): FormValues {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
-}
-
-function SetupBrand() {
-  return (
-    <Link className="v2-brand" to="/v2" aria-label="Price Checker, accueil V2">
-      <span className="v2-brand-mark" aria-hidden="true"><span /><span /><span /><span /></span>
-      <span>price<span className="v2-brand-accent">checker</span><span className="v2-brand-period">.</span></span>
-    </Link>
-  );
+  return errorText(error, "Une erreur inattendue est survenue.");
 }
 
 function SetupFrame({ children }: { children: ReactNode }) {
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = "Configuration | Price Checker";
-    return () => { document.title = previousTitle; };
-  }, []);
+  useDocumentTitle("Configuration | Price Checker");
 
   return (
     <div className="v2-home v2-setup">
       <a className="v2-skip" href="#v2-setup-main">Aller au contenu</a>
       <header className="v2-header">
         <div className="v2-wrap v2-header-inner">
-          <SetupBrand />
+          <V2Brand />
           <span className="v2-setup-header-label">Configuration de Price Checker</span>
         </div>
       </header>
@@ -100,8 +77,8 @@ function HostnameSettings({ environment }: { environment: string }) {
 
   useEffect(() => {
     let active = true;
-    apiClient.get<{ public_hostname: string }>("/api/v2/setup/hostname")
-      .then(({ data }) => { if (active) { setHostname(data.public_hostname); setSavedHostname(data.public_hostname); setLoaded(true); } })
+    setupRequest<{ public_hostname: string }>("hostname")
+      .then((data) => { if (active) { setHostname(data.public_hostname); setSavedHostname(data.public_hostname); setLoaded(true); } })
       .catch((reason: unknown) => { if (active) { setMessage(errorMessage(reason)); setLoadFailed(true); } });
     return () => { active = false; };
   }, [loadAttempt]);
@@ -111,7 +88,7 @@ function HostnameSettings({ environment }: { environment: string }) {
     setBusy(true);
     setMessage("");
     try {
-      const { data } = await apiClient.put<{ public_hostname: string }>("/api/v2/setup/hostname", {
+      const data = await setupRequest<{ public_hostname: string }>("hostname", "PUT", {
         public_hostname: hostname,
         expected_hostname: savedHostname,
       });
@@ -182,7 +159,7 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
     setBusy("unlock");
     setMessage("");
     try {
-      const { data } = await apiClient.post<PublicDatabase>("/api/v2/setup/database/details", {
+      const data = await setupRequest<PublicDatabase>("database/details", "POST", {
         access_code: accessCode,
       });
       setForm({ ...data, password: "" });
@@ -205,18 +182,18 @@ function SetupPage({ configured, environment, onConfigured }: { configured: bool
     const payload = { ...form, public_hostname: configured ? undefined : form.public_hostname, access_code: accessCode };
     try {
       if (isTest) {
-        await apiClient.post("/api/v2/setup/database/test", payload);
+        await setupRequest("database/test", "POST", payload);
         setMessage(configured
           ? "Connexion établie. Les paramètres enregistrés n’ont pas été modifiés."
           : "Connexion établie. Aucun paramètre n’a encore été enregistré.");
         setSuccess(true);
       } else {
         if (configured) {
-          await apiClient.put("/api/v2/setup/database", payload);
+          await setupRequest("database", "PUT", payload);
           setMessage("Paramètres enregistrés et connexion vérifiée.");
           setSuccess(true);
         } else {
-          await apiClient.post("/api/v2/setup/database", payload);
+          await setupRequest("database", "POST", payload);
           onConfigured();
         }
         setForm((current) => ({ ...current, password: "" }));
@@ -396,20 +373,19 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   storesMode?: boolean;
   storeId?: number;
 }) {
-  const { setUser: activateUserBasket } = useV2Basket();
   const confirm = useConfirm();
   const route = useLocation();
   const [loginRedirect, setLoginRedirect] = useState("/v2");
-  const [status, setStatus] = useState<Status | null>(null);
+  const [status, setStatus] = useState<SetupStatus | null>(null);
   const [authStatus, setAuthStatus] = useState<V2AuthStatus | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    apiClient.get<Status>("/api/v2/setup/status")
-      .then(({ data }) => { if (active) setStatus(data); })
-      .catch((reason: unknown) => { if (active) { if (!navigator.onLine || !(reason as { response?: unknown })?.response) setStatus({ configured: true, app_env: "offline" }); else setError(errorMessage(reason)); } });
+    setupRequest<SetupStatus>("status")
+      .then((data) => { if (active) setStatus(data); })
+      .catch((reason: unknown) => { if (active) { if (!navigator.onLine || reason instanceof SetupNetworkError) setStatus({ configured: true, app_env: "offline" }); else setError(errorMessage(reason)); } });
     return () => { active = false; };
   }, [attempt]);
 
@@ -433,13 +409,13 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
 
   useEffect(() => {
     if (!status?.configured || !authStatus) return;
-    activateUserBasket(authStatus.user?.id ?? null, status.app_env === "offline");
-    window.dispatchEvent(new Event("v2-auth-ready"));
-  }, [status?.configured, status?.app_env, authStatus, activateUserBasket]);
+    activateBasketUser(authStatus.user?.id ?? null, status.app_env === "offline");
+    window.dispatchEvent(new Event(AUTH_READY_EVENT));
+  }, [status?.configured, status?.app_env, authStatus]);
 
   useEffect(() => {
     const accountDeletedElsewhere = (event: StorageEvent) => {
-      if (event.key !== "v2:account:deleted" && event.key !== "v2:auth:changed") return;
+      if (event.key !== ACCOUNT_DELETED_KEY && event.key !== AUTH_CHANGED_KEY) return;
       setAuthStatus(null);
       setAttempt(value => value + 1);
     };
@@ -465,16 +441,10 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
     }
     try {
       await authRequest<void>("logout", "POST");
-      if (userId) {
-        try {
-          for (const key of logoutLocalKeys(Object.keys(localStorage), userId)) localStorage.removeItem(key);
-          sessionStorage.removeItem("v2:basket:pending-invite");
-          sessionStorage.removeItem(`v2:basket:shared-looked:${userId}`);
-        } catch { /* storage unavailable: nothing was kept */ }
-      }
+      if (userId) clearSignedOutData(userId);
       setAuthStatus((previous) => previous ? { ...previous, user: null } : previous);
       // Other tabs recheck the session instead of showing a signed-in page.
-      try { localStorage.setItem("v2:auth:changed", String(Date.now())); } catch { /* the other tabs update on their next request */ }
+      try { localStorage.setItem(AUTH_CHANGED_KEY, String(Date.now())); } catch { /* the other tabs update on their next request */ }
     } catch (reason) {
       setError(errorMessage(reason));
     }

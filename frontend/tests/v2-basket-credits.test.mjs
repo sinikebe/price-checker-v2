@@ -131,6 +131,25 @@ test("a paid request says why nothing was shown, and never hides an unexpected a
   assert.equal(seen, "/api/v2/credits");
 });
 
+test("every paid fetch reads a refusal the same way, with nothing spent", async () => {
+  const { paidFetch, fetchBasketPrices: basket, creditRefusal, creditedFetch, NoCreditsError: Short, CostChangedError }
+    = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+  globalThis.fetch = answer(409, { detail: { code: "cost_changed", cost: 3 } });
+  await assert.rejects(paidFetch("/x"), error => error instanceof CostChangedError && error.cost === 3);
+  globalThis.fetch = answer(429, { detail: { code: "no_credits", credits } });
+  await assert.rejects(paidFetch("/x"), error => error instanceof Short && error.cost === 1, "a single price costs one credit");
+  await assert.rejects(basket([{ kind: "group", name: "Lait" }, { kind: "group", name: "Pain" }]),
+    error => error instanceof Short && error.cost === 2, "a basket costs one credit per line");
+  const empty = { status: 429, ok: false, json: async () => { throw new SyntaxError("no body"); } };
+  assert.equal((await creditRefusal(empty, 1)).message, "Trop de requêtes. Réessayez dans un instant.");
+  globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  await assert.rejects(creditedFetch("/x", {}), /^Error: Connexion interrompue\. Vérifiez votre solde de crédits avant de réessayer\.$/);
+  await assert.rejects(basket([{ kind: "group", name: "Lait" }]), /Connexion interrompue/);
+  const aborted = new DOMException("The operation was aborted.", "AbortError");
+  globalThis.fetch = async () => { throw aborted; };
+  await assert.rejects(paidFetch("/x", AbortSignal.abort()), error => error === aborted, "a cancelled request is not a lost connection");
+});
+
 test("contribution credits count when the daily ones run out, and are named apart", async () => {
   const { balanceText, outOfCredits, rewardHint, rewardSummary, spendable } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
   const rewards = { price: 5, product: 10, recipe: 10 };

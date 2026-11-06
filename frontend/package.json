@@ -19,10 +19,8 @@
     "test:products": "node --test tests/v2-product-*.test.mjs"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.21",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
-    "axios": "^1.13.6",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "qrcode": "^1.5.4",

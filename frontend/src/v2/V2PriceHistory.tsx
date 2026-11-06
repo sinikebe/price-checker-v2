@@ -10,6 +10,7 @@ import V2PriceGate from "./V2PriceGate";
 import { rewardHint } from "./v2-basket-credits-api";
 import { useSiteFilter } from "./useSiteFilter";
 import { passesSiteFilter } from "./v2-site-filter";
+import { requestJson } from "./v2-http";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -53,19 +54,8 @@ function initialForm(): DraftForm {
     price: "", observed_at: localToday(), note: "" };
 }
 
-async function priceRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
-  const response = await fetch("/api/v2/prices" + path, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Impossible de charger les prix.");
-  }
-  return response.json() as Promise<T>;
+function priceRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
+  return requestJson<T>("/api/v2/prices" + path, { method, body, cache: "no-store", fallback: "Impossible de charger les prix." });
 }
 
 const chartWidth = 800, chartHeight = 300, chartLeft = 62, chartRight = 22, chartTop = 22, chartBottom = 42;

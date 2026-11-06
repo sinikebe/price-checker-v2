@@ -4,8 +4,10 @@ import {
   PWA_RECIPES_KEY, PWA_RECIPES_READY_KEY, PWA_SYNC_ATTEMPT_KEY,
   PWA_VERSIONS_KEY,
 } from "../pwa/cache-keys";
-import { V2_BASKET_EVENT } from "./v2-basket-storage";
+import { V2_BASKET_EVENT, forgetActiveBasketUser } from "./v2-basket-storage";
 import { accountLocalKeys } from "./v2-account-local-keys";
+import { ACCOUNT_DELETED_KEY } from "./v2-account-session";
+import { requestJson } from "./v2-http";
 
 async function clearDeletedAccountData(userId: number): Promise<boolean> {
   let complete = true;
@@ -17,11 +19,9 @@ async function clearDeletedAccountData(userId: number): Promise<boolean> {
       PWA_CACHE_GENERATION_KEY,
     ];
     for (const key of accountLocalKeys(Object.keys(localStorage), userId, exact)) localStorage.removeItem(key);
-    if (localStorage.getItem("v2:basket:active-user") === id) {
-      localStorage.removeItem("v2:basket:active-user");
-    }
+    forgetActiveBasketUser(userId);
     // Other tabs recheck the revoked session and discard stale UI state.
-    localStorage.setItem("v2:account:deleted", String(Date.now()));
+    localStorage.setItem(ACCOUNT_DELETED_KEY, String(Date.now()));
     window.dispatchEvent(new Event(V2_BASKET_EVENT));
   } catch { complete = false; }
   try {
@@ -45,17 +45,8 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
     if (!password || !confirmed || busy) return;
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/v2/account", {
-        method: "DELETE", credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, second_factor: secondFactor || null }),
-      });
-      if (!response.ok) {
-        const data: unknown = await response.json().catch(() => null);
-        const detail = data && typeof data === "object" && "detail" in data
-          ? (data as { detail: unknown }).detail : null;
-        throw new Error(typeof detail === "string" ? detail : "La suppression a échoué.");
-      }
+      await requestJson<void>("/api/v2/account", { method: "DELETE",
+        body: { password, second_factor: secondFactor || null }, fallback: "La suppression a échoué." });
       setPassword(""); setSecondFactor("");
       const cleared = await clearDeletedAccountData(userId);
       onDeleted(cleared);

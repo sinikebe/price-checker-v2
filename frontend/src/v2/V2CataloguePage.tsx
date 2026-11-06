@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import V2CatalogueSearch from "./V2CatalogueSearch";
 import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
 import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
@@ -22,6 +22,10 @@ import V2PriceGate from "./V2PriceGate";
 import "./v2-catalogue.css";
 import LevelBadge from "./V2LevelBadge";
 import { CATALOGUE_DEMO_ID } from "./v2-catalogue-demo";
+import { money } from "./v2-basket-view";
+import { readingTime } from "./v2-calendar-day";
+import { apiError, errorText } from "./v2-http";
+import { useOnline } from "./useOnline";
 
 type Classification = {
   department: string; family: string; comparison_scope: string | null; classification_source: string; classification_revision: number;
@@ -163,7 +167,7 @@ function useCatalogue<T>(path: string, enabled = true) {
     if (!enabled) return;
     let active = true;
     const load = () => { catalogueRequest<T>(path).then(data => { if (active) setResult({ path, data, error: "" }); })
-      .catch(error => { if (active) setResult({ path, data: null, error: String(error) }); }); };
+      .catch(error => { if (active) setResult({ path, data: null, error: errorText(error, "L'opération a échoué.") }); }); };
     load();
     if (path.startsWith("/categories/") || path.startsWith("/comparison?"))
       window.addEventListener(CONNECTOR_PRICE_REFRESH_EVENT, load);
@@ -194,8 +198,6 @@ function Pagination({ total, page, size, onChange }: { total: number; page: numb
 /** The contribution mode shows the catalogue's tools; shopping keeps names and quantities. */
 const useContributing = () => useAppMode().mode === "contribute";
 
-const euros = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-
 function ProductLink({ product, showGroup = false, price }: { product: Product; showGroup?: boolean;
   /** Shopping view of a group with its prices fetched: the lowest current price, or null without one. */
   price?: BestPrice | null }) {
@@ -203,7 +205,7 @@ function ProductLink({ product, showGroup = false, price }: { product: Product; 
   return <Link className="v2-workspace-list-item" to={"/v2/produits/" + product.id}>
     <div><LevelBadge level="product" /><strong>{productName(product)}</strong><small>{(contributing ? [showGroup && product.data.group, product.data.commercial_name, product.data.quantity || "Quantité à préciser"]
       : [product.data.quantity || "Quantité à préciser"]).filter(Boolean).join(" · ")}</small></div>
-    {price !== undefined ? <span className="v2-catalogue-line-price">{price ? <><strong>{euros(price.cents)}</strong>
+    {price !== undefined ? <span className="v2-catalogue-line-price">{price ? <><strong>{money(price.cents)}</strong>
       <small>{price.stores > 1 ? `le moins cher de ${price.stores} magasins` : price.reading.retailer}</small></> : <small>Pas de prix relevé</small>}</span>
       : <span>Voir la fiche →</span>}
   </Link>;
@@ -213,7 +215,7 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
   const points = detail.observations.flatMap(item => {
     const product = byId.get(item.product_id);
     if (!product) return [];
-    const time = Date.parse(item.observed_at), price = Number(item.price);
+    const time = readingTime(item.observed_at), price = Number(item.price);
     if (!Number.isFinite(time) || !Number.isFinite(price) || price < 0) return [];
     const quantity = metric === "price" ? null : quantityFor(product, metric);
     if (metric !== "price" && (!quantity || price === 0)) return [];
@@ -277,10 +279,7 @@ function ClassificationEditor({ name, current, onSaved }: {
         body: JSON.stringify({ department: department.trim(), family: family.trim(), comparison_scope: scope.trim() || null,
           base_revision: current.classification_revision }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { detail?: string };
-        throw new Error(payload.detail || "Le classement n’a pas été enregistré.");
-      }
+      if (!response.ok) throw await apiError(response, "Le classement n’a pas été enregistré.");
       const updated = await response.json() as Classification;
       onSaved(updated);
       setSuccess("Classement enregistré pour tout le groupe comparable.");
@@ -313,6 +312,7 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
   const products = detail.products;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
   const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id), admin);
+  const online = useOnline();
   const availableMetrics = unitMetrics.map(unit => ({
     unit, count: selectedProducts.filter(product => quantityFor(product, unit)).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
@@ -359,7 +359,7 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
           {productName(selectedProducts.find(product => product.id === badge.productId)!)} · {badge.connector} :
           <V2ConnectorQueueIndicator badge={badge} />
         </span>)}</div>}
-      {!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
+      {!online && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
       {awaitingPrices ? <p className="v2-catalogue-source">Les prix s’affichent ici une fois récupérés.</p> : <CategoryChart detail={detail} products={selectedProducts} metric={metric} showGroup={showGroup} />}
       <h2>Produits</h2>
       <div className="v2-workspace-list">{selectedProducts.slice((page - 1) * size, page * size).map(product =>
@@ -405,7 +405,7 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
   const [savedClassification, setSavedClassification] = useState<Classification | null>(null);
   const classification = savedClassification ?? data;
   const products = data?.products ?? [];
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>
       {classification && <>
@@ -430,7 +430,7 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
       <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function ScopePage({ department, family, scope, user, onLogout }: Props & { department: string; family: string; scope: string }) {
@@ -442,7 +442,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
     data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/comparison?" + new URLSearchParams({ department, family, scope, max_cost: String(cost) }));
   const site = useSiteFilter().active;
   const priced = data ? { ...data, observations: (paid.data?.observations ?? data.observations).filter(row => passesSiteFilter(row, site)) } : null;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>
       <Link to={browsePath(department)}><LevelBadge level="department" /> {department}</Link>
@@ -463,7 +463,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
         error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
       {contributing && <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function CatalogueIndex({ user, onLogout }: Props) {
@@ -529,7 +529,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
     ...directGroups.map(item => ({ kind: "group" as const, name: item.name, count: item.product_count })),
   ];
   const result = search.data;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>Produits<span>.</span></h1>
       <p>{contributing ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
         : "Parcourez les rayons ou recherchez un produit, puis ajoutez-le à votre panier."}</p></div>
@@ -599,7 +599,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
           <Pagination total={familyEntries.length} page={page} size={size} onChange={changePage} />
         </> : <p>Aucun groupe dans cette famille.</p>}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 export default function V2CataloguePage(props: Props) {
   const location = useLocation();

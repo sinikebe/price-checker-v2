@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { saveBlob } from "./v2-download";
 
 /** Administrator card: the browser extension, ready to load in a Chromium-based browser. */
 export default function V2ExtensionDownload() {
@@ -12,11 +13,7 @@ export default function V2ExtensionDownload() {
       const [{ extensionBundle }, { makeZip }] = await Promise.all([import("./v2-extension-files"), import("./v2-zip")]);
       const encoder = new TextEncoder();
       const zip = makeZip(extensionBundle(window.location.origin).map(file => ({ name: file.name, data: encoder.encode(file.text) })));
-      const url = URL.createObjectURL(new Blob([zip.buffer as ArrayBuffer], { type: "application/zip" }));
-      const link = document.createElement("a");
-      link.href = url; link.download = "price-checker-extension.zip";
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      saveBlob(new Blob([zip.buffer as ArrayBuffer], { type: "application/zip" }), "price-checker-extension.zip");
     } catch {
       setError("L’archive n’a pas pu être préparée.");
     } finally { setBusy(false); }

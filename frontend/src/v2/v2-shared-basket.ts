@@ -82,7 +82,7 @@ export type WireOp =
   | { op: "tick"; key: string; on: boolean };
 type KeyOf = (item: BasketItem) => string;
 
-export const SHARED_INVITE = /^#rejoindre=([1-9][0-9]{0,18}-[A-Za-z0-9_-]{22})$/;
+const SHARED_INVITE = /^#rejoindre=([1-9][0-9]{0,18}-[A-Za-z0-9_-]{22})$/;
 export const MAX_OPS = 150;
 
 /** The invitation carried by a link (`#rejoindre=…`), or null. */
@@ -203,9 +203,15 @@ export const STORAGE_NOTICE = "Un panier partagé est enregistré sur le serveur
   + "et de toute personne qui ouvre le lien du panier, sans dépenser de crédits.";
 
 const PENDING_INVITE = "v2:basket:pending-invite";
+/** This tab already looked for a shared basket of the account on the server (once per session). */
+export const sharedLookedKey = (userId: number) => `v2:basket:shared-looked:${userId}`;
 /** An invitation kept while the visitor signs in, so the link still works afterwards (this tab only). */
 export function keepPendingInvite(invite: string) {
   try { sessionStorage.setItem(PENDING_INVITE, invite); } catch { /* the link can be opened again */ }
+}
+/** Drop the kept invitation; callers catch an unavailable storage. */
+export function forgetPendingInvite() {
+  sessionStorage.removeItem(PENDING_INVITE);
 }
 export function takePendingInvite(): string | null {
   try {

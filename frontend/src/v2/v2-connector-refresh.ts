@@ -16,17 +16,6 @@ async function connectors(): Promise<InstalledConnector[]> {
   return installed;
 }
 
-export async function requestConnectorRefresh(productId: number): Promise<void> {
-  if (!navigator.onLine || !Number.isSafeInteger(productId) || productId <= 0) return;
-  for (const connector of await connectors()) {
-    try {
-      await fetch(`/api/v2/connector-stores/${encodeURIComponent(connector.id)}/products/${productId}/refresh`, {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
-      });
-    } catch { /* Optional connector must not interrupt shopping. */ }
-  }
-}
-
 /** Products of `next` missing from `previous`: one basket change makes one batched request. */
 export function addedProductIds(previous: ReadonlySet<number>, next: readonly BasketItem[]): number[] {
   return next.flatMap(item => "kind" in item ? [] : [item.id]).filter(id => !previous.has(id));

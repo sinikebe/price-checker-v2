@@ -16,7 +16,7 @@ const STORES: DockItem = { id: "stores", label: "Magasins", to: "/v2/magasins" }
 const RECIPES: DockItem = { id: "recipes", label: "Recettes", to: "/v2/recettes" };
 const BASKET: DockItem = { id: "basket", label: "Panier", to: "/v2/panier" };
 /** The shared basket, next to the personal one, for an account that follows one. */
-export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
+const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
 
 /** The dock entries for this mode: the shared basket shows once the account follows one; stores are for contributing. */
 export function dockItems(mode: AppMode, followsShared: boolean): readonly DockItem[] {

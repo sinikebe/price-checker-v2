@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { saveBlob } from "./v2-download";
+import { apiError } from "./v2-http";
 
 type ImportResult = {
   products_imported: number; prices_imported: number;
@@ -12,11 +14,8 @@ type StoreWarning = {
 type ImportPreview = { stores: StoreWarning[]; approval_token: string | null };
 const MAX_FILE_BYTES = 24 * 1024 * 1024;
 
-async function message(response: Response): Promise<string> {
-  const value: unknown = await response.json().catch(() => null);
-  return value && typeof value === "object" && "detail" in value && typeof value.detail === "string"
-    ? value.detail : `Transfert impossible (HTTP ${response.status}).`;
-}
+/** The error of a refused transfer: the server's reason, else its HTTP status. */
+const refused = (response: Response) => apiError(response, `Transfert impossible (HTTP ${response.status}).`);
 
 export default function V2TransferPanel() {
   const [file, setFile] = useState<File | null>(null);
@@ -33,15 +32,8 @@ export default function V2TransferPanel() {
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/v2/transfers/export", { credentials: "same-origin", cache: "no-store" });
-      if (!response.ok) throw new Error(await message(response));
-      const url = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `price-checker-v2-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (!response.ok) throw await refused(response);
+      saveBlob(await response.blob(), `price-checker-v2-${new Date().toISOString().slice(0, 10)}.json`);
       setNotice("Archive des produits et prix publiés téléchargée.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Export impossible.");
@@ -57,7 +49,7 @@ export default function V2TransferPanel() {
         method: "POST", credentials: "same-origin", cache: "no-store",
         headers: { "Content-Type": "application/json" }, body: await file.text(),
       });
-      if (!response.ok) throw new Error(await message(response));
+      if (!response.ok) throw await refused(response);
       setPreview(await response.json() as ImportPreview);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Vérification impossible.");
@@ -78,7 +70,7 @@ export default function V2TransferPanel() {
       });
       if (!response.ok) {
         setPreview(null); setApproved(false);
-        throw new Error(await message(response));
+        throw await refused(response);
       }
       const result = await response.json() as ImportResult;
       setNotice(`${result.products_imported} produit(s) et ${result.prices_imported} prix importé(s). ` +

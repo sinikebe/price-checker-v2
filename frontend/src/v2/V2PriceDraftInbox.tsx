@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
+import { errorText, requestJson } from "./v2-http";
+import { euros } from "./v2-basket-view";
 import "./v2-price-draft-inbox.css";
 
 type Item = {
@@ -14,16 +16,9 @@ type Result = { items: Item[]; total: number; limit: number; offset: number };
 type Mode = "mine" | "review";
 const PAGE_SIZE = 30;
 const channels = { in_store: "Magasin", drive: "Drive", delivery: "Livraison" };
-const money = (value: string) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
 
-async function request<T>(path: string, method = "GET"): Promise<T> {
-  const response = await fetch("/api/v2/prices" + path, { method, credentials: "same-origin", cache: "no-store" });
-  if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null);
-    const detail = body && typeof body === "object" && "detail" in body ? (body as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Impossible de charger les propositions de prix.");
-  }
-  return response.json() as Promise<T>;
+function request<T>(path: string, method = "GET"): Promise<T> {
+  return requestJson<T>("/api/v2/prices" + path, { method, cache: "no-store", fallback: "Impossible de charger les propositions de prix." });
 }
 
 export default function V2PriceDraftInbox({ mode, user }: { mode: Mode; user: V2User | null }) {
@@ -40,7 +35,7 @@ export default function V2PriceDraftInbox({ mode, user }: { mode: Mode; user: V2
       if (!active) return;
       if (page > 0 && page * PAGE_SIZE >= value.total) setPage(page - 1);
       else { setResult(value); setError(""); }
-    }).catch(reason => { if (active) { setResult(null); setError(String(reason)); } });
+    }).catch(reason => { if (active) { setResult(null); setError(errorText(reason, "Impossible de charger les propositions de prix.")); } });
     return () => { active = false; };
   }, [mode, user, page, reload]);
 
@@ -61,7 +56,7 @@ export default function V2PriceDraftInbox({ mode, user }: { mode: Mode; user: V2
         const target = item.product_id ? `/v2/produits/${item.product_id}` : `/v2/brouillons/${item.product_draft_id}`;
         return <li key={item.id}>
           <div><strong>{[item.product_brand, item.product_name].filter(Boolean).join(" ") || "Produit sans nom"}</strong>
-            <small>{money(item.price)} · {item.retailer} · {item.store_name} · {channels[item.sales_channel]} · {new Date(item.observed_at + "T12:00:00").toLocaleDateString("fr-FR")}</small>
+            <small>{euros(item.price)} · {item.retailer} · {item.store_name} · {channels[item.sales_channel]} · {new Date(item.observed_at + "T12:00:00").toLocaleDateString("fr-FR")}</small>
             {mode === "review" && <small>Proposé par {item.author}</small>}
             {item.status === "rejected" && <small>Refusé</small>}
             {!item.product_id && <small>Fiche produit à valider avant ce prix.</small>}

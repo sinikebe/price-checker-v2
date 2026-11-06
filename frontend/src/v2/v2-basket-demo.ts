@@ -126,7 +126,7 @@ function dayBefore(today: Date, days: number): string {
 }
 
 /** The demo prices as a fetched result, dated from `today`: the basket page computes everything from it. */
-export function demoSnapshot(today: Date): BasketSnapshot {
+function demoSnapshot(today: Date): BasketSnapshot {
   let rowId = 0;
   const products: BasketSnapshot["products"] = {};
   const prices: BasketSnapshot["prices"] = {};

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import { emptyProduct, ProductApiError, productRequest, type Draft, type Product, type ProductData } from "./v2-products-api";
 import bookmarkletSource from "./bookmarklet-capture.js?raw";
 import versions from "./component-versions.json";
 import captureRetailers from "./capture-retailers.json";
 import { storeMatchesPath, storeRequest, type StoreCandidate, type StoreMatches } from "./v2-stores-api";
+import { errorDetail } from "./v2-http";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
+import { euros } from "./v2-basket-view";
 import "./v2-capture.css";
 
 type CapturedStore = { name: string; city: string | null; postalCode: string | null;
@@ -58,7 +61,7 @@ function parsePayload(raw: string | null): Payload | null {
       city: storeText("city", 200), postalCode: storeText("postalCode", 20),
       channel: channel === "drive" || channel === "delivery" || channel === "in_store" ? channel : null } : null;
     return { v: 2, url: data.url, host: data.host, name: optional("name", 180), brand: optional("brand", 100),
-      ean: ean && /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(ean) ? ean : null,
+      ean: ean && GTIN_PATTERN.test(ean) ? ean : null,
       quantity: optional("quantity", 100), price, source: optional("source", 40),
       store: capturedStore, capturedAt: optional("capturedAt", 40) || "" };
   } catch { return null; }
@@ -117,7 +120,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
     try { await navigator.clipboard.writeText(href); setCopied(true); }
     catch { setCopied(false); }
   }
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Installer le favori de capture<span>.</span></h1>
       <p>Relevez le prix d’une fiche que vous avez déjà ouverte dans le navigateur.</p></div></div>
@@ -135,7 +138,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
       <p>Le point de vente saisi est mémorisé dans ce navigateur pour les prochaines captures de la même enseigne. Aucun prix n’est publié sans validation.</p>
       <p><Link to="/v2/produits">Retour aux produits</Link></p>
     </section>
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
@@ -290,7 +293,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
     finally { busyRef.current = false; setBusy(false); }
   }
   const canContribute = resolution.status === "product" || resolution.status === "draft" || resolution.status === "missing";
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Vérifier le relevé<span>.</span></h1><p>Les informations relevées doivent être vérifiées. Aucun prix n’est publié automatiquement.</p></div></div>
     <section className="v2-workspace-card v2-capture">
@@ -304,7 +307,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       : <>
         <h2>{payload.name || "Produit sans nom"}</h2>
         <p>{[payload.brand, payload.quantity, payload.ean && "EAN " + payload.ean].filter(Boolean).join(" · ") || "Identité à vérifier"}</p>
-        <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : payload.price.toFixed(2) + " €"}</strong>
+        <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : euros(payload.price)}</strong>
           {payload.source && <small> · {payload.source.startsWith("visible:") ? "prix affiché sur la page" : "montant indiqué dans les données de la page"}</small>}</p>
         {payload.price == null && <p>Le prix n’a pas pu être relevé. Vérifiez que le produit est disponible et qu’un magasin est sélectionné sur la fiche, puis relancez la capture.</p>}
         <p>Page consultée : <a href={payload.url} target="_blank" rel="noreferrer">{payload.host}</a>. Le prix dépend du magasin et du canal choisis sur cette page.</p>
@@ -369,12 +372,11 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         </form> : <p>Pour proposer ce relevé, <Link to="/v2/connexion?next=capture">connectez-vous</Link>. La capture reste dans cet onglet.</p>)}
       </>}
     </section>
-  </Frame>;
+  </V2PageFrame>;
 }
 
 async function submissionError(response: Response): Promise<Error> {
-  const data: unknown = await response.json().catch(() => null);
-  const detail = data && typeof data === "object" && "detail" in data ? (data as { detail?: unknown }).detail : null;
+  const detail = await errorDetail(response);
   return new Error(typeof detail === "string" ? detail : "Le relevé n’a pas été enregistré.");
 }
 

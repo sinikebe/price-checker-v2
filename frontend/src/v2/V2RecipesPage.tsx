@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import V2ReportControl from "./V2ReportControl";
 import { decimalText, plainDecimal, positiveDecimal, scaledQuantity } from "../recipes/quantity";
@@ -8,12 +8,14 @@ import type { V2User } from "./v2-auth-api";
 import { productRequest, type Product } from "./v2-products-api";
 import { currentBasketProduct } from "./v2-basket-product";
 import { recipeRequest, type PrivateRecipePage, type Recipe, type RecipeIngredient, type RecipeInput, type RecipePage, type RecipeUnit, type RecipeProposal, type RecipeSubmission } from "./v2-recipes-api";
+import { errorText } from "./v2-http";
 import "./v2-recipes.css";
 import { PWA_RECIPES_READY_KEY } from "../pwa/cache-keys";
 import { offlineRecipeSummaries, SYNC_EVENT } from "../pwa/data-sync";
 import { useAppMode } from "./useAppMode";
 import { useV2Basket } from "./V2BasketContext";
 import { useOnline } from "./useOnline";
+import { enableAdvancedBasket } from "./useBasketView";
 import { OFFLINE_TITLE } from "./v2-basket-read-only";
 import { SHARED_BASKET_PATH } from "./v2-shared-basket";
 import type { BasketItem, BasketQuantity } from "./v2-basket-storage";
@@ -27,17 +29,9 @@ const units: RecipeUnit[] = ["g", "kg", "ml", "cl", "l", "piece"];
 const blankIngredient = (): RecipeIngredient => ({ label: "", amount: null, unit: null, note: "", optional: false, product_id: null, group_name: "" });
 const blankRecipe = (): RecipeInput => ({ title: "", description: "", base_servings: "2", prep_minutes: null, cook_minutes: null, steps: [""], ingredients: [blankIngredient()] });
 const productName = (product: Product["data"]) => [product.brand, product.name, product.quantity].filter(Boolean).join(" · ");
-const message = (error: unknown) => error instanceof Error ? error.message : "Une erreur est survenue.";
+const message = (error: unknown) => errorText(error, "Une erreur est survenue.");
 const privatePath = (id: number) => `/v2/recettes/privees/${id}`;
 const PRIVATE_NOTE = "Visible par vous seul, enregistrée tout de suite, sans validation. Elle ne rapporte pas de crédits.";
-
-function Frame({ children, user, onLogout }: { children: ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
-  return <div className="v2-home v2-recipes">
-    <a className="v2-skip" href="#v2-recipes-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-recipes-main" className="v2-wrap v2-recipes-main">{children}</main>
-  </div>;
-}
 
 function List({ user, onLogout }: Props) {
   // Writing recipes is contributing: the contribution mode's job. Shopping reads them and fills the basket.
@@ -72,7 +66,7 @@ function List({ user, onLogout }: Props) {
       .catch(reason => { if (active) { const all = offlineRecipeSummaries().filter(item => item.title.toLocaleLowerCase().includes(q.toLocaleLowerCase())); if (all.length || localStorage.getItem(PWA_RECIPES_READY_KEY) === "1") setResult({ items: all.slice((page - 1) * 20, page * 20), total: all.length, page, page_size: 20 }); else setError(message(reason)); } });
     return () => { active = false; };
   }, [q, page, refresh]);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame section="recipes" user={user} onLogout={onLogout}>
     <div className="v2-recipes-heading"><div><span className="v2-section-kicker">À CUISINER</span><h1>Recettes<span>.</span></h1><p>Des ingrédients précis quand vous le souhaitez, ou un groupe pour garder le choix.</p></div>
       {contributing && <Link className="v2-button v2-button-primary" to="/v2/recettes/nouvelle">Ajouter une recette →</Link>}</div>
     {location.search.includes("proposition=envoyee") && <p role="status" className="v2-recipes-card">Proposition envoyée. Elle sera visible publiquement après validation.</p>}
@@ -95,7 +89,7 @@ function List({ user, onLogout }: Props) {
       {!result.items.length && <p className="v2-recipes-empty">Aucune recette pour le moment.</p>}
       {result.total > result.page_size && <div className="v2-recipes-pager"><button disabled={page <= 1} onClick={() => setPage(page - 1)}>Précédent</button><span>Page {page} / {Math.ceil(result.total / result.page_size)}</span><button disabled={page * result.page_size >= result.total} onClick={() => setPage(page + 1)}>Suivant</button></div>}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
@@ -232,11 +226,11 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
     // Quantities matter: the basket opens in the quantities mode (for every member of a shared basket).
     if (result.added || result.merged) {
       if (toShared) basket.shared.setSettings({ advanced: true });
-      else try { localStorage.setItem("v2:basket:advanced", "1"); } catch { /* mode remains available via basket toggle */ }
+      else enableAdvancedBasket();
     }
     navigate(toShared ? SHARED_BASKET_PATH : "/v2/panier");
   }
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame section="recipes" user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to="/v2/recettes">← Toutes les recettes</Link>
     {error && <p role="alert" className="v2-recipes-error">{error}</p>}
     {!currentRecipe && !error && (!privateRecipe || userId) && <p>Chargement…</p>}
@@ -279,7 +273,7 @@ function Detail({ id, privateRecipe = false, user, onLogout }: Props) {
         <section className="v2-recipes-card"><h2>Préparation</h2><p className="v2-recipes-meta">{currentRecipe.prep_minutes != null && `Préparation : ${currentRecipe.prep_minutes} min · `}{currentRecipe.cook_minutes != null && `Cuisson : ${currentRecipe.cook_minutes} min`}</p><ol className="v2-recipes-steps">{currentRecipe.steps.map((step, index) => <li key={index}>{step}</li>)}</ol></section></div>
       {contributing && !privateRecipe && <V2ReportControl kind="recipe" contentId={currentRecipe.id} user={user} />}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function move<T>(items: T[], index: number, offset: number): T[] {
@@ -385,7 +379,7 @@ function Editor({ mode, id, privateRecipe = false, user, onLogout }: Props) {
   }
   const cancelTo = savedRecipe ? privateRecipe ? privatePath(savedRecipe.id) : `/v2/recettes/${savedRecipe.id}` : "/v2/recettes";
   const groups = [...new Set(products.map(product => product.data.group.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame section="recipes" user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to={cancelTo}>← Recettes</Link>
     <div className="v2-recipes-heading"><div><span className="v2-section-kicker">ATELIER RECETTE</span><h1>{replay ? "Modifier une proposition" : mode === "new" ? "Nouvelle recette" : isPrivate ? "Modifier la recette privée" : "Modifier la recette"}<span>.</span></h1><p>Un ingrédient peut viser une référence précise ou laisser le choix dans un groupe. {isPrivate ? "Cette recette reste privée : vous seul la voyez." : "La recette, ses étapes et ses notes seront publiées après validation : évitez les informations personnelles."}</p></div></div>
     {(loading || !replayLoaded) && <p>Chargement…</p>}
@@ -415,7 +409,7 @@ function Editor({ mode, id, privateRecipe = false, user, onLogout }: Props) {
           .then(yes => { if (yes) navigate(cancelTo); });
       }}>Annuler</Link></div>
     </fieldset></form>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 export default function V2RecipesPage(props: Props) {

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
@@ -24,6 +24,9 @@ import {
 import { formatMeasure, MEASURE_UNITS, measureUnitLabel, readExtraAmount } from "./v2-measures";
 import { rewardHint } from "./v2-basket-credits-api";
 import { useCredits } from "./useCredits";
+import { errorText } from "./v2-http";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
+import { euros } from "./v2-basket-view";
 import "./v2-price-gate.css";
 import "./v2-product-workspace.css";
 
@@ -54,14 +57,6 @@ function safeProductUrl(value: string): string | null {
   catch { return null; }
 }
 
-export function Frame({ children, user, onLogout }: { children: React.ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
-  return <div className="v2-home v2-workspace">
-    <a className="v2-skip" href="#v2-workspace-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-workspace-main" className="v2-wrap v2-workspace-main">{children}</main>
-  </div>;
-}
-
 function useCollection<T>(path: string, enabled = true) {
   const [result, setResult] = useState<{ path: string; data: T | null; error: string }>({ path: "", data: null, error: "" });
   const [reload, setReload] = useState(0);
@@ -69,7 +64,7 @@ function useCollection<T>(path: string, enabled = true) {
     if (!enabled) return;
     let active = true;
     productRequest<T>(path).then(value => { if (active) setResult({ path, data: value, error: "" }); })
-      .catch(reason => { if (active) setResult({ path, data: null, error: String(reason) }); });
+      .catch(reason => { if (active) setResult({ path, data: null, error: errorText(reason, "L'opération a échoué.") }); });
     return () => { active = false; };
   }, [path, enabled, reload]);
   return { data: enabled && result.path === path ? result.data : null,
@@ -83,7 +78,7 @@ function ListPage({ mode, user, onLogout }: Props) {
   const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? `/drafts/review?limit=${pageSize}&offset=${page * pageSize}` : "";
   const { data, error } = useCollection<(Draft | Product)[]>(path, mode !== "review" || user?.role === "admin");
   const title = mode === "mine" ? "Mes brouillons" : mode === "review" ? "Propositions à valider" : "Produits publiés";
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>{title}<span>.</span></h1>
       <p>{mode === "mine" ? "Vos propositions restent privées jusqu'à validation." : mode === "review" ? "Vérifiez chaque proposition avant publication." : "Seuls les produits validés sont visibles ici."}</p></div>
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
@@ -110,7 +105,7 @@ function ListPage({ mode, user, onLogout }: Props) {
     </div>}
     {(mode === "mine" || mode === "review") && <V2PriceDraftInbox mode={mode} user={user} />}
     {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 /** Lists saved by an older version of the app may lack the field. */
@@ -132,7 +127,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryBarcode = new URLSearchParams(location.search).get("ean") ?? "";
-  const initialBarcode = mode === "new" && /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(queryBarcode) ? queryBarcode : "";
+  const initialBarcode = mode === "new" && GTIN_PATTERN.test(queryBarcode) ? queryBarcode : "";
   const localKey = mode === "new" ? "v2:product:new" + (user ? ":" + user.id : "") + (initialBarcode ? ":ean:" + initialBarcode : "") : mode === "edit" ? "v2:product:edit:" + (user?.id ?? "anon") + ":" + id : "v2:product:draft:" + (user?.id ?? "anon") + ":" + id;
   const [data, setData] = useState<ProductData>(() => localRead(localKey)?.data ?? { ...emptyProduct(), ean: initialBarcode });
   const [changeKind, setChangeKind] = useState<ChangeKind>(() => localRead(localKey)?.change_kind ?? "correction");
@@ -166,7 +161,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         setDraft(value);
         if (!localRead(localKey)) { setData(completeProductData(value.data)); setChangeKind(value.change_kind); setBaseRevision(value.revision); setDirty(false); }
         setLoading(false);
-      }).catch(reason => { if (active) { setError(String(reason)); setLoading(false); } });
+      }).catch(reason => { if (active) { setError(errorText(reason, "L'opération a échoué.")); setLoading(false); } });
     } else {
       Promise.all([
         productRequest<Product>("/" + id),
@@ -187,7 +182,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         setBaseProduct(value);
         if (!localRead(localKey)) { setData(completeProductData(value.data)); setDirty(false); }
         setLoading(false);
-      }).catch(reason => { if (active) { setError(String(reason)); setLoading(false); } });
+      }).catch(reason => { if (active) { setError(errorText(reason, "L'opération a échoué.")); setLoading(false); } });
     }
     return () => { active = false; };
   }, [mode, id, localKey, user, navigate]);
@@ -242,7 +237,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         if (snapshot === localVersion.current) localStorage.removeItem(localKey);
         navigate("/v2/brouillons/" + saved.id);
       }
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); }
     finally { setBusy(false); }
   }
   const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
@@ -255,7 +250,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
     try {
       const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST", { revision: draft.revision });
       navigate("/v2/produits/" + product.id);
-    } catch (reason) { setError(String(reason)); setBusy(false); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); setBusy(false); }
   }
   async function reject() {
     if (!draft || busy || dirty || draft.status !== "draft") return;
@@ -265,7 +260,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
       const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
       setDraft(rejected);
       setNotice("Proposition rejetée. Elle reste visible pour son auteur.");
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); }
     finally { setBusy(false); }
   }
   async function discardSuperseded() {
@@ -276,9 +271,9 @@ function Editor({ mode, id, user, onLogout }: Props) {
       await productRequest<{ deleted: boolean }>("/drafts/" + draft.id, "DELETE");
       localStorage.removeItem(localKey);
       navigate("/v2/brouillons");
-    } catch (reason) { setError(String(reason)); setBusy(false); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); setBusy(false); }
   }
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
       <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
       <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier. Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
@@ -368,7 +363,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
         <p>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</p>
         {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
-          <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
+          <ul>{draft.linked_prices.map(item => <li key={item.id}>{euros(item.price)} · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}
             {item.capture_ean && ` · EAN ${item.capture_ean}`}
             {item.captured_store_name && ` · nom de la page : ${item.captured_store_name}`}
@@ -379,7 +374,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
           Champs repris : {data.off_source.fields.join(", ")}.</p>}
       </aside>
     </div>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 /**
@@ -422,7 +417,7 @@ function ShoppingPriceHistory({ productId, user, current }: { productId: number;
 
 function ShoppingDetail({ product, id, user, onLogout, read }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void>; read: OffRead }) {
   const d = completeProductData(product.data);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
       <span className="v2-section-kicker">PRODUIT</span>
       <h1 id="v2-product-simple-name">{productTitle(product)}<span>.</span></h1>
@@ -442,7 +437,7 @@ function ShoppingDetail({ product, id, user, onLogout, read }: { product: Produc
       <h2 id="v2-product-off-heading">Chez Open Food Facts</h2>
       <OffDetails product={read.product} />
     </section>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function Detail({ mode, id, user, onLogout }: Props) {
@@ -453,12 +448,12 @@ function Detail({ mode, id, user, onLogout }: Props) {
   const product = loaded ? withOffFacts(loaded, read) : null;
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", contributing && mode === "history");
   useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
-  if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
-  if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
+  if (error) return <V2PageFrame user={user} onLogout={onLogout}><p role="alert">{error}</p></V2PageFrame>;
+  if (!product) return <V2PageFrame user={user} onLogout={onLogout}><p>Chargement…</p></V2PageFrame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
   if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} read={read} />;
   const d = completeProductData(product.data);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">{product.off_reference ? "PRODUIT · CODE-BARRES SEUL" : "PRODUIT PUBLIÉ · V2"}</span><div className="v2-share-title-row"><h1>{productTitle(product)}<span>.</span></h1>
       <V2ShareButton title={productTitle(product)} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
       <p>{d.commercial_name || d.quantity}</p>
@@ -499,7 +494,7 @@ function Detail({ mode, id, user, onLogout }: Props) {
       </div>}
     {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} initial={read.phase === "done" ? read.product : undefined} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 export default function V2ProductWorkspace(props: Props) {

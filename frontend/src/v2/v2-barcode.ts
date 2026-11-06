@@ -1,4 +1,5 @@
 import { ProductApiError, productRequest } from "./v2-products-api";
+import { errorDetail } from "./v2-http";
 
 type BarcodeMatch = { kind: "product" | "draft"; id: number };
 
@@ -22,10 +23,9 @@ export async function barcodeProduct(code: string): Promise<{ id: number; create
     method: "POST", credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ean: code }),
   });
-  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail: unknown }).detail : null;
+    const detail = await errorDetail(response);
     throw new Error(response.status === 401 ? "Connectez-vous pour ajouter ce produit." : typeof detail === "string" ? detail : "Ajout impossible. Réessayez.");
   }
-  return payload as { id: number; created: boolean };
+  return await response.json() as { id: number; created: boolean };
 }

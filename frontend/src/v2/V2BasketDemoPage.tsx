@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link, useNavigate } from "react-router-dom";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
 import V2BasketFilters from "./V2BasketFilters";
 import V2BasketItems from "./V2BasketItems";
 import V2BasketResults from "./V2BasketResults";
@@ -57,14 +57,10 @@ export default function V2BasketDemoPage({ user, onLogout, listMode = false }: {
   user: V2User | null; onLogout: () => Promise<void>; listMode?: boolean;
 }) {
   const source = useDemoSource();
-  return <div className="v2-home v2-recipes">
-    <a className="v2-skip" href="#v2-basket-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-basket-main" className="v2-wrap v2-recipes-main">
-      {source ? <DemoBasket key={source.id} source={source} listMode={listMode} admin={user?.role === "admin"} />
-        : <p role="status">Chargement du panier de démonstration…</p>}
-    </main>
-  </div>;
+  return <V2PageFrame section="basket" user={user} onLogout={onLogout}>
+    {source ? <DemoBasket key={source.id} source={source} listMode={listMode} admin={user?.role === "admin"} />
+      : <p role="status">Chargement du panier de démonstration…</p>}
+  </V2PageFrame>;
 }
 
 function DemoBasket({ source, listMode, admin }: { source: DemoSource; listMode: boolean; admin: boolean }) {

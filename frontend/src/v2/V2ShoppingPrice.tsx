@@ -3,9 +3,9 @@ import { useSiteFilter } from "./useSiteFilter";
 import { passesSiteFilter } from "./v2-site-filter";
 import { creditLabel } from "./v2-basket-credits-api";
 import { bestPrice, readingPlace, type LatestReading } from "./v2-product-best-price";
+import { money } from "./v2-basket-view";
 
 type Prices = { latest_by_store: LatestReading[] };
-const money = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 const day = (value: string) => new Date(value + "T12:00:00").toLocaleDateString("fr-FR");
 
 /**

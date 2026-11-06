@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { IScannerControls } from "@zxing/browser";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
 
 type ScannerState = "requesting" | "scanning" | "insecure" | "denied" | "no-camera" | "camera-error";
-const GTIN = /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/;
 
 export default function V2BarcodeScanner({ onClose, onDetected }: {
   onClose: () => void;
@@ -46,7 +46,7 @@ export default function V2BarcodeScanner({ onClose, onDetected }: {
           (result, _error, scanControls) => {
             if (!active || !result || detectedRef.current) return;
             const code = result.getText().trim();
-            if (!GTIN.test(code)) return;
+            if (!GTIN_PATTERN.test(code)) return;
             detectedRef.current = true;
             scanControls.stop();
             onDetectedRef.current(code);

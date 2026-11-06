@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import V2ConnectorSettings from "./V2ConnectorSettings";
+import { errorText, requestJson } from "./v2-http";
 
 type Change = { version: string; notes: string[] };
 type Connector = { id: string; name: string; version: string; changelog: Change[] };
@@ -23,15 +24,8 @@ const newer = (candidate: string, installed: string) => {
   return false;
 };
 
-async function request(url: string, method = "GET", body?: unknown): Promise<Result> {
-  const response = await fetch(url, { method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined });
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(detail?.detail || "Opération impossible.");
-  }
-  return response.json() as Promise<Result>;
+function request(url: string, method = "GET", body?: object): Promise<Result> {
+  return requestJson<Result>(url, { method, body, cache: "no-store", fallback: "Opération impossible." });
 }
 
 export default function V2ConnectorStores() {
@@ -48,16 +42,16 @@ export default function V2ConnectorStores() {
   useEffect(() => {
     let active = true;
     void request(base).then(value => { if (active) setStores(value.stores); })
-      .catch(reason => { if (active) setError(String(reason)); });
+      .catch(reason => { if (active) setError(errorText(reason, "Opération impossible.")); });
     return () => { active = false; };
   }, []);
-  async function action(url: string, method = "POST", body?: unknown, success = "Modifications enregistrées.") {
+  async function action(url: string, method = "POST", body?: object, success = "Modifications enregistrées.") {
     if (busy) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const value = await request(url, method, body);
       setStores(value.stores); setNotice(success);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   async function add(event: FormEvent) {
@@ -69,7 +63,7 @@ export default function V2ConnectorStores() {
         private_key: isPrivate && privateKey ? privateKey : null });
       setStores(value.stores); setName(""); setRepository(""); setPrivateKey("");
       setNotice("Store ajouté. Récupérez son catalogue pour voir les connecteurs.");
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   function change(store: Store, connector: Connector, actionName: "install" | "update" | "rollback" | "enable" | "disable") {
