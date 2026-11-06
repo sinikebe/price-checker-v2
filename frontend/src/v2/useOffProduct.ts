@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { readOffProduct, validBarcode, type OffProduct } from "./v2-off-browser";
+import { OFF_UNAVAILABLE, readOffProduct, validBarcode, type OffProduct } from "./v2-off-browser";
+import { errorText } from "./v2-http";
 
 export type OffRead = { phase: "idle" | "loading" | "missing" } | { phase: "error"; message: string } | { phase: "done"; product: OffProduct };
 
@@ -15,7 +16,7 @@ export function useOffProduct(code: string | null): OffRead {
     readOffProduct(code, controller.signal)
       .then(product => { if (!controller.signal.aborted) setRead({ code, value: product ? { phase: "done", product } : { phase: "missing" } }); })
       .catch(reason => {
-        if (!controller.signal.aborted) setRead({ code, value: { phase: "error", message: reason instanceof Error ? reason.message : "Open Food Facts ne répond pas pour le moment." } });
+        if (!controller.signal.aborted) setRead({ code, value: { phase: "error", message: errorText(reason, OFF_UNAVAILABLE) } });
       });
     return () => controller.abort();
   }, [code]);
