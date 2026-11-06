@@ -29,7 +29,7 @@ function DatedPrice({ choice, range, onUnit }: { choice: PriceChoice; range: { m
     <UnitSwitch choice={choice} onUnit={onUnit} />
     {choice.used && <small>Part utilisée : {money(choice.usedCents)}</small>}
     {choice.unit && surplusText(choice.unit) && <small className="v2-basket-surplus">{surplusText(choice.unit)}</small>}
-    <span className="v2-basket-age" data-age={age.code} title={age.label}><span className="v2-basket-visually-hidden">Fraîcheur : {age.label}</span></span>
+    <span className="v2-basket-age" data-age={age.code} title={age.label}><span className="v2-site-sr-only">Fraîcheur : {age.label}</span></span>
     <small>Relevé du {shortDate(choice.reading.observed_at)}</small>
   </span>;
 }

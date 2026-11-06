@@ -4,7 +4,7 @@
   background: rgba(16, 32, 26, .45);
 }
 .v2-confirm {
-  box-sizing: border-box; width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+  width: min(460px, 100%); max-height: calc(100vh - 32px); overflow: auto;
   padding: 22px; border: 1px solid #dfebe4; border-radius: 18px; background: #fff; color: var(--v2-ink, #18322e);
   box-shadow: 0 24px 60px rgba(16, 40, 30, .28);
 }

@@ -3,7 +3,7 @@
 .v2-logs-filters label, .v2-logs-filters legend { display: grid; gap: 4px; font-size: .82rem; font-weight: 650; }
 .v2-logs-filters fieldset { margin: 0; padding: 0; border: 0; }
 .v2-logs-filters legend { padding: 0; margin-bottom: 4px; }
-.v2-logs-filters select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--v2-line); border-radius: 10px; background: var(--v2-input-background, #fff); color: var(--v2-ink); font: inherit; }
+.v2-logs-filters select { min-height: 40px; padding: 6px 10px; border: 1px solid var(--v2-line); border-radius: 10px; background: #fff; color: var(--v2-ink); font: inherit; }
 .v2-logs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .v2-logs-chip { min-height: 40px; padding: 0 14px; border: 1px solid var(--v2-line); border-radius: 999px; background: transparent; color: var(--v2-ink); font: inherit; font-weight: 650; cursor: pointer; }
 .v2-logs-chip[aria-pressed="true"] { border-color: #2f8061; background: #e4f1e1; color: #1f4d36; }

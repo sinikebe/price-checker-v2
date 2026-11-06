@@ -75,7 +75,6 @@ html[data-v2-theme="dark"] .v2-price-freshness[data-age="aging"] { background: #
 html[data-v2-theme="dark"] .v2-price-freshness[data-age="old"] { background: #34414b; color: #d8e0e7; }
 html[data-v2-theme="dark"] .v2-price-gridline { stroke: #476054; }
 html[data-v2-theme="dark"] .v2-price-axis-label { fill: #b2c9b8; }
-html[data-v2-theme="dark"] .v2-price-fields :is(input,select) { background: #172822; border-color: #517164; color: #edf5eb; }
 html[data-v2-theme="dark"] .v2-price-review button { color: #edf5eb; }
 html[data-v2-theme="dark"] .v2-price-error { color: #ffacb2 !important; }
 html[data-v2-theme="dark"] .v2-price-success { color: #a9d989 !important; }

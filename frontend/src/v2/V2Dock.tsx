@@ -24,7 +24,7 @@ export default function V2Dock() {
   }, []);
   // Rendered at the end of the page so that it comes last in the reading and tab order.
   return createPortal(
-    <nav className="v2-dock" data-many={entries.length > 5 ? "true" : undefined} aria-label="Navigation principale">
+    <nav className="v2-dock" aria-label="Navigation principale">
       {entries.map(item => {
         const Icon = ICONS[item.id];
         const count = item.id === "basket" ? items.length : item.id === "shared" ? sharedBasket?.items.length ?? 0 : 0;

@@ -25,6 +25,13 @@ test("the shared basket gets its own dock entry once the account follows one", (
   assert.equal(sharedBasketLabel(3), "Panier partagé, 3 articles");
 });
 
+test("the dock holds five entries at most", () => {
+  // A sixth entry would need the narrower phone styling of the dock back: it was dropped because the dock
+  // has had five entries at most since the saved lists left it.
+  for (const mode of ["shopping", "contribute"])
+    for (const follows of [false, true]) assert.ok(dockItems(mode, follows).length <= 5, `${mode}, shared basket followed: ${follows}`);
+});
+
 test("every page maps to the right dock item", () => {
   const cases = [
     ["/", "home"], ["/v2", "home"], ["/v2/", "home"],
