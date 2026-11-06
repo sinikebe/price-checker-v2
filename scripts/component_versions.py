@@ -2,7 +2,8 @@
 """Validate and patch-bump V2 component versions from changed source paths.
 
 The manifest is shipped with the frontend so the displayed numbers are the
-numbers in the installed bundle. GitHub Actions runs this after checks on main.
+numbers in the installed bundle. CI runs `check` and `verify`; developers run
+`bump --base --head` before opening the PR.
 """
 from __future__ import annotations
 
@@ -40,13 +41,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/updates.py", ("deployment",)),
     ("backend/app/api/v2/host_health.py", ("deployment",)),
     ("backend/app/api/v2/sync.py", ("pwa", "products", "recipes", "basket")),
-    ("backend/app/api/v2/off.py", ("open_food_facts",)),
     ("backend/app/core/*.py", ("database",)),
     ("backend/app/db/*.py", ("database",)),
-    ("backend/app/services/off_*.py", ("open_food_facts",)),
-    ("backend/app/services/openfoodfacts_client.py", ("open_food_facts",)),
-    ("backend/app/services/v2_off_snapshot.py", ("open_food_facts",)),
-    ("backend/app/services/v2_off_refresh_queue.py", ("open_food_facts",)),
     ("backend/app/services/v2_open_prices_sync.py", ("open_prices",)),
     ("backend/app/services/v2_price_history.py", ("products", "open_prices")),
     ("backend/app/services/v2_catalogue_hierarchy.py", ("products", "database")),
@@ -56,8 +52,6 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/services/v2_db_pool.py", ("database",)),
     ("backend/app/services/v2_private_retention.py", ("accounts", "database")),
     ("backend/app/services/quantity_parser.py", ("products", "recipes")),
-    ("backend/app/schemas/off.py", ("open_food_facts",)),
-    ("backend/app/schemas/openfoodfacts.py", ("open_food_facts",)),
     ("backend/app/services/barcodes.py", ("products",)),
     ("backend/app/api/v2/product_references.py", ("products",)),
     ("backend/app/services/v2_product_references.py", ("products",)),
@@ -89,12 +83,7 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/V2BarcodeScanner.tsx", ("products",)),
     ("frontend/src/v2/V2BarcodeSearch.tsx", ("products", "open_food_facts")),
     ("frontend/src/v2/V2Off*.tsx", ("products", "open_food_facts")),
-    ("frontend/src/v2/off-types.ts", ("open_food_facts",)),
-    ("frontend/src/v2/off-browser-preview.ts", ("open_food_facts",)),
     ("frontend/src/v2/v2-off-browser.ts", ("open_food_facts",)),
-    ("frontend/src/v2/V2OffPanel.tsx", ("open_food_facts", "products")),
-    ("frontend/src/v2/V2OffBarcodeResult.tsx", ("open_food_facts", "products")),
-    ("frontend/src/v2/V2OffSearch.tsx", ("open_food_facts", "products")),
     ("frontend/src/v2/useOffProduct.ts", ("open_food_facts",)),
     ("frontend/src/v2/V2ReferenceSettings.tsx", ("products",)),
     ("frontend/src/v2/v2-products-api.ts", ("products", "open_food_facts")),
@@ -157,6 +146,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/vite.config.ts", ("pwa",)),
     ("backend/Dockerfile", ("deployment",)),
     ("frontend/Dockerfile.v2", ("deployment",)),
+    ("backend/.dockerignore", ("deployment",)),
+    ("frontend/.dockerignore", ("deployment",)),
     ("frontend/nginx.v2.conf", ("deployment",)),
     ("deployment/v2/*", ("deployment",)),
     ("backend/app/*.py", ("application",)),
@@ -168,7 +159,6 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("backend/app/api/v2/extension.py", ("application", "products", "basket")),
     ("backend/app/services/v2_connector_stores.py", ("application",)),
     ("backend/app/services/__init__.py", ("application",)),
-    ("backend/app/schemas/__init__.py", ("application",)),
     ("frontend/src/v2/V2App.tsx", ("application",)),
     ("frontend/src/v2/V2HomePage.tsx", ("application",)),
     ("frontend/src/v2/V2LegalPage.tsx", ("application",)),
@@ -254,6 +244,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/v2-extension-bridge.ts", ("application", "products", "basket")),
     ("frontend/src/v2/V2ExtensionPriceButton.tsx", ("application", "products")),
     ("frontend/src/v2/v2-extension-manifest.ts", ("application",)),
+    # The settings page bundles these files into the zip it hands out.
+    ("frontend/browser-extension/*", ("application",)),
     ("frontend/src/v2/useExtensionRefresh.ts", ("application", "basket")),
     ("frontend/src/v2/v2-zip.ts", ("application",)),
     ("frontend/src/v2/V2ConnectorVersions.tsx", ("application",)),
@@ -279,10 +271,13 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/package-lock.json", ("application",)),
 )
 
-RUNTIME_PREFIXES = ("backend/app/", "frontend/src/", "deployment/v2/", "frontend/public-v2/")
+RUNTIME_PREFIXES = (
+    "backend/app/", "frontend/src/", "deployment/v2/", "frontend/public-v2/",
+    "frontend/browser-extension/",
+)
 RUNTIME_FILES = {
-    "backend/Dockerfile", "backend/requirements.txt", "backend/pyproject.toml",
-    "frontend/Dockerfile.v2",
+    "backend/Dockerfile", "backend/.dockerignore", "backend/requirements.txt", "backend/pyproject.toml",
+    "frontend/Dockerfile.v2", "frontend/.dockerignore",
     "frontend/package.json", "frontend/package-lock.json", "frontend/nginx.v2.conf",
     "frontend/vite.config.ts", "frontend/v2.html", "frontend/eslint.config.js",
 }
