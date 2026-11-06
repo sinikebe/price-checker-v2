@@ -16,6 +16,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 
+import asyncpg
 import httpx
 
 from app.api.v2.auth import _bump_limit, _connect
@@ -62,6 +63,11 @@ def _valid_price(item: dict, barcode: str) -> tuple[dict, Decimal, datetime] | N
             or not isinstance(city, str) or not city.strip()
             or not isinstance(postcode, str) or not postcode.strip()):
         return None
+    # Values that do not fit the store columns (city varchar(200), postal_code
+    # varchar(20), osm_id bigint) would abort the whole product's import.
+    if (len(city.strip()) > 200 or len(postcode.strip()) > 20
+            or not -2**63 <= location["osm_id"] < 2**63):
+        return None
     try:
         value = Decimal(str(item["price"]))
         observed = date.fromisoformat(item["date"])
@@ -103,10 +109,34 @@ async def _source_retailer(connection, brand: str) -> int:
     )
 
 
+async def _active(connection, store_id: int) -> bool:
+    """Share-lock the store row against a concurrent deletion and tell whether it is active."""
+    return bool(await connection.fetchval(
+        "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", store_id
+    ))
+
+
+async def _link_osm(connection, osm_type: str, osm_id: int, store_id: int) -> None:
+    """Remember that this OSM location is the store, so later readings find it directly."""
+    await connection.execute(
+        "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
+        "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        osm_type, osm_id, store_id,
+    )
+
+
+def _identity(retailer_id: int, store_id: int, source_retailer_id: int | None) -> tuple[int, int, int | None]:
+    """The store's retailer and id, plus the reading's own retailer when it differs."""
+    return retailer_id, store_id, source_retailer_id if source_retailer_id != retailer_id else None
+
+
 async def _store(connection, location: dict) -> tuple[int, int, int | None] | None:
     """Return canonical retailer/store and the external source retailer, if distinct."""
     osm_type = location["osm_type"].lower()
     osm_id = location["osm_id"]
+    # _valid_price checked both are non-blank strings.
+    city = location["osm_address_city"].strip()
+    postcode = location["osm_address_postcode"].strip()
     import_key = "open_prices:location:" + str(location["id"])
     if await connection.fetchval(
         "SELECT EXISTS(SELECT 1 FROM v2_deleted_store_sources WHERE source_key=ANY($1::text[]))",
@@ -130,23 +160,16 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         osm_type, osm_id, import_key,
     )
     if existing:
-        if not await connection.fetchval(
-            "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
-        ):
+        if not await _active(connection, existing["id"]):
             return None
         source_id = await _source_retailer(connection, source_brand) if source_brand else None
         await connection.execute(
             "UPDATE v2_stores SET city=COALESCE(NULLIF(btrim(city),''),$1),"
             "postal_code=COALESCE(NULLIF(btrim(postal_code),''),$2) WHERE id=$3",
-            location["osm_address_city"].strip(), location["osm_address_postcode"].strip(), existing["id"],
+            city, postcode, existing["id"],
         )
-        await connection.execute(
-            "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
-            "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-            osm_type, osm_id, existing["id"],
-        )
-        return (existing["retailer_id"], existing["id"],
-                source_id if source_id != existing["retailer_id"] else None)
+        await _link_osm(connection, osm_type, osm_id, existing["id"])
+        return _identity(existing["retailer_id"], existing["id"], source_id)
     brand = (source_brand or location["osm_name"]).strip()[:200]
     name = (location.get("osm_name") or brand).strip()[:300]
     if not brand or not name:
@@ -154,44 +177,33 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
     retailer = await _source_retailer(connection, brand)
     # Approved external aliases may map across explicitly grouped retailer
     # labels. An OSM identity still takes precedence over a name match.
-    postcode = (location.get("osm_address_postcode") or "").strip()
-    if postcode:
-        candidates = await connection.fetch(
-            "SELECT s.id,s.city,s.retailer_id FROM v2_store_aliases a "
-            "JOIN v2_stores s ON s.id=a.store_id "
-            "JOIN v2_retailers r ON r.id=s.retailer_id "
-            "WHERE a.source='open_prices' AND a.name_key=$1 "
-            "AND s.active "
-            "AND r.group_id=(SELECT group_id FROM v2_retailers WHERE id=$2) "
-            "AND s.postal_code=$3 AND s.osm_id IS NULL "
-            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
-            "WHERE m.kind='store' AND m.from_id=s.id) "
-            "AND NULLIF(btrim(s.city),'') IS NOT NULL",
-            name_key(name), retailer, postcode,
-        )
-        location_city = name_key(location.get("osm_address_city") or "")
-        candidates = [row for row in candidates if not location_city or not row["city"]
-                      or name_key(row["city"]) == location_city]
-        if len(candidates) == 1:
-            if not await connection.fetchval(
-                "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", candidates[0]["id"]
-            ):
-                return None
-            await connection.execute(
-                "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
-                "VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-                osm_type, osm_id, candidates[0]["id"],
-            )
-            return (candidates[0]["retailer_id"], candidates[0]["id"],
-                    retailer if retailer != candidates[0]["retailer_id"] else None)
+    candidates = await connection.fetch(
+        "SELECT s.id,s.city,s.retailer_id FROM v2_store_aliases a "
+        "JOIN v2_stores s ON s.id=a.store_id "
+        "JOIN v2_retailers r ON r.id=s.retailer_id "
+        "WHERE a.source='open_prices' AND a.name_key=$1 "
+        "AND s.active "
+        "AND r.group_id=(SELECT group_id FROM v2_retailers WHERE id=$2) "
+        "AND s.postal_code=$3 AND s.osm_id IS NULL "
+        "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
+        "WHERE m.kind='store' AND m.from_id=s.id) "
+        "AND NULLIF(btrim(s.city),'') IS NOT NULL",
+        name_key(name), retailer, postcode,
+    )
+    location_city = name_key(city)
+    candidates = [row for row in candidates if not location_city or not row["city"]
+                  or name_key(row["city"]) == location_city]
+    if len(candidates) == 1:
+        if not await _active(connection, candidates[0]["id"]):
+            return None
+        await _link_osm(connection, osm_type, osm_id, candidates[0]["id"])
+        return _identity(candidates[0]["retailer_id"], candidates[0]["id"], retailer)
     inserted = await connection.fetchrow(
         """INSERT INTO v2_stores(
             retailer_id,name,city,postal_code,osm_type,osm_id,import_key
         ) VALUES($1,$2,$3,$4,$5,$6,$7)
         ON CONFLICT DO NOTHING RETURNING id,retailer_id""",
-        retailer, name, (location.get("osm_address_city") or None),
-        (location.get("osm_address_postcode") or None),
-        osm_type, osm_id, import_key,
+        retailer, name, city, postcode, osm_type, osm_id, import_key,
     )
     if inserted:
         return inserted["retailer_id"], inserted["id"], None
@@ -204,11 +216,8 @@ async def _store(connection, location: dict) -> tuple[int, int, int | None] | No
         "ORDER BY (old.import_key=$1) DESC LIMIT 1",
         import_key, osm_type, osm_id,
     )
-    if existing and await connection.fetchval(
-        "SELECT active FROM v2_stores WHERE id=$1 FOR SHARE", existing["id"]
-    ):
-        return (existing["retailer_id"], existing["id"],
-                retailer if retailer != existing["retailer_id"] else None)
+    if existing and await _active(connection, existing["id"]):
+        return _identity(existing["retailer_id"], existing["id"], retailer)
     return None
 
 
@@ -264,6 +273,14 @@ async def _postpone(connection, seconds: int) -> None:
     )
 
 
+def _origin() -> str:
+    return ORIGINS["dev" if get_settings().APP_ENV == "dev" else "prod"]
+
+
+def _client(timeout: float) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers={"User-Agent": USER_AGENT})
+
+
 async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
     """Fetch one bounded cycle; reusable with an injected test HTTP client."""
     if _read_config() is None:
@@ -271,7 +288,7 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
     connection = await _connect()
     owns_client = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=10, follow_redirects=False, headers={"User-Agent": USER_AGENT})
+        client = _client(10)
     try:
         # Atomic global claim: no other worker, including on another host, can
         # start a cycle until the next slot. Never hold a transaction over HTTP.
@@ -309,7 +326,7 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
             ORDER BY s.checked_at NULLS FIRST,a.id,a.barcode LIMIT $1""",
             MAX_PRODUCTS_PER_CYCLE,
         )
-        origin = ORIGINS["dev" if get_settings().APP_ENV == "dev" else "prod"]
+        origin = _origin()
         requested = imported = 0
         status = "ok"
         for index, row in enumerate(rows):
@@ -322,6 +339,11 @@ async def run_sync_cycle(client: httpx.AsyncClient | None = None) -> dict:
                 await _postpone(connection, busy.retry_after)
                 status = busy.status
                 break
+            except (asyncpg.DataError, asyncpg.IntegrityConstraintViolationError) as exc:
+                # One product's readings do not fit (its transaction has rolled
+                # back): count it as checked so the next cycles move on.
+                logger.warning("Open Prices product skipped after %s", type(exc).__name__)
+                await _record_check(connection, row["id"], row["barcode"], 0)
             except (httpx.HTTPError, ValueError, TypeError) as exc:
                 logger.warning("Open Prices sync paused after %s", type(exc).__name__)
                 await _postpone(connection, 6 * 3600)
@@ -357,6 +379,12 @@ async def _check_barcode(connection, client: httpx.AsyncClient, origin: str, pro
     if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
         raise TypeError("Malformed Open Prices response")
     count = await _save_items(connection, product_id, barcode, payload["items"])
+    await _record_check(connection, product_id, barcode, count)
+    return count
+
+
+async def _record_check(connection, product_id: int, barcode: str, count: int) -> None:
+    """Record that the barcode was checked now, so it waits 24 hours for the next check."""
     await connection.execute(
         """INSERT INTO v2_open_prices_sync_state(product_id,barcode,checked_at,imported_count)
            VALUES($1,$2,now(),$3) ON CONFLICT(product_id,barcode) DO UPDATE SET
@@ -364,7 +392,6 @@ async def _check_barcode(connection, client: httpx.AsyncClient, origin: str, pro
            imported_count=v2_open_prices_sync_state.imported_count+$3""",
         product_id, barcode, count,
     )
-    return count
 
 
 async def check_now(product_id: int, barcode: str, client: httpx.AsyncClient | None = None) -> dict:
@@ -378,7 +405,7 @@ async def check_now(product_id: int, barcode: str, client: httpx.AsyncClient | N
     connection = await _connect()
     owns_client = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=ON_DEMAND_TIMEOUT, follow_redirects=False, headers={"User-Agent": USER_AGENT})
+        client = _client(ON_DEMAND_TIMEOUT)
     try:
         paused = await connection.fetchval(
             "SELECT next_run_at > now() + interval '1 hour' FROM v2_open_prices_sync_control WHERE singleton=true")
@@ -386,14 +413,14 @@ async def check_now(product_id: int, barcode: str, client: httpx.AsyncClient | N
             return {"status": "paused", "imported": 0}  # Open Prices asked us to wait
         if await _bump_limit(connection, ON_DEMAND_KEY, 3600) > ON_DEMAND_PER_HOUR:
             return {"status": "busy", "imported": 0}
-        origin = ORIGINS["dev" if get_settings().APP_ENV == "dev" else "prod"]
+        origin = _origin()
         try:
             imported = await asyncio.wait_for(
                 _check_barcode(connection, client, origin, product_id, barcode), ON_DEMAND_TIMEOUT)
         except _Busy as busy:
             await _postpone(connection, busy.retry_after)
             return {"status": busy.status, "imported": 0}
-        except (TimeoutError, httpx.HTTPError, ValueError, TypeError) as exc:
+        except (TimeoutError, httpx.HTTPError, ValueError, TypeError, asyncpg.PostgresError) as exc:
             logger.warning("Open Prices check on demand skipped after %s", type(exc).__name__)
             return {"status": "error", "imported": 0}
         return {"status": "ok", "imported": imported}
