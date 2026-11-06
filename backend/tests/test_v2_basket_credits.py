@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import date, datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -15,9 +12,10 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 from app.api.v2 import basket, prices
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_basket_credits as credits
+from conftest import disposable_database, requires_v2_db
 
 MONDAY = date(2026, 11, 2)
 
@@ -54,31 +52,14 @@ def test_the_amounts_follow_the_settings():
     assert credits.visitor_state(2, MONDAY, CFG)["visitor"] is True
 
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 WRITE = {"origin": "https://test"}
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_basket_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_basket_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.fixture

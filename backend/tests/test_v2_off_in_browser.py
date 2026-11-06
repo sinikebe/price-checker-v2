@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
@@ -14,10 +11,9 @@ from app.api.v2 import products
 from app.db import v2_migrations
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 LAST = "0050_open_food_facts_in_browser"
 
 
@@ -32,13 +28,7 @@ def sheet(fields: list[str] | None, **values) -> str:
 
 @pytest.mark.asyncio
 async def test_the_upgrade_drops_off_copies_and_keeps_what_contributors_wrote(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_off_browser_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    try:
+    async with disposable_database("v2_off_browser_", migrate=False) as config:
         everything = dict(v2_migrations.MIGRATIONS)
         monkeypatch.setattr(v2_migrations, "MIGRATIONS", {key: value for key, value in everything.items() if key != LAST})
         await migrate_v2(config)
@@ -90,12 +80,6 @@ async def test_the_upgrade_drops_off_copies_and_keeps_what_contributors_wrote(mo
             assert event["before_data"] is None and json.loads(event["after_data"])["composition"] == ""
         finally:
             await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await root.close()
 
 
 def test_a_sheet_records_only_identifying_facts_copied_from_open_food_facts():

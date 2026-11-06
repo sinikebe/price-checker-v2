@@ -2,45 +2,25 @@
 
 from __future__ import annotations
 
-import json
-import os
-import secrets
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import prices, products, stores
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services.v2_open_prices_sync import _store as open_prices_store
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_store_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_store_") as config:
         yield config
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.mark.asyncio

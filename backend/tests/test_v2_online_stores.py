@@ -12,10 +12,9 @@ import pytest
 from app.api.v2 import catalogue, prices, stores
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
+from conftest import requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 RETAILER = "Disposable Online Market"
 
 

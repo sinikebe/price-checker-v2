@@ -4,46 +4,29 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import secrets
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 import pytest_asyncio
-from conftest import REAL_VISITOR_KEY
+from conftest import REAL_VISITOR_KEY, disposable_database, requires_v2_db
 
 from app.api.v2 import catalogue, prices, products as products_api
 from app.api.v2 import credits as credits_api
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_basket_credits as credits
 
-pytestmark = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def config(monkeypatch, tmp_path):
     monkeypatch.setenv("PRICE_CHECKER_V2_STATE_DIR", str(tmp_path))
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_credits_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_credits_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.fixture

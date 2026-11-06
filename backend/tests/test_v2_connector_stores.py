@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from app.services.v2_connector_stores import repository_url, validate_catalog
+from conftest import disposable_database
 
 
 def test_repository_is_github_only():
@@ -72,7 +73,7 @@ def test_concurrent_first_loads_import_a_connector_once(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_admin_store_install_disable_update_remove_and_public_versions(monkeypatch, tmp_path):
     from app.api.v2 import auth, connector_stores as api
-    from app.db.v2_migrations import connect_v2, migrate_v2
+    from app.db.v2_migrations import connect_v2
     from app.main_v2 import app
     from app.services import v2_connector_stores as service
 
@@ -81,15 +82,7 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
         pytest.skip("Disposable PostgreSQL required")
     base = json.loads(Path(config_path).read_text())
     assert base["database"] not in {"pricechecker_v2_dev", "pricechecker_v2_prod"}
-    db_name = "pcv2_store_case_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + db_name + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": db_name}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("pcv2_store_case_") as config:
         async def test_connect():
             return await connect_v2(config)
         monkeypatch.setattr(auth, "_connect", test_connect)
@@ -414,12 +407,6 @@ async def test_admin_store_install_disable_update_remove_and_public_versions(mon
             assert (await client.delete(prefix, headers=write)).status_code == 200
             assert (await client.get("/api/v2/connector-stores/versions")).json() == {"connectors": []}
             assert (await client.delete(f"/api/v2/connector-stores/{store_id}", headers=write)).status_code == 200
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + db_name + '" WITH (FORCE)')
-        finally:
-            await root.close()
 
 
 class _Installed:
@@ -509,7 +496,7 @@ async def test_page_status_rejects_a_malformed_answer(monkeypatch, answer):
 async def test_connector_hook_errors_are_reported_and_nothing_is_installed(monkeypatch, tmp_path):
     """A connector's setup/resume failure is explained to the administrator and leaves no installation."""
     from app.api.v2 import auth, connector_stores as api
-    from app.db.v2_migrations import connect_v2, migrate_v2
+    from app.db.v2_migrations import connect_v2
     from app.main_v2 import app
     from app.services import v2_connector_stores as service
 
@@ -518,15 +505,7 @@ async def test_connector_hook_errors_are_reported_and_nothing_is_installed(monke
         pytest.skip("Disposable PostgreSQL required")
     base = json.loads(Path(config_path).read_text())
     assert base["database"] not in {"pricechecker_v2_dev", "pricechecker_v2_prod"}
-    db_name = "pcv2_store_hooks_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + db_name + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": db_name}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("pcv2_store_hooks_") as config:
 
         async def test_connect():
             return await connect_v2(config)
@@ -631,12 +610,6 @@ async def test_connector_hook_errors_are_reported_and_nothing_is_installed(monke
                     "SELECT resume_calls FROM v2_connectors.v2_hooks_state") == 1
             finally:
                 await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + db_name + '" WITH (FORCE)')
-        finally:
-            await root.close()
 
 
 class _Hooked:

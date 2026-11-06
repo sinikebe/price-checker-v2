@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
 from app.api.v2 import prices
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.services import v2_open_prices_sync as sync
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 class PauseAfterTombstoneRead:
@@ -39,13 +35,7 @@ class PauseAfterTombstoneRead:
 
 @pytest.mark.asyncio
 async def test_manual_and_open_prices_imports_do_not_revive_deleted_store():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    name = "store_delete_race_" + uuid4().hex[:10]
-    admin = await connect_v2(base)
-    await admin.execute('CREATE DATABASE "' + name + '"')
-    config = {**base, "database": name}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("store_delete_race_") as config:
         setup = await connect_v2(config)
         try:
             retailer = await setup.fetchval(
@@ -150,6 +140,3 @@ async def test_manual_and_open_prices_imports_do_not_revive_deleted_store():
                 connection, product, "3017620422003", [item]
             ),
         )
-    finally:
-        await admin.execute('DROP DATABASE "' + name + '" WITH (FORCE)')
-        await admin.close()

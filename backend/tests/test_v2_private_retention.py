@@ -2,33 +2,18 @@
 
 from __future__ import annotations
 
-import json
-import os
-import secrets
-from pathlib import Path
-
 import pytest
 
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.services.v2_private_retention import purge_private_data
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_closed_private_records_expire_without_losing_publication():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_retention_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_retention_") as config:
         connection = await connect_v2(config)
         try:
             author = await connection.fetchval(
@@ -191,9 +176,3 @@ async def test_closed_private_records_expire_without_losing_publication():
             }
         finally:
             await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await root.close()

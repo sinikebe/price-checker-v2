@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
 import secrets
-from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -14,36 +11,20 @@ import pytest
 import pytest_asyncio
 
 from app.api.v2 import auth, auth_security
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_config(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_security_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    monkeypatch.setattr(auth, "_read_config", lambda: config)
-    monkeypatch.setattr(auth, "_access_code", lambda: "test-installation-secret")
-    monkeypatch.setattr(auth_security, "_access_code", lambda: "test-installation-secret")
-    try:
+    async with disposable_database("v2_security_") as config:
+        monkeypatch.setattr(auth, "_read_config", lambda: config)
+        monkeypatch.setattr(auth, "_access_code", lambda: "test-installation-secret")
+        monkeypatch.setattr(auth_security, "_access_code", lambda: "test-installation-secret")
         yield config
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 async def _account(config, role="visitor"):

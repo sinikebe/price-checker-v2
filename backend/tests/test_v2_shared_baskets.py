@@ -4,75 +4,60 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import HTTPException
 
 from app.api.v2 import account_data, shared_baskets
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 PATH = "/api/v2/shared-baskets"
 
 
 @pytest.fixture
 async def setup(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_shared_baskets_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
-    users = {}
-    for name in ("alice", "bob", "carol", "dave"):
-        user_id = await connection.fetchval(
+    async with disposable_database("v2_shared_baskets_") as config:
+        connection = await connect_v2(config)
+        users = {}
+        for name in ("alice", "bob", "carol", "dave"):
+            user_id = await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES($1,$1,'test','confirmed') RETURNING id", name)
+            users[name] = {"id": user_id, "role": "confirmed", "username": name}
+        products = {}
+        for name in ("Lait", "Pâtes", "Retiré"):
+            products[name] = await connection.fetchval(
+                "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+                json.dumps({"brand": "Marque", "name": name, "group": name}))
+        moderator = await connection.fetchval(
             "INSERT INTO v2_users(username,username_key,password_hash,role) "
-            "VALUES($1,$1,'test','confirmed') RETURNING id", name)
-        users[name] = {"id": user_id, "role": "confirmed", "username": name}
-    products = {}
-    for name in ("Lait", "Pâtes", "Retiré"):
-        products[name] = await connection.fetchval(
-            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
-            json.dumps({"brand": "Marque", "name": name, "group": name}))
-    moderator = await connection.fetchval(
-        "INSERT INTO v2_users(username,username_key,password_hash,role) "
-        "VALUES('moderator','moderator','test','admin') RETURNING id")
-    await connection.execute(
-        "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
-        "VALUES('product',$1,'test',$2)", products["Retiré"], moderator)
+            "VALUES('moderator','moderator','test','admin') RETURNING id")
+        await connection.execute(
+            "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
+            "VALUES('product',$1,'test',$2)", products["Retiré"], moderator)
 
-    async def fake_connect():
-        return await connect_v2(config)
+        async def fake_connect():
+            return await connect_v2(config)
 
-    async def fake_session_user(_connection, request):
-        user = users.get(request.headers.get("x-test-user"))
-        if user is None:
-            raise HTTPException(status_code=401, detail="Connectez-vous.")
-        return user
+        async def fake_session_user(_connection, request):
+            user = users.get(request.headers.get("x-test-user"))
+            if user is None:
+                raise HTTPException(status_code=401, detail="Connectez-vous.")
+            return user
 
-    monkeypatch.setattr(shared_baskets, "_connect", fake_connect)
-    monkeypatch.setattr(shared_baskets, "_session_user", fake_session_user)
-    monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
-    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
-    try:
-        yield client, connection, users, products
-    finally:
-        await client.aclose()
-        await connection.close()
-        root = await connect_v2(base)
+        monkeypatch.setattr(shared_baskets, "_connect", fake_connect)
+        monkeypatch.setattr(shared_baskets, "_session_user", fake_session_user)
+        monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
         try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
+            yield client, connection, users, products
         finally:
-            await root.close()
+            await client.aclose()
+            await connection.close()
 
 
 def who(name: str) -> dict:

@@ -2,33 +2,20 @@
 
 from __future__ import annotations
 
-import json
-import os
-import secrets
-from pathlib import Path
-
 import httpx
 import pytest
 
 from app.api.v2 import recipe_submissions, recipes
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_recipe_creation_and_edits_wait_for_approval(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_recipe_review_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_recipe_review_") as config:
         connection = await connect_v2(config)
         try:
             author_id = await connection.fetchval(
@@ -101,9 +88,3 @@ async def test_recipe_creation_and_edits_wait_for_approval(monkeypatch):
                 assert (await client.get(base_path + f"/submissions/{edit_id}", headers={"x-test-user": "author"})).headers["cache-control"] == "private, no-store"
         finally:
             await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await root.close()

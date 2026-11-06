@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +16,7 @@ from app.api.v2 import catalogue
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as sync
+from conftest import disposable_database, requires_v2_db
 
 
 def _config():
@@ -65,7 +65,7 @@ def test_open_prices_rejects_locations_that_do_not_fit_the_store_columns():
         assert sync._valid_price({**valid, "location": {**location, **too_large}}, "3017620422003") is None
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_catalogue_groups_and_store_filter(monkeypatch):
     config = _config()
@@ -126,7 +126,7 @@ async def test_catalogue_groups_and_store_filter(monkeypatch):
         await connection.close()
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_cycle_deduplicates_and_respects_shared_slot(monkeypatch):
     config = _config()
@@ -182,7 +182,7 @@ async def test_open_prices_cycle_deduplicates_and_respects_shared_slot(monkeypat
         await connection.close()
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_429_stops_cycle_and_postpones(monkeypatch):
     config = _config()
@@ -222,30 +222,19 @@ async def test_open_prices_429_stops_cycle_and_postpones(monkeypatch):
 @pytest.fixture
 async def private_database(monkeypatch):
     """A fresh database, so the sync sees only the products a test creates."""
-    base = _config()
-    root = await connect_v2(base)
-    name = "v2_open_prices_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + name + '"')
-    await root.close()
-    config = {**base, "database": name}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
+    async with disposable_database("v2_open_prices_") as config:
+        connection = await connect_v2(config)
 
-    async def fake_connect():
-        return await connect_v2(config)
+        async def fake_connect():
+            return await connect_v2(config)
 
-    monkeypatch.setattr(sync, "_connect", fake_connect)
-    monkeypatch.setattr(sync, "_read_config", lambda: config)
-    monkeypatch.setattr(sync, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
-    try:
-        yield connection
-    finally:
-        await connection.close()
-        root = await connect_v2(base)
+        monkeypatch.setattr(sync, "_connect", fake_connect)
+        monkeypatch.setattr(sync, "_read_config", lambda: config)
+        monkeypatch.setattr(sync, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
         try:
-            await root.execute('DROP DATABASE "' + name + '" WITH (FORCE)')
+            yield connection
         finally:
-            await root.close()
+            await connection.close()
 
 
 async def _barcode_product(connection, code: str) -> int:
@@ -255,7 +244,7 @@ async def _barcode_product(connection, code: str) -> int:
     )
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_database_error_skips_only_that_product(private_database, monkeypatch):
     connection = private_database
@@ -290,7 +279,7 @@ async def test_open_prices_database_error_skips_only_that_product(private_databa
     ), "one product's error does not pause the sync"
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_check_now_reports_a_database_error(private_database, monkeypatch):
     connection = private_database
@@ -307,7 +296,7 @@ async def test_open_prices_check_now_reports_a_database_error(private_database, 
     assert await connection.fetchval("SELECT count(*) FROM v2_open_prices_sync_state") == 0
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_store_address_is_stored_stripped(private_database):
     connection = private_database

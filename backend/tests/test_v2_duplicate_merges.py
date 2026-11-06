@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import date
-from pathlib import Path
 from types import SimpleNamespace
 
 import asyncpg
@@ -15,130 +12,116 @@ import pytest
 import pytest_asyncio
 
 from app.api.v2 import catalogue, duplicate_merges, moderation, prices, products, stores
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as sync
 from app.services.v2_open_prices_sync import _save_items as save_open_prices_items
 from app.services.v2_open_prices_sync import _store as open_prices_store
+from conftest import disposable_database, requires_v2_db
 
 MANUAL = (
     "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,source,price,observed_at,sales_channel) "
     "VALUES($1,$2,$3,'manual',1.11,'2026-02-03T12:00:00Z'::timestamptz,'drive')"
 )
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def data(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    name = "v2_merge_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + name + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": name}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
-    try:
-        users = {}
-        for username, role in (("author", "confirmed"), ("admin", "admin")):
-            uid = await connection.fetchval(
-                "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES($1,$1,'test',$2) RETURNING id",
-                username,
-                role,
-            )
-            users[username] = {"id": uid, "username": username, "role": role}
-        retailer = await connection.fetchval(
-            "INSERT INTO v2_retailers(code,name) VALUES('test','Carrefour') RETURNING id"
-        )
-        stores_ids = []
-        for n, osm in (("Carrefour City Paris", 101), ("Carrefour Paris", 102)):
-            stores_ids.append(
-                await connection.fetchval(
-                    "INSERT INTO v2_stores(retailer_id,name,city,postal_code,osm_type,osm_id) VALUES($1,$2,'Paris','75001','node',$3) RETURNING id",
-                    retailer,
-                    n,
-                    osm,
-                )
-            )
-        product_ids = []
-        for n, ean in (("Lait 1L", "11111111"), ("Lait bio 1L", "22222222")):
-            product_ids.append(
-                await connection.fetchval(
-                    "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
-                    json.dumps(
-                        {
-                            "name": n,
-                            "brand": "Test",
-                            "package": "Bouteille",
-                            "quantity": "1 L",
-                            "ean": ean,
-                            "composition": "Lait" if ean == "22222222" else "",
-                        }
-                    ),
-                )
-            )
-        offer = await connection.fetchval(
-            "INSERT INTO v2_offers(retailer_id,store_id,source_kind,channel,title,price_amount,collected_at) "
-            "VALUES($1,$2,'connector','drive','Lait',2,now()) RETURNING id",
-            retailer,
-            stores_ids[1],
-        )
-        await connection.execute(
-            "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,offer_id,source,price,observed_at) "
-            "VALUES($1,$2,$3,$4,'connector',2,now())",
-            product_ids[1],
-            retailer,
-            stores_ids[1],
-            offer,
-        )
-        await connection.execute(
-            "INSERT INTO v2_store_aliases(store_id,source,name,name_key) VALUES($1,'retailer','City Paris','city paris')",
-            stores_ids[1],
-        )
-        await connection.execute(
-            "INSERT INTO v2_price_drafts(author_id,product_id,retailer_id,store_id,entry_kind,price,observed_at,sales_channel) "
-            "VALUES($1,$2,$3,$4,'manual',2,now(),'drive')",
-            users["author"]["id"],
-            product_ids[1],
-            retailer,
-            stores_ids[1],
-        )
-        await connection.execute(
-            "INSERT INTO v2_offer_product_links(offer_id,product_id,link_type,verified) VALUES($1,$2,'manual',true)",
-            offer,
-            product_ids[1],
-        )
-        for store_id in stores_ids:
-            await connection.execute(
-                "INSERT INTO v2_store_alias_proposals(store_id,author_id,source,name,name_key) "
-                "VALUES($1,$2,'retailer','Autre nom','autre nom')",
-                store_id,
-                users["author"]["id"],
-            )
-
-        async def fake_connect():
-            return await connect_v2(config)
-
-        async def fake_user(_connection, request):
-            return users.get(request.headers.get("x-test-user"))
-
-        for module in (moderation, duplicate_merges, stores, products, prices, catalogue):
-            monkeypatch.setattr(module, "_connect", fake_connect)
-        for module in (moderation, stores, prices, products):
-            monkeypatch.setattr(module, "_current_user", fake_user)
-        yield config, users, retailer, stores_ids, product_ids, offer
-    finally:
-        await connection.close()
-        root = await connect_v2(base)
+    async with disposable_database("v2_merge_") as config:
+        connection = await connect_v2(config)
         try:
-            await root.execute('DROP DATABASE "' + name + '" WITH (FORCE)')
+            users = {}
+            for username, role in (("author", "confirmed"), ("admin", "admin")):
+                uid = await connection.fetchval(
+                    "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES($1,$1,'test',$2) RETURNING id",
+                    username,
+                    role,
+                )
+                users[username] = {"id": uid, "username": username, "role": role}
+            retailer = await connection.fetchval(
+                "INSERT INTO v2_retailers(code,name) VALUES('test','Carrefour') RETURNING id"
+            )
+            stores_ids = []
+            for n, osm in (("Carrefour City Paris", 101), ("Carrefour Paris", 102)):
+                stores_ids.append(
+                    await connection.fetchval(
+                        "INSERT INTO v2_stores(retailer_id,name,city,postal_code,osm_type,osm_id) VALUES($1,$2,'Paris','75001','node',$3) RETURNING id",
+                        retailer,
+                        n,
+                        osm,
+                    )
+                )
+            product_ids = []
+            for n, ean in (("Lait 1L", "11111111"), ("Lait bio 1L", "22222222")):
+                product_ids.append(
+                    await connection.fetchval(
+                        "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+                        json.dumps(
+                            {
+                                "name": n,
+                                "brand": "Test",
+                                "package": "Bouteille",
+                                "quantity": "1 L",
+                                "ean": ean,
+                                "composition": "Lait" if ean == "22222222" else "",
+                            }
+                        ),
+                    )
+                )
+            offer = await connection.fetchval(
+                "INSERT INTO v2_offers(retailer_id,store_id,source_kind,channel,title,price_amount,collected_at) "
+                "VALUES($1,$2,'connector','drive','Lait',2,now()) RETURNING id",
+                retailer,
+                stores_ids[1],
+            )
+            await connection.execute(
+                "INSERT INTO v2_price_observations(product_id,retailer_id,store_id,offer_id,source,price,observed_at) "
+                "VALUES($1,$2,$3,$4,'connector',2,now())",
+                product_ids[1],
+                retailer,
+                stores_ids[1],
+                offer,
+            )
+            await connection.execute(
+                "INSERT INTO v2_store_aliases(store_id,source,name,name_key) VALUES($1,'retailer','City Paris','city paris')",
+                stores_ids[1],
+            )
+            await connection.execute(
+                "INSERT INTO v2_price_drafts(author_id,product_id,retailer_id,store_id,entry_kind,price,observed_at,sales_channel) "
+                "VALUES($1,$2,$3,$4,'manual',2,now(),'drive')",
+                users["author"]["id"],
+                product_ids[1],
+                retailer,
+                stores_ids[1],
+            )
+            await connection.execute(
+                "INSERT INTO v2_offer_product_links(offer_id,product_id,link_type,verified) VALUES($1,$2,'manual',true)",
+                offer,
+                product_ids[1],
+            )
+            for store_id in stores_ids:
+                await connection.execute(
+                    "INSERT INTO v2_store_alias_proposals(store_id,author_id,source,name,name_key) "
+                    "VALUES($1,$2,'retailer','Autre nom','autre nom')",
+                    store_id,
+                    users["author"]["id"],
+                )
+
+            async def fake_connect():
+                return await connect_v2(config)
+
+            async def fake_user(_connection, request):
+                return users.get(request.headers.get("x-test-user"))
+
+            for module in (moderation, duplicate_merges, stores, products, prices, catalogue):
+                monkeypatch.setattr(module, "_connect", fake_connect)
+            for module in (moderation, stores, prices, products):
+                monkeypatch.setattr(module, "_current_user", fake_user)
+            yield config, users, retailer, stores_ids, product_ids, offer
         finally:
-            await root.close()
+            await connection.close()
 
 
 def merge_body(preview):

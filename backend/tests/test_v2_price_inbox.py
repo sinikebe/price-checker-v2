@@ -3,43 +3,24 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import UTC, datetime
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 
 from app.api.v2 import prices
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_db():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_price_inbox_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_price_inbox_") as config:
         yield config
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await root.close()
 
 
 @pytest.mark.asyncio
