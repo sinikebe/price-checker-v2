@@ -12,11 +12,15 @@ Sur chaque fiche magasin, l’administrateur peut le désactiver temporairement 
 
 Les produits, relevés de prix et recettes soumis par un compte sont examinés par un administrateur avant publication. Une modification de recette laisse la version approuvée visible pendant cet examen. Une recette peut aussi rester privée : visible par son auteur seul, elle est enregistrée sans examen et ne rapporte pas de crédits, jusqu'à ce que son auteur la propose à la publication.
 
-Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier reste sur l’appareil, et la date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
+Un compte peut exporter ses données puis demander sa suppression ; les contributions déjà publiées restent visibles sans auteur. Le panier personnel reste sur l’appareil ; les paniers partagés créés par le compte sont supprimés du serveur avec lui. La date des relevés est limitée au jour. Le [comportement détaillé](docs/account-deletion.md) est documenté séparément.
 
 ## Installer l’application sur un appareil
 
-Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne. Il accepte un produit précis, un groupe comparable ou un ensemble. Deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque article au prix relevé le plus bas. Un groupe ou ensemble compte pour un article et retient un produit au prix total le plus bas, dont le conditionnement est affiché. Les résultats peuvent être filtrés par plusieurs magasins, communes et départements. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti.
+Depuis l’accueil V2, le bouton **Installer l’application** ouvre l’invitation du navigateur quand elle est disponible. Sinon, il indique le parcours manuel ; sur iPhone et iPad, utiliser **Partager → Sur l’écran d’accueil**. L’installation dépend du navigateur et requiert un accès HTTPS (ou localhost en développement). Elle ne déploie pas le serveur. Le panier personnel reste sur l’appareil ; seules certaines données publiques déjà chargées sont consultables hors ligne.
+
+## Panier
+
+Le panier accepte un produit précis, un groupe comparable ou un ensemble. Deux boutons comparent les derniers prix publiés : total par point de vente et canal, ou répartition de chaque article au prix relevé le plus bas. Un groupe ou ensemble compte pour un article et retient un produit au prix total le plus bas, dont le conditionnement est affiché. Les résultats peuvent être filtrés par plusieurs magasins, communes et départements. Les comparaisons partielles et les dates des relevés sont signalées ; aucun prix actuel n’est garanti. Le [fonctionnement du panier](docs/basket.md), des crédits et des paniers partagés est documenté séparément.
 
 ## Relever un prix depuis une fiche d’enseigne
 
@@ -38,7 +42,7 @@ sudo git clone --branch main --single-branch https://github.com/sinikebe/price-c
 sudo /opt/price-checker-v2/source/deployment/v2/install.sh
 ```
 
-Le web écoute par défaut seulement sur `127.0.0.1:8080` (port configurable à l’installation). Après configuration du reverse proxy HTTPS, ouvrir `/v2` pour initialiser l'application. Le script indique où lire le code d'installation et le mot de passe PostgreSQL générés localement ; aucun compte administrateur n'est créé automatiquement. Conserver ces informations hors du dépôt.
+Le web écoute par défaut seulement sur `127.0.0.1:8080` (port configurable à l’installation). Après configuration du reverse proxy HTTPS, ouvrir `/v2` pour initialiser l'application. Le script indique où lire le code d'installation généré localement ; aucun compte administrateur n'est créé automatiquement. Conserver ces informations hors du dépôt.
 
 La procédure complète, les sauvegardes et la mise à jour depuis `main` sont décrites dans [la documentation d'installation](docs/server-install.md). Lorsque le programmateur serveur est installé, un administrateur peut demander la mise à jour depuis **Paramètres → Mises à jour du serveur**. La commande manuelle reste disponible :
 
@@ -67,13 +71,14 @@ Le script de versionnement incrémente par défaut la partie correctif ; les cha
 Les commandes de vérification locales sont :
 
 ```sh
-python -m ruff check backend
+python -m ruff check backend scripts deployment/v2
 python -m pytest -q backend/tests
 python3 scripts/component_versions.py check
 python3 scripts/check_component_changelog.py
 python3 -m unittest discover -s scripts/tests
-cd frontend && npm ci && npm run lint && npm run test:basket && npm run test:connector && npm run test:settings && npm run test:account && npm run test:nav && npm run test:search && npm run test:bookmarklet && npm run build
-bash -n deployment/v2/install.sh deployment/v2/update.sh
+for script in deployment/v2/*.sh scripts/*.sh; do bash -n "$script"; done
+python3 -m py_compile deployment/v2/*.py scripts/*.py
+cd frontend && npm ci && npm run lint && npm test && npm run build
 ```
 
 Les tests d’intégration PostgreSQL utilisent une base jetable lorsque `V2_AUTH_TEST_CONFIG` désigne un fichier JSON de configuration de test ; sinon ils sont ignorés. La [CI GitHub Actions](.github/workflows/ci.yml) lance les vérifications avec sa propre base de test. Ne jamais utiliser une base contenant des données à conserver pour ces tests.
@@ -82,7 +87,7 @@ Les tests d’intégration PostgreSQL utilisent une base jetable lorsque `V2_AUT
 
 - `backend/` : API FastAPI, migrations et tests.
 - `frontend/` : interface React/Vite et PWA.
-- `deployment/v2/` : images Docker, installation et mise à jour.
+- `deployment/v2/` : Compose, installation, mise à jour, programmateur, surveillance de l’hôte et modèle de proxy.
 - `docs/price-history.md` : modèle et provenance des prix.
 
 Pour contribuer, ouvrez une [issue publique](https://github.com/sinikebe/price-checker-v2/issues) afin de signaler un problème ou de proposer une amélioration. Licence : [AGPL-3.0](LICENSE).

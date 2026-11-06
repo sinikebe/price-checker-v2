@@ -4,6 +4,7 @@ import { useAppMode } from "./useAppMode";
 import { useOffProduct } from "./useOffProduct";
 import { barcodeProduct } from "./v2-barcode";
 import { OFF_PRODUCT_PAGE } from "./v2-off-browser";
+import { errorText } from "./v2-http";
 
 /**
  * A barcode our catalogue does not know: what Open Food Facts says about it (read by this browser),
@@ -18,7 +19,7 @@ export default function V2OffBarcodeResult({ code }: { code: string }) {
   async function open() {
     setBusy(true); setError("");
     try { navigate("/v2/produits/" + (await barcodeProduct(code)).id); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Ajout impossible. Réessayez."); setBusy(false); }
+    catch (reason) { setError(errorText(reason, "Ajout impossible. Réessayez.")); setBusy(false); }
   }
   const propose = mode === "contribute" && <Link className="v2-button v2-button-secondary" to={"/v2/produits/nouveau?ean=" + encodeURIComponent(code)}>Proposer une fiche complète</Link>;
   return <section className="v2-off-barcode" aria-live="polite" aria-label="Résultat chez Open Food Facts">

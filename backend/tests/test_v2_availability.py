@@ -3,43 +3,24 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import availability, basket, prices
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from fastapi import HTTPException
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 WRITE = {"origin": "https://test"}
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_avail_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_avail_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest_asyncio.fixture
@@ -224,6 +205,21 @@ async def test_a_product_page_lists_where_it_is_withdrawn_bounded_and_public(db,
             await mark(db, product, store)
         long = (await client.get(f"/api/v2/availability/products/{product}")).json()
         assert len(long["stores"]) == availability.MAX_STORES and long["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_dates_are_paris_days(db, served):
+    _retailer, (nord, _sud), product = await seed(db)
+    await mark(db, product, nord)
+    # 23:30 UTC on 1 March is already 2 March in Paris.
+    await db.execute(
+        "UPDATE v2_store_product_status SET since='2026-03-01 23:30+00', checked_at='2026-03-01 23:30+00' "
+        "WHERE product_id=$1 AND store_id=$2", product, nord)
+    await db.execute("UPDATE v2_availability_settings SET recheck_days=30")
+    async with served as client:
+        row = (await client.get(f"/api/v2/availability/products/{product}")).json()["stores"][0]
+    assert row["since"] == row["checked"] == "2026-03-02"
+    assert row["next_check"] == "2026-04-01"
 
 
 @pytest.mark.asyncio

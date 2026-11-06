@@ -2,18 +2,19 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import V2CatalogueSearch from "./V2CatalogueSearch";
-import { suggestRequest, type SuggestResult } from "./v2-catalogue-api";
-import { SEARCH_MIN_CHARS, matchesQuery, normalizeQuery, type SearchScope } from "./v2-catalogue-search";
-import { productRequest, type Product } from "./v2-products-api";
+import { SEARCH_DEBOUNCE_MS, SEARCH_MIN_CHARS, normalizeQuery } from "./v2-catalogue-search";
+import type { Product } from "./v2-products-api";
+import { catalogueRequest, suggest, UNCLASSIFIED, type Category, type Classification, type SearchResult } from "./v2-catalogue-data";
 import V2BasketAddButtons from "./V2BasketAddButtons";
 import V2OffSearch from "./V2OffSearch";
 import { useSiteFilter } from "./useSiteFilter";
 import { passesSiteFilter } from "./v2-site-filter";
-import { bestPrices, type BestPrice } from "./v2-product-best-price";
+import { bestPrices, type BestPrice, type HistoryReading } from "./v2-product-best-price";
 import { useAppMode } from "./useAppMode";
-import { productSizeIn } from "./v2-basket-quantity";
+import { productSizeIn, type BaseUnit } from "./v2-basket-quantity";
+import { MEASURE_UNITS } from "./v2-measures";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
 import type { BasketGroup, BasketScope } from "./v2-basket-storage";
@@ -22,23 +23,11 @@ import V2PriceGate from "./V2PriceGate";
 import "./v2-catalogue.css";
 import LevelBadge from "./V2LevelBadge";
 import { CATALOGUE_DEMO_ID } from "./v2-catalogue-demo";
+import { money } from "./v2-basket-view";
+import { readingTime } from "./v2-calendar-day";
+import { errorText, requestJson } from "./v2-http";
+import { useOnline } from "./useOnline";
 
-type Classification = {
-  department: string; family: string; comparison_scope: string | null; classification_source: string; classification_revision: number;
-};
-type Category = Classification & { name: string; product_count: number };
-const UNCLASSIFIED = "À classer";
-const NAV_CACHE_KEY = "price-checker-v2-catalogue-classifications";
-function cachedCategories(): Category[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(NAV_CACHE_KEY) || "[]");
-    return Array.isArray(value) ? value as Category[] : [];
-  } catch { return []; }
-}
-function locationFor(name: string, cached: Category[]): Classification {
-  return cached.find(item => item.name.toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr"))
-    ?? { department: UNCLASSIFIED, family: UNCLASSIFIED, comparison_scope: null, classification_source: "unclassified", classification_revision: 0 };
-}
 function browsePath(department?: string, family?: string, scope?: string): string {
   const params = new URLSearchParams();
   if (department) params.set("rayon", department);
@@ -47,10 +36,7 @@ function browsePath(department?: string, family?: string, scope?: string): strin
   return "/v2/produits" + (params.size ? "?" + params.toString() : "");
 }
 type Store = { id: number; retailer: string; name: string; city: string | null; postal_code: string | null };
-type SearchResult = { items: Product[]; total: number; limit: number; offset: number };
-type Observation = { id: number; product_id: number; price: string; observed_at: string; retailer: string; store_name: string; city: string | null;
-  store_id: number; postal_code: string | null; online?: boolean; sales_channel?: string };
-type PriceDetail = { name: string; products: Product[]; observations: Observation[]; history_limit_per_product: number;
+type PriceDetail = { name: string; products: Product[]; observations: HistoryReading[]; history_limit_per_product: number;
   /** What its prices cost (one credit per product with a price); absent offline. */
   prices_cost?: number };
 type PaidObservations = Pick<PriceDetail, "observations" | "history_limit_per_product">;
@@ -59,116 +45,37 @@ type ScopeDetail = PriceDetail & { department: string; family: string; compariso
 type Props = { name?: string; user: V2User | null; onLogout: () => Promise<void> };
 const pageSizes = [10, 20, 50];
 const colors = ["#3068aa", "#d9653b", "#229b82", "#865ac2", "#c2467e", "#af8129", "#516293", "#277482"];
-type UnitMetric = "g" | "ml" | "piece";
-type ChartMetric = UnitMetric | "price";
-const unitMetrics: UnitMetric[] = ["g", "ml", "piece"];
+type ChartMetric = BaseUnit | "price";
 const metricLabels: Record<ChartMetric, string> = {
   g: "Prix au kg", ml: "Prix au litre", piece: "Prix par unité", price: "Prix du produit",
 };
 const metricUnits: Record<ChartMetric, string> = {
   g: "€/kg", ml: "€/L", piece: "€/unité", price: "€",
 };
+const chartAmount = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const chartDay = new Intl.DateTimeFormat("fr-FR");
 
 function productName(product: Product): string {
   return [product.data.brand, product.data.name || "Produit sans nom"].filter(Boolean).join(" ");
-}
-/** The size of one pack in a unit (grams, millilitres, pieces), when the catalogue knows it: a product can have several. */
-function quantityFor(product: Product, unit: UnitMetric): { amount: number; unit: UnitMetric } | null {
-  return productSizeIn(product, unit);
 }
 function matchesSubset(product: Product, subset: string): boolean {
   const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
   const haystack = fold([product.data.name, product.data.commercial_name, product.data.brand, ...(product.data.tags ?? [])].join(" "));
   return fold(subset.trim()).split(/\s+/).every(word => haystack.includes(word));
 }
-async function offlineCatalogue(path: string): Promise<unknown> {
-  const products = await productRequest<Product[]>("");
-  const group = (item: Product) => item.data.group?.trim() || "Sans groupe";
-  if (path === "/categories") {
-    const counts = new Map<string, Category>();
-    const cached = cachedCategories();
-    for (const product of products) {
-      const name = group(product), key = name.toLocaleLowerCase("fr");
-      const entry = counts.get(key);
-      if (entry) entry.product_count++;
-      else counts.set(key, { name, product_count: 1, ...locationFor(name, cached) });
-    }
-    return [...counts.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
-  }
-  if (path.startsWith("/categories/")) {
-    const name = decodeURIComponent(path.slice("/categories/".length));
-    const matches = products.filter(product => group(product).toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr"));
-    if (!matches.length) throw new Error("Catégorie introuvable dans le catalogue local.");
-    return { name, ...locationFor(name, cachedCategories()), products: matches, observations: [], history_limit_per_product: 30 };
-  }
-  if (path.startsWith("/comparison?")) {
-    const params = new URLSearchParams(path.slice("/comparison?".length));
-    const department = params.get("department") || "", family = params.get("family") || "", scope = params.get("scope") || "";
-    const cached = cachedCategories();
-    const members = cached.filter(item => item.department.toLocaleLowerCase("fr") === department.toLocaleLowerCase("fr")
-      && item.family.toLocaleLowerCase("fr") === family.toLocaleLowerCase("fr")
-      && item.comparison_scope?.toLocaleLowerCase("fr") === scope.toLocaleLowerCase("fr"));
-    if (!members.length) throw new Error("Ensemble introuvable dans le catalogue local.");
-    const names = new Set(members.map(item => item.name.toLocaleLowerCase("fr")));
-    return { name: scope, department, family, comparison_scope: scope,
-      groups: members.map(item => ({ name: item.name, product_count: item.product_count })),
-      products: products.filter(product => names.has(group(product).toLocaleLowerCase("fr"))),
-      observations: [], history_limit_per_product: 30 };
-  }
-  if (path.startsWith("/search?")) {
-    const params = new URLSearchParams(path.slice("/search?".length));
-    if (params.get("store_id")) throw new Error("Le filtre magasin nécessite une connexion.");
-    const category = (params.get("category") || "").toLocaleLowerCase("fr");
-    const matches = products.filter(product => (!category || group(product).toLocaleLowerCase("fr") === category)
-      && matchesQuery(product, params.get("q") || ""));
-    const limit = Number(params.get("limit") || 10), offset = Number(params.get("offset") || 0);
-    return { items: matches.slice(offset, offset + limit), total: matches.length, limit, offset };
-  }
-  throw new Error("Cette recherche n’est pas disponible hors ligne.");
-}
-/** The most results the server lists in full, as last announced; used to decide the same way offline. */
-let knownCompleteMax = 50;
-async function suggest(query: string, scope: SearchScope, signal: AbortSignal): Promise<SuggestResult<Product>> {
-  try {
-    const result = await suggestRequest<Product>(query, scope, signal);
-    knownCompleteMax = result.max;
-    return result;
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    const filters = new URLSearchParams({ q: query, category: scope.category, limit: "1000", offset: "0" });
-    if (scope.storeId) filters.set("store_id", String(scope.storeId));
-    const local = await offlineCatalogue("/search?" + filters.toString()) as SearchResult;
-    const complete = local.total <= knownCompleteMax;
-    return { total: local.total, complete, max: knownCompleteMax, items: complete ? local.items : [] };
-  }
-}
-async function catalogueRequest<T>(path: string): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch("/api/v2/catalogue" + path, { credentials: "same-origin" });
-  } catch (error) {
-    if (error instanceof TypeError) return offlineCatalogue(path) as Promise<T>;
-    throw error;
-  }
-  if (!response.ok) throw new Error("Le catalogue est indisponible (" + response.status + ").");
-  const data = await response.json() as T;
-  if (path === "/categories") {
-    try { localStorage.setItem(NAV_CACHE_KEY, JSON.stringify(data)); } catch { /* optional public cache */ }
-  }
-  return data;
-}
-function useCatalogue<T>(path: string, enabled = true) {
+/** A catalogue answer for `path`; a new `reloadKey` asks again while the last answer stays shown. */
+function useCatalogue<T>(path: string, enabled = true, reloadKey = "") {
   const [result, setResult] = useState<{ path: string; data: T | null; error: string }>({ path: "", data: null, error: "" });
   useEffect(() => {
     if (!enabled) return;
     let active = true;
     const load = () => { catalogueRequest<T>(path).then(data => { if (active) setResult({ path, data, error: "" }); })
-      .catch(error => { if (active) setResult({ path, data: null, error: String(error) }); }); };
+      .catch(error => { if (active) setResult({ path, data: null, error: errorText(error, "L'opération a échoué.") }); }); };
     load();
     if (path.startsWith("/categories/") || path.startsWith("/comparison?"))
       window.addEventListener(CONNECTOR_PRICE_REFRESH_EVENT, load);
     return () => { active = false; window.removeEventListener(CONNECTOR_PRICE_REFRESH_EVENT, load); };
-  }, [path, enabled]);
+  }, [path, enabled, reloadKey]);
   return result.path === path ? result : { path, data: null, error: "" };
 }
 function pageNumber(params: URLSearchParams): number {
@@ -178,6 +85,18 @@ function pageNumber(params: URLSearchParams): number {
 function pageSize(params: URLSearchParams): number {
   const value = Number(params.get("size"));
   return pageSizes.includes(value) ? value : 10;
+}
+/** The page and page size in the address, and the way to change them that keeps its other parameters. */
+function usePageParams() {
+  const [params, setParams] = useSearchParams();
+  return {
+    page: pageNumber(params), size: pageSize(params),
+    changePage(nextPage: number, nextSize: number) {
+      const next = new URLSearchParams(params);
+      next.set("page", String(nextPage)); next.set("size", String(nextSize));
+      setParams(next);
+    },
+  };
 }
 function Pagination({ total, page, size, onChange }: { total: number; page: number; size: number; onChange: (page: number, size: number) => void }) {
   if (total <= 0) return null;
@@ -194,8 +113,6 @@ function Pagination({ total, page, size, onChange }: { total: number; page: numb
 /** The contribution mode shows the catalogue's tools; shopping keeps names and quantities. */
 const useContributing = () => useAppMode().mode === "contribute";
 
-const euros = (cents: number) => (cents / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
-
 function ProductLink({ product, showGroup = false, price }: { product: Product; showGroup?: boolean;
   /** Shopping view of a group with its prices fetched: the lowest current price, or null without one. */
   price?: BestPrice | null }) {
@@ -203,7 +120,7 @@ function ProductLink({ product, showGroup = false, price }: { product: Product; 
   return <Link className="v2-workspace-list-item" to={"/v2/produits/" + product.id}>
     <div><LevelBadge level="product" /><strong>{productName(product)}</strong><small>{(contributing ? [showGroup && product.data.group, product.data.commercial_name, product.data.quantity || "Quantité à préciser"]
       : [product.data.quantity || "Quantité à préciser"]).filter(Boolean).join(" · ")}</small></div>
-    {price !== undefined ? <span className="v2-catalogue-line-price">{price ? <><strong>{euros(price.cents)}</strong>
+    {price !== undefined ? <span className="v2-catalogue-line-price">{price ? <><strong>{money(price.cents)}</strong>
       <small>{price.stores > 1 ? `le moins cher de ${price.stores} magasins` : price.reading.retailer}</small></> : <small>Pas de prix relevé</small>}</span>
       : <span>Voir la fiche →</span>}
   </Link>;
@@ -213,13 +130,19 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
   const points = detail.observations.flatMap(item => {
     const product = byId.get(item.product_id);
     if (!product) return [];
-    const time = Date.parse(item.observed_at), price = Number(item.price);
+    const time = readingTime(item.observed_at), price = Number(item.price);
     if (!Number.isFinite(time) || !Number.isFinite(price) || price < 0) return [];
-    const quantity = metric === "price" ? null : quantityFor(product, metric);
+    const quantity = metric === "price" ? null : productSizeIn(product, metric);
     if (metric !== "price" && (!quantity || price === 0)) return [];
     const amount = !quantity ? price : price * (metric === "piece" ? 1 : 1000) / quantity.amount;
     return Number.isFinite(amount) ? [{ ...item, time, amount }] : [];
   });
+  const byProduct = new Map<number, typeof points>();
+  for (const point of points) {
+    const list = byProduct.get(point.product_id);
+    if (list) list.push(point); else byProduct.set(point.product_id, [point]);
+  }
+  for (const list of byProduct.values()) list.sort((a, b) => a.time - b.time);
   if (!points.length) return <p>Aucun prix comparable à tracer pour cette sélection. Choisissez une autre métrique ou d’autres produits.</p>;
   const width = 760, height = 280, left = 70, right = 20, top = 18, bottom = 38;
   const times = points.map(point => point.time), amounts = points.map(point => point.amount);
@@ -227,8 +150,8 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
   const maxPrice = Math.max(1, ...amounts) * 1.1;
   const x = (time: number) => left + (time - minTime) / (maxTime - minTime || 1) * (width - left - right);
   const y = (amount: number) => height - bottom - amount / maxPrice * (height - top - bottom);
-  const dateLabel = (time: number) => new Date(time).toLocaleDateString("fr-FR");
-  const amountLabel = (amount: number) => amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + metricUnits[metric];
+  const dateLabel = (time: number) => chartDay.format(time);
+  const amountLabel = (amount: number) => chartAmount.format(amount) + " " + metricUnits[metric];
   return <div className="v2-catalogue-chart">
     <div className="v2-catalogue-chart-scroll"><svg role="img" aria-label={"Évolution des prix de " + detail.name + " en " + metricUnits[metric]} viewBox={"0 0 " + width + " " + height}>
       <line x1={left} y1={top} x2={left} y2={height - bottom} stroke="currentColor" />
@@ -238,7 +161,7 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
       <text x={left} y={height - 9}>{dateLabel(minTime)}</text>
       <text x={width - right} y={height - 9} textAnchor="end">{dateLabel(maxTime)}</text>
       {products.map((product, index) => {
-        const series = points.filter(point => point.product_id === product.id).sort((a, b) => a.time - b.time);
+        const series = byProduct.get(product.id) ?? [];
         const color = colors[index % colors.length];
         return <g key={product.id}>
           {series.length > 1 && <polyline fill="none" stroke={color} strokeWidth="2.5"
@@ -251,13 +174,14 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
     </svg></div>
     <ul className="v2-catalogue-legend">{products.map((product, index) =>
       <li key={product.id}><span style={{ backgroundColor: colors[index % colors.length] }} /><Link to={"/v2/produits/" + product.id}>{productName(product)}</Link>{showGroup && <small> · {product.data.group || "Sans groupe"}</small>}
-        {!points.some(point => point.product_id === product.id) && <small> · {metric !== "price" && !quantityFor(product, metric) ? "quantité non comparable" : "aucun prix"}</small>}</li>
+        {!byProduct.has(product.id) && <small> · {metric !== "price" && !productSizeIn(product, metric) ? "quantité non comparable" : "aucun prix"}</small>}</li>
     )}</ul>
-    {metric !== "price" && products.some(product => !quantityFor(product, metric)) &&
+    {metric !== "price" && products.some(product => !productSizeIn(product, metric)) &&
       <p className="v2-catalogue-source">Les produits sans quantité compatible avec {metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.</p>}
     <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} points récents par produit. Les signalements Open Prices consécutifs au même prix sont résumés par le premier et le dernier jour de la période. Ces prix sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
   </div>;
 }
+const NOT_CLASSIFIED = "Le classement n’a pas été enregistré.";
 function ClassificationEditor({ name, current, onSaved }: {
   name: string; current: Classification; onSaved: (value: Classification) => void;
 }) {
@@ -272,19 +196,14 @@ function ClassificationEditor({ name, current, onSaved }: {
     event.preventDefault();
     setBusy(true); setError(""); setSuccess("");
     try {
-      const response = await fetch("/api/v2/catalogue/categories/" + encodeURIComponent(name) + "/classification", {
-        method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ department: department.trim(), family: family.trim(), comparison_scope: scope.trim() || null,
-          base_revision: current.classification_revision }),
+      const updated = await requestJson<Classification>("/api/v2/catalogue/categories/" + encodeURIComponent(name) + "/classification", {
+        method: "PUT", fallback: NOT_CLASSIFIED,
+        body: { department: department.trim(), family: family.trim(), comparison_scope: scope.trim() || null,
+          base_revision: current.classification_revision },
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { detail?: string };
-        throw new Error(payload.detail || "Le classement n’a pas été enregistré.");
-      }
-      const updated = await response.json() as Classification;
       onSaved(updated);
       setSuccess("Classement enregistré pour tout le groupe comparable.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Le classement n’a pas été enregistré."); }
+    } catch (cause) { setError(errorText(cause, NOT_CLASSIFIED)); }
     finally { setBusy(false); }
   }
   return <form className="v2-catalogue-classification" onSubmit={save}>
@@ -308,23 +227,18 @@ function ClassificationEditor({ name, current, onSaved }: {
 
 function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, admin = false }: { detail: PriceDetail; showGroup?: boolean; awaitingPrices?: boolean; admin?: boolean }) {
   const [params, setParams] = useSearchParams();
-  const page = pageNumber(params), size = pageSize(params);
+  const { page, size, changePage } = usePageParams();
   const subset = params.get("subset") || "";
   const products = detail.products;
   const selectedProducts = products.filter(product => matchesSubset(product, subset));
   const queueBadges = useConnectorQueue(selectedProducts.map(product => product.id), admin);
-  const availableMetrics = unitMetrics.map(unit => ({
-    unit, count: selectedProducts.filter(product => quantityFor(product, unit)).length,
+  const online = useOnline();
+  const availableMetrics = MEASURE_UNITS.map(unit => ({
+    unit, count: selectedProducts.filter(product => productSizeIn(product, unit)).length,
   })).filter(item => item.count > 0).sort((a, b) => b.count - a.count);
   const requestedMetric = params.get("metric");
   const metric: ChartMetric = requestedMetric === "price" || availableMetrics.some(item => item.unit === requestedMetric)
     ? requestedMetric as ChartMetric : availableMetrics[0]?.unit || "price";
-  function changePage(nextPage: number, nextSize: number) {
-    const next = new URLSearchParams(params);
-    next.set("page", String(nextPage));
-    next.set("size", String(nextSize));
-    setParams(next);
-  }
   function changeSubset(value: string) {
     const next = new URLSearchParams(params);
     if (value) next.set("subset", value);
@@ -359,7 +273,7 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
           {productName(selectedProducts.find(product => product.id === badge.productId)!)} · {badge.connector} :
           <V2ConnectorQueueIndicator badge={badge} />
         </span>)}</div>}
-      {!navigator.onLine && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
+      {!online && <p>Hors ligne : les relevés de prix ne sont pas conservés dans ce catalogue local.</p>}
       {awaitingPrices ? <p className="v2-catalogue-source">Les prix s’affichent ici une fois récupérés.</p> : <CategoryChart detail={detail} products={selectedProducts} metric={metric} showGroup={showGroup} />}
       <h2>Produits</h2>
       <div className="v2-workspace-list">{selectedProducts.slice((page - 1) * size, page * size).map(product =>
@@ -373,12 +287,7 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
 function SimpleProducts({ products, prices }: { products: Product[];
   /** The lowest current price of each product, once the page's prices are fetched (filtered by the site filter). */
   prices?: Map<number, BestPrice> }) {
-  const [params, setParams] = useSearchParams();
-  const page = pageNumber(params), size = pageSize(params);
-  function changePage(nextPage: number, nextSize: number) {
-    const next = new URLSearchParams(params);
-    next.set("page", String(nextPage)); next.set("size", String(nextSize)); setParams(next);
-  }
+  const { page, size, changePage } = usePageParams();
   if (!products.length) return <p>Aucun produit publié dans ce groupe pour le moment.</p>;
   return <>
     <h2>Produits</h2>
@@ -405,7 +314,8 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
   const [savedClassification, setSavedClassification] = useState<Classification | null>(null);
   const classification = savedClassification ?? data;
   const products = data?.products ?? [];
-  return <Frame user={user} onLogout={onLogout}>
+  const gate = data && data.prices_cost !== undefined ? <V2PriceGate paid={paid} subject="ce groupe" /> : null;
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>
       {classification && <>
@@ -420,17 +330,15 @@ function CategoryPage({ name, user, onLogout }: Props & { name: string }) {
       {data && <V2ShareButton title={"Groupe comparable · " + (data.name || name)} url={window.location.origin + "/v2/categories/" + encodeURIComponent(data.name || name)} />}</div><p>{products.length} produit{products.length > 1 ? "s" : ""} dans ce groupe.</p></div>
       {data && <V2BasketAddButtons item={basketGroup} what="group" />}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : !contributing ? <>
-      {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
-        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
+      {gate}
       {site && paid.data && <p className="v2-catalogue-source" role="status">Filtre de magasins du site actif : seuls ses magasins comptent.</p>}
       <SimpleProducts products={products} prices={lowest} />
     </> : <>
       {user?.role === "admin" && classification && <ClassificationEditor key={name} name={name} current={classification} onSaved={setSavedClassification} />}
-      {data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
-        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce groupe" />}
+      {gate}
       <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function ScopePage({ department, family, scope, user, onLogout }: Props & { department: string; family: string; scope: string }) {
@@ -442,7 +350,7 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
     data?.prices_cost ?? 0, cost => "/api/v2/catalogue/prices/comparison?" + new URLSearchParams({ department, family, scope, max_cost: String(cost) }));
   const site = useSiteFilter().active;
   const priced = data ? { ...data, observations: (paid.data?.observations ?? data.observations).filter(row => passesSiteFilter(row, site)) } : null;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <nav className="v2-catalogue-crumbs" aria-label="Fil d’Ariane">
       <Link to="/v2/produits"><LevelBadge level="department" /> Rayons</Link>
       <Link to={browsePath(department)}><LevelBadge level="department" /> {department}</Link>
@@ -459,20 +367,22 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
           <div><LevelBadge level="group" /><strong>{group.name}</strong><small>{group.product_count} produit{group.product_count > 1 ? "s" : ""}</small></div>
           <span>{contributing ? "Comparer ce groupe →" : "Voir les produits →"}</span>
         </Link>)}</div>
-      {contributing && data.prices_cost !== undefined && <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy}
-        error={paid.error} newer={paid.newer} onPay={() => { void paid.pay(); }} subject="cet ensemble" />}
+      {contributing && data.prices_cost !== undefined && <V2PriceGate paid={paid} subject="cet ensemble" />}
       {contributing && <ComparisonContent admin={user?.role === "admin"} detail={priced ?? data} showGroup awaitingPrices={data.prices_cost !== undefined && !paid.data && !paid.credits?.unlimited} />}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
-function CatalogueIndex({ user, onLogout }: Props) {
+function CatalogueIndex({ user, onLogout, categories }: Props & {
+  /** Read by the page around it: the last list stays shown while the next step of the index loads. */
+  categories: { data: Category[] | null; error: string };
+}) {
   const contributing = useContributing();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") || "", category = params.get("category") || "";
   const department = params.get("rayon") || "", family = params.get("famille") || "";
   const storeId = Number(params.get("store") || 0), storeLabel = params.get("store_label") || "";
-  const page = pageNumber(params), size = pageSize(params);
+  const { page, size, changePage } = usePageParams();
   const [queryDraft, setQueryDraft] = useState(q), [categoryDraft, setCategoryDraft] = useState(category);
   // From two characters the search follows the typing; before that, the filters and the browsing view apply.
   const dynamicActive = normalizeQuery(queryDraft).length >= SEARCH_MIN_CHARS;
@@ -480,16 +390,18 @@ function CatalogueIndex({ user, onLogout }: Props) {
   const [storeDraft, setStoreDraft] = useState(storeLabel), [selectedStore, setSelectedStore] = useState(storeId);
   const [stores, setStores] = useState<Store[]>([]);
   const [filterError, setFilterError] = useState("");
-  const categories = useCatalogue<Category[]>("/categories");
   const searchParams = new URLSearchParams({ q, category, limit: String(size), offset: String((page - 1) * size) });
   if (storeId) searchParams.set("store_id", String(storeId));
   const search = useCatalogue<SearchResult>("/search?" + searchParams.toString(), searching);
   useEffect(() => {
     if (storeDraft.trim().length < 2 || selectedStore) return;
     let active = true;
-    catalogueRequest<Store[]>("/stores?q=" + encodeURIComponent(storeDraft.trim()))
-      .then(value => { if (active) setStores(value); }).catch(() => { if (active) setStores([]); });
-    return () => { active = false; };
+    // Fast typing makes one request, for the last text.
+    const timer = window.setTimeout(() => {
+      catalogueRequest<Store[]>("/stores?q=" + encodeURIComponent(storeDraft.trim()))
+        .then(value => { if (active) setStores(value); }).catch(() => { if (active) setStores([]); });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [storeDraft, selectedStore]);
   function apply(event: FormEvent) {
     event.preventDefault();
@@ -500,10 +412,6 @@ function CatalogueIndex({ user, onLogout }: Props) {
     if (categoryDraft) next.set("category", categoryDraft);
     if (selectedStore) { next.set("store", String(selectedStore)); next.set("store_label", storeDraft); }
     setParams(next);
-  }
-  function changePage(nextPage: number, nextSize: number) {
-    const next = new URLSearchParams(params);
-    next.set("page", String(nextPage)); next.set("size", String(nextSize)); setParams(next);
   }
   const categoryList = categories.data ?? [];
   const departments = new Map<string, number>(), families = new Map<string, number>();
@@ -529,7 +437,7 @@ function CatalogueIndex({ user, onLogout }: Props) {
     ...directGroups.map(item => ({ kind: "group" as const, name: item.name, count: item.product_count })),
   ];
   const result = search.data;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>Produits<span>.</span></h1>
       <p>{contributing ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
         : "Parcourez les rayons ou recherchez un produit, puis ajoutez-le à votre panier."}</p></div>
@@ -599,13 +507,16 @@ function CatalogueIndex({ user, onLogout }: Props) {
           <Pagination total={familyEntries.length} page={page} size={size} onChange={changePage} />
         </> : <p>Aucun groupe dans cette famille.</p>}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }
 export default function V2CataloguePage(props: Props) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const department = params.get("rayon") || "", family = params.get("famille") || "", scope = params.get("ensemble") || "";
+  // The index reads the categories again at each step (a reclassification shows), keeping the last ones meanwhile.
+  const indexShown = !props.name && !(department && family && scope);
+  const categories = useCatalogue<Category[]>("/categories", indexShown, location.search);
   return props.name ? <CategoryPage key={props.name} {...props} name={props.name} />
     : department && family && scope ? <ScopePage {...props} department={department} family={family} scope={scope} />
-    : <CatalogueIndex key={location.search} {...props} />;
+    : <CatalogueIndex key={location.search} {...props} categories={categories} />;
 }

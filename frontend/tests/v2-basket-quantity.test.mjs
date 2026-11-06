@@ -7,7 +7,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-quantity.ts", import.me
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { combineQuantities, pricedQuantity, productSize, productSizes, productSizeIn, purchaseDemand, microUnits } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { combineQuantities, pricedQuantity, productSizes, productSizeIn, purchaseDemand, microUnits } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 test("recipe quantities add across compatible units without including a default package", () => {
   assert.deepEqual(combineQuantities(undefined, { amount: "20", unit: "g" }), { amount: "20", unit: "g" });
@@ -31,11 +31,11 @@ test("package counts add exactly, so the merged quantity stays valid", () => {
 });
 
 test("a pack size is read from the catalogue only when it is a positive amount in g, ml or pieces", () => {
-  assert.deepEqual(productSize({ data: { quantity_amount: "250", quantity_unit: "g" } }), { amount: 250, unit: "g" });
-  assert.deepEqual(productSize({ data: { quantity_amount: "0.5", quantity_unit: "ml" } }), { amount: 0.5, unit: "ml" });
+  assert.deepEqual((productSizes({ data: { quantity_amount: "250", quantity_unit: "g" } })[0] ?? null), { amount: 250, unit: "g" });
+  assert.deepEqual((productSizes({ data: { quantity_amount: "0.5", quantity_unit: "ml" } })[0] ?? null), { amount: 0.5, unit: "ml" });
   for (const data of [{}, { quantity_amount: "0", quantity_unit: "g" }, { quantity_amount: "-3", quantity_unit: "g" },
     { quantity_amount: "12", quantity_unit: "kg" }, { quantity_amount: "x", quantity_unit: "g" }, { quantity_amount: null, quantity_unit: "g" }])
-    assert.equal(productSize({ data }), null, JSON.stringify(data));
+    assert.equal((productSizes({ data })[0] ?? null), null, JSON.stringify(data));
   assert.equal(microUnits(0.5), 500000n);
 });
 
@@ -43,7 +43,7 @@ test("a pack can be measured in several units, one size per unit, the main one f
   const data = { quantity_amount: "500", quantity_unit: "g", measures: [
     { amount: "500.000", unit: "g", count_noun: null }, { amount: "4.000", unit: "piece", count_noun: null }] };
   assert.deepEqual(productSizes({ data }), [{ amount: 500, unit: "g" }, { amount: 4, unit: "piece" }]);
-  assert.deepEqual(productSize({ data }), { amount: 500, unit: "g" });
+  assert.deepEqual((productSizes({ data })[0] ?? null), { amount: 500, unit: "g" });
   assert.deepEqual(productSizeIn({ data }, "piece"), { amount: 4, unit: "piece" });
   assert.equal(productSizeIn({ data }, "ml"), null);
   // Bad or repeated entries are ignored; the first of a unit wins.

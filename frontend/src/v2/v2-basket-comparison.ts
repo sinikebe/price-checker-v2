@@ -46,6 +46,14 @@ export const emptyBasketFilters: BasketFilters = { storeIds: [], cities: [], dep
 const storeKey = (row: BasketPrice) => String(row.store_id) + ":" + row.sales_channel;
 /** Identifies a store and sales channel, as a row of the split or of the store ranking. */
 export const readingKey = storeKey;
+/** Every price row of a basket's answers, in order (a failed answer has none). */
+export const priceRows = (responses: ReadonlyMap<number, BasketPriceResponse | null>): BasketPrice[] =>
+  [...responses.values()].flatMap(response => response?.latest_by_store ?? []);
+/** The stores switched off that this basket's prices have: one switched off for another basket changes nothing here. */
+export function presentStoresOff(keys: Iterable<string>, rows: readonly BasketPrice[]): Set<string> {
+  const present = new Set(rows.map(readingKey));
+  return new Set([...keys].filter(key => present.has(key)));
+}
 const fold = (value: string) => value.trim().toLocaleLowerCase("fr");
 
 // French postal codes include Corsica and overseas departments.

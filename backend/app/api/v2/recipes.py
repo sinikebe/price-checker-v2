@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.core.paris_time import paris_day
+from app.db.v2_json import decoded
+from app.db.v2_sql import MAX_BIGINT
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
     MAX_RECIPES,
@@ -20,7 +22,6 @@ from app.services.v2_write_limits import (
 )
 
 router = APIRouter(prefix="/api/v2/recipes", tags=["v2-recipes"])
-_PARIS = ZoneInfo("Europe/Paris")
 
 Unit = Literal["g", "kg", "ml", "cl", "l", "piece"]
 
@@ -31,7 +32,7 @@ class IngredientInput(BaseModel):
     unit: Unit | None = None
     note: str = Field(default="", max_length=1000)
     optional: bool = False
-    product_id: int | None = Field(default=None, gt=0, le=2**63 - 1)
+    product_id: int | None = Field(default=None, gt=0, le=MAX_BIGINT)
     group_name: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
@@ -83,10 +84,6 @@ async def _user(connection, request):
     return user
 
 
-def _decoded(value):
-    return json.loads(value) if isinstance(value, str) else value
-
-
 async def _detail(connection, recipe_id: int, *, public: bool = True):
     """A recipe with its ingredients. A private one is read only by its own routes (public=False)."""
     if public:
@@ -112,11 +109,11 @@ async def _detail(connection, recipe_id: int, *, public: bool = True):
         "base_servings": str(recipe["base_servings"]),
         "prep_minutes": recipe["prep_minutes"],
         "cook_minutes": recipe["cook_minutes"],
-        "steps": _decoded(recipe["steps"]),
+        "steps": decoded(recipe["steps"]),
         "revision": recipe["revision"],
         "private": recipe["private"],
-        "created_at": recipe["created_at"].astimezone(_PARIS).date().isoformat(),
-        "updated_at": recipe["updated_at"].astimezone(_PARIS).date().isoformat(),
+        "created_at": paris_day(recipe["created_at"]),
+        "updated_at": paris_day(recipe["updated_at"]),
         "ingredients": [
             {
                 "id": item["id"],
@@ -127,7 +124,7 @@ async def _detail(connection, recipe_id: int, *, public: bool = True):
                 "optional": item["optional"],
                 "product_id": item["product_id"] if item["product_data"] else None,
                 "group_name": item["group_name"],
-                "product": _decoded(item["product_data"])
+                "product": decoded(item["product_data"])
                 if item["product_data"]
                 else None,
             }
@@ -136,39 +133,81 @@ async def _detail(connection, recipe_id: int, *, public: bool = True):
     }
 
 
+def _summary(row) -> dict:
+    """A recipe list item: its row with JSON-friendly servings and last-change day."""
+    return {**dict(row), "base_servings": str(row["base_servings"]),
+            "updated_at": paris_day(row["updated_at"])}
+
+
+async def _available_products(connection, ids: set[int]) -> set[int]:
+    """The ids among these that name a product that exists and is not withdrawn."""
+    return {row["id"] for row in await connection.fetch(
+        "SELECT p.id FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
+        "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+        "WHERE w.kind='product' AND w.content_id=p.id)", list(ids)
+    )}
+
+
 async def _replace_ingredients(
     connection, recipe_id: int, ingredients: list[IngredientInput]
 ):
     ids = {item.product_id for item in ingredients if item.product_id is not None}
-    if ids:
-        found = await connection.fetch(
-            "SELECT p.id FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
-            "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
-            "WHERE w.kind='product' AND w.content_id=p.id)", list(ids)
+    if ids and await _available_products(connection, ids) != ids:
+        raise HTTPException(
+            status_code=422, detail="Produit référencé introuvable."
         )
-        if {row["id"] for row in found} != ids:
-            raise HTTPException(
-                status_code=422, detail="Produit référencé introuvable."
-            )
     await connection.execute(
         "DELETE FROM v2_recipe_ingredients WHERE recipe_id=$1", recipe_id
     )
-    for position, item in enumerate(ingredients):
-        await connection.execute(
-            "INSERT INTO v2_recipe_ingredients "
-            "(recipe_id, position, label, amount, unit, note, "
-            "optional, product_id, group_name) "
-            "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-            recipe_id,
-            position,
-            item.label,
-            item.amount,
-            item.unit,
-            item.note,
-            item.optional,
-            item.product_id,
-            item.group_name,
-        )
+    await connection.executemany(
+        "INSERT INTO v2_recipe_ingredients "
+        "(recipe_id, position, label, amount, unit, note, "
+        "optional, product_id, group_name) "
+        "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [(recipe_id, position, item.label, item.amount, item.unit, item.note,
+          item.optional, item.product_id, item.group_name)
+         for position, item in enumerate(ingredients)],
+    )
+
+
+async def _insert_recipe(connection, author_id: int, payload: RecipeInput, *, private: bool) -> int:
+    """Save a new recipe row (its ingredients are written separately) and return its id."""
+    return await connection.fetchval(
+        "INSERT INTO v2_recipes(author_id,title,description,base_servings,"
+        "prep_minutes,cook_minutes,steps,private) "
+        "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) RETURNING id",
+        author_id, payload.title, payload.description, payload.base_servings,
+        payload.prep_minutes, payload.cook_minutes,
+        json.dumps(payload.steps, ensure_ascii=False), private,
+    )
+
+
+async def _rewrite_recipe(connection, recipe_id: int, payload: RecipeInput, *, private: bool) -> None:
+    """Replace a recipe row's content and move it to its next revision."""
+    await connection.execute(
+        "UPDATE v2_recipes SET title=$1,description=$2,base_servings=$3,"
+        "prep_minutes=$4,cook_minutes=$5,steps=$6::jsonb,private=$7,"
+        "revision=revision+1,updated_at=now() WHERE id=$8",
+        payload.title, payload.description, payload.base_servings,
+        payload.prep_minutes, payload.cook_minutes,
+        json.dumps(payload.steps, ensure_ascii=False), private, recipe_id,
+    )
+
+
+async def _check_open_submissions(connection, user) -> None:
+    """Refuse a new waiting submission past the author's limit (administrators have none)."""
+    await check_open_limit(
+        connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
+    )
+
+
+async def _has_pending_edit(connection, author_id: int, recipe_id: int) -> bool:
+    """Whether this author already has a change of this recipe waiting for review."""
+    return await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_recipe_submissions "
+        "WHERE author_id=$1 AND recipe_id=$2 AND status='pending')",
+        author_id, recipe_id,
+    )
 
 
 @router.get("")
@@ -203,11 +242,7 @@ async def list_recipes(
             (page - 1) * page_size,
         )
         return {
-            "items": [
-                {**dict(row), "base_servings": str(row["base_servings"]),
-                 "updated_at": row["updated_at"].astimezone(_PARIS).date().isoformat()}
-                for row in rows
-            ],
+            "items": [_summary(row) for row in rows],
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -253,9 +288,7 @@ async def create_recipe(payload: RecipeInput, request: Request):
         await check_write_limit(connection, user)
         async with connection.transaction():
             await lock_account_writes(connection, user)
-            await check_open_limit(
-                connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
-            )
+            await _check_open_submissions(connection, user)
             submission_id = await connection.fetchval(
                 "INSERT INTO v2_recipe_submissions(author_id,payload) "
                 "VALUES($1,$2::jsonb) RETURNING id",
@@ -287,16 +320,9 @@ async def update_recipe(recipe_id: int, payload: RecipeUpdate, request: Request)
                 raise HTTPException(status_code=403, detail="Recette d'un autre auteur.")
             if existing["revision"] != payload.revision:
                 raise HTTPException(status_code=409, detail="La recette a été modifiée ailleurs.")
-            open_edit = await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_recipe_submissions "
-                "WHERE author_id=$1 AND recipe_id=$2 AND status='pending')",
-                user["id"], recipe_id,
-            )
-            if open_edit:
+            if await _has_pending_edit(connection, user["id"], recipe_id):
                 raise HTTPException(status_code=409, detail="Une modification attend déjà validation.")
-            await check_open_limit(
-                connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
-            )
+            await _check_open_submissions(connection, user)
             submission_id = await connection.fetchval(
                 "INSERT INTO v2_recipe_submissions"
                 "(author_id,recipe_id,base_revision,payload) "

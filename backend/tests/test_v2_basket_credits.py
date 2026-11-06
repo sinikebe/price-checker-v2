@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import date, datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -15,9 +12,10 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 from app.api.v2 import basket, prices
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_basket_credits as credits
+from conftest import disposable_database, requires_v2_db
 
 MONDAY = date(2026, 11, 2)
 
@@ -54,31 +52,14 @@ def test_the_amounts_follow_the_settings():
     assert credits.visitor_state(2, MONDAY, CFG)["visitor"] is True
 
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 WRITE = {"origin": "https://test"}
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_basket_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_basket_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.fixture
@@ -209,6 +190,7 @@ async def test_without_credit_the_fetch_is_refused_with_the_wait_and_costs_nothi
         refused = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
         assert refused.status_code == 429
         detail = refused.json()["detail"]
+        assert set(detail) == {"code", "credits", "cost", "message"}
         assert detail["code"] == "no_credits" and detail["cost"] == 1
         assert detail["credits"]["balance"] == 0 and detail["credits"]["next_grant_on"] == "2026-11-03"
         assert 14 * 3600 < int(refused.headers["retry-after"]) < 15 * 3600  # until Paris midnight
@@ -389,6 +371,7 @@ async def test_an_administrator_has_no_credit_limit_but_a_sanity_cap(served, con
             answer = await client.post("/api/v2/basket/prices", headers=admin, json=body)
             assert answer.status_code == 200, answer.text
             assert answer.json()["credits"]["unlimited"] is True
+            assert "cost" not in answer.json(), "nothing is charged, so no cost is reported"
         assert (await client.post("/api/v2/basket/prices", headers=acting(ben), json=body)).status_code == 200
         monkeypatch.setattr(basket, "ADMIN_FETCHES_PER_MINUTE", 8)
         runaway = await client.post("/api/v2/basket/prices", headers=admin, json=body)
@@ -417,3 +400,118 @@ async def test_the_role_comes_from_the_session_not_from_the_request(served, conf
         boasting = {**acting(ana), "x-role": "admin", "x-admin": "1"}
         assert (await client.post("/api/v2/basket/prices", headers=boasting, json=body)).status_code == 429
         assert (await client.get("/api/v2/basket/credits", headers=boasting)).json()["unlimited"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_large_holding_is_journaled_with_what_is_left(served, config):
+    (ana, _ben), _stores, products = await seed(config)
+    await amounts(config, 50, 5000)
+    connection = await connect_v2(config)
+    try:  # already granted today: the fetch starts from 2000 credits
+        await connection.execute(
+            "INSERT INTO v2_basket_credits(user_id,balance,granted_on) VALUES($1,2000,$2)", ana, MONDAY)
+    finally:
+        await connection.close()
+    body = {"items": [{"kind": "product", "id": products[0]}]}
+    async with served as client:
+        fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["credits"]["balance"] == 1999
+    connection = await connect_v2(config)
+    try:
+        logged = [json.loads(row["data"]) for row in await connection.fetch(
+            "SELECT data FROM v2_logs WHERE event='basket.prices.fetched' ORDER BY id")]
+    finally:
+        await connection.close()
+    assert [entry["credits_left"] for entry in logged] == [1999]
+
+
+async def _current_product_one_by_one(connection, product_id: int):
+    """The resolution as it was, one query per reference and per step: what the batch must match."""
+    seen: set[int] = set()
+    current = product_id
+    for _ in range(basket.MAX_CHAIN):
+        if current in seen:
+            return None
+        seen.add(current)
+        row = await connection.fetchrow(
+            """SELECT p.*,
+                      (SELECT to_id FROM v2_content_merges m
+                        WHERE m.kind='product' AND m.from_id=p.id) AS merged_to_id,
+                      (SELECT n.id FROM v2_products n WHERE n.predecessor_id=p.id
+                        ORDER BY n.id DESC LIMIT 1) AS successor_id,
+                      EXISTS(SELECT 1 FROM v2_content_withdrawals w
+                              WHERE w.kind='product' AND w.content_id=p.id) AS withdrawn
+               FROM v2_products p WHERE p.id=$1""",
+            current)
+        if row is None or row["withdrawn"]:
+            return None
+        following = row["merged_to_id"] or row["successor_id"]
+        if not following:
+            return row
+        current = following
+    return None
+
+
+class CountingConnection:
+    def __init__(self, inner):
+        self.inner = inner
+        self.fetches = 0
+
+    async def fetch(self, *arguments):
+        self.fetches += 1
+        return await self.inner.fetch(*arguments)
+
+
+@pytest.mark.asyncio
+async def test_basket_references_are_resolved_together_as_one_by_one(config, monkeypatch):
+    connection = await connect_v2(config)
+    try:
+        async def product(name, predecessor=None):
+            return await connection.fetchval(
+                "INSERT INTO v2_products(data,predecessor_id) VALUES($1::jsonb,$2) RETURNING id",
+                json.dumps({"name": name}), predecessor)
+
+        async def merge(from_id, to_id):
+            snapshot = json.dumps({"name": "x"})
+            await connection.execute(
+                "INSERT INTO v2_content_merges(kind,from_id,to_id,from_snapshot,to_snapshot,result_snapshot) "
+                "VALUES('product',$1,$2,$3::jsonb,$3::jsonb,$3::jsonb)", from_id, to_id, snapshot)
+
+        admin = await connection.fetchval(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES('root','root','x','admin') RETURNING id")
+        # merged -> target -> its new version: a merge, then a successor.
+        merged, target = await product("merged"), await product("target")
+        await merge(merged, target)
+        newest = await product("newest", target)
+        # first -> withdrawn middle -> last: fails closed at the withdrawn step.
+        first = await product("first")
+        middle = await product("middle", first)
+        last = await product("last", middle)
+        await connection.execute(
+            "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) VALUES('product',$1,'test',$2)",
+            middle, admin)
+        # A two-step loop: a new version merged back into the product it replaced.
+        looped = await product("looped")
+        back = await product("back", looped)
+        await merge(back, looped)
+        plain = await product("plain")
+        asked = [merged, target, newest, first, middle, last, looped, back, plain, 999999999, merged, plain]
+
+        counting = CountingConnection(connection)
+        resolved = await basket._current_products(counting, asked)
+        expected = {product_id: await _current_product_one_by_one(connection, product_id) for product_id in asked}
+        ids = {key: row["id"] if row else None for key, row in resolved.items()}
+        assert ids == {key: row["id"] if row else None for key, row in expected.items()}
+        assert ids == {merged: newest, target: newest, newest: newest, first: None, middle: None, last: last,
+                       looped: None, back: None, plain: plain, 999999999: None}
+        assert counting.fetches == 3, "one query per step of the longest chain, not per reference"
+        assert resolved[plain]["data"] == expected[plain]["data"] and set(resolved[plain].keys()) == set(expected[plain].keys())
+        assert (await basket._current_product(connection, merged))["id"] == newest
+        assert await basket._current_products(counting, []) == {} and counting.fetches == 3, "nothing asked, no query"
+        # A chain longer than the bound is not followed to its end, as before.
+        monkeypatch.setattr(basket, "MAX_CHAIN", 2)
+        assert (await basket._current_products(connection, [merged]))[merged] is None
+        assert await _current_product_one_by_one(connection, merged) is None
+    finally:
+        await connection.close()

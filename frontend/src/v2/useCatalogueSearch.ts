@@ -4,6 +4,7 @@ import {
   SEARCH_DEBOUNCE_MS, normalizeQuery, remember, resolveView,
   type CompleteList, type SearchOutcome, type SearchScope, type SearchView, type SearchableProduct,
 } from "./v2-catalogue-search";
+import { errorText } from "./v2-http";
 
 export type Suggest<T> = (query: string, scope: SearchScope, signal: AbortSignal) => Promise<SuggestResult<T>>;
 
@@ -41,7 +42,7 @@ export function useCatalogueSearch<T extends SearchableProduct>(query: string, s
         if (error instanceof RateLimitedError) {
           setLimitedFor(error.retryAfter);
           retryTimer.current = window.setTimeout(() => { setLimitedFor(null); setAttempt(count => count + 1); }, error.retryAfter * 1000);
-        } else setOutcome({ key, value: { kind: "error", message: error instanceof Error ? error.message : "La recherche a échoué." } });
+        } else setOutcome({ key, value: { kind: "error", message: errorText(error, "La recherche a échoué.") } });
       }
     }, SEARCH_DEBOUNCE_MS);
     return () => { window.clearTimeout(timer); controller.abort(); };

@@ -23,7 +23,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.api.v2.catalogue import CATEGORY, CURRENT, MAX_BIGINT
+from app.db.v2_sql import CATEGORY, CURRENT_PRODUCT, DISPLAY_ORDER, MAX_BIGINT
 from app.services.v2_catalogue_hierarchy import UNCATEGORIZED, fold
 
 MAX_MEMBERS = 20  # parts included, and as many excluded
@@ -68,17 +68,16 @@ class Member(BaseModel):
 
     @property
     def level(self) -> Level:
-        for key in ("product", "group", "scope", "family"):
-            if getattr(self, key) is not None:
-                return key  # type: ignore[return-value]
-        return "department"
-
-    def key(self) -> str:
-        """A stable text for the line key: the levels given, folded."""
+        """The most precise level given: what the member names."""
         if self.product is not None:
-            return f"p{self.product}"
-        return "/".join(fold(getattr(self, key)) if getattr(self, key) else ""
-                        for key in ("department", "family", "scope", "group"))
+            return "product"
+        if self.group is not None:
+            return "group"
+        if self.scope is not None:
+            return "scope"
+        if self.family is not None:
+            return "family"
+        return "department"
 
 
 class Selection(BaseModel):
@@ -157,35 +156,38 @@ def selection_where(selection: Selection, params: list, product_ids: dict[int, i
 
 
 FROM = (f"FROM v2_products p LEFT JOIN v2_catalogue_classifications c ON c.group_key=lower({CATEGORY}) "
-        f"WHERE {CURRENT}")
+        f"WHERE {CURRENT_PRODUCT}")
 
 
-async def current_ids(connection, selection: Selection, current_product) -> dict[int, int | None]:
-    """The product each product member currently stands for (after merges and new versions)."""
-    ids: dict[int, int | None] = {}
-    for member in [*selection.include, *selection.exclude]:
-        if member.product is not None and member.product not in ids:
-            row = await current_product(connection, member.product)
-            ids[member.product] = row["id"] if row else None
-    return ids
+async def current_ids(connection, selection: Selection, current_products) -> dict[int, int | None]:
+    """The product each product member currently stands for (after merges and new versions), None when
+    it is withdrawn or gone. `current_products` (basket._current_products, passed in because the basket
+    imports this module) resolves them all at once."""
+    wanted = [member.product for member in [*selection.include, *selection.exclude] if member.product is not None]
+    if not wanted:
+        return {}
+    rows = await current_products(connection, wanted)
+    return {product_id: (row["id"] if row else None) for product_id, row in rows.items()}
 
 
-async def selection_rows(connection, selection: Selection, limit: int, current_product) -> list:
-    """The current products of a selection, in display order, at most `limit`."""
+async def selection_rows(connection, selection: Selection, limit: int, product_ids: dict[int, int | None]) -> list:
+    """The current products of a selection, in display order, at most `limit`. `product_ids` comes from
+    current_ids."""
     params: list = []
-    where = selection_where(selection, params, await current_ids(connection, selection, current_product))
+    where = selection_where(selection, params, product_ids)
     params.append(limit)
     return await connection.fetch(
         f"SELECT p.*, {CATEGORY} AS category_name {FROM} AND {where} "
-        f"ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id LIMIT ${len(params)}",
+        f"ORDER BY {DISPLAY_ORDER} LIMIT ${len(params)}",
         *params)
 
 
-async def member_counts(connection, selection: Selection, current_product) -> list[int]:
+async def member_counts(connection, selection: Selection, product_ids: dict[int, int | None]) -> list[int]:
     """How many current products each included member matches on its own (before exclusions and words),
-    so that a member that matches nothing (a misspelt name) can be found and corrected."""
+    so that a member that matches nothing (a misspelt name) can be found and corrected. `product_ids`
+    comes from current_ids."""
     params: list = []
-    ids = await current_ids(connection, selection, current_product)
-    columns = ", ".join(f"count(*) FILTER (WHERE {_member_sql(member, params, ids)})" for member in selection.include)
+    columns = ", ".join(f"count(*) FILTER (WHERE {_member_sql(member, params, product_ids)})"
+                        for member in selection.include)
     row = await connection.fetchrow(f"SELECT {columns} {FROM}", *params)
     return [int(value) for value in row.values()]

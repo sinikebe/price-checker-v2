@@ -14,7 +14,8 @@ import V2SettingsGeneral from "./V2SettingsGeneral";
 import V2ServerLogs from "./V2ServerLogs";
 import V2ServerStats from "./V2ServerStats";
 import V2SettingsServer from "./V2SettingsServer";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
+import { useDocumentTitle } from "./useDocumentTitle";
 import V2SettingsTabs from "./V2SettingsTabs";
 import {
   SETTINGS_BASE_PATH, resolveSettingsTab, settingsPanelDomId, settingsTabDomId, visibleSettingsTabs, type SettingsTabId,
@@ -35,11 +36,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
   const [visited, setVisited] = useState<ReadonlySet<SettingsTabId>>(() => new Set([tab.id]));
   if (!visited.has(tab.id)) setVisited(new Set(visited).add(tab.id));
   useEffect(() => { if (redirect) navigate(SETTINGS_BASE_PATH, { replace: true }); }, [redirect, navigate]);
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = (tab.id === "general" ? "" : `${tab.label} | `) + "Paramètres | Price Checker";
-    return () => { document.title = previousTitle; };
-  }, [tab.id, tab.label]);
+  useDocumentTitle((tab.id === "general" ? "" : `${tab.label} | `) + "Paramètres | Price Checker");
 
   function panel(id: SettingsTabId, active: boolean): ReactNode {
     switch (id) {
@@ -57,7 +54,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
         <V2ExtensionDownload key={`extension-${user.id}`} />
       </>;
       case "server": return user?.role === "admin" && <>
-        <V2SettingsServer userId={user.id} />
+        <V2SettingsServer userId={user.id} active={active} />
         <V2CreditSettings key={`credits-${user.id}`} />
         <V2ReferenceSettings key={`references-${user.id}`} />
       </>;
@@ -67,22 +64,18 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
   }
   const showTabs = tabs.length > 1;
 
-  return <div className="v2-home v2-settings">
-    <a className="v2-skip" href="#v2-settings-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-settings-main" className="v2-wrap v2-settings-main">
-      <span className="v2-section-kicker">PRÉFÉRENCES</span>
-      <h1>Paramètres<span>.</span></h1>
-      {deleteNotice && <p className="v2-settings-success" role="status">{deleteNotice}</p>}
-      {showTabs && <V2SettingsTabs tabs={tabs} activeId={tab.id} />}
-      {tabs.filter(item => item.id === tab.id || visited.has(item.id)).map(item => {
-        const active = item.id === tab.id;
-        const grid = <div className="v2-settings-grid">{panel(item.id, active)}</div>;
-        return showTabs
-          ? <div key={item.id} className="v2-settings-panel" role="tabpanel" id={settingsPanelDomId(item.id)}
-              aria-labelledby={settingsTabDomId(item.id)} hidden={!active}>{grid}</div>
-          : <div key={item.id}>{grid}</div>;
-      })}
-    </main>
-  </div>;
+  return <V2PageFrame section="settings" user={user} onLogout={onLogout}>
+    <span className="v2-section-kicker">PRÉFÉRENCES</span>
+    <h1>Paramètres<span>.</span></h1>
+    {deleteNotice && <p className="v2-settings-success" role="status">{deleteNotice}</p>}
+    {showTabs && <V2SettingsTabs tabs={tabs} activeId={tab.id} />}
+    {tabs.filter(item => item.id === tab.id || visited.has(item.id)).map(item => {
+      const active = item.id === tab.id;
+      const grid = <div className="v2-settings-grid">{panel(item.id, active)}</div>;
+      return showTabs
+        ? <div key={item.id} className="v2-settings-panel" role="tabpanel" id={settingsPanelDomId(item.id)}
+            aria-labelledby={settingsTabDomId(item.id)} hidden={!active}>{grid}</div>
+        : <div key={item.id}>{grid}</div>;
+    })}
+  </V2PageFrame>;
 }

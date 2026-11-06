@@ -1,13 +1,12 @@
 import { Link } from "react-router-dom";
 import { ArrowRightIcon, CartIcon } from "./V2SiteIcons";
 import { useDemoSource } from "./useDemoSource";
-import { DEMO_BASKET_PATH } from "./v2-basket-demo";
+import { DEMO_BASKET_PATH, demoDate } from "./v2-basket-demo";
 import { demoStoryOf } from "./v2-basket-demo-story";
 import { money } from "./v2-basket-view";
 import "./v2-basket-demo.css";
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
-const day = (value: string) => new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
 /**
  * The demo story of the home page: a basket told in four steps, then the basket it ends on, and the way
@@ -25,7 +24,7 @@ export default function V2HomeDemo() {
   const complete = story.ranking.filter(store => store.complete);
   const shown = [...complete, ...story.ranking.filter(store => !store.complete).slice(0, complete.length ? 1 : 4)].slice(0, 4);
   const widest = Math.max(1, ...shown.map(store => store.cents));
-  const prices = story.fictional ? "prix fictifs" : `prix du ${day(story.savedAt!)}`;
+  const prices = story.fictional ? "prix fictifs" : `prix du ${demoDate(story.savedAt)}`;
   const lead = story.mode === "unit" ? "le mieux placé au prix à l’unité" : "le moins cher";
   return <section className="v2-demo v2-wrap" id="demonstration" aria-labelledby="v2-demo-heading">
     <div className="v2-section-heading">
@@ -33,7 +32,7 @@ export default function V2HomeDemo() {
         <span className="v2-section-kicker">EN SITUATION</span>
         <h2 id="v2-demo-heading">{story.title}, du panier à la liste.</h2>
       </div>
-      <p>{story.fictional ? "Un exemple complet, avec des magasins et des prix fictifs." : `Un vrai panier, avec les prix relevés le ${day(story.savedAt!)}.`}</p>
+      <p>{story.fictional ? "Un exemple complet, avec des magasins et des prix fictifs." : `Un vrai panier, avec les prix relevés le ${demoDate(story.savedAt)}.`}</p>
     </div>
 
     <ol className="v2-demo-steps">

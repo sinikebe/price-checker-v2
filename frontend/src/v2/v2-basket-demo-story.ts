@@ -2,15 +2,15 @@
  * The figures of the demo story on the home page, computed from the demo basket by the basket comparison
  * itself, with the demo's own settings: the same numbers as the demo page shows when it opens.
  */
-import { buildBasketComparison, purchaseTotalCents, reactivationGains, readingKey, type BasketPrice, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
+import { buildBasketComparison, presentStoresOff, priceRows, purchaseTotalCents, reactivationGains, readingKey, type BasketPrice, type CompareMode, type UnitChoices } from "./v2-basket-comparison";
 import { snapshotView } from "./v2-basket-snapshot";
 import { basketItemKey, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
-import { demoItems, initialDemoState, type DemoSource } from "./v2-basket-demo";
+import { demoItems, initialDemoState, type DemoOrigin, type DemoSource } from "./v2-basket-demo";
 import { splitList, type ListSection } from "./v2-shopping-list";
 
 type Store = { key: string; retailer: string; place: string; drive: boolean; cents: number; count: number };
-export type DemoStory = {
-  title: string; fictional: boolean; savedAt: string | null; advanced: boolean; mode: CompareMode;
+export type DemoStory = DemoOrigin & {
+  title: string; advanced: boolean; mode: CompareMode;
   articles: { key: string; name: string; group: boolean; quantity: string | null }[];
   /** A group of the basket, to say what a group compares. */
   firstGroup: string | null;
@@ -42,15 +42,15 @@ function quantityLabel(quantity: BasketQuantity): string {
 }
 
 /** The story of a demo, or null when it has nothing to compare. */
-export function demoStory(source: DemoSource): DemoStory | null {
+function demoStory(source: DemoSource): DemoStory | null {
   const { advanced, compare: mode, filters, stores_off: storesOff, units } = source.settings;
   const items = demoItems(initialDemoState(source), source).filter(item => !item.disabled);
   const view = snapshotView(source.snapshot, items);
   if (!view.lines.length) return null;
   const unitChoices: UnitChoices = item => units[basketItemKey(item)];
   const build = (off: ReadonlySet<string>) => buildBasketComparison(view.lines, view.responses, filters, advanced, off, mode, unitChoices);
-  const rows = [...view.responses.values()].flatMap(response => response?.latest_by_store ?? []);
-  const off = new Set(storesOff.filter(key => rows.some(row => readingKey(row) === key)));
+  const rows = priceRows(view.responses);
+  const off = presentStoresOff(storesOff, rows);
   const all = build(new Set());
   const final = off.size ? build(off) : all;
   if (!all.split.length) return null;
@@ -70,8 +70,9 @@ export function demoStory(source: DemoSource): DemoStory | null {
   const leftKey = [...off].find(key => gains.get(key)?.unpriced === 0);
   const leftReading = leftKey ? rows.find(row => readingKey(row) === leftKey) : undefined;
   const first = finalSections[0];
+  const origin: DemoOrigin = source.fictional ? { fictional: true, savedAt: null } : { fictional: false, savedAt: source.savedAt };
   return {
-    title: source.title, fictional: source.fictional, savedAt: source.savedAt, advanced, mode,
+    ...origin, title: source.title, advanced, mode,
     articles: items.map(item => ({ key: basketItemKey(item), name: chipName(item), group: "kind" in item,
       quantity: advanced && item.quantity ? quantityLabel(item.quantity) : null })),
     firstGroup: items.find(item => "kind" in item && item.kind === "group")?.name ?? null,

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import os
 import secrets
-from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pyotp
@@ -13,36 +11,20 @@ import pytest
 import pytest_asyncio
 
 from app.api.v2 import auth, auth_security
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_config(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_security_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    monkeypatch.setattr(auth, "_read_config", lambda: config)
-    monkeypatch.setattr(auth, "_access_code", lambda: "test-installation-secret")
-    monkeypatch.setattr(auth_security, "_access_code", lambda: "test-installation-secret")
-    try:
+    async with disposable_database("v2_security_") as config:
+        monkeypatch.setattr(auth, "_read_config", lambda: config)
+        monkeypatch.setattr(auth, "_access_code", lambda: "test-installation-secret")
+        monkeypatch.setattr(auth_security, "_access_code", lambda: "test-installation-secret")
         yield config
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 async def _account(config, role="visitor"):
@@ -57,6 +39,24 @@ async def _account(config, role="visitor"):
         return identifier, username
     finally:
         await connection.close()
+
+
+def test_a_totp_code_matches_its_step_within_one_step_of_now_and_never_twice(monkeypatch):
+    seed = "JBSWY3DPEHPK3PXP"
+    now = 1_000 * 30 + 7
+    monkeypatch.setattr(auth_security, "time", SimpleNamespace(time=lambda: now))
+    code = {step: pyotp.TOTP(seed).at(step * 30) for step in range(998, 1003)}
+    assert len(set(code.values())) == 5, "the fixed seed gives five distinct codes"
+    for step in (999, 1_000, 1_001):
+        assert auth_security.matching_totp_step(seed, code[step]) == step
+    assert auth_security.matching_totp_step(seed, code[998]) is None, "two steps ago is too old"
+    assert auth_security.matching_totp_step(seed, code[1_002]) is None, "two steps ahead is too far"
+    assert auth_security.matching_totp_step(seed, code[1_000], after=1_000) is None, "a used step is a replay"
+    assert auth_security.matching_totp_step(seed, code[999], after=1_000) is None, "so is an earlier one"
+    assert auth_security.matching_totp_step(seed, code[1_001], after=1_000) == 1_001
+    assert auth_security.matching_totp_step(seed, code[999], after=998) == 999
+    wrong = next(guess for guess in ("000000", "111111") if guess not in code.values())
+    assert auth_security.matching_totp_step(seed, wrong) is None
 
 
 @pytest.mark.asyncio
@@ -378,10 +378,10 @@ async def test_enrollment_revokes_login_issued_while_it_waited(isolated_config, 
         resume = asyncio.Event()
         original = auth._issue_session
 
-        async def pause_before_session(connection, response, user_id):
+        async def pause_before_session(connection, response, user_id, **options):
             issuing.set()
             await asyncio.wait_for(resume.wait(), 5)
-            await original(connection, response, user_id)
+            await original(connection, response, user_id, **options)
 
         monkeypatch.setattr(auth, "_issue_session", pause_before_session)
         login_task = asyncio.create_task(racing.post("/api/v2/auth/login", json={

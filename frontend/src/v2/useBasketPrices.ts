@@ -9,7 +9,7 @@ import { basketItemKey, isPriceable, type BasketItem } from "./v2-basket-storage
 import { fetchSharedBasketPrices, readSharedBasketPrices } from "./v2-shared-basket-api";
 import { readSharedPrices, sharedSnapshot, writeSharedPrices, type SharedLine, type SharedPrices } from "./v2-shared-basket";
 
-export const MAX_FETCHED_ITEMS = 100;
+const MAX_FETCHED_ITEMS = 100;
 export type PriceFetch =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -17,7 +17,7 @@ export type PriceFetch =
   | { phase: "error"; message: string; signedOut?: boolean };
 
 /** The lines sent for prices: the included ones that have prices (not free text), at most MAX_FETCHED_ITEMS. One credit each. */
-export function fetchedItems<T extends BasketItem>(items: readonly T[]): T[] {
+function fetchedItems<T extends BasketItem>(items: readonly T[]): T[] {
   return items.filter(item => !item.disabled && isPriceable(item)).slice(0, MAX_FETCHED_ITEMS);
 }
 /** What fetching the prices of this basket costs: one credit per included line. */

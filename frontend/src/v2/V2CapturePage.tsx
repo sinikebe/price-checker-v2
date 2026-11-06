@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import { emptyProduct, ProductApiError, productRequest, type Draft, type Product, type ProductData } from "./v2-products-api";
 import bookmarkletSource from "./bookmarklet-capture.js?raw";
 import versions from "./component-versions.json";
 import captureRetailers from "./capture-retailers.json";
 import { storeMatchesPath, storeRequest, type StoreCandidate, type StoreMatches } from "./v2-stores-api";
+import { errorText } from "./v2-http";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
+import { euros } from "./v2-basket-view";
+import type { Channel } from "./v2-availability";
+import { priceRequest, readingDay, SALES_CHANNELS } from "./v2-prices-api";
 import "./v2-capture.css";
 
 type CapturedStore = { name: string; city: string | null; postalCode: string | null;
@@ -17,8 +22,7 @@ type Payload = { v: 2; url: string; host: string; name: string | null; brand: st
 type Match = { kind: "product" | "draft"; id: number };
 type Resolution = { status: "loading" | "product" | "draft" | "missing" | "no-ean" | "error";
   id?: number; product?: Product; draft?: Draft; message?: string };
-type SalesChannel = "in_store" | "drive" | "delivery";
-type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: SalesChannel | "" };
+type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: Channel | "" };
 type ProductFields = Pick<ProductData, "name" | "brand" | "package" | "quantity">;
 type Submitted = { productId?: number; productDraftId?: number; createdProductDraft?: boolean; aliasProposed?: boolean };
 type StoreSelection = { candidate: StoreCandidate; aliasName: string | null };
@@ -27,8 +31,8 @@ function capturedProductFields(payload: Payload | null): ProductFields {
     package: "", quantity: (payload?.quantity || "").slice(0, 80) };
 }
 const pendingKey = "v2:capture:pending";
+const NOT_SAVED = "Le relevé n’a pas été enregistré.";
 const bookmarkletLabel = "Capturer ce prix v" + versions.bookmarklet.version;
-const channels: Record<SalesChannel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const fallbackStore: Store = { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "" };
 
 function retailerFor(host: string) {
@@ -58,7 +62,7 @@ function parsePayload(raw: string | null): Payload | null {
       city: storeText("city", 200), postalCode: storeText("postalCode", 20),
       channel: channel === "drive" || channel === "delivery" || channel === "in_store" ? channel : null } : null;
     return { v: 2, url: data.url, host: data.host, name: optional("name", 180), brand: optional("brand", 100),
-      ean: ean && /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(ean) ? ean : null,
+      ean: ean && GTIN_PATTERN.test(ean) ? ean : null,
       quantity: optional("quantity", 100), price, source: optional("source", 40),
       store: capturedStore, capturedAt: optional("capturedAt", 40) || "" };
   } catch { return null; }
@@ -76,7 +80,7 @@ function storedStore(retailer: string): Store {
     if (raw) {
       const data = JSON.parse(raw) as Partial<Store>;
       if (data.retailer === retailer && typeof data.store_name === "string" && typeof data.city === "string"
-        && typeof data.postal_code === "string" && data.sales_channel && data.sales_channel in channels)
+        && typeof data.postal_code === "string" && data.sales_channel && data.sales_channel in SALES_CHANNELS)
         return { retailer, store_name: data.store_name, city: data.city, postal_code: data.postal_code,
           sales_channel: data.sales_channel };
     }
@@ -101,11 +105,6 @@ async function findStoreMatches(input: Store): Promise<StoreMatches> {
   return storeRequest<StoreMatches>(storeMatchesPath(input));
 }
 
-function today() {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-}
-
 function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
   const anchor = useRef<HTMLAnchorElement>(null);
   const [copied, setCopied] = useState(false);
@@ -117,7 +116,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
     try { await navigator.clipboard.writeText(href); setCopied(true); }
     catch { setCopied(false); }
   }
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Installer le favori de capture<span>.</span></h1>
       <p>Relevez le prix d’une fiche que vous avez déjà ouverte dans le navigateur.</p></div></div>
@@ -135,7 +134,7 @@ function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Prom
       <p>Le point de vente saisi est mémorisé dans ce navigateur pour les prochaines captures de la même enseigne. Aucun prix n’est publié sans validation.</p>
       <p><Link to="/v2/produits">Retour aux produits</Link></p>
     </section>
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
@@ -152,7 +151,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   const storeEditVersion = useRef(0);
   const [productFields, setProductFields] = useState<ProductFields>(() => capturedProductFields(payload));
   const [price, setPrice] = useState(payload?.price?.toFixed(2) || "");
-  const [observedAt, setObservedAt] = useState(today());
+  const [observedAt, setObservedAt] = useState(readingDay);
   const [note, setNote] = useState(payload && retailerFor(payload.host) ? "Page produit : " + payload.url : "");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -183,7 +182,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         }
       }).catch(reason => {
         if (active && storeEditVersion.current === storeVersion) {
-          setStoreSearch("error"); setStoreError(reason instanceof Error ? reason.message : "Recherche indisponible.");
+          setStoreSearch("error"); setStoreError(errorText(reason, "Recherche indisponible."));
         }
       });
     } else setStoreSearch("idle");
@@ -202,7 +201,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       return { status: "product", id: match.id, product } as Resolution;
     }).then(next => { if (active) setResolution(next); }).catch(reason => {
       if (active) setResolution(reason instanceof ProductApiError && reason.status === 404
-        ? { status: "missing" } : { status: "error", message: reason instanceof Error ? reason.message : "Recherche indisponible." });
+        ? { status: "missing" } : { status: "error", message: errorText(reason, "Recherche indisponible.") });
     });
     return () => { active = false; };
   }, [payload, user?.id]);
@@ -232,7 +231,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       if (exact) chooseStore(exact);
     } catch (reason) {
       if (storeEditVersion.current === version) {
-        setStoreSearch("error"); setStoreError(reason instanceof Error ? reason.message : "Recherche indisponible.");
+        setStoreSearch("error"); setStoreError(errorText(reason, "Recherche indisponible."));
       }
     }
   }
@@ -259,26 +258,18 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
           propose_store_alias: Boolean(selectedStore.aliasName), alias_source: "retailer" } : {}) };
       let next: Submitted;
       if (resolution.status === "product" && resolution.id) {
-        const response = await fetch("/api/v2/prices/products/" + resolution.id + "/capture-drafts", {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ean: payload.ean, source_url: payload.url, price: pricePayload }),
-        });
-        if (!response.ok) throw await submissionError(response);
-        const result = await response.json() as { alias_proposal_id: number | null };
+        const result = await priceRequest<{ alias_proposal_id: number | null }>("/products/" + resolution.id + "/capture-drafts",
+          NOT_SAVED, "POST", { ean: payload.ean, source_url: payload.url, price: pricePayload });
         next = { productId: resolution.id, aliasProposed: Boolean(result.alias_proposal_id) };
       } else {
         const retailer = retailerFor(payload.host);
         const productData: ProductData = { ...emptyProduct(), ...productFields, ean: payload.ean,
           retailer_links: retailer ? [{ retailer, url: payload.url, source: "capture" }] : [] };
-        const response = await fetch("/api/v2/prices/capture-drafts", {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ean: payload.ean, source_url: payload.url, price: pricePayload,
-            ...(resolution.status === "draft" && resolution.id
-              ? { product_draft_id: resolution.id } : { product_data: productData }) }),
-        });
-        if (!response.ok) throw await submissionError(response);
-        const result = await response.json() as { product_draft_id: number; created_product_draft: boolean;
-          alias_proposal_id: number | null };
+        const result = await priceRequest<{ product_draft_id: number; created_product_draft: boolean;
+          alias_proposal_id: number | null }>("/capture-drafts", NOT_SAVED, "POST", {
+          ean: payload.ean, source_url: payload.url, price: pricePayload,
+          ...(resolution.status === "draft" && resolution.id
+            ? { product_draft_id: resolution.id } : { product_data: productData }) });
         next = { productDraftId: result.product_draft_id, createdProductDraft: result.created_product_draft,
           aliasProposed: Boolean(result.alias_proposal_id) };
       }
@@ -286,11 +277,11 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       try { sessionStorage.removeItem(pendingKey); } catch { /* No-op. */ }
       window.history.replaceState(null, "", "/v2/capture");
       setSent(next);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Enregistrement impossible."); }
+    } catch (reason) { setError(errorText(reason, "Enregistrement impossible.")); }
     finally { busyRef.current = false; setBusy(false); }
   }
   const canContribute = resolution.status === "product" || resolution.status === "draft" || resolution.status === "missing";
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
       <h1>Vérifier le relevé<span>.</span></h1><p>Les informations relevées doivent être vérifiées. Aucun prix n’est publié automatiquement.</p></div></div>
     <section className="v2-workspace-card v2-capture">
@@ -304,7 +295,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       : <>
         <h2>{payload.name || "Produit sans nom"}</h2>
         <p>{[payload.brand, payload.quantity, payload.ean && "EAN " + payload.ean].filter(Boolean).join(" · ") || "Identité à vérifier"}</p>
-        <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : payload.price.toFixed(2) + " €"}</strong>
+        <p>Prix proposé : <strong>{payload.price == null ? "non trouvé" : euros(payload.price)}</strong>
           {payload.source && <small> · {payload.source.startsWith("visible:") ? "prix affiché sur la page" : "montant indiqué dans les données de la page"}</small>}</p>
         {payload.price == null && <p>Le prix n’a pas pu être relevé. Vérifiez que le produit est disponible et qu’un magasin est sélectionné sur la fiche, puis relancez la capture.</p>}
         <p>Page consultée : <a href={payload.url} target="_blank" rel="noreferrer">{payload.host}</a>. Le prix dépend du magasin et du canal choisis sur cette page.</p>
@@ -354,10 +345,10 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               <label>Code postal<input required={!selectedStore} readOnly={Boolean(selectedStore)} maxLength={20} value={store.postal_code} onChange={event => editStore({ ...store, postal_code: event.target.value })} /></label>
               <label>Canal<select required value={store.sales_channel} onChange={event => setStore({ ...store, sales_channel: event.target.value as Store["sales_channel"] })}>
                 <option value="">Choisir le canal</option>
-                {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {Object.entries(SALES_CHANNELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>{!payload.store?.channel && <small>La page n’a pas indiqué le canal. Choisissez celui du prix affiché.</small>}</label>
               <label>Prix du conditionnement, en €<input required type="number" min="0.01" max="99999999.99" step="0.01" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} /></label>
-              <label>Date du relevé<input required type="date" max={today()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
+              <label>Date du relevé<input required type="date" max={readingDay()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
               <label>Précision facultative<input maxLength={1000} value={note} onChange={event => setNote(event.target.value)} />
                 <small>Ce texte sera public après validation. Retirez l’URL si elle ne désigne pas une fiche publique.</small></label>
             </div>
@@ -369,13 +360,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         </form> : <p>Pour proposer ce relevé, <Link to="/v2/connexion?next=capture">connectez-vous</Link>. La capture reste dans cet onglet.</p>)}
       </>}
     </section>
-  </Frame>;
-}
-
-async function submissionError(response: Response): Promise<Error> {
-  const data: unknown = await response.json().catch(() => null);
-  const detail = data && typeof data === "object" && "detail" in data ? (data as { detail?: unknown }).detail : null;
-  return new Error(typeof detail === "string" ? detail : "Le relevé n’a pas été enregistré.");
+  </V2PageFrame>;
 }
 
 export default function V2CapturePage({ mode, user, onLogout }: { mode: "install" | "review"; user: V2User | null; onLogout: () => Promise<void> }) {

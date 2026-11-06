@@ -4,75 +4,60 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import HTTPException
 
 from app.api.v2 import account_data, shared_baskets
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 PATH = "/api/v2/shared-baskets"
 
 
 @pytest.fixture
 async def setup(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_shared_baskets_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
-    users = {}
-    for name in ("alice", "bob", "carol", "dave"):
-        user_id = await connection.fetchval(
+    async with disposable_database("v2_shared_baskets_") as config:
+        connection = await connect_v2(config)
+        users = {}
+        for name in ("alice", "bob", "carol", "dave"):
+            user_id = await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES($1,$1,'test','confirmed') RETURNING id", name)
+            users[name] = {"id": user_id, "role": "confirmed", "username": name}
+        products = {}
+        for name in ("Lait", "Pâtes", "Retiré"):
+            products[name] = await connection.fetchval(
+                "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+                json.dumps({"brand": "Marque", "name": name, "group": name}))
+        moderator = await connection.fetchval(
             "INSERT INTO v2_users(username,username_key,password_hash,role) "
-            "VALUES($1,$1,'test','confirmed') RETURNING id", name)
-        users[name] = {"id": user_id, "role": "confirmed", "username": name}
-    products = {}
-    for name in ("Lait", "Pâtes", "Retiré"):
-        products[name] = await connection.fetchval(
-            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
-            json.dumps({"brand": "Marque", "name": name, "group": name}))
-    moderator = await connection.fetchval(
-        "INSERT INTO v2_users(username,username_key,password_hash,role) "
-        "VALUES('moderator','moderator','test','admin') RETURNING id")
-    await connection.execute(
-        "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
-        "VALUES('product',$1,'test',$2)", products["Retiré"], moderator)
+            "VALUES('moderator','moderator','test','admin') RETURNING id")
+        await connection.execute(
+            "INSERT INTO v2_content_withdrawals(kind,content_id,reason,withdrawn_by) "
+            "VALUES('product',$1,'test',$2)", products["Retiré"], moderator)
 
-    async def fake_connect():
-        return await connect_v2(config)
+        async def fake_connect():
+            return await connect_v2(config)
 
-    async def fake_session_user(_connection, request):
-        user = users.get(request.headers.get("x-test-user"))
-        if user is None:
-            raise HTTPException(status_code=401, detail="Connectez-vous.")
-        return user
+        async def fake_session_user(_connection, request):
+            user = users.get(request.headers.get("x-test-user"))
+            if user is None:
+                raise HTTPException(status_code=401, detail="Connectez-vous.")
+            return user
 
-    monkeypatch.setattr(shared_baskets, "_connect", fake_connect)
-    monkeypatch.setattr(shared_baskets, "_session_user", fake_session_user)
-    monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
-    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
-    try:
-        yield client, connection, users, products
-    finally:
-        await client.aclose()
-        await connection.close()
-        root = await connect_v2(base)
+        monkeypatch.setattr(shared_baskets, "_connect", fake_connect)
+        monkeypatch.setattr(shared_baskets, "_session_user", fake_session_user)
+        monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
         try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
+            yield client, connection, users, products
         finally:
-            await root.close()
+            await client.aclose()
+            await connection.close()
 
 
 def who(name: str) -> dict:
@@ -99,6 +84,7 @@ async def test_a_shared_basket_is_created_from_the_basket_and_seen_by_members_on
     assert (await client.post(PATH, json={"name": "x"})).status_code == 401
     state = await create(client, products)
     assert state["role"] == "owner" and state["owner"] == "alice"
+    assert state["limits"] == {"lines": 100, "members": 20}, "as many lines as one price request takes"
     assert [member["username"] for member in state["members"]] == ["alice"]
     lait, pates = state["lines"]
     assert lait["kind"] == "product" and lait["label"] == "Marque Lait"
@@ -519,3 +505,68 @@ async def test_anyone_with_the_link_sees_the_basket_and_its_prices_without_names
     monkeypatch.setattr(shared_baskets, "VIEWS_PER_MINUTE", 1)
     statuses = [(await client.post(f"{PATH}/view", json={"invite": renewed.json()["invite"]})).status_code for _ in range(2)]
     assert statuses[-1] == 429, "views by link are limited per client"
+
+
+@pytest.mark.asyncio
+async def test_a_bad_or_replaced_invitation_is_refused_with_each_routes_own_words(setup):
+    client, _connection, _users, products = setup
+    state = await create(client, products)
+    invite = state["invite"]
+    forged = invite[:-1] + ("A" if invite[-1] != "A" else "B")
+    beyond = f"{2 ** 63}-" + invite.split("-", 1)[1]  # matches the pattern, above the largest id
+    renewed = (await client.post(f"{PATH}/{state['id']}/invite", headers=who("alice"))).json()["invite"]
+    join_text = "Ce lien d’invitation n’est plus valable : demandez-en un nouveau."
+    view_text = "Ce lien de panier partagé n’est plus valable : demandez-en un nouveau."
+    for bad in (forged, "nonsense", beyond, invite):
+        joined = await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": bad, "confirm": True})
+        assert (joined.status_code, joined.json()["detail"]) == (404, join_text), bad
+        viewed = await client.post(f"{PATH}/view", json={"invite": bad})
+        assert (viewed.status_code, viewed.json()["detail"]) == (404, view_text), bad
+    assert (await client.post(f"{PATH}/join", headers=who("bob"), json={"invite": renewed})).json()["member"] is False
+    assert (await client.post(f"{PATH}/view", json={"invite": renewed})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_an_administrator_fetches_a_shared_baskets_prices_without_credits(setup):
+    client, connection, users, products = setup
+    await priced(connection, products)
+    users["moderator"] = {"id": await connection.fetchval("SELECT id FROM v2_users WHERE username='moderator'"),
+                          "role": "admin", "username": "moderator"}
+    state = await create(client, products, name="moderator")
+    fetched = await client.post(f"{PATH}/{state['id']}/prices", headers=who("moderator"))
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.headers["cache-control"] == "private, no-store"
+    body = fetched.json()
+    assert body["cost"] == 1 and body["credits"]["unlimited"] is True, "a shared basket always says what it covers"
+    assert body["prices"]["fetched_by"] == "moderator"
+    assert body["prices"]["content"]["lines"][0]["product_ids"] == [products["Lait"]]
+    assert await connection.fetchval("SELECT count(*) FROM v2_basket_credits WHERE user_id=$1", users["moderator"]["id"]) == 0
+    logged = await connection.fetch("SELECT data FROM v2_logs WHERE event='basket.prices.fetched' ORDER BY id")
+    assert [set(json.loads(row["data"])) for row in logged] == [{"items", "products", "truncated", "unlimited", "shared"}]
+
+
+@pytest.mark.asyncio
+async def test_a_member_without_credits_is_refused_and_no_price_is_stored(setup):
+    client, connection, users, products = setup
+    await priced(connection, products)
+    await connection.execute("UPDATE v2_credit_settings SET daily_grant=0")
+    state = await create(client, products)
+    refused = await client.post(f"{PATH}/{state['id']}/prices", headers=who("alice"))
+    assert refused.status_code == 429
+    detail = refused.json()["detail"]
+    assert set(detail) == {"code", "credits", "cost", "message"} and (detail["code"], detail["cost"]) == ("no_credits", 1)
+    assert detail["message"] == "Il faut 1 crédit pour ce panier."
+    assert int(refused.headers["retry-after"]) > 0
+    assert (await client.get(f"{PATH}/{state['id']}/prices", headers=who("alice"))).json() == {"prices": None}
+    assert (await client.get(f"{PATH}/{state['id']}", headers=who("alice"))).json()["revision"] == state["revision"]
+    events = await connection.fetch("SELECT event,data FROM v2_logs WHERE source='basket' ORDER BY id")
+    assert [(row["event"], json.loads(row["data"])) for row in events] == [("basket.prices.refused", {"reason": "no_credits"})]
+    # The refusal comes after the account's day was counted: that is kept.
+    assert await connection.fetchval("SELECT granted_on FROM v2_basket_credits WHERE user_id=$1", users["alice"]["id"]) is not None
+
+
+def test_stored_json_is_spliced_into_a_head_as_it_is():
+    assert shared_baskets._json_with({"name": "Pâtes"}, "prices", '{"a":[1]}') == '{"name": "Pâtes","prices":{"a":[1]}}'
+    assert json.loads(shared_baskets._json_with({"n": 1}, "content", "null")) == {"n": 1, "content": None}
+    with pytest.raises(ValueError):
+        shared_baskets._json_with({}, "content", "null")

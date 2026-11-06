@@ -929,6 +929,16 @@
       "component": "accounts",
       "version": "0.1.50",
       "reason": "La carte du filtre de magasins suit un changement fait depuis le menu, sans nouveauté propre aux comptes."
+    },
+    {
+      "component": "database",
+      "version": "0.1.59",
+      "reason": "Requêtes, verrous et lectures JSON réunis dans des modules communs, sans changement du schéma ni des données."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.35",
+      "reason": "État d’installation séparé de son fournisseur et suivi de connexion partagé, sans nouveauté hors connexion à annoncer."
     }
   ]
 }

@@ -103,3 +103,19 @@ async def test_host_health_is_admin_only_and_reads_bounded_file(tmp_path, monkey
         assert {alert["metric"] for alert in result.json()["alerts"]} == {"memory", "disk"}
         (tmp_path / "host-health.json").write_text("x" * 65537)
         assert (await client.get("/api/v2/host-health")).status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_host_health_refuses_a_file_that_is_not_an_object(tmp_path, monkeypatch):
+    monkeypatch.setenv("PRICE_CHECKER_V2_STATE_DIR", str(tmp_path))
+
+    async def allowed(_request):
+        return None
+    monkeypatch.setattr(host_health, "_require_admin", allowed)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                base_url="https://test") as client:
+        for content in ("[]", '"text"', "12"):
+            (tmp_path / "host-health.json").write_text(content)
+            refused = await client.get("/api/v2/host-health")
+            assert refused.status_code == 503, content
+            assert refused.json()["detail"] == "Mesures de l’hôte indisponibles."

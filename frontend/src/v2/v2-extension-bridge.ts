@@ -13,7 +13,7 @@ export type ExtensionEvent =
   | { type: "needs-human" } | { type: "resumed" } | { type: "done" } | { type: "aborted"; reason: string; store?: string | null };
 export type ExtensionInfo = { version: string; adapters: string[] };
 
-export const ADAPTER = "carrefour";
+const ADAPTER = "carrefour";
 const EAN = /^\d{8,14}$/;
 
 /** The message that starts a job: only what the extension needs to read, never a credential. */

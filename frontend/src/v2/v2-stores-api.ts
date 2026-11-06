@@ -1,3 +1,5 @@
+import { requestJson } from "./v2-http";
+
 export type StoreCandidate = {
   id: number; retailer: string; retailer_id: number; retailer_group_id: number;
   name: string; city: string | null;
@@ -11,18 +13,8 @@ export type AliasProposal = {
   author: string; created_at: string;
 };
 
-export async function storeRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
-  const response = await fetch("/api/v2/stores" + path, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { detail?: string } | null;
-    throw new Error(payload?.detail || "Recherche ou proposition de magasin impossible.");
-  }
-  return response.json() as Promise<T>;
-}
+export const storeRequest = <T>(path: string, method = "GET", body?: object): Promise<T> =>
+  requestJson<T>("/api/v2/stores" + path, { method, body, cache: "no-store", fallback: "Recherche ou proposition de magasin impossible." });
 
 export function storeMatchesPath(input: {
   retailer: string; store_name: string; city: string; postal_code: string;

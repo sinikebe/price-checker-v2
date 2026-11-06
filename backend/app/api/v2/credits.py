@@ -8,12 +8,10 @@ a refused or failed reading costs nothing.
 """
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _check_origin, _connect, _current_user, _limit_key, _secure_write
+from app.api.v2.auth import _check_origin, _connect, _current_user, _limit_key, _require_admin_role, _secure_write
 from app.services import v2_basket_credits as credits
 
 router = APIRouter(prefix="/api/v2/credits", tags=["v2-credits"])
@@ -33,8 +31,7 @@ async def charge(connection, request: Request, cost: int) -> dict:
     Raises 429 with the state and the cost when the balance (or a visitor's allowance) is too low.
     A cookie-session request from another site is refused before anything is spent.
     """
-    if request.headers.get("authorization") is None:
-        _check_origin(request)
+    _check_origin(request)
     user = await _current_user(connection, request)
     cfg = await credits.settings(connection)
     now = credits.paris_now()
@@ -46,21 +43,15 @@ async def charge(connection, request: Request, cost: int) -> dict:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
         spent = await credits.spend(connection, user["id"], state, cost)
         if spent is None:
-            _refuse(credits.public_state(state["balance"], state["today"], cfg, state["bonus"]), cost, now,
-                    "Pas assez de crédits pour afficher ces prix.")
-        return credits.public_state(spent["balance"], spent["today"], cfg, spent["bonus"])
+            raise credits.no_credits(credits.account_state(state, cfg),
+                                     cost, now, "Pas assez de crédits pour afficher ces prix.")
+        return credits.account_state(spent, cfg)
     remaining = await credits.visitor_spend(connection, _visitor_key(request), cost, now.date(), cfg["visitor_daily"])
     if remaining is None:
         used = await credits.visitor_used(connection, _visitor_key(request), now.date())
-        _refuse(credits.visitor_state(max(0, cfg["visitor_daily"] - used), now.date(), cfg), cost, now,
-                "Consultations du jour épuisées : connectez-vous pour avoir des crédits.")
+        raise credits.no_credits(credits.visitor_state(max(0, cfg["visitor_daily"] - used), now.date(), cfg),
+                                 cost, now, "Consultations du jour épuisées : connectez-vous pour avoir des crédits.")
     return credits.visitor_state(remaining, now.date(), cfg)
-
-
-def _refuse(state: dict, cost: int, now, message: str):
-    wait = credits.seconds_until(date.fromisoformat(state["next_grant_on"]), now)
-    raise HTTPException(status_code=429, headers={"Retry-After": str(wait)},
-                        detail={"code": "no_credits", "credits": state, "cost": cost, "message": message})
 
 
 async def viewer_state(connection, request: Request, user, cfg: dict) -> dict:
@@ -70,7 +61,7 @@ async def viewer_state(connection, request: Request, user, cfg: dict) -> dict:
         return credits.unlimited_state(today, cfg)
     if user is not None:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
-        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
+        return credits.account_state(state, cfg)
     used = await credits.visitor_used(connection, _visitor_key(request), today)
     return credits.visitor_state(max(0, cfg["visitor_daily"] - used), today, cfg)
 
@@ -120,9 +111,7 @@ class CreditSettingsChange(BaseModel):
 
 
 async def _require_admin_user(connection, request: Request) -> None:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(await _current_user(connection, request))
 
 
 async def _settings(connection) -> dict:

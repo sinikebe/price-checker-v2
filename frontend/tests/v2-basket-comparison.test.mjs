@@ -9,7 +9,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-comparison.ts", import.
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { buildBasketComparison, postalDepartment, pricePosition, reactivationGains, splitSavings, readingKey } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
+const { buildBasketComparison, postalDepartment, presentStoresOff, pricePosition, priceRows, reactivationGains, splitSavings, readingKey } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const product = id => ({ id, revision: 1, data: { name: "Product " + id } });
 const line = (item, ...candidates) => ({ item, candidates });
@@ -542,4 +542,15 @@ test("per unit, putting a store back is measured on the value of the needed amou
   assert.equal(split.splitUsedCents, 150);
   const gains = reactivationGains(lines, responses, undefined, true, split, off, "unit");
   assert.deepEqual(gains.get("20:in_store"), { extraCents: 30, unpriced: 0 }, "500 g are worth 1.20 there instead of 1.50");
+});
+
+test("the price rows of a basket's answers, and the stores off that they have", () => {
+  const first = reading(1, 10, "1.50"), drive = reading(2, 10, "1.40", { sales_channel: "drive" }), other = reading(3, 20, "2.00");
+  const responses = new Map([[1, response(first, drive)], [2, null], [3, response(other)]]);
+  assert.deepEqual(priceRows(responses), [first, drive, other], "in order; a failed answer has no row");
+  assert.deepEqual(priceRows(new Map([[1, null]])), []);
+  const rows = priceRows(responses);
+  assert.deepEqual([...presentStoresOff(["20:in_store", "99:in_store", "10:drive", "10:delivery"], rows)], ["20:in_store", "10:drive"],
+    "a store switched off for another basket, or another channel of a store here, is left out");
+  assert.deepEqual([...presentStoresOff(new Set(["10:in_store"]), [])], []);
 });

@@ -1,0 +1,14 @@
+/**
+ * Hand a file to the reader's browser to save. The link joins the page for the click, which some browsers
+ * need, and the file's address lives long enough for a slow save to start.
+ */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

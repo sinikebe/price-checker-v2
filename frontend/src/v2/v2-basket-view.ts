@@ -7,8 +7,11 @@ export type Category = { name: string; department: string; family: string; compa
 const channelNames: Record<BasketPrice["sales_channel"], string> = {
   in_store: "En magasin", drive: "Drive", delivery: "Livraison",
 };
-const euros = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
-export const money = (cents: number) => euros.format(cents / 100);
+const euroFormat = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+/** An amount in cents, in euros the French way ("1,50 €"). */
+export const money = (cents: number) => euroFormat.format(cents / 100);
+/** An amount in euros: a number, or a decimal string from the API ("1.50"). */
+export const euros = (value: number | string) => euroFormat.format(Number(value));
 export const productName = (product: BasketProduct) => [product.data.brand, product.data.name].filter(Boolean).join(" ");
 export const itemName = (item: BasketItem) => "kind" in item ? item.name : productName(item);
 export const itemKind = (item: BasketItem) => !("kind" in item) ? "Produit" : item.kind === "group" ? "Groupe comparable"
@@ -43,22 +46,38 @@ export function itemHref(item: BasketItem) {
   return "/v2/produits?" + new URLSearchParams({ rayon: item.department, famille: item.family, ensemble: item.name });
 }
 
-/** The other groups or ensembles an article may be compared as, when it belongs to a comparison scope. */
-export function alternatives(item: BasketItem, categories: Category[]): (BasketGroup | BasketScope)[] {
-  if (!("kind" in item) || item.kind === "text" || item.kind === "selection") return [];
-  const group = item.kind === "group" ? categories.find(category => fold(category.name) === fold(item.name)) : null;
-  if (item.kind === "group" && !group?.comparison_scope) return [];
-  const location = item.kind === "scope" ? item : group!;
-  const scope = item.kind === "scope" ? item.name : group!.comparison_scope!;
-  const members = categories.filter(category => fold(category.department) === fold(location!.department)
-    && fold(category.family) === fold(location!.family)
-    && fold(category.comparison_scope ?? "") === fold(scope));
-  if (!members.length) return [];
-  return [
-    { kind: "scope", name: scope, department: location!.department, family: location!.family },
-    ...members.map(category => ({ kind: "group" as const, name: category.name })),
-  ];
+/**
+ * The other groups or ensembles an article may be compared as, when it belongs to a comparison scope: the
+ * ensemble first, then its groups in the catalogue's order. The categories are indexed once, so a list of
+ * articles is answered without scanning every category for each of them.
+ */
+export function alternativesIndex(categories: readonly Category[]): (item: BasketItem) => (BasketGroup | BasketScope)[] {
+  const scopeKey = (department: string, family: string, scope: string) => JSON.stringify([fold(department), fold(family), fold(scope)]);
+  const byName = new Map<string, Category>();
+  const byScope = new Map<string, Category[]>();
+  for (const category of categories) {
+    // The first category of a name wins, as a search through the list would find it.
+    if (!byName.has(fold(category.name))) byName.set(fold(category.name), category);
+    const key = scopeKey(category.department, category.family, category.comparison_scope ?? "");
+    const members = byScope.get(key);
+    if (members) members.push(category); else byScope.set(key, [category]);
+  }
+  return item => {
+    if (!("kind" in item) || item.kind === "text" || item.kind === "selection") return [];
+    const group = item.kind === "group" ? byName.get(fold(item.name)) : null;
+    if (item.kind === "group" && !group?.comparison_scope) return [];
+    const location = item.kind === "scope" ? item : group!;
+    const scope = item.kind === "scope" ? item.name : group!.comparison_scope!;
+    const members = byScope.get(scopeKey(location.department, location.family, scope)) ?? [];
+    if (!members.length) return [];
+    return [
+      { kind: "scope", name: scope, department: location.department, family: location.family },
+      ...members.map(category => ({ kind: "group" as const, name: category.name })),
+    ];
+  };
 }
+/** The comparison choices of one article (see alternativesIndex, for several). */
+export const alternatives = (item: BasketItem, categories: readonly Category[]) => alternativesIndex(categories)(item);
 
 export const shortDate = (value: string) => new Date(value + "T12:00:00").toLocaleDateString("fr-FR", {
   day: "numeric", month: "short", year: "numeric",
@@ -83,8 +102,6 @@ export function storeName(row: BasketPrice) {
   if (row.online) return [row.store_name, "En ligne", channelNames[row.sales_channel]].join(" · ");
   return [row.store_name, row.city, row.postal_code, channelNames[row.sales_channel]].filter(Boolean).join(" · ");
 }
-export const quantityText = (quantity: NonNullable<BasketItem["quantity"]>) =>
-  quantity.amount + " " + (quantity.unit === "package" ? "paquet(s)" : quantity.unit === "piece" ? "pièce(s)" : quantity.unit);
 
 /** The title of a basket's results, from its settings. */
 export function comparisonTitle(mode: CompareMode, advanced: boolean): string {

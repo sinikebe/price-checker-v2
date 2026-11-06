@@ -4,10 +4,7 @@ and removed when unused and nothing on our side points to them."""
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -15,14 +12,13 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v2 import basket, catalogue, product_references, products, shared_baskets
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as open_prices
 from app.services import v2_product_references as references
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 PATH = "/api/v2/product-references"
 NUTELLA = "3017620422003"  # valid check digit
 COKE = "5449000000996"
@@ -30,53 +26,42 @@ COKE = "5449000000996"
 
 @pytest.fixture
 async def setup(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_references_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
-    users = {}
-    for name, role in (("ana", "confirmed"), ("root", "admin")):
-        users[name] = {"id": await connection.fetchval(
-            "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES($1,$1,'x',$2) RETURNING id", name, role),
-            "role": role, "username": name}
+    async with disposable_database("v2_references_") as config:
+        connection = await connect_v2(config)
+        users = {}
+        for name, role in (("ana", "confirmed"), ("root", "admin")):
+            users[name] = {"id": await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES($1,$1,'x',$2) RETURNING id", name, role),
+                "role": role, "username": name}
 
-    async def fake_connect():
-        return await connect_v2(config)
+        async def fake_connect():
+            return await connect_v2(config)
 
-    async def fake_user(_connection, request):
-        return users.get(request.headers.get("x-test-user"))
+        async def fake_user(_connection, request):
+            return users.get(request.headers.get("x-test-user"))
 
-    async def fake_session_user(connection_, request):
-        user = await fake_user(connection_, request)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Connectez-vous.")
-        return user
+        async def fake_session_user(connection_, request):
+            user = await fake_user(connection_, request)
+            if user is None:
+                raise HTTPException(status_code=401, detail="Connectez-vous.")
+            return user
 
-    for module in (product_references, products, catalogue, basket, shared_baskets):
-        monkeypatch.setattr(module, "_connect", fake_connect)
-    for module in (product_references, products):
-        monkeypatch.setattr(module, "_current_user", fake_user)
-    for module in (product_references, basket, shared_baskets):
-        monkeypatch.setattr(module, "_session_user", fake_session_user)
-    monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
-    # No Open Prices traffic unless a test asks for it.
-    monkeypatch.setattr(open_prices, "_connect", fake_connect)
-    monkeypatch.setattr(open_prices, "_read_config", lambda: None)
-    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
-    try:
-        yield client, connection, users
-    finally:
-        await client.aclose()
-        await connection.close()
-        root = await connect_v2(base)
+        for module in (product_references, products, catalogue, basket, shared_baskets):
+            monkeypatch.setattr(module, "_connect", fake_connect)
+        for module in (product_references, products):
+            monkeypatch.setattr(module, "_current_user", fake_user)
+        for module in (product_references, basket, shared_baskets):
+            monkeypatch.setattr(module, "_session_user", fake_session_user)
+        monkeypatch.setattr(shared_baskets, "_live", shared_baskets._Live())
+        # No Open Prices traffic unless a test asks for it.
+        monkeypatch.setattr(open_prices, "_connect", fake_connect)
+        monkeypatch.setattr(open_prices, "_read_config", lambda: None)
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
         try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
+            yield client, connection, users
         finally:
-            await root.close()
+            await client.aclose()
+            await connection.close()
 
 
 ANA, ROOT = {"x-test-user": "ana"}, {"x-test-user": "root"}

@@ -14,17 +14,19 @@ function Summary({ label, value, average, maximum }: { label: string; value: num
   </div>;
 }
 
-export default function V2HostHealth() {
+/** The host's figures, refreshed every minute while the Serveur tab is shown (`active`) and at once on return to it. */
+export default function V2HostHealth({ active }: { active: boolean }) {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    let active = true;
-    const refresh = () => { void getHealth().then(data => { if (active) { setHealth(data); setError(""); } })
-      .catch(() => { if (active) setError("Les mesures de l’hôte ne sont pas disponibles."); }); };
+    if (!active) return;
+    let current = true;
+    const refresh = () => { void getHealth().then(data => { if (current) { setHealth(data); setError(""); } })
+      .catch(() => { if (current) setError("Les mesures de l’hôte ne sont pas disponibles."); }); };
     refresh();
     const timer = window.setInterval(refresh, 60_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, []);
+    return () => { current = false; window.clearInterval(timer); };
+  }, [active]);
   const hours = health?.available ? health.hourly : [];
   const cpuCount = hours.reduce((total, point) => total + point.cpu_samples, 0);
   const sampleCount = hours.reduce((total, point) => total + point.samples, 0);

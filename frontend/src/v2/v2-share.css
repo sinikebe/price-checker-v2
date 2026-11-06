@@ -3,7 +3,7 @@
 .v2-share-title-row h1 { min-width: 0; overflow-wrap: anywhere; }
 .v2-share-control { display: inline-flex; flex: none; flex-direction: column; align-items: end; gap: 3px; margin-top: 8px; }
 .v2-share-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 6px 10px;
-  border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: var(--v2-surface, #fff);
+  border: 1px solid var(--v2-line, #cbd9ce); border-radius: 9px; background: #fff;
   color: #2b684a; font: inherit; font-size: .83rem; font-weight: 650; cursor: pointer; white-space: nowrap; }
 .v2-share-button svg { width: 17px; height: 17px; flex: none; }
 .v2-share-button:hover, .v2-share-button:focus-visible { background: #eaf5ea; border-color: #81b08e; }
@@ -22,7 +22,6 @@ html[data-v2-theme="dark"] .v2-share-button:hover, html[data-v2-theme="dark"] .v
 html[data-v2-theme="dark"] .v2-share-feedback { color: #a9dfb3; }
 html[data-v2-theme="dark"] .v2-shared-basket { background: #20372a; border-color: #63816a; }
 @media (max-width: 600px) {
-  .v2-share-title-row { align-items: start; }
   .v2-share-control { margin-top: 5px; }
   .v2-share-button { min-height: 44px; }
 }

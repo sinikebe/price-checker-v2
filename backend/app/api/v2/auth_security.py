@@ -60,6 +60,27 @@ def recovery_hash(code: str) -> str | None:
     return hashlib.sha256(normalized.encode("ascii")).hexdigest()
 
 
+def matching_totp_step(seed: str, code: str, *, after: int | None = None) -> int | None:
+    """The 30-second step whose code is `code`, within one step of now (clock drift), else None.
+
+    `after` is the last step already used: a code from that step or an earlier one is a replay.
+    """
+    totp = pyotp.TOTP(seed)
+    current = int(time.time()) // 30
+    for step in (current - 1, current, current + 1):
+        if (after is None or step > after) and hmac.compare_digest(totp.at(step * 30), code):
+            return step
+    return None
+
+
+async def second_factor_enabled(connection: asyncpg.Connection, user_id: int, *, for_update: bool = False) -> bool:
+    """Whether the account has a confirmed second factor (a pending enrolment does not count)."""
+    return bool(await connection.fetchval(
+        "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1"
+        + (" FOR UPDATE" if for_update else ""), user_id,
+    ))
+
+
 async def verify_second_factor(
     connection: asyncpg.Connection, user_id: int, code: str | None,
     *, required: bool = False,
@@ -80,16 +101,13 @@ async def verify_second_factor(
     value = code.strip()
     if re.fullmatch(r"[0-9]{6}", value):
         seed = decrypt_seed(row["secret_ciphertext"])
-        totp = pyotp.TOTP(seed)
-        current_step = int(time.time()) // 30
-        for step in (current_step - 1, current_step, current_step + 1):
-            if (step > (row["last_step"] or -1)
-                    and hmac.compare_digest(totp.at(step * 30), value)):
-                await connection.execute(
-                    "UPDATE v2_mfa_credentials SET last_step=$1 WHERE user_id=$2",
-                    step, user_id,
-                )
-                return True
+        step = matching_totp_step(seed, value, after=row["last_step"] or -1)
+        if step is not None:
+            await connection.execute(
+                "UPDATE v2_mfa_credentials SET last_step=$1 WHERE user_id=$2",
+                step, user_id,
+            )
+            return True
     code_hash = recovery_hash(value)
     if code_hash is not None:
         return bool(await connection.fetchval(

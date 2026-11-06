@@ -16,17 +16,33 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.db.v2_locks import lock_store_lifecycle
 from app.services.v2_write_limits import check_write_limit, lock_account_writes
 
 router = APIRouter(prefix="/api/v2/stores", tags=["v2-stores"])
 AliasSource = Literal["retailer", "open_food_facts", "open_prices"]
+NEAR_MATCH_SCORE = 0.58  # lowest similarity offered as a "near" store name
+# A store merged into another one keeps its row for provenance, but is no longer listed.
+_NOT_MERGED = "NOT EXISTS (SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)"
 
 
 def name_key(value: str) -> str:
     folded = unicodedata.normalize("NFKD", value.casefold())
     ascii_text = "".join(char for char in folded if not unicodedata.combining(char))
     return " ".join(re.findall(r"[a-z0-9]+", ascii_text))
+
+
+def manual_store_import_key(
+    retailer_id: int, name: str, city: str, postal_code: str, *, online: bool = False,
+) -> str:
+    """The import key of a store a contributor typed in, from what identifies it.
+
+    The connectors compute the same key, and a deleted store is remembered by it, so a later price
+    with the same retailer, name and address does not create the store again.
+    """
+    identity = "|".join((str(retailer_id), name, city, postal_code, *(("online",) if online else ())))
+    return "manual:store:" + hashlib.sha256(identity.casefold().encode("utf-8")).hexdigest()[:32]
 
 
 def _location_compatible(row, city: str, postal_code: str) -> bool:
@@ -38,6 +54,46 @@ def _location_compatible(row, city: str, postal_code: str) -> bool:
     if postal_code and row["postal_code"] and postal_code.strip() != row["postal_code"].strip():
         return False
     return not (city and row["city"] and name_key(city) != name_key(row["city"]))
+
+
+def _best_label(query_key: str, labels: list[tuple[str, str]]) -> tuple[bool, str, float] | None:
+    """The store label closest to the query, or None when no label is near enough.
+
+    A row with an exact key always matches. Otherwise the cheap upper bounds of
+    ratio() skip labels that cannot reach NEAR_MATCH_SCORE, so the result is the
+    same as scoring every label.
+    """
+    exact = any(key == query_key for _, key in labels)
+    best = None
+    for label, key in labels:
+        matcher = SequenceMatcher(None, query_key, key)
+        if not exact and (matcher.real_quick_ratio() < NEAR_MATCH_SCORE
+                          or matcher.quick_ratio() < NEAR_MATCH_SCORE):
+            continue
+        score = matcher.ratio()
+        if best is None or score > best[1]:
+            best = (label, score)
+    if best is None or (not exact and best[1] < NEAR_MATCH_SCORE):
+        return None
+    return exact, best[0], best[1]
+
+
+def _is_admin(user) -> bool:
+    return user is not None and user["role"] == "admin"
+
+
+async def _is_merged(connection, store_id: int) -> bool:
+    return await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='store' AND from_id=$1)", store_id,
+    )
+
+
+async def _lock_current_store(connection, store_id: int) -> None:
+    """Lock a store row for an administrator change; a merged record is no longer edited."""
+    if await connection.fetchval("SELECT id FROM v2_stores WHERE id=$1 FOR UPDATE", store_id) is None:
+        raise HTTPException(status_code=404, detail="Magasin introuvable.")
+    if await _is_merged(connection, store_id):
+        raise HTTPException(status_code=409, detail="Cette fiche a été fusionnée.")
 
 
 def _store_dict(row) -> dict:
@@ -75,10 +131,9 @@ async def matches(
             "r.id AS retailer_id,r.group_id AS retailer_group_id "
             "FROM v2_stores s JOIN v2_retailers r ON r.id=s.retailer_id "
             "WHERE r.group_id IN (SELECT group_id FROM v2_retailers "
-            "WHERE lower(name)=lower($1)) AND s.active AND " + VISIBLE + " AND NOT EXISTS "
-            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id) "
+            "WHERE lower(name)=lower($1)) AND s.active AND " + VISIBLE + " AND " + _NOT_MERGED + " "
             "ORDER BY s.id LIMIT 5000",
-            retailer.strip(), user is not None and user["role"] == "admin",
+            retailer.strip(), _is_admin(user),
             user["id"] if user else None,
         )
         if not rows:
@@ -96,13 +151,10 @@ async def matches(
             if not _location_compatible(row, city, postal_code):
                 continue
             labels = [(row["name"], name_key(row["name"]))] + aliases.get(row["id"], [])
-            label, score = max(
-                ((label, SequenceMatcher(None, query_key, key).ratio()) for label, key in labels),
-                key=lambda item: item[1],
-            )
-            exact = any(key == query_key for _, key in labels)
-            if not exact and score < 0.58:
+            best = _best_label(query_key, labels)
+            if best is None:
                 continue
+            exact, label, score = best
             location_bonus = (0.1 if postal_code and row["postal_code"] else 0) + (
                 0.05 if city and row["city"] else 0
             )
@@ -147,16 +199,16 @@ async def retailer_groups(request: Request):
         retailers = await connection.fetch(
             "SELECT r.id,r.name,r.group_id,count(s.id) FILTER (WHERE "
             "s.active AND (s.osm_id IS NOT NULL OR EXISTS (SELECT 1 FROM v2_price_observations o "
-            "WHERE o.store_id=s.id)) AND NOT EXISTS "
-            "(SELECT 1 FROM v2_content_merges m WHERE m.kind='store' AND m.from_id=s.id)) "
+            "WHERE o.store_id=s.id)) AND " + _NOT_MERGED + ") "
             "AS store_count FROM v2_retailers r LEFT JOIN v2_stores s ON s.retailer_id=r.id "
             "GROUP BY r.id,r.name,r.group_id ORDER BY lower(r.name),r.id"
         )
-        return [
-            {"id": group["id"], "name": group["name"],
-             "retailers": [dict(row) for row in retailers if row["group_id"] == group["id"]]}
-            for group in groups
-        ]
+        # One pass; each group keeps the retailers' name order.
+        by_group: dict[int, list[dict]] = {}
+        for row in retailers:
+            by_group.setdefault(row["group_id"], []).append(dict(row))
+        return [{"id": group["id"], "name": group["name"], "retailers": by_group.get(group["id"], [])}
+                for group in groups]
     finally:
         await connection.close()
 
@@ -228,7 +280,7 @@ async def list_stores(request: Request):
     connection = await _connect()
     try:
         user = await _current_user(connection, request)
-        is_admin = user is not None and user["role"] == "admin"
+        is_admin = _is_admin(user)
         rows = await connection.fetch(
             "SELECT s.id,s.name,s.city,s.postal_code,s.supports_drive,s.supports_delivery,s.active,s.online,"
             "r.name AS retailer,r.id AS retailer_id,"
@@ -237,8 +289,7 @@ async def list_stores(request: Request):
             "JOIN v2_retailer_groups g ON g.id=r.group_id "
             "WHERE ($1::boolean OR s.active) AND ($1::boolean OR s.osm_id IS NOT NULL OR EXISTS "
             "(SELECT 1 FROM v2_price_observations o WHERE o.store_id=s.id)) "
-            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m "
-            "WHERE m.kind='store' AND m.from_id=s.id) "
+            "AND " + _NOT_MERGED + " "
             "ORDER BY lower(g.name),lower(s.city),lower(s.name),s.id",
             is_admin,
         )
@@ -261,7 +312,7 @@ async def get_store(store_id: int, request: Request):
             "AND ($2::boolean OR NOT EXISTS (SELECT 1 FROM v2_content_merges m "
             "JOIN v2_stores target ON target.id=m.to_id "
             "WHERE m.kind='store' AND m.from_id=s.id AND NOT target.active))",
-            store_id, user is not None and user["role"] == "admin",
+            store_id, _is_admin(user),
             user["id"] if user else None,
         )
         if row is None:
@@ -273,15 +324,11 @@ async def get_store(store_id: int, request: Request):
         result = dict(row)
         result["aliases"] = [dict(alias) for alias in aliases]
         result["merged_to_id"] = merged_to_id
-        if user is not None and user["role"] == "admin":
-            result["impact"] = {
-                "prices": await connection.fetchval(
-                    "SELECT count(*) FROM v2_price_observations WHERE store_id=$1", store_id),
-                "drafts": await connection.fetchval(
-                    "SELECT count(*) FROM v2_price_drafts WHERE store_id=$1", store_id),
-                "offers": await connection.fetchval(
-                    "SELECT count(*) FROM v2_offers WHERE store_id=$1", store_id),
-            }
+        if _is_admin(user):
+            result["impact"] = dict(await connection.fetchrow(
+                "SELECT (SELECT count(*) FROM v2_price_observations WHERE store_id=$1) AS prices,"
+                "(SELECT count(*) FROM v2_price_drafts WHERE store_id=$1) AS drafts,"
+                "(SELECT count(*) FROM v2_offers WHERE store_id=$1) AS offers", store_id))
         return result
     finally:
         await connection.close()
@@ -346,16 +393,7 @@ async def set_store_online(store_id: int, payload: StoreOnline, request: Request
     try:
         await _admin(connection, request)
         async with connection.transaction():
-            row = await connection.fetchrow(
-                "SELECT id FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
-            )
-            if row is None:
-                raise HTTPException(status_code=404, detail="Magasin introuvable.")
-            if await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
-                "WHERE kind='store' AND from_id=$1)", store_id,
-            ):
-                raise HTTPException(status_code=409, detail="Cette fiche a été fusionnée.")
+            await _lock_current_store(connection, store_id)
             await connection.execute(
                 "UPDATE v2_stores SET online=$2,supports_delivery=supports_delivery OR $2 WHERE id=$1",
                 store_id, payload.online,
@@ -374,17 +412,8 @@ async def set_store_activity(store_id: int, payload: StoreActivity, request: Req
         await _admin(connection, request)
         async with connection.transaction():
             # Serialize lifecycle changes with portable V2 imports.
-            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
-            row = await connection.fetchrow(
-                "SELECT id,active FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
-            )
-            if row is None:
-                raise HTTPException(status_code=404, detail="Magasin introuvable.")
-            if await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
-                "WHERE kind='store' AND from_id=$1)", store_id,
-            ):
-                raise HTTPException(status_code=409, detail="Cette fiche a été fusionnée.")
+            await lock_store_lifecycle(connection)
+            await _lock_current_store(connection, store_id)
             await connection.execute(
                 "UPDATE v2_stores SET active=$2 WHERE id=$1", store_id, payload.active,
             )
@@ -406,7 +435,7 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
         await _admin(connection, request)
         async with connection.transaction():
             # Serialize lifecycle changes with portable V2 imports.
-            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+            await lock_store_lifecycle(connection)
             store = await connection.fetchrow(
                 "SELECT id,name FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
@@ -414,10 +443,7 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
                 raise HTTPException(status_code=404, detail="Magasin introuvable.")
             if payload.confirmation != store["name"]:
                 raise HTTPException(status_code=422, detail="Saisissez exactement le nom du magasin.")
-            if await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
-                "WHERE kind='store' AND from_id=$1)", store_id,
-            ):
+            if await _is_merged(connection, store_id):
                 raise HTTPException(status_code=409, detail="Supprimez la fiche actuelle, pas une ancienne fiche fusionnée.")
             # Include donor identities: old Open Prices locations must not
             # recreate the deleted store through their preserved merge links.
@@ -430,11 +456,8 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
             sources = {"import:" + row["import_key"] for row in rows if row["import_key"]}
             for row in rows:
                 if row["city"] and row["postal_code"]:
-                    identity = "|".join((str(row["retailer_id"]), row["name"],
-                                         row["city"], row["postal_code"]))
-                    sources.add("import:manual:store:" + hashlib.sha256(
-                        identity.casefold().encode("utf-8")
-                    ).hexdigest()[:32])
+                    sources.add("import:" + manual_store_import_key(
+                        row["retailer_id"], row["name"], row["city"], row["postal_code"]))
             sources.update("osm:" + row["osm_type"] + ":" + str(row["osm_id"])
                            for row in rows if row["osm_id"] is not None)
             aliases = await connection.fetch(
@@ -497,9 +520,7 @@ async def visible_store(connection: asyncpg.Connection, store_id: int, user: dic
         "WHERE s.id=$1 AND s.active AND " + VISIBLE + " FOR SHARE OF s",
         store_id, user["role"] == "admin", user["id"],
     )
-    if row is None or await connection.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='store' AND from_id=$1)", store_id
-    ):
+    if row is None or await _is_merged(connection, store_id):
         raise HTTPException(status_code=404, detail="Magasin introuvable.")
     return _store_dict(row)
 
@@ -568,10 +589,7 @@ async def create_alias_proposal(store_id: int, payload: AliasProposalInput, requ
 
 
 async def _admin(connection, request: Request) -> dict:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
-    return user
+    return _require_admin_role(await _current_user(connection, request))
 
 
 @router.get("/alias-proposals/pending")

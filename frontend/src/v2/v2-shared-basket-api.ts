@@ -1,5 +1,6 @@
 import type { InvitePreview, SharedBasket, SharedPrices, SharedSettings, SharedSummary, SharedView, WireOp } from "./v2-shared-basket";
-import { NoCreditsError, SignedOutError, type BasketCredits } from "./v2-basket-credits-api";
+import { SignedOutError, creditRefusal, creditedFetch, type BasketCredits } from "./v2-basket-credits-api";
+import { errorDetail } from "./v2-http";
 
 const BASE = "/api/v2/shared-baskets";
 
@@ -16,8 +17,7 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
+    const detail = await errorDetail(response);
     throw new SharedBasketError(typeof detail === "string" ? detail
       : response.status === 401 ? "Connectez-vous pour utiliser un panier partagé." : "Le panier partagé ne répond pas. Réessayez.", response.status);
   }
@@ -52,19 +52,11 @@ export const readSharedBasketPrices = (id: number, signal?: AbortSignal) => requ
 
 /** Fetch the basket's prices with this account's credits (one per included article): every member then sees them. */
 export async function fetchSharedBasketPrices(id: number, cost: number): Promise<{ prices: SharedPrices; credits: BasketCredits; cost: number }> {
-  let response: Response;
-  try {
-    response = await fetch(`${BASE}/${id}/prices`, { method: "POST", credentials: "same-origin", cache: "no-store" });
-  } catch { throw new Error("Connexion interrompue. Vérifiez votre solde de crédits avant de réessayer."); }
+  const response = await creditedFetch(`${BASE}/${id}/prices`, { method: "POST", credentials: "same-origin", cache: "no-store" });
   if (response.status === 401) throw new SignedOutError();
-  if (response.status === 429) {
-    const body = await response.json().catch(() => null) as { detail?: { code?: string; credits?: BasketCredits; cost?: number; message?: string } } | null;
-    if (body?.detail?.code === "no_credits" && body.detail.credits) throw new NoCreditsError(body.detail.credits, body.detail.cost ?? cost, body.detail.message);
-    throw new Error("Trop de requêtes. Réessayez dans un instant.");
-  }
+  if (response.status === 429) throw await creditRefusal(response, cost);
   if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
+    const detail = await errorDetail(response);
     throw new SharedBasketError(typeof detail === "string" ? detail : "Impossible de récupérer les prix. Aucun crédit n’a été dépensé.", response.status);
   }
   return response.json() as Promise<{ prices: SharedPrices; credits: BasketCredits; cost: number }>;

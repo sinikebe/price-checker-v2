@@ -31,7 +31,7 @@
     var data = event.data;
     if (!data || data.source !== "pc-app" || typeof data.type !== "string") return;
     if (data.type === "ping") {
-      toPage({ type: "pong", id: String(data.id || "").slice(0, 64), version: chrome.runtime.getManifest().version, adapters: ["carrefour"] });
+      toPage({ type: "pong", id: String(data.id || "").slice(0, 64), version: chrome.runtime.getManifest().version, adapters: core.ADAPTERS.slice() });
     } else if (data.type === "refresh") {
       var job = core.validJob(data);
       if (!job) { toPage({ type: "aborted", id: String(data.id || "").slice(0, 64), reason: "invalid_job" }); return; }

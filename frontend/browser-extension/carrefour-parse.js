@@ -1,4 +1,4 @@
-/* Reads a Carrefour search answer for one EAN. Pure functions: no DOM, no network, no storage.
+/* Reads Carrefour search answers and product pages for one EAN. Pure functions: no DOM, no network, no storage.
  *
  * The shape of the answer is not documented and can change, so nothing here is trusted blindly: the
  * result carries every price it found and where, and the popup shows them for the person to judge. */
@@ -23,7 +23,7 @@
   function money(value) {
     if (typeof value === "number") return Number.isFinite(value) && value > 0 && value < 10000 ? Math.round(value * 100) / 100 : null;
     if (typeof value !== "string") return null;
-    var match = value.replace(/[  \s]/g, "").match(/^(\d{1,4})(?:[.,](\d{1,2}))?€?$/);
+    var match = value.replace(/\s/g, "").match(/^(\d{1,4})(?:[.,](\d{1,2}))?€?$/);
     if (!match) return null;
     var amount = Number(match[1] + "." + (match[2] || "0"));
     return amount > 0 ? amount : null;
@@ -159,7 +159,7 @@
       result.title = typeof product.name === "string" ? product.name.slice(0, 300) : null;
       result.brand = product.brand && typeof product.brand.name === "string" ? product.brand.name.slice(0, 120) : null;
       result.url = typeof product.url === "string" && /^https:\/\/www\.carrefour\.fr\//.test(product.url) ? product.url : null;
-      offerList(product.offers).forEach(function (offer, index) {
+      offerList(product.offers).forEach(function (offer) {
         var amount = money(offer.price);
         if (amount !== null) result.prices.push({ path: "JSON-LD de la page", value: amount });
         if (result.available === null && typeof offer.availability === "string") result.available = !/OutOfStock|SoldOut|Discontinued/i.test(offer.availability);

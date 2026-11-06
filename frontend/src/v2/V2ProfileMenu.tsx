@@ -8,7 +8,7 @@ import { PersonIcon } from "./V2SiteIcons";
 import { initials, nextMenuIndex, profileMenuSections, roleLabel } from "./v2-site-nav";
 import "./v2-site-nav.css";
 
-/** Profile circle with a menu: account, contribution and administration links, and signing out. */
+/** Profile circle with a menu: account, contribution and administration links, the contribution-mode and store-filter switches, and signing out. */
 export default function V2ProfileMenu({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();

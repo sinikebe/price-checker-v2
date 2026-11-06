@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { emptyBasketFilters, type BasketFilters, type CompareMode } from "./v2-basket-comparison";
 import { readBasketDefaultStores } from "./v2-basket-default-stores";
-import { readStoresOff, writeStoresOff } from "./v2-basket-store-off";
-import { readUnitChoices, writeUnitChoices, type UnitChoiceMap } from "./v2-measures";
+import type { BaseUnit } from "./v2-basket-quantity";
+import { basketItemKey, type BasketItem } from "./v2-basket-storage";
+import { readStoresOff, withStoreOff, writeStoresOff } from "./v2-basket-store-off";
+import { readUnitChoices, withUnitChoice, writeUnitChoices, type UnitChoiceMap } from "./v2-measures";
 import type { SharedSettings } from "./v2-shared-basket";
 import { listSetting, listViewOf, type ListView } from "./v2-shopping-list";
 
@@ -17,19 +19,23 @@ export type BasketView = {
   /** The list: all articles, split across stores, or one store (shared live in a shared basket). */
   listView: ListView; setListView: (value: ListView) => void;
 };
-type SharedView = {
+type SharedViewSettings = {
   settings: SharedSettings; setSettings: (patch: Partial<SharedSettings>) => void;
   /** Ticks sent one article at a time (a shared basket); without it, the ticks are a setting like the others. */
   setChecked?: (keys: string[]) => void;
 };
 
+/** "1": the personal basket opens in the quantities mode. */
+export const BASKET_ADVANCED_KEY = "v2:basket:advanced";
 function readFlag(key: string, on: string): boolean { try { return localStorage.getItem(key) === on; } catch { return false; } }
 function writeValue(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* this page still works */ } }
+/** Open the personal basket in the quantities mode next time (a recipe added its quantities). */
+export function enableAdvancedBasket() { writeValue(BASKET_ADVANCED_KEY, "1"); }
 const checkedKey = (userId: number | null) => `v2:basket:checked:${userId ?? "anonymous"}`;
 const listModeKey = (userId: number | null) => `v2:basket:list-mode:${userId ?? "anonymous"}`;
 function readListMode(userId: number | null): string { try { return localStorage.getItem(listModeKey(userId)) ?? "all"; } catch { return "all"; } }
 /** The ticked articles kept in this browser: basket keys, once each, at most 100. */
-export function readChecked(userId: number | null): string[] {
+function readChecked(userId: number | null): string[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(checkedKey(userId)) ?? "[]");
     return Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === "string" && key.length > 0 && key.length <= 400))].slice(0, 100) : [];
@@ -41,8 +47,8 @@ export function readChecked(userId: number | null): string[] {
  * switched off and the store filters. The personal basket keeps them in this browser; a shared
  * basket keeps them on the server, the same for every member and changed live.
  */
-export function useBasketView(userId: number | null, shared: SharedView | null): BasketView {
-  const [advanced, setAdvancedState] = useState(() => readFlag("v2:basket:advanced", "1"));
+export function useBasketView(userId: number | null, shared: SharedViewSettings | null): BasketView {
+  const [advanced, setAdvancedState] = useState(() => readFlag(BASKET_ADVANCED_KEY, "1"));
   const [mode, setModeState] = useState<CompareMode>(() => readFlag("v2:basket:compare", "unit") ? "unit" : "price");
   const [unitState, setUnitState] = useState(() => ({ userId, choices: readUnitChoices(userId) }));
   if (unitState.userId !== userId) setUnitState({ userId, choices: readUnitChoices(userId) });
@@ -64,12 +70,23 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
     listView: listViewOf(shared.settings.list_mode), setListView: value => shared.setSettings({ list_mode: listSetting(value) }),
   };
   return {
-    advanced, setAdvanced: value => { setAdvancedState(value); writeValue("v2:basket:advanced", value ? "1" : "0"); },
+    advanced, setAdvanced: value => { setAdvancedState(value); writeValue(BASKET_ADVANCED_KEY, value ? "1" : "0"); },
     mode, setMode: value => { setModeState(value); writeValue("v2:basket:compare", value); },
     units: unitState.choices, setUnits: value => { setUnitState({ userId, choices: value }); writeUnitChoices(userId, value); },
     storesOff: offState.keys, setStoresOff: value => { setOffState({ userId, keys: value }); writeStoresOff(userId, value); },
     filters, setFilters,
     checked: checkedState.keys, setChecked: value => { const keys = value.slice(0, 100); setCheckedState({ userId, keys }); writeValue(checkedKey(userId), JSON.stringify(keys)); },
     listView: listViewOf(listState.mode), setListView: value => { const mode = listSetting(value); setListState({ userId, mode }); writeValue(listModeKey(userId), mode); },
+  };
+}
+
+/**
+ * The two changes a basket's results make to how it is shown: a store switched off or back on in the
+ * split, and the unit an article is compared in (the choices of articles gone from the basket are dropped).
+ */
+export function basketDisplayActions(display: Pick<BasketView, "storesOff" | "setStoresOff" | "units" | "setUnits">, items: readonly BasketItem[]) {
+  return {
+    setStoreActive: (key: string, active: boolean) => display.setStoresOff(withStoreOff(display.storesOff, key, !active)),
+    chooseUnit: (item: BasketItem, unit: BaseUnit) => display.setUnits(withUnitChoice(display.units, basketItemKey(item), unit, items.map(basketItemKey))),
   };
 }

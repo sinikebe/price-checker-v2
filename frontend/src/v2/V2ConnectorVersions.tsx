@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { errorText } from "./v2-http";
 
 type Connector = { id: string; name: string; version: string; enabled: boolean;
   changelog: { version: string; notes: string[] }[] };
@@ -13,7 +14,7 @@ export default function V2ConnectorVersions() {
     void fetch("/api/v2/connector-stores/versions", { cache: "no-store" })
       .then(response => { if (!response.ok) throw new Error("Versions des connecteurs indisponibles."); return response.json(); })
       .then((result: { connectors: Connector[] }) => { if (active) setItems(result.connectors); })
-      .catch(reason => { if (active) setError(String(reason)); });
+      .catch(reason => { if (active) setError(errorText(reason, "Versions des connecteurs indisponibles.")); });
     return () => { active = false; };
   }, []);
   useEffect(() => {

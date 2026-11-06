@@ -21,6 +21,6 @@
 .v2-duplicate-one_sided { border: 2px solid #d48b2b; background: #d48b2b1c; }
 .v2-duplicate-state { margin-left: .6rem; font-weight: 700; }
 .v2-duplicate-edit { display: grid; gap: .5rem; }
-.v2-duplicate-edit textarea, .v2-duplicate-edit select { width: 100%; box-sizing: border-box; color: inherit; background: var(--v2-surface,#fff); border: 1px solid var(--v2-line,#cad6cf); border-radius: .4rem; padding: .5rem; }
+.v2-duplicate-edit textarea, .v2-duplicate-edit select { width: 100%; color: inherit; background: #fff; border: 1px solid var(--v2-line,#cad6cf); border-radius: .4rem; padding: .5rem; }
 .v2-duplicate-edit [aria-pressed="true"] { border-color: #20865c; }
 @media(max-width:750px) { .v2-duplicate-pair,.v2-duplicate-fields { grid-template-columns: 1fr; } }

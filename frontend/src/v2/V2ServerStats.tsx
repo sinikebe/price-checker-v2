@@ -4,6 +4,7 @@ import {
   type EndpointSort, type Stats, type StatsPeriod,
 } from "./v2-stats-api";
 import "./v2-observability.css";
+import { errorText } from "./v2-http";
 
 const day = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 const COLUMNS: { id: EndpointSort; label: string }[] = [
@@ -24,7 +25,7 @@ export default function V2ServerStats({ active }: { active: boolean }) {
     const controller = new AbortController();
     getStats(period, controller.signal)
       .then(stats => { if (!controller.signal.aborted) setResult({ key, stats }); })
-      .catch(reason => { if (!controller.signal.aborted) setResult({ key, error: reason instanceof Error ? reason.message : "Chargement impossible." }); });
+      .catch(reason => { if (!controller.signal.aborted) setResult({ key, error: errorText(reason, "Chargement impossible.") }); });
     return () => controller.abort();
   }, [active, key, period]);
 

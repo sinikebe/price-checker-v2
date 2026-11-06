@@ -82,11 +82,16 @@ def instant() -> Check:
 
 
 CONNECTOR_ID = r"[a-z][a-z0-9_-]{1,63}"
+# The class name of an exception, and a short or full commit hash (v2_observability matches them too).
+ERROR_CLASS = r"[A-Za-z][A-Za-z0-9_]{0,59}"
+SHA_HEX = r"[0-9a-f]{7,40}"
 PRODUCT = integer(1, 2**62)
 STORE = integer(1, 2**62)
 COUNT = integer()
 ORIGIN = choice("basket", "single", "page")
-SHA = pattern(r"[0-9a-f]{7,40}")
+SHA = pattern(SHA_HEX)
+ERROR = pattern(ERROR_CLASS)
+_CONNECTOR = pattern(CONNECTOR_ID)
 
 
 @dataclass(frozen=True)
@@ -135,13 +140,14 @@ EVENTS: dict[str, Event] = {
         "channel": choice("in_store", "drive", "delivery")}, connector=True),
     "connector.failure": Event(
         "connector", lambda values: "error" if "error" in values else "warning",
-        {"error": pattern(r"[A-Za-z][A-Za-z0-9_]{0,59}"), "http_status": integer(100, 599), "product_id": PRODUCT},
+        {"error": ERROR, "http_status": integer(100, 599), "product_id": PRODUCT},
         frozenset({"error", "http_status", "product_id"}), connector=True),
     "connector.disabled": Event("connector", "warning", {}, connector=True),
-    "connector.worker.failed": Event("connector", "error", {"error": pattern(r"[A-Za-z][A-Za-z0-9_]{0,59}")}, connector=True),
+    "connector.worker.failed": Event("connector", "error", {"error": ERROR}, connector=True),
     "basket.prices.fetched": Event("basket", "info", {
         "items": integer(0, 1000), "products": integer(0, 100_000), "truncated": boolean(),
-        "credits_left": integer(0, 1000), "unlimited": boolean(), "shared": boolean()},
+        # 10 000 is the largest holding limit an administrator can set (BOUNDS in app/api/v2/credits.py).
+        "credits_left": integer(0, 10_000), "unlimited": boolean(), "shared": boolean()},
         frozenset({"credits_left", "unlimited", "shared"})),
     "basket.prices.refused": Event("basket", "info", {"reason": choice("no_credits")}),
     "basket.demo.saved": Event("basket", "info", {"items": integer(0, 1000), "products": integer(0, 100_000)}),
@@ -151,7 +157,10 @@ EVENTS: dict[str, Event] = {
 }
 
 _ENQUEUE_OUTCOMES = {"queued", "fresh", "cooldown", "rate_limited"}
-_throttle: dict[str, float] = {}
+_throttle: dict[str, float] = {}  # key -> monotonic time from which it is allowed again
+# Keys name a connector, an event and its facts (a product id among them), so they keep coming:
+# the expired ones are dropped once this many are held.
+_THROTTLE_MAX_KEYS = 1024
 
 
 def strict() -> bool:
@@ -180,7 +189,7 @@ def validate(event: str, fields: dict, connector: str | None = None) -> tuple[Ev
     if definition.connector:
         if connector is None:
             raise LogError(f"{event}: a connector is required")
-        pattern(CONNECTOR_ID)(connector)
+        _CONNECTOR(connector)
     elif connector is not None:
         raise LogError(f"{event}: no connector expected")
     return definition, clean, connector
@@ -217,7 +226,11 @@ def outcome_counts(outcomes: list[str]) -> dict[str, int]:
 def allow_every(key: str, seconds: float) -> bool:
     """True at most once per `seconds` for a key, to keep a repeating failure from flooding the journal."""
     now = time.monotonic()
-    if now - _throttle.get(key, -seconds) < seconds:
+    until = _throttle.get(key)
+    if until is not None and now < until:
         return False
-    _throttle[key] = now
+    if len(_throttle) >= _THROTTLE_MAX_KEYS:
+        for stale in [name for name, expiry in _throttle.items() if expiry <= now]:
+            del _throttle[stale]
+    _throttle[key] = now + seconds
     return True

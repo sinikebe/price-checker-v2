@@ -7,6 +7,8 @@
 const PRODUCT_API = "https://world.openfoodfacts.org/api/v2/product/";
 const SEARCH_API = "https://world.openfoodfacts.org/cgi/search.pl";
 export const OFF_PRODUCT_PAGE = "https://world.openfoodfacts.org/product/";
+/** What the pages say when Open Food Facts cannot be read. */
+export const OFF_UNAVAILABLE = "Open Food Facts ne répond pas pour le moment.";
 const PRODUCT_FIELDS = "code,product_name,brands,quantity,image_front_small_url,nutriscore_grade,nova_group,"
   + "ingredients_text_fr,ingredients_text,nutriments,last_modified_t";
 const SEARCH_FIELDS = "code,product_name,brands,quantity,image_front_small_url";
@@ -21,6 +23,7 @@ export type OffProduct = {
 /** A search result or a barcode match, for filling a new product's identifying facts. */
 export type OffMatch = { code: string; name: string; brand: string; quantity: string; image: string | null };
 
+// The same rule as GTIN_PATTERN (v2-catalogue-search), written here because tests load this module on its own.
 export const validBarcode = (code: string) => /^(?:[0-9]{8}|[0-9]{12,14})$/.test(code);
 
 const NUTRIENTS: [key: string, label: string, unit: string][] = [
@@ -83,7 +86,7 @@ async function getJson(url: string, signal?: AbortSignal): Promise<unknown> {
   const response = await fetch(url, { mode: "cors", credentials: "omit", cache: "no-store", signal });
   if (response.status === 404) return null;
   if (response.status === 429) throw new Error("Open Food Facts limite les consultations : réessayez dans une minute.");
-  if (!response.ok) throw new Error("Open Food Facts ne répond pas pour le moment.");
+  if (!response.ok) throw new Error(OFF_UNAVAILABLE);
   return response.json();
 }
 

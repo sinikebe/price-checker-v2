@@ -1,38 +1,20 @@
 """An id too large for the database is a 422 on every route, not a 500 with a trace."""
-import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import stores
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_bounds_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_bounds_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.mark.asyncio

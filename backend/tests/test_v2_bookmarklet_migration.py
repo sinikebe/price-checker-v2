@@ -3,29 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import pytest
 from app.db.v2_migrations import MIGRATIONS, connect_v2, migrate_v2
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_approved_capture_source_is_backfilled():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_capture_upgrade_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    try:
+    async with disposable_database("v2_capture_upgrade_", migrate=False) as config:
         connection = await connect_v2(config)
         try:
             await connection.execute(
@@ -96,9 +84,3 @@ async def test_approved_capture_source_is_backfilled():
             assert row["correction_status"] == "active"
         finally:
             await connection.close()
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()

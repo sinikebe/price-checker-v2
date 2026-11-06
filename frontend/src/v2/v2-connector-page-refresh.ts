@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { isActiveStatus, readingFinished } from "./v2-connector-queue-state";
+import { enabledConnectors, type InstalledConnector } from "./v2-connector-refresh";
 
 export const CONNECTOR_PRICE_REFRESH_EVENT = "v2-connector-price-refreshed";
 type ProductStatus = { status: string; rank: number | null; store_name?: string | null };
-type InstalledConnector = { id: string; name: string; enabled: boolean };
 export type QueueBadge = ProductStatus & { connector: string; connectorId: string; productId: number };
 
 async function statuses(connector: InstalledConnector, ids: number[], refresh: boolean): Promise<Record<string, ProductStatus>> {
@@ -29,10 +29,7 @@ export function useConnectorQueue(productIds: number[], admin = false): QueueBad
     let previous = new Map<string, string>();
     const ids = key.split(",").map(Number);
     async function check(refresh: boolean) {
-      const versions = await fetch("/api/v2/connector-stores/versions", { cache: "no-store" })
-        .then(response => response.ok ? response.json() as Promise<{ connectors: InstalledConnector[] }> : { connectors: [] })
-        .catch(() => ({ connectors: [] as InstalledConnector[] }));
-      const connectors = versions.connectors.filter(item => item.enabled);
+      const connectors = await enabledConnectors();
       if (!active) return;
       const results = await Promise.all(connectors.map(async connector => {
         const products: Record<string, ProductStatus> = {};

@@ -7,27 +7,18 @@ import re
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _bump_limit, _connect, _current_user, _limit_key, _secure_write
+from app.api.v2.auth import _bump_limit, _connect, _current_user, _limit_key, _require_admin_role, _secure_write
 from app.api.v2.credits import charge
-from app.api.v2.prices import _day
 from app.api.v2.products import _product
+from app.core.paris_time import paris_day
+# CURRENT keeps the name it had when it was defined here: code outside this module may import it.
+from app.db.v2_sql import CATEGORY, CURRENT_PRODUCT as CURRENT, DISPLAY_ORDER, MAX_BIGINT
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_catalogue_hierarchy import UNCATEGORIZED, fold as _fold
 
 router = APIRouter(prefix="/api/v2/catalogue", tags=["v2-catalogue"])
 MAX_PRICE_COST = 1000  # the highest amount a page of prices may announce
 
-# A catalogue category is the existing comparable group, never a second field.
-CATEGORY = "COALESCE(NULLIF(btrim(p.data->>'group'), ''), 'Sans groupe')"
-# Current, and part of the catalogue: barcode-only products (details at Open Food Facts) are left out.
-CURRENT = """NOT p.off_reference AND NOT EXISTS (
-    SELECT 1 FROM v2_content_withdrawals w
-    WHERE w.kind='product' AND w.content_id=p.id
-) AND NOT EXISTS (
-    SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id
-) AND NOT EXISTS (
-    SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id
-)"""
 STORE_MATCH = """EXISTS (
     SELECT 1 FROM v2_price_observations o
     WHERE o.product_id=p.id AND o.store_id=$3
@@ -157,7 +148,10 @@ async def to_complete(
     connection = await _connect()
     try:
         products = await connection.fetch(
-            f"SELECT p.* FROM v2_products p WHERE {CURRENT} ORDER BY p.id"
+            "SELECT p.id, p.data->>'name' AS name, p.data->>'brand' AS brand, "
+            "p.data->>'package' AS package, p.data->>'quantity' AS quantity, "
+            "p.data->>'ean' AS ean, p.data->>'composition' AS composition "
+            f"FROM v2_products p WHERE {CURRENT} ORDER BY p.id"
         )
         # A store enters this public list only after a public observation exists.
         # Private drafts must never expose their store names here.
@@ -173,14 +167,12 @@ async def to_complete(
         required = []
         optional = []
         for row in products:
-            item = _product(row)
-            data = item["data"]
             missing_required = [label for key, label in PRODUCT_REQUIRED.items()
-                                if not (data.get(key) or "").strip()]
+                                if not (row[key] or "").strip()]
             missing_optional = [label for key, label in PRODUCT_OPTIONAL.items()
-                                if not (data.get(key) or "").strip()]
-            summary = {"kind": "product", "id": item["id"], "name": data.get("name") or "",
-                       "brand": data.get("brand") or "",
+                                if not (row[key] or "").strip()]
+            summary = {"kind": "product", "id": row["id"], "name": row["name"] or "",
+                       "brand": row["brand"] or "",
                        "missing": missing_required or missing_optional}
             if missing_required:
                 required.append(summary)
@@ -229,7 +221,6 @@ async def find_stores(q: str = Query("", max_length=80)):
         await connection.close()
 
 
-MAX_BIGINT = 2**63 - 1
 # The text searched is the product's fields joined with one space, runs of spaces collapsed, so that an
 # empty or missing field does not change what a phrase spanning two fields matches. The browser filters
 # the same way (v2-catalogue-search.ts); the shared fixture frontend/tests/fixtures/search-parity.json
@@ -238,20 +229,22 @@ SEARCH_TEXT = ("lower(btrim(regexp_replace(concat_ws(' ', p.data->>'brand', p.da
                "p.data->>'commercial_name', p.data->>'quantity', p.data->>'ean'), '[ \\t\\n\\r\\f\\v]+', ' ', 'g')))")
 
 
+# What a search matches, for its parameters $1 (the collapsed text), $2 (a category) and $3 (a store id).
+SEARCH_CONDITIONS = f"""{CURRENT}
+            AND ($1='' OR strpos({SEARCH_TEXT}, lower($1)) > 0)
+            AND ($2='' OR lower({CATEGORY})=lower($2))
+            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
+
+
 def _collapse(text: str) -> str:
     return re.sub(r"[ \t\n\r\f\v]+", " ", text).strip()
+
+
 # Typing triggers searches: bound them per client. Both budgets are charged only for admitted requests.
 SUGGEST_PER_MINUTE = 10
 SUGGEST_PER_HOUR = 100
 SUGGEST_MIN_CHARS = 2
 COMPLETE_LIST_BOUNDS = (5, 200)
-
-
-def _search_conditions() -> str:
-    return f"""{CURRENT}
-            AND ($1='' OR strpos({SEARCH_TEXT}, lower($1)) > 0)
-            AND ($2='' OR lower({CATEGORY})=lower($2))
-            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
 
 
 @router.get("/search")
@@ -264,14 +257,13 @@ async def search_products(
 ):
     connection = await _connect()
     try:
-        conditions = _search_conditions()
         parameters = _collapse(q), category.strip(), store_id
         total = await connection.fetchval(
-            f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters
+            f"SELECT count(*) FROM v2_products p WHERE {SEARCH_CONDITIONS}", *parameters
         )
         rows = await connection.fetch(
-            f"""SELECT p.* FROM v2_products p WHERE {conditions}
-                ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id
+            f"""SELECT p.* FROM v2_products p WHERE {SEARCH_CONDITIONS}
+                ORDER BY {DISPLAY_ORDER}
                 LIMIT $4 OFFSET $5""",
             *parameters, limit, offset,
         )
@@ -308,20 +300,20 @@ async def suggest_products(
     The browser filters a list it holds as the text grows, so a request is needed again
     only when a search is too broad to be listed or the text no longer extends a known one.
     """
-    if len(_collapse(q)) < SUGGEST_MIN_CHARS:
+    text = _collapse(q)
+    if len(text) < SUGGEST_MIN_CHARS:
         raise HTTPException(status_code=422, detail=f"Saisissez au moins {SUGGEST_MIN_CHARS} caractères.")
     connection = await _connect()
     try:
         await _charge_search(connection, request)
         limit = await connection.fetchval("SELECT complete_list_max FROM v2_search_settings WHERE singleton")
-        conditions = _search_conditions()
-        parameters = _collapse(q), category.strip(), store_id
+        parameters = text, category.strip(), store_id
         total = await connection.fetchval(
-            f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters)
+            f"SELECT count(*) FROM v2_products p WHERE {SEARCH_CONDITIONS}", *parameters)
         complete = total <= limit
         rows = await connection.fetch(
-            f"""SELECT p.* FROM v2_products p WHERE {conditions}
-                ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id LIMIT $4""",
+            f"""SELECT p.* FROM v2_products p WHERE {SEARCH_CONDITIONS}
+                ORDER BY {DISPLAY_ORDER} LIMIT $4""",
             *parameters, limit) if complete and total else []
         return {"total": total, "complete": complete, "max": limit,
                 "items": [_product(row) for row in rows]}
@@ -343,9 +335,7 @@ async def _search_settings(connection) -> dict:
 
 
 async def _require_admin_user(connection, request: Request) -> None:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(await _current_user(connection, request))
 
 
 @router.get("/search-settings")
@@ -461,14 +451,14 @@ async def _recent_observations(connection, ids: list[int]) -> list[dict]:
             JOIN v2_stores s ON s.id=c.store_id
             WHERE c.available
               AND c.correction_status IS DISTINCT FROM 'active'
-        ) recent WHERE rank<=30
+        ) recent WHERE rank<=$2
         ORDER BY observed_at,id
         """,
-        ids,
+        ids, HISTORY_LIMIT,
     )
     return [
         {"id": row["id"], "product_id": row["product_id"],
-         "price": str(row["price"]), "observed_at": _day(row["observed_at"]),
+         "price": str(row["price"]), "observed_at": paris_day(row["observed_at"]),
          "retailer": row["retailer"], "store_name": row["store_name"],
          "store_id": row["store_id"], "city": row["city"], "postal_code": row["postal_code"],
          "online": row["online"], "sales_channel": row["sales_channel"]}
@@ -487,7 +477,7 @@ async def scope_rows(connection, department: str, family: str, scope: str, limit
               AND lower(c.department)=lower($1)
               AND lower(c.family)=lower($2)
               AND lower(c.comparison_scope)=lower($3)
-            ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id
+            ORDER BY {DISPLAY_ORDER}
             LIMIT $4""",
         department, family, scope, limit,
     )
@@ -499,7 +489,7 @@ async def group_rows(connection, name: str, limit: int | None = None):
         f"""SELECT p.*, {CATEGORY} AS category_name
             FROM v2_products p WHERE {CURRENT}
               AND lower({CATEGORY})=lower($1)
-            ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id
+            ORDER BY {DISPLAY_ORDER}
             LIMIT $2""",
         name, limit,
     )
@@ -573,9 +563,7 @@ async def update_category_classification(
         raise HTTPException(status_code=404, detail="Groupe comparable introuvable.")
     connection = await _connect()
     try:
-        user = await _current_user(connection, request)
-        if user is None or user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+        await _require_admin_user(connection, request)
         async with connection.transaction():
             group = await connection.fetchval(
                 f"SELECT min({CATEGORY}) FROM v2_products p WHERE {CURRENT} "

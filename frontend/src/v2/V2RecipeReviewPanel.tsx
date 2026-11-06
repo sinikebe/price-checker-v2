@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { recipeRequest, type RecipeReview } from "./v2-recipes-api";
+import { errorText } from "./v2-http";
 
 const PAGE_SIZE = 30;
 
@@ -16,7 +17,7 @@ export default function V2RecipeReviewPanel() {
     let active = true;
     recipeRequest<RecipeReview[]>(`/submissions/review?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`)
       .then(value => { if (active) { setItems(value); setError(""); } })
-      .catch(reason => { if (active) setError(String(reason)); });
+      .catch(reason => { if (active) setError(errorText(reason, "Opération impossible.")); });
     return () => { active = false; };
   }, [page, reload]);
   async function decide(item: RecipeReview, action: "approve" | "reject") {
@@ -25,7 +26,7 @@ export default function V2RecipeReviewPanel() {
     try {
       await recipeRequest(`/submissions/${item.id}/${action}`, "POST");
       setReload(value => value + 1);
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(null); }
   }
   return <section className="v2-settings-card" aria-labelledby="v2-recipe-review-heading">

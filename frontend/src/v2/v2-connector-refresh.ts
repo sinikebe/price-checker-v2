@@ -1,11 +1,15 @@
 import type { BasketItem } from "./v2-basket-storage";
 
-type InstalledConnector = { id: string; enabled: boolean };
+export type InstalledConnector = { id: string; name: string; enabled: boolean };
 let installed: Promise<InstalledConnector[]> | null = null;
 let fetchedAt = 0;
 const recentBasketRequests = new Map<number, number>();
 
-async function connectors(): Promise<InstalledConnector[]> {
+/**
+ * The enabled connectors, asked at most every 30 seconds: the basket and the price pages share the
+ * list. A request that does not reach the server is made again on the next call.
+ */
+export async function enabledConnectors(): Promise<InstalledConnector[]> {
   if (!installed || Date.now() - fetchedAt > 30_000) {
     fetchedAt = Date.now();
     installed = fetch("/api/v2/connector-stores/versions", { cache: "no-store" })
@@ -16,15 +20,9 @@ async function connectors(): Promise<InstalledConnector[]> {
   return installed;
 }
 
-export async function requestConnectorRefresh(productId: number): Promise<void> {
-  if (!navigator.onLine || !Number.isSafeInteger(productId) || productId <= 0) return;
-  for (const connector of await connectors()) {
-    try {
-      await fetch(`/api/v2/connector-stores/${encodeURIComponent(connector.id)}/products/${productId}/refresh`, {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
-      });
-    } catch { /* Optional connector must not interrupt shopping. */ }
-  }
+/** Drops the shared list after an administrator changed a connector: the next page asks again at once. */
+export function forgetEnabledConnectors(): void {
+  installed = null;
 }
 
 /** Products of `next` missing from `previous`: one basket change makes one batched request. */
@@ -38,7 +36,7 @@ export async function requestBasketConnectorRefresh(productIds: number[]): Promi
   const ids = [...new Set(productIds)].filter(id => Number.isSafeInteger(id) && id > 0
     && now - (recentBasketRequests.get(id) ?? 0) > 60_000);
   if (!ids.length) return;
-  const active = await connectors();
+  const active = await enabledConnectors();
   if (!active.length) return;
   for (const id of ids) recentBasketRequests.set(id, now);
   for (const connector of active) {

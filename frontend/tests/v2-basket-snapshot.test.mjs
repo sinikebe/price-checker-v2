@@ -63,6 +63,7 @@ test("the last result is kept in the session and in the browser, per account", (
   reset();
   const snapshot = snapshotFromFetch(1, [pasta, milk], result);
   writeSnapshot(snapshot);
+  assert.equal(snapshotKey(1), "v2:basket:prices:1");
   assert.ok(store.has(snapshotKey(1)));
   assert.equal(readSnapshot(1), snapshot, "the session copy is used first");
   assert.equal(readSnapshot(2), null, "another account has none");
@@ -70,24 +71,28 @@ test("the last result is kept in the session and in the browser, per account", (
   forgetSnapshot(1); store.set(snapshotKey(1), JSON.stringify(snapshot));
   assert.deepEqual(readSnapshot(1), snapshot);
   forgetSnapshot(1);
+  store.set(snapshotKey(1), JSON.stringify({ ...snapshot, basketId: 9 }));
+  assert.equal(readSnapshot(1), null, "a shared basket's view is never read as the personal result");
   store.set(snapshotKey(1), JSON.stringify({ ...snapshot, userId: 2 }));
   assert.equal(readSnapshot(1), null, "a snapshot of another account is refused");
   store.set(snapshotKey(1), "{not json"); assert.equal(readSnapshot(1), null);
   store.set(snapshotKey(1), JSON.stringify({ userId: 1 })); assert.equal(readSnapshot(1), null);
 });
 
-test("the personal basket and each shared basket keep their own result", () => {
+test("only the personal basket's result is kept here; a shared basket's view is never stored", () => {
   reset();
   const personal = snapshotFromFetch(1, [pasta, milk], result);
-  const shared = snapshotFromFetch(1, [milk], { ...result, lines: [result.lines[1]] }, 9);
-  writeSnapshot(personal); writeSnapshot(shared);
-  assert.equal(shared.basketId, 9);
-  assert.equal(readSnapshot(1), personal);
-  assert.equal(readSnapshot(1, 9), shared);
-  assert.equal(readSnapshot(1, 10), null);
-  assert.ok(snapshotKey(1, 9).startsWith("v2:basket:") && snapshotKey(1, 9).endsWith(":1"), "found with the account's local data");
-  forgetSnapshot(1, 9); store.set(snapshotKey(1, 9), JSON.stringify(personal));
-  assert.equal(readSnapshot(1, 9), null, "the personal result is never shown for a shared basket");
+  assert.equal("basketId" in personal, false);
+  writeSnapshot(personal);
+  const stored = store.get(snapshotKey(1));
+  writeSnapshot({ ...personal, basketId: 9, fetchedAt: "2026-11-02T10:00:00+00:00" });
+  assert.equal(readSnapshot(1), personal, "the session copy is unchanged");
+  assert.equal(store.get(snapshotKey(1)), stored, "the stored copy is unchanged");
+  assert.equal(store.size, 1, "nothing else is written");
+  forgetSnapshot(1); store.set(snapshotKey(1), JSON.stringify({ ...personal, basketId: 9 }));
+  assert.equal(readSnapshot(1), null, "a stored value carrying a basket is refused");
+  // The shared prices are kept by v2-shared-basket.ts under their own key, in another format.
+  assert.notEqual(snapshotKey(1), "v2:basket:shared-prices:9:1");
 });
 
 test("a result too large for the browser still works for the session", () => {

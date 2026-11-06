@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from decimal import Decimal
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import extension
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from fastapi import HTTPException
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
+pytestmark = requires_v2_db
 WRITE = {"origin": "https://test"}
 ADMIN = {**WRITE, "x-test-role": "admin"}
 PAGE = "https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888"
@@ -24,23 +22,8 @@ PAGE = "https://www.carrefour.fr/p/pates-spaghetti-carrefour-3560070328888"
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_ext_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_ext_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest_asyncio.fixture
@@ -150,6 +133,7 @@ async def test_a_price_is_recorded_like_a_connectors_and_clears_the_withdrawn_st
         assert (row["price"], row["source"], row["source_provider"], row["sales_channel"], row["available"], row["source_url"], row["capture_ean"]) == (
             Decimal("2.89"), "connector", "carrefour", "drive", True, PAGE, "07613039830727")
         assert await db.fetchval("SELECT title FROM v2_offers WHERE source_provider='carrefour'") == "Fond de Veau MAGGI"
+        assert await db.fetchval("SELECT channel FROM v2_offers WHERE source_provider='carrefour'") == extension.CHANNEL == "drive"
         assert await db.fetchval("SELECT count(*) FROM v2_store_product_status") == 0
         assert await db.fetchval("SELECT count(*) FROM v2_logs WHERE connector='carrefour' AND event='connector.reading.finished'") == 1
         again = await client.post("/api/v2/extension/readings", headers=ADMIN, json=body)

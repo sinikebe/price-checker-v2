@@ -2,13 +2,10 @@
   --v2-ink: #18322e;
   --v2-muted: #61736d;
   --v2-line: #dfebe4;
-  --v2-lime: #d9f37d;
-  --v2-cream: #f8f9f2;
   min-height: 100vh;
   overflow-x: clip;
   background: #fbfcf8;
   color: var(--v2-ink);
-  font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;
 }
 
@@ -232,8 +229,7 @@
 
 .v2-button svg,
 .v2-action-link svg,
-.v2-discover-copy a svg,
-.v2-footer svg {
+.v2-discover-copy a svg {
   width: 17px;
   height: 17px;
 }
@@ -704,7 +700,6 @@ button.v2-action-card { width: 100%; color: inherit; font: inherit; text-align: 
     align-items: flex-start;
     flex-direction: column;
     gap: 13px;
-    padding-block: 17px 13px;
   }
 
   .v2-hero-grid {
@@ -811,9 +806,6 @@ button.v2-action-card { width: 100%; color: inherit; font: inherit; text-align: 
   .v2-home .v2-action-card {
     transition: none;
   }
-}
-@media (max-width: 1050px) {
-  .v2-header-inner { flex-wrap: wrap; padding-block: 16px; }
 }
 
 .v2-site-footer { min-height: 0; }

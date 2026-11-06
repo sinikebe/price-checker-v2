@@ -29,6 +29,7 @@ const total = cents => (cents / 100).toFixed(2);
 test("the app's example: a month of groceries with fictional prices, dated from today", () => {
   assert.equal(items.length, 18);
   assert.ok(source.fictional && source.settings.advanced, "it opens with the quantities of the month");
+  assert.equal(source.savedAt, null, "the app's example was never saved");
   assert.equal(view.lines.length, 18, "the snapshot knows every article, under the basket's own keys");
   assert.deepEqual(view.stale, []);
   assert.ok(items.every(item => item.quantity), "every article has its quantity");
@@ -124,6 +125,8 @@ test("a demo saved by an administrator is read as the server sends it, and refus
   };
   const saved = demo.savedDemo(sent);
   assert.equal(saved.fictional, false);
+  assert.equal(saved.savedAt, "2026-11-03T10:00:00+00:00", "a saved demo always says when it was saved");
+  assert.equal(demo.demoDate(saved.savedAt), "3 novembre 2026");
   assert.equal(saved.id, "saved:2026-11-03T10:00:00+00:00", "a new save starts the demo again for everyone");
   assert.deepEqual(saved.snapshot.entries, { "product:41": { productIds: [41], truncated: false }, "group:pâtes": { productIds: [52, 53], truncated: true } });
   assert.deepEqual(saved.settings.checked, [], "the ticks are the visitor's own");

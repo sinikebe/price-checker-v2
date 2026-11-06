@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,23 +10,14 @@ import pytest
 from app.api.v2 import stores
 from app.db.v2_migrations import MIGRATIONS, connect_v2, migrate_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_retailer_group_backfill_management_and_directory(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    name = "v2_retailer_groups_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + name + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": name}
-    try:
+    async with disposable_database("v2_retailer_groups_", migrate=False) as config:
         connection = await connect_v2(config)
         try:
             await connection.execute(
@@ -197,9 +185,3 @@ async def test_retailer_group_backfill_management_and_directory(monkeypatch):
             assert future_variant_group == created.json()["id"]
         finally:
             await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + name + '" WITH (FORCE)')
-        finally:
-            await root.close()

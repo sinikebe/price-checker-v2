@@ -1,28 +1,26 @@
-"""Private recipe submissions and explicit administrator publication."""
+"""Recipe submissions (new recipes, edits, publication requests) and their review."""
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from pydantic import Field
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
-from app.api.v2.recipes import RecipeInput, _decoded, _detail, _replace_ingredients
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.api.v2.recipes import (
+    RecipeInput,
+    RecipeUpdate,
+    _check_open_submissions,
+    _detail,
+    _has_pending_edit,
+    _insert_recipe,
+    _replace_ingredients,
+    _rewrite_recipe,
+)
+from app.db.v2_json import decoded
 from app.services import v2_basket_credits as credits
 from app.services.v2_visibility import require_visible
-from app.services.v2_write_limits import (
-    MAX_RECIPES,
-    check_open_limit,
-    check_write_limit,
-    lock_account_writes,
-)
+from app.services.v2_write_limits import check_write_limit, lock_account_writes
 
 router = APIRouter(prefix="/api/v2/recipes/submissions", tags=["v2-recipe-review"])
-
-
-class SubmissionUpdate(RecipeInput):
-    revision: int = Field(gt=0)
 
 
 async def _person(connection, request: Request):
@@ -46,10 +44,7 @@ async def _target_revision(connection, recipe_id: int, author_id: int, *, lock: 
 
 
 async def _admin(connection, request: Request):
-    user = await _person(connection, request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Validation réservée à l'administrateur.")
-    return user
+    return _require_admin_role(await _person(connection, request), "Validation réservée à l'administrateur.")
 
 
 @router.get("/mine")
@@ -88,7 +83,7 @@ async def review_queue(
             "ORDER BY s.created_at,s.id LIMIT $1 OFFSET $2",
             limit, offset,
         )
-        return [{**dict(row), "payload": _decoded(row["payload"])} for row in rows]
+        return [{**dict(row), "payload": decoded(row["payload"])} for row in rows]
     finally:
         await connection.close()
 
@@ -106,13 +101,13 @@ async def submission_detail(submission_id: int, request: Request, response: Resp
         )
         if row is None or (row["author_id"] != user["id"] and user["role"] != "admin"):
             raise HTTPException(status_code=404, detail="Proposition introuvable.")
-        return {**dict(row), "payload": _decoded(row["payload"])}
+        return {**dict(row), "payload": decoded(row["payload"])}
     finally:
         await connection.close()
 
 
 @router.put("/{submission_id}")
-async def revise_submission(submission_id: int, payload: SubmissionUpdate, request: Request):
+async def revise_submission(submission_id: int, payload: RecipeUpdate, request: Request):
     _secure_write(request)
     connection = await _connect()
     try:
@@ -129,14 +124,11 @@ async def revise_submission(submission_id: int, payload: SubmissionUpdate, reque
             if row["revision"] != payload.revision:
                 raise HTTPException(status_code=409, detail="La proposition a été modifiée ailleurs.")
             if row["status"] == "rejected":
-                await check_open_limit(
-                    connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
-                )
+                await _check_open_submissions(connection, user)
                 # One waiting change per recipe and author: reopening a refused one
                 # while another waits would break that rule.
-                if row["recipe_id"] is not None and await connection.fetchval(
-                    "SELECT EXISTS(SELECT 1 FROM v2_recipe_submissions WHERE author_id=$1 "
-                    "AND recipe_id=$2 AND status='pending')", user["id"], row["recipe_id"],
+                if row["recipe_id"] is not None and await _has_pending_edit(
+                    connection, user["id"], row["recipe_id"],
                 ):
                     raise HTTPException(
                         status_code=409,
@@ -205,15 +197,10 @@ async def approve_submission(submission_id: int, request: Request):
             )
             if submission is None or submission["status"] != "pending":
                 raise HTTPException(status_code=404, detail="Proposition à valider introuvable.")
-            payload = RecipeInput.model_validate(_decoded(submission["payload"]))
+            payload = RecipeInput.model_validate(decoded(submission["payload"]))
             if submission["recipe_id"] is None:
-                recipe_id = await connection.fetchval(
-                    "INSERT INTO v2_recipes"
-                    "(author_id,title,description,base_servings,prep_minutes,cook_minutes,steps) "
-                    "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING id",
-                    submission["author_id"], payload.title, payload.description,
-                    payload.base_servings, payload.prep_minutes, payload.cook_minutes,
-                    json.dumps(payload.steps, ensure_ascii=False),
+                recipe_id = await _insert_recipe(
+                    connection, submission["author_id"], payload, private=False,
                 )
             else:
                 recipe_id = submission["recipe_id"]
@@ -226,15 +213,7 @@ async def approve_submission(submission_id: int, request: Request):
                         detail="La recette publiée a changé ; examinez la proposition à nouveau.",
                     )
                 # Approving a private recipe's publication makes it public.
-                await connection.execute(
-                    "UPDATE v2_recipes SET title=$1,description=$2,base_servings=$3,"
-                    "prep_minutes=$4,cook_minutes=$5,steps=$6::jsonb,private=false,"
-                    "revision=revision+1,updated_at=now() WHERE id=$7",
-                    payload.title, payload.description, payload.base_servings,
-                    payload.prep_minutes, payload.cook_minutes,
-                    json.dumps(payload.steps, ensure_ascii=False),
-                    recipe_id,
-                )
+                await _rewrite_recipe(connection, recipe_id, payload, private=False)
             await _replace_ingredients(connection, recipe_id, payload.ingredients)
             await connection.execute(
                 "UPDATE v2_recipe_submissions SET status='approved',reviewed_at=now(),"

@@ -10,5 +10,5 @@ export type AppModeValue = {
 
 export const AppModeContext = createContext<AppModeValue>({ mode: "shopping", canSwitch: false, setMode: () => undefined });
 
-/** The mode in use on this page: shopping (baskets and lists) or contributing (contributing). */
+/** The mode in use on this page: shopping (baskets and lists) or contribution (products, stores, recipes). */
 export const useAppMode = () => useContext(AppModeContext);

@@ -6,27 +6,24 @@ administrator approves it, the recipe becomes public like any other.
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.api.v2.auth import _connect, _secure_write
 from app.api.v2.recipes import (
-    _PARIS,
     RecipeInput,
     RecipeUpdate,
-    _decoded,
+    _available_products,
+    _check_open_submissions,
     _detail,
+    _insert_recipe,
     _replace_ingredients,
+    _rewrite_recipe,
+    _summary,
     _user,
 )
-from app.services.v2_write_limits import (
-    MAX_RECIPES,
-    check_open_limit,
-    check_write_limit,
-    lock_account_writes,
-)
+from app.db.v2_json import decoded
+from app.services.v2_write_limits import check_write_limit, lock_account_writes
 
 router = APIRouter(prefix="/api/v2/recipes/private", tags=["v2-private-recipes"])
 
@@ -97,11 +94,7 @@ async def my_private_recipes(request: Request, response: Response):
             "ORDER BY lower(r.title),r.id LIMIT $2",
             user["id"], MAX_PRIVATE_RECIPES,
         )
-        return {"items": [
-            {**dict(row), "base_servings": str(row["base_servings"]),
-             "updated_at": row["updated_at"].astimezone(_PARIS).date().isoformat()}
-            for row in rows
-        ], "limit": MAX_PRIVATE_RECIPES}
+        return {"items": [_summary(row) for row in rows], "limit": MAX_PRIVATE_RECIPES}
     finally:
         await connection.close()
 
@@ -125,14 +118,7 @@ async def create_private_recipe(payload: RecipeInput, request: Request, response
                     detail=f"Vous avez déjà {MAX_PRIVATE_RECIPES} recettes privées : "
                     "supprimez-en une pour en ajouter une autre.",
                 )
-            recipe_id = await connection.fetchval(
-                "INSERT INTO v2_recipes(author_id,title,description,base_servings,"
-                "prep_minutes,cook_minutes,steps,private) "
-                "VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,true) RETURNING id",
-                user["id"], payload.title, payload.description, payload.base_servings,
-                payload.prep_minutes, payload.cook_minutes,
-                json.dumps(payload.steps, ensure_ascii=False),
-            )
+            recipe_id = await _insert_recipe(connection, user["id"], payload, private=True)
             await _replace_ingredients(connection, recipe_id, payload.ingredients)
         return await _private_detail(connection, recipe_id)
     finally:
@@ -172,14 +158,7 @@ async def update_private_recipe(
                     detail="Sa publication attend validation : retirez la demande "
                     "avant de modifier la recette.",
                 )
-            await connection.execute(
-                "UPDATE v2_recipes SET title=$1,description=$2,base_servings=$3,"
-                "prep_minutes=$4,cook_minutes=$5,steps=$6::jsonb,"
-                "revision=revision+1,updated_at=now() WHERE id=$7",
-                payload.title, payload.description, payload.base_servings,
-                payload.prep_minutes, payload.cook_minutes,
-                json.dumps(payload.steps, ensure_ascii=False), recipe_id,
-            )
+            await _rewrite_recipe(connection, recipe_id, payload, private=True)
             await _replace_ingredients(connection, recipe_id, payload.ingredients)
         return await _private_detail(connection, recipe_id)
     finally:
@@ -219,9 +198,7 @@ async def publish_private_recipe(recipe_id: int, payload: Publication, request: 
                 raise HTTPException(status_code=409, detail="La recette a été modifiée ailleurs.")
             if await _pending(connection, recipe_id):
                 raise HTTPException(status_code=409, detail="Sa publication attend déjà validation.")
-            await check_open_limit(
-                connection, user, table="v2_recipe_submissions", maximum=MAX_RECIPES,
-            )
+            await _check_open_submissions(connection, user)
             recipe = await connection.fetchrow(
                 "SELECT title,description,base_servings,prep_minutes,cook_minutes,steps "
                 "FROM v2_recipes WHERE id=$1", recipe_id,
@@ -231,22 +208,16 @@ async def publish_private_recipe(recipe_id: int, payload: Publication, request: 
                 "FROM v2_recipe_ingredients WHERE recipe_id=$1 ORDER BY position", recipe_id,
             )
             content = RecipeInput.model_validate({
-                **dict(recipe), "steps": _decoded(recipe["steps"]),
+                **dict(recipe), "steps": decoded(recipe["steps"]),
                 "ingredients": [dict(item) for item in ingredients],
             })
-            ids = [item.product_id for item in content.ingredients if item.product_id is not None]
-            if ids:
-                available = await connection.fetchval(
-                    "SELECT count(*) FROM v2_products p WHERE p.id=ANY($1::bigint[]) "
-                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
-                    "WHERE w.kind='product' AND w.content_id=p.id)", list(set(ids)),
+            ids = {item.product_id for item in content.ingredients if item.product_id is not None}
+            if ids and await _available_products(connection, ids) != ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Un produit de la recette n'est plus disponible : "
+                    "choisissez-en un autre avant de la publier.",
                 )
-                if available != len(set(ids)):
-                    raise HTTPException(
-                        status_code=422,
-                        detail="Un produit de la recette n'est plus disponible : "
-                        "choisissez-en un autre avant de la publier.",
-                    )
             submission_id = await connection.fetchval(
                 "INSERT INTO v2_recipe_submissions(author_id,recipe_id,base_revision,payload) "
                 "VALUES($1,$2,$3,$4::jsonb) RETURNING id",

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { V2_BASKET_EVENT, activateBasketUser, activeBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
+import { V2_BASKET_EVENT, activeBasketUser, basketItemKey, isBasketProduct, readV2Basket, writeV2Basket, type BasketItem } from "./v2-basket-storage";
 import { addedProductIds, requestBasketConnectorRefresh } from "./v2-connector-refresh";
 import { combineQuantities } from "./v2-basket-quantity";
 import type { BasketQuantity } from "./v2-basket-storage";
@@ -10,19 +10,18 @@ import { useSharedBasket, type SharedBasketControls } from "./useSharedBasket";
 export type BasketApi = {
   items: BasketItem[];
   add: (item: BasketItem) => void;
-  remove: (item: BasketItem | number) => void;
+  remove: (item: BasketItem) => void;
   setEnabled: (item: BasketItem, enabled: boolean) => void;
   setQuantity: (item: BasketItem, quantity: BasketQuantity | undefined) => void;
   addQuantities: (entries: { item: BasketItem; quantity: BasketQuantity }[]) => { added: number; merged: number; conflicts: number };
   replace: (item: BasketItem, next: BasketItem) => void;
-  has: (item: BasketItem | number) => boolean;
+  has: (item: BasketItem) => boolean;
   clear: () => void;
   replaceAll: (incoming: BasketItem[]) => void;
   merge: (incoming: BasketItem[]) => number;
 };
 /** The personal basket (on this device) at the top level, as before; the shared one beside it. */
 type BasketValue = BasketApi & {
-  setUser: (userId: number | null, preserveOffline?: boolean) => void;
   /** The shared basket followed in this browser: its live state, members and settings. */
   shared: SharedBasketControls;
   /** The same actions on the shared basket, or null when this account follows none. */
@@ -41,7 +40,7 @@ function basketApi(items: BasketItem[], current: () => BasketItem[], write: (nex
   return {
     items,
     add: item => { const now = current(); if (!now.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...now, item]); },
-    remove: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+    remove: item => { const key = basketItemKey(item);
       update(current().filter(saved => basketItemKey(saved) !== key)); },
     setEnabled: (item, enabled) => { const key = basketItemKey(item);
       update(current().map(saved => basketItemKey(saved) === key ? { ...saved, disabled: !enabled } : saved)); },
@@ -65,7 +64,7 @@ function basketApi(items: BasketItem[], current: () => BasketItem[], write: (nex
       if (key !== nextKey && now.some(saved => basketItemKey(saved) === nextKey)) return;
       update(now.map(saved => basketItemKey(saved) === key
         ? { ...next, disabled: saved.disabled, quantity: saved.quantity } : saved)); },
-    has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+    has: item => { const key = basketItemKey(item);
       return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },
     replaceAll: incoming => update(incoming),
@@ -105,7 +104,7 @@ export function V2BasketProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/refs
   const personal = basketApi(local, currentLocal, writeLocal);
   const sharedBasket = shared.sharedId !== null ? basketApi(shared.items, shared.view, shared.edit) : null;
-  return <Context.Provider value={{ ...personal, setUser: activateBasketUser, shared, sharedBasket }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ...personal, shared, sharedBasket }}>{children}</Context.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

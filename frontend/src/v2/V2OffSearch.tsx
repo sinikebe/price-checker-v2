@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAppMode } from "./useAppMode";
 import { barcodeProduct } from "./v2-barcode";
 import { OFF_PRODUCT_PAGE, searchOff, type OffMatch } from "./v2-off-browser";
+import { errorText } from "./v2-http";
 
 type Found = { results: OffMatch[]; ours: Record<string, number> };
 // Searches already made in this tab: going back to a results page does not ask Open Food Facts again.
@@ -32,21 +33,25 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
   const terms = query.trim();
   // Products sold in France by default; the switch widens the search to every country.
   const [world, setWorld] = useState(false);
-  const [found, setFound] = useState<{ key: string; value: Found } | null>(() =>
-    made.has(madeKey(terms, false)) ? { key: madeKey(terms, false), value: made.get(madeKey(terms, false))! } : null);
+  const [found, setFound] = useState<{ key: string; value: Found } | null>(() => {
+    const key = madeKey(terms, false);
+    const value = made.get(key);
+    return value ? { key, value } : null;
+  });
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   async function search(everywhere = world) {
     if (terms.length < 2 || busy) return;
     const key = madeKey(terms, everywhere);
-    if (made.has(key)) { setFound({ key, value: made.get(key)! }); return; }
+    const cached = made.get(key);
+    if (cached) { setFound({ key, value: cached }); return; }
     setBusy("search"); setError("");
     try {
       const results = await searchOff(terms, undefined, { france: !everywhere });
       const value = { results, ours: await ourProducts(results.map(item => item.code)) };
       made.set(key, value);
       setFound({ key, value });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Recherche indisponible."); }
+    } catch (reason) { setError(errorText(reason, "Recherche indisponible.")); }
     finally { setBusy(null); }
   }
   // A submitted search (Enter in a search bar) is a request: it is also made at Open Food Facts, once.
@@ -59,7 +64,7 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
   async function open(code: string) {
     setBusy(code); setError("");
     try { navigate("/v2/produits/" + (await barcodeProduct(code)).id); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Ouverture impossible."); setBusy(null); }
+    catch (reason) { setError(errorText(reason, "Ouverture impossible.")); setBusy(null); }
   }
   const shown = found && found.key === madeKey(terms, world) ? found.value : null;
   function changeWorld(next: boolean) {

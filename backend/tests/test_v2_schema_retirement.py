@@ -2,33 +2,18 @@
 
 from __future__ import annotations
 
-import json
-import os
-import secrets
-from pathlib import Path
-
 import asyncpg
 import pytest
 
 from app.db.v2_migrations import connect_v2, migrate_v2
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_obsolete_basket_migration_refuses_unexpected_rows():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_retirement_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_retirement_") as config:
         connection = await connect_v2(config)
         try:
             await connection.execute(
@@ -51,9 +36,3 @@ async def test_obsolete_basket_migration_refuses_unexpected_rows():
             ) is None
         finally:
             await connection.close()
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()

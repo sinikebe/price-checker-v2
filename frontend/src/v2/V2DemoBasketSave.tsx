@@ -2,12 +2,11 @@ import { useState } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { reloadDemoSource, useDemoSource } from "./useDemoSource";
-import { DEMO_BASKET_PATH } from "./v2-basket-demo";
+import { BUILTIN_DEMO_CONFIRM, DEMO_BASKET_PATH, demoDate } from "./v2-basket-demo";
 import type { BasketItem } from "./v2-basket-storage";
 import { removeDemoBasket, saveDemoBasket } from "./v2-demo-basket-api";
 import type { SharedSettings } from "./v2-shared-basket";
-
-const day = (value: string) => new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+import { errorText } from "./v2-http";
 
 /**
  * For administrators, in the share panel of a basket: make it the demo basket of the home page, with its
@@ -23,14 +22,14 @@ export default function V2DemoBasketSave({ items, settings }: { items: BasketIte
   async function run(action: () => Promise<string>) {
     setBusy(true); setMessage(null);
     try { setMessage({ error: false, text: await action() }); reloadDemoSource(); }
-    catch (reason) { setMessage({ error: true, text: reason instanceof Error ? reason.message : "Échec. Réessayez." }); }
+    catch (reason) { setMessage({ error: true, text: errorText(reason, "Échec. Réessayez.") }); }
     finally { setBusy(false); }
   }
   return <section className="v2-demo-save" aria-labelledby="v2-demo-save-heading">
     <h3 id="v2-demo-save-heading">Panier de démonstration</h3>
     <p>Réservé aux administrateurs. Ce panier devient l’exemple de l’accueil : ses articles, leurs quantités et ses réglages,
       avec les prix que le serveur relit maintenant. Tout le monde pourra le voir et le manipuler, sans compte ni crédit, jusqu’au prochain remplacement.</p>
-    <p className="v2-shared-hint">{saved ? `Actuellement : «\u00a0${saved.title}\u00a0», enregistré le ${day(saved.savedAt!)}.` : "Actuellement : l’exemple intégré, avec des prix fictifs."}{" "}
+    <p className="v2-shared-hint">{saved ? `Actuellement : «\u00a0${saved.title}\u00a0», enregistré le ${demoDate(saved.savedAt)}.` : "Actuellement : l’exemple intégré, avec des prix fictifs."}{" "}
       <Link to={DEMO_BASKET_PATH}>Voir la démonstration</Link></p>
     <form className="v2-demo-save-form" onSubmit={async event => {
       event.preventDefault();
@@ -47,7 +46,7 @@ export default function V2DemoBasketSave({ items, settings }: { items: BasketIte
         <button type="submit" className="v2-button v2-button-primary" disabled={busy || !title.trim() || !items.length || items.length > 100}>
           {busy ? "Enregistrement…" : "Utiliser ce panier comme démonstration"}</button>
         {saved && <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={async () => {
-          if (await confirm({ title: "Revenir à l’exemple intégré", message: "Revenir à l’exemple intégré, avec des prix fictifs ? Le panier de démonstration enregistré sera effacé.", confirmLabel: "Revenir à l’exemple", danger: true }))
+          if (await confirm(BUILTIN_DEMO_CONFIRM))
             void run(async () => { await removeDemoBasket(); return "L’accueil montre de nouveau l’exemple intégré."; });
         }}>Revenir à l’exemple intégré</button>}
       </div>

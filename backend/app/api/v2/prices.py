@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
-from zoneinfo import ZoneInfo
+from typing import Literal, NamedTuple
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
 from app.api.v2.credits import charge
 from app.services import v2_basket_credits as credits
 from app.services.barcodes import normalize_barcode
 from app.api.v2.products import ProductData
-from app.api.v2.stores import AliasSource, propose_alias, visible_store
+from app.api.v2.stores import AliasSource, manual_store_import_key, propose_alias, visible_store
+from app.core.paris_time import PARIS, paris_day, paris_noon
 from app.core.url_validation import validate_clickable_url
+from app.db.v2_json import decoded
+from app.db.v2_locks import lock_gtin, lock_store_lifecycle
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
@@ -31,14 +32,9 @@ from app.services.v2_write_limits import (
 )
 
 PRODUCT_PRICES_COST = 1  # one product, one credit
+HISTORY_LIMIT = 200  # observations and latest store prices per product page
 
 router = APIRouter(prefix="/api/v2/prices", tags=["v2-prices"])
-_PARIS = ZoneInfo("Europe/Paris")
-
-
-def _day(value: datetime) -> str:
-    return value.astimezone(_PARIS).date().isoformat()
-
 
 class PriceDraftCreate(BaseModel):
     retailer: str = Field(min_length=1, max_length=200)
@@ -85,7 +81,7 @@ class PriceDraftCreate(BaseModel):
     @classmethod
     def parse_day(cls, value):
         if isinstance(value, str) and len(value) == 10:
-            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+            return paris_noon(date.fromisoformat(value))
         return value
 
     @field_validator("observed_at")
@@ -93,10 +89,18 @@ class PriceDraftCreate(BaseModel):
     def valid_date(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Indiquez une date et un fuseau horaire.")
-        day = value.astimezone(_PARIS).date()
-        if day > datetime.now(_PARIS).date():
+        try:
+            day = value.astimezone(PARIS).date()
+        except OverflowError:
+            # An extreme offset on the first or last representable day has no Paris day.
+            raise ValueError("Indiquez une date valide.") from None
+        if day > datetime.now(PARIS).date():
             raise ValueError("Un prix ne peut pas être relevé dans le futur.")
-        return datetime.combine(day, time(12), tzinfo=_PARIS)
+        return paris_noon(day)
+
+
+def _clean_source_url(value: str) -> str:
+    return validate_clickable_url(value.strip(), "source_url")
 
 
 class CaptureDraftCreate(BaseModel):
@@ -105,11 +109,7 @@ class CaptureDraftCreate(BaseModel):
     product_data: ProductData | None = None
     source_url: str = Field(max_length=1000)
     price: PriceDraftCreate
-
-    @field_validator("source_url")
-    @classmethod
-    def valid_source_url(cls, value: str) -> str:
-        return validate_clickable_url(value.strip(), "source_url")
+    _valid_source_url = field_validator("source_url")(_clean_source_url)
 
     @model_validator(mode="after")
     def one_product_target(self):
@@ -122,11 +122,7 @@ class PublishedCaptureCreate(BaseModel):
     ean: str = Field(max_length=14)
     source_url: str = Field(max_length=1000)
     price: PriceDraftCreate
-
-    @field_validator("source_url")
-    @classmethod
-    def valid_source_url(cls, value: str) -> str:
-        return validate_clickable_url(value.strip(), "source_url")
+    _valid_source_url = field_validator("source_url")(_clean_source_url)
 
 
 async def _user(connection: asyncpg.Connection, request: Request) -> dict:
@@ -136,13 +132,9 @@ async def _user(connection: asyncpg.Connection, request: Request) -> dict:
     return user
 
 
-async def _product(connection: asyncpg.Connection, product_id: int, *, current: bool = False) -> None:
+async def _require_product(connection: asyncpg.Connection, product_id: int, *, current: bool = False) -> None:
+    """404 unless the product exists and is not withdrawn; with `current`, 409 once it was replaced."""
     await require_visible(connection, "product", product_id)
-    exists = await connection.fetchval(
-        "SELECT EXISTS(SELECT 1 FROM v2_products WHERE id=$1)", product_id
-    )
-    if not exists:
-        raise HTTPException(status_code=404, detail="Produit introuvable.")
     if current and await connection.fetchval(
         "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1 "
         "UNION ALL SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)", product_id
@@ -172,43 +164,67 @@ async def _barcode_belongs_to_product(
     ))
 
 
+class StoreTarget(NamedTuple):
+    """Where a price draft is filed: the store's retailer and store, an alias proposal made on the way,
+    and the retailer named by the contributor when it differs from the store's own."""
+
+    retailer_id: int
+    store_id: int
+    alias_id: int | None
+    source_retailer_id: int | None
+
+
 async def _retailer_store(
     connection: asyncpg.Connection, payload: PriceDraftCreate, user: dict,
-) -> tuple[int, int, int | None, int | None]:
+) -> StoreTarget:
     # New locations must not cross a concurrent permanent deletion between
     # the source-tombstone check and their insert. Lifecycle actions use this
     # lock before taking a store row lock.
     if payload.store_id is None:
-        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+        await lock_store_lifecycle(connection)
     retailer_id = await connection.fetchval(
         "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
         payload.retailer,
     )
     if payload.store_id is not None:
-        store = await visible_store(connection, payload.store_id, user)
-        source_group_id = await connection.fetchval(
-            "SELECT group_id FROM v2_retailers WHERE id=$1", retailer_id,
+        return await _chosen_store(connection, payload, user, retailer_id)
+    return await _new_store(connection, payload, retailer_id)
+
+
+async def _chosen_store(
+    connection: asyncpg.Connection, payload: PriceDraftCreate, user: dict, retailer_id: int | None,
+) -> StoreTarget:
+    """An existing store the contributor picked: it must still be the one their page showed."""
+    store = await visible_store(connection, payload.store_id, user)
+    source_group_id = await connection.fetchval(
+        "SELECT group_id FROM v2_retailers WHERE id=$1", retailer_id,
+    )
+    if source_group_id is None or source_group_id != store["retailer_group_id"]:
+        raise HTTPException(status_code=422, detail="Le magasin ne correspond pas au groupe d’enseignes.")
+    if store["online"] != payload.online:
+        raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
+    if not store["online"] and (
+            not (store["city"] or "").strip() or not (store["postal_code"] or "").strip()):
+        raise HTTPException(status_code=422, detail="Ce magasin doit être complété avant un nouveau relevé.")
+    # A platform marked online may keep an old address: it is not asked for any more.
+    if store["name"] != payload.store_name or (not store["online"] and (
+            (store["city"] or "") != payload.city or
+            (store["postal_code"] or "") != payload.postal_code)):
+        raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
+    alias_id = None
+    if payload.propose_store_alias:
+        alias_id = await propose_alias(
+            connection, store_id=payload.store_id, author_id=user["id"],
+            source=payload.alias_source, name=payload.captured_store_name or "",
         )
-        if source_group_id is None or source_group_id != store["retailer_group_id"]:
-            raise HTTPException(status_code=422, detail="Le magasin ne correspond pas au groupe d’enseignes.")
-        if store["online"] != payload.online:
-            raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
-        if not store["online"] and (
-                not (store["city"] or "").strip() or not (store["postal_code"] or "").strip()):
-            raise HTTPException(status_code=422, detail="Ce magasin doit être complété avant un nouveau relevé.")
-        # A platform marked online may keep an old address: it is not asked for any more.
-        if (store["name"] != payload.store_name or not store["online"] and (
-                (store["city"] or "") != payload.city or
-                (store["postal_code"] or "") != payload.postal_code)):
-            raise HTTPException(status_code=409, detail="Le magasin a changé. Rechargez ses informations.")
-        alias_id = None
-        if payload.propose_store_alias:
-            alias_id = await propose_alias(
-                connection, store_id=payload.store_id, author_id=user["id"],
-                source=payload.alias_source, name=payload.captured_store_name or "",
-            )
-        return (store["retailer_id"], payload.store_id, alias_id,
-                retailer_id if retailer_id != store["retailer_id"] else None)
+    return StoreTarget(store["retailer_id"], payload.store_id, alias_id,
+                       retailer_id if retailer_id != store["retailer_id"] else None)
+
+
+async def _new_store(
+    connection: asyncpg.Connection, payload: PriceDraftCreate, retailer_id: int | None,
+) -> StoreTarget:
+    """A store typed by the contributor: found by its identity, or created (with its retailer if new)."""
     if payload.propose_store_alias:
         raise HTTPException(status_code=422, detail="Sélectionnez un magasin existant pour proposer un alias.")
     if retailer_id is None:
@@ -218,11 +234,9 @@ async def _retailer_store(
             "ON CONFLICT(code) DO UPDATE SET code=EXCLUDED.code RETURNING id",
             code, payload.retailer,
         )
-    identity = "|".join((
-        str(retailer_id), payload.store_name, payload.city, payload.postal_code,
-        *(("online",) if payload.online else ()),
-    ))
-    import_key = "manual:store:" + _hash(identity)
+    import_key = manual_store_import_key(
+        retailer_id, payload.store_name, payload.city, payload.postal_code, online=payload.online,
+    )
     if await connection.fetchval(
         "SELECT EXISTS(SELECT 1 FROM v2_deleted_store_sources WHERE source_key=$1)",
         "import:" + import_key,
@@ -252,15 +266,15 @@ async def _retailer_store(
         )
         if not same_group:
             raise HTTPException(status_code=409, detail="Le magasin fusionné a changé d’enseigne.")
-    return (canonical["retailer_id"], canonical["store_id"], None,
-            retailer_id if retailer_id != canonical["retailer_id"] else None)
+    return StoreTarget(canonical["retailer_id"], canonical["store_id"], None,
+                       retailer_id if retailer_id != canonical["retailer_id"] else None)
 
 
 def _observation(row: asyncpg.Record) -> dict:
     return {
         "id": row["id"],
         "price": str(row["price"]),
-        "observed_at": _day(row["observed_at"]),
+        "observed_at": paris_day(row["observed_at"]),
         "retailer": row["retailer"],
         "retailer_id": row["retailer_id"],
         "source_retailer": row["source_retailer"],
@@ -284,7 +298,7 @@ def _draft(row: asyncpg.Record) -> dict:
         "author": row["author"],
         "author_id": row["author_id"],
         "price": str(row["price"]),
-        "observed_at": _day(row["observed_at"]),
+        "observed_at": paris_day(row["observed_at"]),
         "retailer": row["retailer"],
         "source_retailer": row["source_retailer"],
         "store_name": row["store_name"],
@@ -304,7 +318,7 @@ async def product_prices(product_id: int, request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     connection = await _connect()
     try:
-        await _product(connection, product_id)
+        await _require_product(connection, product_id)
         async with connection.transaction():
             state = await charge(connection, request, PRODUCT_PRICES_COST)
             return await _product_prices(connection, product_id, state)
@@ -314,7 +328,7 @@ async def product_prices(product_id: int, request: Request, response: Response):
 
 async def _product_prices(connection, product_id: int, state: dict) -> dict:
     rows = await connection.fetch(
-        COMPACT_HISTORY_CTE + """
+        COMPACT_HISTORY_CTE + f"""
         SELECT b.id,b.price,b.observed_at,b.sales_channel,b.source,
                b.source_provider,b.available,b.correction_status,b.note,
                r.name AS retailer,r.id AS retailer_id,
@@ -324,14 +338,14 @@ async def _product_prices(connection, product_id: int, state: dict) -> dict:
         JOIN v2_retailers r ON r.id=b.retailer_id
         LEFT JOIN v2_retailers sr ON sr.id=b.source_retailer_id
         JOIN v2_stores s ON s.id=b.store_id
-        ORDER BY b.observed_at DESC,b.id DESC LIMIT 201
+        ORDER BY b.observed_at DESC,b.id DESC LIMIT {HISTORY_LIMIT + 1}
         """,
         [product_id],
     )
     # The chart history is capped, but a store with an older last reading
     # must not disappear from the current comparison. Keep channels apart.
     latest_rows = await connection.fetch(
-        """
+        f"""
         SELECT * FROM (
             SELECT DISTINCT ON (o.store_id,o.sales_channel)
                    o.id,o.price,o.observed_at,o.sales_channel,o.source,
@@ -346,15 +360,15 @@ async def _product_prices(connection, product_id: int, state: dict) -> dict:
             WHERE o.product_id=$1 AND NOT o.superseded AND s.active
             ORDER BY o.store_id,o.sales_channel,o.observed_at DESC,o.id DESC
         ) latest
-        ORDER BY latest.observed_at DESC,latest.id DESC LIMIT 201
+        ORDER BY latest.observed_at DESC,latest.id DESC LIMIT {HISTORY_LIMIT + 1}
         """,
         product_id,
     )
     return {
-        "observations": [_observation(row) for row in rows[:200]],
-        "truncated": len(rows) > 200,
-        "latest_by_store": [_observation(row) for row in latest_rows[:200]],
-        "stores_truncated": len(latest_rows) > 200,
+        "observations": [_observation(row) for row in rows[:HISTORY_LIMIT]],
+        "truncated": len(rows) > HISTORY_LIMIT,
+        "latest_by_store": [_observation(row) for row in latest_rows[:HISTORY_LIMIT]],
+        "stores_truncated": len(latest_rows) > HISTORY_LIMIT,
         "credits": state,
     }
 
@@ -364,7 +378,7 @@ async def product_price_drafts(product_id: int, request: Request):
     connection = await _connect()
     try:
         user = await _user(connection, request)
-        await _product(connection, product_id)
+        await _require_product(connection, product_id)
         rows = await connection.fetch(
             """
             SELECT d.id,d.author_id,u.username AS author,d.price,d.observed_at,
@@ -457,14 +471,37 @@ async def review_price_drafts(
 ):
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+        _require_admin_role(await _user(connection, request), "Réservé à l'administrateur.")
         return await _draft_inbox(
             connection, owner_id=None, limit=limit, offset=offset,
         )
     finally:
         await connection.close()
+
+
+async def _insert_capture_draft(
+    connection: asyncpg.Connection, user: dict, payload: CaptureDraftCreate | PublishedCaptureCreate,
+    barcode: str, *, product_id: int | None = None, product_draft_id: int | None = None,
+    quantity: str | None,
+) -> tuple[int, int | None]:
+    """File a bookmarklet price for a published product or a private product draft (exactly one).
+
+    Returns the price draft and the store alias proposed on the way, if any.
+    """
+    retailer_id, store_id, alias_id, source_retailer_id = await _retailer_store(connection, payload.price, user)
+    draft_id = await connection.fetchval(
+        "INSERT INTO v2_price_drafts("
+        "author_id,product_id,product_draft_id,retailer_id,store_id,entry_kind,captured_via,"
+        "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel,"
+        "captured_store_name,source_retailer_id) "
+        "VALUES($1,$2,$3,$4,$5,'capture','bookmarklet',$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id",
+        user["id"], product_id, product_draft_id, retailer_id, store_id,
+        payload.source_url, barcode, payload.price.price,
+        quantity, payload.price.observed_at,
+        payload.price.note or None, payload.price.sales_channel,
+        payload.price.captured_store_name, source_retailer_id,
+    )
+    return draft_id, alias_id
 
 
 @router.post("/capture-drafts", status_code=201)
@@ -503,10 +540,7 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
             # already takes these locks in that order. A new draft has no row.
             # Share the approval lock: a product published between lookup and
             # submission must not receive a second, competing initial draft.
-            await connection.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(lpad($1,14,'0'),0))",
-                barcode,
-            )
+            await lock_gtin(connection, barcode)
             published = await connection.fetchval(
                 "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
                 "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
@@ -532,25 +566,14 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
                     user["id"], payload.product_data.model_dump_json(),
                 )
                 created = True
-            data = draft["data"]
-            if isinstance(data, str):
-                data = json.loads(data)
+            data = decoded(draft["data"])
             if not data.get("ean") or data["ean"].zfill(14) != barcode.zfill(14):
                 raise HTTPException(
                     status_code=409, detail="L’EAN du brouillon a changé. Rechargez la capture.",
                 )
-            retailer_id, store_id, alias_id, source_retailer_id = await _retailer_store(connection, payload.price, user)
-            price_draft_id = await connection.fetchval(
-                "INSERT INTO v2_price_drafts("
-                "author_id,product_draft_id,retailer_id,store_id,entry_kind,captured_via,"
-                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel,"
-                "captured_store_name,source_retailer_id) "
-                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
-                user["id"], draft["id"], retailer_id, store_id,
-                payload.source_url, barcode, payload.price.price,
-                data.get("quantity") or None, payload.price.observed_at,
-                payload.price.note or None, payload.price.sales_channel,
-                payload.price.captured_store_name, source_retailer_id,
+            price_draft_id, alias_id = await _insert_capture_draft(
+                connection, user, payload, barcode,
+                product_draft_id=draft["id"], quantity=data.get("quantity") or None,
             )
         return {"product_draft_id": draft["id"], "price_draft_id": price_draft_id,
                 "created_product_draft": created, "alias_proposal_id": alias_id,
@@ -572,7 +595,7 @@ async def create_price_draft(product_id: int, payload: PriceDraftCreate, request
                 connection, user, table="v2_price_drafts",
                 maximum=MAX_PRICE_DRAFTS,
             )
-            await _product(connection, product_id, current=True)
+            await _require_product(connection, product_id, current=True)
             retailer_id, store_id, alias_id, source_retailer_id = await _retailer_store(connection, payload, user)
             quantity = await connection.fetchval(
                 "SELECT NULLIF(data->>'quantity','') FROM v2_products WHERE id=$1",
@@ -611,25 +634,16 @@ async def create_published_capture_draft(
             await check_open_limit(
                 connection, user, table="v2_price_drafts", maximum=MAX_PRICE_DRAFTS,
             )
-            await _product(connection, product_id, current=True)
+            await _require_product(connection, product_id, current=True)
             product = await connection.fetchrow(
                 "SELECT data->>'quantity' AS quantity "
                 "FROM v2_products WHERE id=$1", product_id,
             )
             if not await _barcode_belongs_to_product(connection, product_id, barcode):
                 raise HTTPException(status_code=409, detail="L’EAN du produit a changé. Rechargez la capture.")
-            retailer_id, store_id, alias_id, source_retailer_id = await _retailer_store(connection, payload.price, user)
-            draft_id = await connection.fetchval(
-                "INSERT INTO v2_price_drafts("
-                "author_id,product_id,retailer_id,store_id,entry_kind,captured_via,"
-                "source_url,capture_ean,price,quantity_text,observed_at,note,sales_channel,"
-                "captured_store_name,source_retailer_id) "
-                "VALUES($1,$2,$3,$4,'capture','bookmarklet',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
-                user["id"], product_id, retailer_id, store_id,
-                payload.source_url, barcode, payload.price.price,
-                product["quantity"] or None, payload.price.observed_at,
-                payload.price.note or None, payload.price.sales_channel,
-                payload.price.captured_store_name, source_retailer_id,
+            draft_id, alias_id = await _insert_capture_draft(
+                connection, user, payload, barcode,
+                product_id=product_id, quantity=product["quantity"] or None,
             )
         return {"id": draft_id, "status": "draft", "alias_proposal_id": alias_id}
     finally:
@@ -640,9 +654,7 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
     _secure_write(request)
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Validation réservée à l’administrateur.")
+        user = _require_admin_role(await _user(connection, request), "Validation réservée à l’administrateur.")
         async with connection.transaction():
             draft = await connection.fetchrow(
                 "SELECT * FROM v2_price_drafts WHERE id=$1 FOR UPDATE", draft_id
@@ -660,7 +672,7 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                         status_code=409,
                         detail="Validez d’abord la fiche produit, puis examinez son prix séparément.",
                     )
-                await _product(connection, draft["product_id"], current=True)
+                await _require_product(connection, draft["product_id"], current=True)
                 if draft["capture_ean"] is not None:
                     if not await _barcode_belongs_to_product(
                         connection, draft["product_id"], draft["capture_ean"]
@@ -669,6 +681,7 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                             status_code=409,
                             detail="L’EAN du produit a changé depuis la capture. Refusez ce prix.",
                         )
+                capture = draft["captured_via"] == "bookmarklet"
                 observation_id = await connection.fetchval(
                     """
                     INSERT INTO v2_price_observations(
@@ -682,9 +695,9 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
                     draft["author_id"], draft_id, user["id"], draft["price"],
                     draft["quantity_text"], draft["observed_at"], draft["note"],
                     draft["sales_channel"],
-                    "bookmarklet" if draft["captured_via"] == "bookmarklet" else "manual",
-                    draft["source_url"] if draft["captured_via"] == "bookmarklet" else None,
-                    draft["capture_ean"] if draft["captured_via"] == "bookmarklet" else None,
+                    "bookmarklet" if capture else "manual",
+                    draft["source_url"] if capture else None,
+                    draft["capture_ean"] if capture else None,
                     draft["source_retailer_id"],
                 )
             await connection.execute(

@@ -12,23 +12,17 @@ import json
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _bump_limit, _connect, _current_user, _secure_write, _session_user
+from app.api.v2.auth import _bump_limit, _connect, _current_user, _require_admin_role, _secure_write, _session_user
 from app.api.v2.auth_security import account_limit_key
+from app.db.v2_locks import lock_gtin
 from app.services import v2_open_prices_sync as open_prices
 from app.services import v2_product_references as references
-from app.services.barcodes import normalize_barcode
+from app.services.barcodes import normalize_barcode, valid_check_digit
 
 router = APIRouter(prefix="/api/v2/product-references", tags=["v2-product-references"])
 
 CREATES_PER_HOUR = 60  # per account
 UNUSED_BOUNDS = (0, 3650)  # days; 0 keeps them forever
-
-
-def valid_check_digit(barcode: str) -> bool:
-    """The GS1 check digit of an EAN-8, UPC-A, EAN-13 or GTIN-14."""
-    digits = [int(char) for char in barcode]
-    total = sum(digit * (3 if index % 2 == 0 else 1) for index, digit in enumerate(reversed(digits[:-1])))
-    return (10 - total % 10) % 10 == digits[-1]
 
 
 class ReferenceCreate(BaseModel):
@@ -55,7 +49,7 @@ async def create_reference(payload: ReferenceCreate, request: Request, response:
                                 detail="Trop de produits ajoutés depuis Open Food Facts. Réessayez plus tard.")
         async with connection.transaction():
             # The same lock as a product approval, so a barcode never gets two current products.
-            await connection.execute("SELECT pg_advisory_xact_lock(hashtextextended(lpad($1,14,'0'),0))", barcode)
+            await lock_gtin(connection, barcode)
             existing = await connection.fetchrow(
                 "SELECT COALESCE(m.to_id,p.id) AS id, EXISTS(SELECT 1 FROM v2_content_withdrawals w "
                 "WHERE w.kind='product' AND w.content_id=COALESCE(m.to_id,p.id)) AS withdrawn "
@@ -87,9 +81,7 @@ class ReferenceSettingsChange(BaseModel):
 
 
 async def _require_admin(connection, request: Request) -> None:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(await _current_user(connection, request))
 
 
 async def _settings(connection) -> dict:

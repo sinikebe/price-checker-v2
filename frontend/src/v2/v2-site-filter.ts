@@ -20,7 +20,7 @@ const text = (value: unknown, max: number): value is string => typeof value === 
 const unique = <T,>(values: T[], key: (value: T) => string) => values.filter((value, index) => values.findIndex(other => key(other) === key(value)) === index);
 
 /** A stored filter, checked and bounded; anything unreadable gives the empty (off) filter. */
-export function cleanSiteFilter(value: unknown): SiteFilter {
+function cleanSiteFilter(value: unknown): SiteFilter {
   if (!value || typeof value !== "object") return EMPTY_SITE_FILTER;
   const raw = value as Record<string, unknown>;
   const list = (field: unknown) => Array.isArray(field) ? field : [];

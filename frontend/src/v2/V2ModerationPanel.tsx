@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
+import { errorText } from "./v2-http";
 import V2StoreAliasReview from "./V2StoreAliasReview";
 import V2DuplicateReview from "./V2DuplicateReview";
 
@@ -24,7 +25,7 @@ export default function V2ModerationPanel() {
     let active = true;
     moderationRequest<Report[]>("/reports?limit=" + PAGE_SIZE + "&offset=" + (page * PAGE_SIZE))
       .then(rows => { if (active) { setReports(rows); setError(""); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active = false; };
   }, [page, reload]);
   async function resolve(report: Report, action: "dismiss" | "withdraw") {
@@ -33,7 +34,7 @@ export default function V2ModerationPanel() {
     try {
       await moderationRequest("/reports/" + report.id + "/resolve", "POST", { action });
       setReload(value => value + 1);
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(null); }
   }
   return <><section className="v2-settings-card" aria-labelledby="v2-reports-heading">

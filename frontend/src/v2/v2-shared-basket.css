@@ -38,7 +38,7 @@
 .v2-shared-invite-link input { width: 100%; font-size: .88rem; }
 .v2-shared-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 14px; border-radius: 10px; background: #eef4e8; }
 .v2-shared-empty-start { margin-top: 14px; }
-.v2-basket-added-by { display: block; color: var(--v2-muted, #617467); }
+.v2-shared-synced { color: var(--v2-muted, #617467); }
 @media (max-width: 600px) {
   .v2-shared-banner { padding: 15px; }
   .v2-shared-banner-actions, .v2-shared-banner-actions .v2-button { width: 100%; }
@@ -56,9 +56,6 @@ html[data-v2-theme="dark"] .v2-shared-status[data-status="live"]::before { box-s
 html[data-v2-theme="dark"] .v2-shared-status[data-status="retrying"] { color: #f2bf7c; }
 html[data-v2-theme="dark"] .v2-shared-warning,
 html[data-v2-theme="dark"] .v2-shared-unavailable { background: #3a3020; color: #f3dcb6 !important; }
-html[data-v2-theme="dark"] .v2-shared-manage-body input,
-html[data-v2-theme="dark"] .v2-shared-create input,
-html[data-v2-theme="dark"] .v2-shared-invite-link input { background: #14231f; border-color: #355248; }
 html[data-v2-theme="dark"] .v2-shared-list li,
 html[data-v2-theme="dark"] .v2-shared-members li { border-color: #355248; }
 html[data-v2-theme="dark"] .v2-shared-notice { background: #243b31; }

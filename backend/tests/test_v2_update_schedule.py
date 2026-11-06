@@ -37,6 +37,7 @@ async def test_schedule_requires_admin_and_preserves_conflicting_draft(tmp_path,
         assert saved.json()["revision"] == 1
         assert saved.json()["enabled"] is True
         assert json.loads((tmp_path / "update-schedule.json").read_text())["time"] == "02:00"
+        assert (tmp_path / "update-schedule.json").stat().st_mode & 0o777 == 0o600
         assert (await client.put("/api/v2/updates/schedule", json=payload)).status_code == 409
         invalid = {**payload, "expected_revision": 1, "timezone": "Not/AZone"}
         assert (await client.put("/api/v2/updates/schedule", json=invalid)).status_code == 422
@@ -67,11 +68,13 @@ async def test_manual_update_is_admin_only_and_queued_once(tmp_path, monkeypatch
         queued = await client.post("/api/v2/updates/run")
         assert queued.status_code == 202
         assert queued.json()["manual_state"] == "queued"
+        assert (tmp_path / "update-manual-request.json").stat().st_mode & 0o777 == 0o600
         assert (await client.post("/api/v2/updates/run")).status_code == 409
         assert (await client.get("/api/v2/updates/schedule")).json()["manual_state"] == "queued"
         (tmp_path / "update-manual-request.json").rename(tmp_path / "update-manual-active.json")
         assert (await client.get("/api/v2/updates/schedule")).json()["manual_state"] == "running"
         assert (await client.post("/api/v2/updates/run")).status_code == 409
+    assert [item.name for item in tmp_path.iterdir() if item.name.startswith(".")] == [], "no temporary file is left"
 
 
 def test_manual_runner_uses_ci_gate_and_reports_result(tmp_path, monkeypatch):
@@ -103,8 +106,6 @@ def test_manual_runner_uses_ci_gate_and_reports_result(tmp_path, monkeypatch):
             return old
         if args == ("rev-parse", "FETCH_HEAD"):
             return target
-        if args == ("show", "-s", "--format=%s", target):
-            return "feature"
         return ""
 
     monkeypatch.setattr(runner, "git", fake_git)

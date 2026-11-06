@@ -10,7 +10,7 @@ import bridgeJs from "../../browser-extension/app-bridge.js?raw";
 import backgroundJs from "../../browser-extension/background.js?raw";
 import { instanceManifest } from "./v2-extension-manifest";
 
-export const EXTENSION_FILES: readonly { name: string; text: string }[] = [
+const EXTENSION_FILES: readonly { name: string; text: string }[] = [
   { name: "manifest.json", text: manifest }, { name: "popup.html", text: popupHtml }, { name: "popup.css", text: popupCss },
   { name: "popup.js", text: popupJs }, { name: "content.js", text: contentJs }, { name: "carrefour-parse.js", text: parseJs },
   { name: "extension-core.js", text: coreJs }, { name: "app-bridge.js", text: bridgeJs }, { name: "background.js", text: backgroundJs },

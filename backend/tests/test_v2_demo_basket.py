@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
@@ -13,35 +10,19 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 from app.api.v2 import demo_basket
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 PATH = "/api/v2/demo-basket"
 WRITE = {"origin": "https://test"}
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_demo_basket_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await root.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_demo_basket_") as configured:
         yield configured
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await root.close()
 
 
 @pytest.fixture
