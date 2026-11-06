@@ -26,6 +26,9 @@ test("the same EAN is recognised with or without leading zeros, and nothing else
 test("prices are read from numbers and from French strings, and refused when odd", () => {
   assert.equal(money(2.89), 2.89);
   assert.equal(money("2,89 €"), 2.89);
+  // French pages separate the euro sign and the thousands with no-break spaces.
+  assert.equal(money("2,89\u00a0€"), 2.89);
+  assert.equal(money("1\u202f234,50\u202f€"), 1234.5);
   assert.equal(money("2.5"), 2.5);
   for (const odd of [0, -1, 1e6, NaN, "gratuit", "2,891", null, true, {}]) assert.equal(money(odd), null, String(odd));
 });
@@ -196,6 +199,28 @@ test("the pause between two products stays within a few seconds, like a person",
   assert.equal(core.pause(0), 6000);
   assert.equal(core.pause(1), 12000);
   for (const r of [-5, 2, NaN]) assert.ok(core.pause(r) >= 6000 && core.pause(r) <= 12000);
+});
+
+test("the bridge tells the page which retailers the extension reads, from the core's own list", () => {
+  assert.deepEqual([...core.ADAPTERS], ["carrefour"]);
+  const posted = [];
+  let onMessage;
+  const box = {
+    location: { origin: "https://price.example" },
+    chrome: { runtime: { connect() {}, getManifest: () => ({ version: "0.3.0" }) } },
+    window: {
+      addEventListener: (type, fn) => { if (type === "message") onMessage = fn; },
+      postMessage: (message, origin) => posted.push({ message: plain(message), origin }),
+    },
+  };
+  box.self = box; box.globalThis = box;
+  vm.createContext(box);
+  vm.runInContext(readFileSync(new URL("extension-core.js", directory), "utf8"), box);
+  vm.runInContext(readFileSync(new URL("app-bridge.js", directory), "utf8"), box);
+  onMessage({ source: box.window, origin: "https://price.example", data: { source: "pc-app", type: "ping", id: "p1" } });
+  assert.deepEqual(posted, [{ message: { source: "pc-ext", type: "pong", id: "p1", version: "0.3.0", adapters: ["carrefour"] }, origin: "https://price.example" }]);
+  onMessage({ source: box.window, origin: "https://evil.example", data: { source: "pc-app", type: "ping", id: "p2" } });
+  assert.equal(posted.length, 1, "another origin gets no answer");
 });
 
 test("only a well formed job from the page is accepted", () => {

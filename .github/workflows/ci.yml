@@ -38,7 +38,7 @@ jobs:
           python -m pip install pytest pytest-asyncio ruff==0.15.1
           python -m pip install -e backend --no-deps
       - name: Lint
-        run: cd backend && python -m ruff check .
+        run: python -m ruff check backend scripts deployment/v2
       - name: Prepare disposable database configuration
         run: |
           printf '%s\n' '{"provider":"postgres","project_url":"","host":"127.0.0.1","port":5432,"database":"v2_test","username":"v2_test","password":"ci-only-password","tls_mode":"disable"}' > "$RUNNER_TEMP/v2-test.json"
@@ -62,15 +62,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run test:basket
-      - run: npm run test:connector
-      - run: npm run test:settings
-      - run: npm run test:account
-      - run: npm run test:nav
-      - run: npm run test:search
-      - run: npm run test:bookmarklet
-      - run: npm run test:extension
-      - run: npm run test:products
+      - run: npm test
       - run: npm run build
 
   deployment:
@@ -85,8 +77,9 @@ jobs:
           python-version: '3.12'
       - name: Check shell syntax
         run: |
-          bash -n deployment/v2/install.sh deployment/v2/update.sh deployment/v2/install-scheduler.sh deployment/v2/configure-local-db.sh scripts/test_v2_update.sh scripts/test_v2_install.sh
-          python3 -m py_compile deployment/v2/scheduled_update.py deployment/v2/prune_local_backups.py deployment/v2/clean_server_cache.py deployment/v2/state_files.py
+          # bash -n reads only its first file; the others would become its arguments.
+          for script in deployment/v2/*.sh scripts/*.sh; do bash -n "$script"; done
+          python3 -m py_compile deployment/v2/*.py scripts/*.py
       - name: Check component versions and path rules
         run: |
           python3 scripts/component_versions.py check

@@ -65,7 +65,7 @@
     return { id: data.id, adapter: data.adapter, storeHint: data.storeHint, items: items };
   }
 
-  var api = { slug: slug, storeMatches: storeMatches, classify: classify, pause: pause, validJob: validJob, MAX_ITEMS: MAX_ITEMS };
+  var api = { slug: slug, storeMatches: storeMatches, classify: classify, pause: pause, validJob: validJob, ADAPTERS: ADAPTERS, MAX_ITEMS: MAX_ITEMS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.PriceCheckerCore = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
