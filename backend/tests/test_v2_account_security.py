@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pyotp
@@ -57,6 +58,24 @@ async def _account(config, role="visitor"):
         return identifier, username
     finally:
         await connection.close()
+
+
+def test_a_totp_code_matches_its_step_within_one_step_of_now_and_never_twice(monkeypatch):
+    seed = "JBSWY3DPEHPK3PXP"
+    now = 1_000 * 30 + 7
+    monkeypatch.setattr(auth_security, "time", SimpleNamespace(time=lambda: now))
+    code = {step: pyotp.TOTP(seed).at(step * 30) for step in range(998, 1003)}
+    assert len(set(code.values())) == 5, "the fixed seed gives five distinct codes"
+    for step in (999, 1_000, 1_001):
+        assert auth_security.matching_totp_step(seed, code[step]) == step
+    assert auth_security.matching_totp_step(seed, code[998]) is None, "two steps ago is too old"
+    assert auth_security.matching_totp_step(seed, code[1_002]) is None, "two steps ahead is too far"
+    assert auth_security.matching_totp_step(seed, code[1_000], after=1_000) is None, "a used step is a replay"
+    assert auth_security.matching_totp_step(seed, code[999], after=1_000) is None, "so is an earlier one"
+    assert auth_security.matching_totp_step(seed, code[1_001], after=1_000) == 1_001
+    assert auth_security.matching_totp_step(seed, code[999], after=998) == 999
+    wrong = next(guess for guess in ("000000", "111111") if guess not in code.values())
+    assert auth_security.matching_totp_step(seed, wrong) is None
 
 
 @pytest.mark.asyncio

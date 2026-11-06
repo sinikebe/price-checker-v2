@@ -18,7 +18,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, SecretStr
 
 from app.api.v2.auth_security import (
-    _TOKEN_PATTERN, account_limit_key, verify_second_factor,
+    _TOKEN_PATTERN, account_limit_key, second_factor_enabled, verify_second_factor,
 )
 
 from app.api.v2.setup import (
@@ -468,10 +468,7 @@ async def login(credentials: Credentials, request: Request, response: Response):
             await connection.fetchval(
                 "SELECT id FROM v2_users WHERE id=$1 FOR UPDATE", user["id"],
             )
-            mfa_enabled = await connection.fetchval(
-                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
-                user["id"],
-            )
+            mfa_enabled = await second_factor_enabled(connection, user["id"])
             factor_limited = bool(mfa_enabled and factor_attempts > 20)
             if not factor_limited:
                 factor_ok = await verify_second_factor(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 import secrets
 import time
 from datetime import timedelta
@@ -13,12 +12,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, SecretStr
 
 from app.api.v2.auth import (
-    _bump_limit, _connect, _limit_key, _secure_write, _session_user,
+    _COOKIE_NAME, _bump_limit, _connect, _limit_key, _secure_write, _session_user,
     _token_hash, _verify_password,
 )
 from app.api.v2.auth_security import (
-    account_limit_key, decrypt_seed, encrypt_seed, new_recovery_codes,
-    recovery_hash, verify_second_factor,
+    account_limit_key, decrypt_seed, encrypt_seed, matching_totp_step, new_recovery_codes,
+    recovery_hash, second_factor_enabled, verify_second_factor,
 )
 
 router = APIRouter(prefix="/api/v2/account/security", tags=["v2-account-security"])
@@ -67,6 +66,23 @@ async def _full_proof(connection, user_id: int, proof: SecondFactorProof) -> Non
         raise HTTPException(status_code=401, detail="Code de validation incorrect.")
 
 
+async def _store_new_recovery_codes(connection, user_id: int) -> list[str]:
+    """Eight new recovery codes for the account; only their hashes are kept."""
+    codes = new_recovery_codes()
+    await connection.executemany(
+        "INSERT INTO v2_mfa_recovery_codes(user_id,code_hash) VALUES($1,$2)",
+        [(user_id, recovery_hash(code)) for code in codes],
+    )
+    return codes
+
+
+async def _revoke_api_tokens(connection, user_id: int) -> None:
+    await connection.execute(
+        "UPDATE v2_api_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
+        user_id,
+    )
+
+
 @router.get("/mfa", summary="État de la double authentification")
 async def mfa_status(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
@@ -99,11 +115,7 @@ async def mfa_setup(proof: PasswordProof, request: Request, response: Response):
         await _rate_limit(connection, request, user["id"])
         async with connection.transaction():
             await _password_proof(connection, user["id"], proof.password)
-            enabled = await connection.fetchval(
-                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials "
-                "WHERE user_id=$1 FOR UPDATE", user["id"],
-            )
-            if enabled:
+            if await second_factor_enabled(connection, user["id"], for_update=True):
                 raise HTTPException(status_code=409, detail="Double authentification déjà activée.")
             secret = pyotp.random_base32()
             await connection.execute(
@@ -141,31 +153,21 @@ async def mfa_confirm(payload: MfaConfirmation, request: Request, response: Resp
                     row["pending_expires_at"].timestamp() <= time.time()):
                 raise HTTPException(status_code=409, detail="Préparation expirée. Recommencez.")
             secret = decrypt_seed(row["secret_ciphertext"])
-            step = int(time.time()) // 30
-            matched = next((candidate for candidate in (step - 1, step, step + 1)
-                            if hmac.compare_digest(pyotp.TOTP(secret).at(candidate * 30),
-                                                   payload.code)), None)
+            matched = matching_totp_step(secret, payload.code)
             if matched is None:
                 raise HTTPException(status_code=401, detail="Code de validation incorrect.")
-            codes = new_recovery_codes()
             await connection.execute(
                 "UPDATE v2_mfa_credentials SET enabled_at=now(),pending_expires_at=NULL,"
                 "last_step=$1 WHERE user_id=$2", matched, user["id"],
             )
-            await connection.executemany(
-                "INSERT INTO v2_mfa_recovery_codes(user_id,code_hash) VALUES($1,$2)",
-                [(user["id"], recovery_hash(code)) for code in codes],
-            )
+            codes = await _store_new_recovery_codes(connection, user["id"])
             # A prior session created before enabling 2FA must not remain a
             # long-lived bypass. Keep only the session currently enrolling.
             await connection.execute(
                 "DELETE FROM v2_sessions WHERE user_id=$1 AND token_hash<>$2",
-                user["id"], _token_hash(request.cookies["pc_v2_session"]),
+                user["id"], _token_hash(request.cookies[_COOKIE_NAME]),
             )
-            await connection.execute(
-                "UPDATE v2_api_tokens SET revoked_at=now() WHERE user_id=$1 "
-                "AND revoked_at IS NULL", user["id"],
-            )
+            await _revoke_api_tokens(connection, user["id"])
         return {"recovery_codes": codes}
     finally:
         await connection.close()
@@ -180,18 +182,11 @@ async def regenerate_codes(proof: SecondFactorProof, request: Request, response:
         user = await _session_user(connection, request)
         await _rate_limit(connection, request, user["id"])
         async with connection.transaction():
-            if not await connection.fetchval(
-                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
-                user["id"],
-            ):
+            if not await second_factor_enabled(connection, user["id"]):
                 raise HTTPException(status_code=409, detail="Double authentification inactive.")
             await _full_proof(connection, user["id"], proof)
-            codes = new_recovery_codes()
             await connection.execute("DELETE FROM v2_mfa_recovery_codes WHERE user_id=$1", user["id"])
-            await connection.executemany(
-                "INSERT INTO v2_mfa_recovery_codes(user_id,code_hash) VALUES($1,$2)",
-                [(user["id"], recovery_hash(code)) for code in codes],
-            )
+            codes = await _store_new_recovery_codes(connection, user["id"])
         return {"recovery_codes": codes}
     finally:
         await connection.close()
@@ -205,18 +200,12 @@ async def mfa_disable(proof: SecondFactorProof, request: Request):
         user = await _session_user(connection, request)
         await _rate_limit(connection, request, user["id"])
         async with connection.transaction():
-            if not await connection.fetchval(
-                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
-                user["id"],
-            ):
+            if not await second_factor_enabled(connection, user["id"]):
                 raise HTTPException(status_code=409, detail="Double authentification inactive.")
             await _full_proof(connection, user["id"], proof)
             await connection.execute("DELETE FROM v2_mfa_credentials WHERE user_id=$1", user["id"])
             await connection.execute("DELETE FROM v2_mfa_recovery_codes WHERE user_id=$1", user["id"])
-            await connection.execute(
-                "UPDATE v2_api_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
-                user["id"],
-            )
+            await _revoke_api_tokens(connection, user["id"])
     finally:
         await connection.close()
 
