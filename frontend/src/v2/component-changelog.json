@@ -1588,6 +1588,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.155",
+      "components": {
+        "application": {
+          "version": "0.1.155",
+          "notes": [
+            "Si la mise en forme des pages légales ne peut pas se charger, leur texte s’affiche quand même, en paragraphes simples."
+          ]
+        }
+      }
     }
   ]
 }
