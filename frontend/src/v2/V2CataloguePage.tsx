@@ -4,7 +4,7 @@ import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { V2PageFrame } from "./V2SiteHeader";
 import V2CatalogueSearch from "./V2CatalogueSearch";
-import { SEARCH_MIN_CHARS, normalizeQuery } from "./v2-catalogue-search";
+import { SEARCH_DEBOUNCE_MS, SEARCH_MIN_CHARS, normalizeQuery } from "./v2-catalogue-search";
 import type { Product } from "./v2-products-api";
 import { catalogueRequest, suggest, UNCLASSIFIED, type Category, type Classification, type SearchResult } from "./v2-catalogue-data";
 import V2BasketAddButtons from "./V2BasketAddButtons";
@@ -400,7 +400,7 @@ function CatalogueIndex({ user, onLogout, categories }: Props & {
     const timer = window.setTimeout(() => {
       catalogueRequest<Store[]>("/stores?q=" + encodeURIComponent(storeDraft.trim()))
         .then(value => { if (active) setStores(value); }).catch(() => { if (active) setStores([]); });
-    }, 250);
+    }, SEARCH_DEBOUNCE_MS);
     return () => { active = false; window.clearTimeout(timer); };
   }, [storeDraft, selectedStore]);
   function apply(event: FormEvent) {

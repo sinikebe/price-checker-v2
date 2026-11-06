@@ -7,7 +7,7 @@ import {
 import { V2_BASKET_EVENT, forgetActiveBasketUser } from "./v2-basket-storage";
 import { accountLocalKeys } from "./v2-account-local-keys";
 import { ACCOUNT_DELETED_KEY } from "./v2-account-session";
-import { requestJson } from "./v2-http";
+import { errorText, requestJson } from "./v2-http";
 
 async function clearDeletedAccountData(userId: number): Promise<boolean> {
   let complete = true;
@@ -51,7 +51,7 @@ export default function V2AccountDeletion({ userId, onDeleted }: {
       const cleared = await clearDeletedAccountData(userId);
       onDeleted(cleared);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "La suppression a échoué.");
+      setError(errorText(reason, "La suppression a échoué."));
     } finally { setBusy(false); }
   }
 

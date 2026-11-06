@@ -9,6 +9,7 @@ import { SHARED_BASKET_PATH, STORAGE_NOTICE, inviteUrl, keepPendingInvite, type 
 import { BasketReadOnlyContext, OFFLINE_TITLE } from "./v2-basket-read-only";
 import "./v2-share.css";
 import "./v2-shared-basket.css";
+import { errorText } from "./v2-http";
 
 const STATUS = { connecting: "Connexion…", live: "En direct", retrying: "Reconnexion…", offline: "Hors ligne" } as const;
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
@@ -146,7 +147,7 @@ export function SharedStart({ shared, user, items, startSettings, copyByDefault 
     if (!userId) return;
     let active = true;
     listSharedBaskets().then(value => { if (active) setList(value.baskets); })
-      .catch(reason => { if (active) setListError(reason instanceof Error ? reason.message : "Liste indisponible."); });
+      .catch(reason => { if (active) setListError(errorText(reason, "Liste indisponible.")); });
     return () => { active = false; };
   }, [userId]);
   if (!user) return <section className="v2-shared-start" aria-label="Partager en direct">
@@ -195,7 +196,7 @@ export function SharedJoin({ invite, user, shared, onClose }: { invite: string; 
     if (!userId) return;
     let active = true;
     previewInvite(invite).then(value => { if (active) setPreview(value); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Lien d’invitation indisponible."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Lien d’invitation indisponible.")); });
     return () => { active = false; };
   }, [invite, userId]);
   return <section className="v2-shared-basket v2-shared-join" aria-label="Rejoindre un panier partagé">

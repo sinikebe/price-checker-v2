@@ -60,7 +60,7 @@ export default function V2AccountSecurity() {
     if (busy) return;
     setBusy(true); setError(""); setNotice("");
     try { await action(); await refresh(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "L’opération a échoué."); }
+    catch (reason) { setError(errorText(reason, "L’opération a échoué.")); }
     finally { setBusy(false); }
   }
 

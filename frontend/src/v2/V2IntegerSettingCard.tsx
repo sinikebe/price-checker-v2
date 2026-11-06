@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { errorText } from "./v2-http";
 
 /**
  * Administrator setting held in one whole number between the server's bounds, saved with the revision
@@ -26,7 +27,7 @@ export default function V2IntegerSettingCard<S extends { revision: number; min: 
     let active = true;
     load()
       .then(settings => { if (active) { setSaved(settings); setDraft(String(read(settings))); } })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Le réglage n’a pas pu être chargé."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Le réglage n’a pas pu être chargé.")); });
     return () => { active = false; };
   }, [load, read]);
 
@@ -43,7 +44,7 @@ export default function V2IntegerSettingCard<S extends { revision: number; min: 
       setSaved(next); setDraft(String(read(next)));
       setNotice("Réglage enregistré.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Le réglage n’a pas pu être enregistré.");
+      setError(errorText(reason, "Le réglage n’a pas pu être enregistré."));
       load().then(settings => { setSaved(settings); setDraft(String(read(settings))); }).catch(() => undefined);
     } finally { setPending(false); }
   }

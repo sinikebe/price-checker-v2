@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSiteFilter } from "./useSiteFilter";
 import { postalDepartment } from "./v2-basket-comparison";
 import { directoryStoreLabel as storeLabel, siteFilterSummary, type DirectoryStore, type SiteFilter, type SiteFilterStore } from "./v2-site-filter";
+import { errorText } from "./v2-http";
 
 const fold = (value: string) => value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("fr");
 const same = (left: SiteFilter, right: SiteFilter) => JSON.stringify(left) === JSON.stringify(right);
@@ -60,7 +61,7 @@ export default function V2SiteFilterSettings() {
   function keep() {
     setError(""); setNotice("");
     try { save(draft); setNotice(draft.enabled ? "Filtre enregistré sur cet appareil : il s’applique à tout le site." : "Filtre enregistré sur cet appareil, désactivé."); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Enregistrement impossible sur cet appareil."); }
+    catch (reason) { setError(errorText(reason, "Enregistrement impossible sur cet appareil.")); }
   }
   return <section className="v2-settings-card v2-site-filter" aria-labelledby="v2-site-filter-heading">
     <h2 id="v2-site-filter-heading">Filtre de magasins pour tout le site</h2>

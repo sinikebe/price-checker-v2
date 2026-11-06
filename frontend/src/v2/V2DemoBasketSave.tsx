@@ -6,6 +6,7 @@ import { BUILTIN_DEMO_CONFIRM, DEMO_BASKET_PATH, demoDate } from "./v2-basket-de
 import type { BasketItem } from "./v2-basket-storage";
 import { removeDemoBasket, saveDemoBasket } from "./v2-demo-basket-api";
 import type { SharedSettings } from "./v2-shared-basket";
+import { errorText } from "./v2-http";
 
 /**
  * For administrators, in the share panel of a basket: make it the demo basket of the home page, with its
@@ -21,7 +22,7 @@ export default function V2DemoBasketSave({ items, settings }: { items: BasketIte
   async function run(action: () => Promise<string>) {
     setBusy(true); setMessage(null);
     try { setMessage({ error: false, text: await action() }); reloadDemoSource(); }
-    catch (reason) { setMessage({ error: true, text: reason instanceof Error ? reason.message : "Échec. Réessayez." }); }
+    catch (reason) { setMessage({ error: true, text: errorText(reason, "Échec. Réessayez.") }); }
     finally { setBusy(false); }
   }
   return <section className="v2-demo-save" aria-labelledby="v2-demo-save-heading">

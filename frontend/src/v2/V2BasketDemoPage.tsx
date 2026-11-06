@@ -24,6 +24,7 @@ import type { V2User } from "./v2-auth-api";
 import "./v2-recipes.css";
 import "./v2-basket.css";
 import "./v2-basket-demo.css";
+import { errorText } from "./v2-http";
 
 /** For administrators: where the demo comes from, how to replace it, and the way back to the app's example. */
 function DemoAdmin({ source }: { source: DemoSource }) {
@@ -37,7 +38,7 @@ function DemoAdmin({ source }: { source: DemoSource }) {
     {!source.fictional && <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={async () => {
       if (!await confirm(BUILTIN_DEMO_CONFIRM)) return;
       setBusy(true); setError("");
-      removeDemoBasket().then(reloadDemoSource).catch(reason => setError(reason instanceof Error ? reason.message : "Échec.")).finally(() => setBusy(false));
+      removeDemoBasket().then(reloadDemoSource).catch(reason => setError(errorText(reason, "Échec."))).finally(() => setBusy(false));
     }}>Revenir à l’exemple intégré</button>}
     {error && <p role="alert">{error}</p>}
   </section>;

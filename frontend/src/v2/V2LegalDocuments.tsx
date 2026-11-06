@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import V2LegalMarkdown from "./V2LegalMarkdown";
-import { apiError } from "./v2-http";
+import { apiError, errorText } from "./v2-http";
 import { legalDocument, type LegalKind } from "./v2-legal-documents";
 import "./v2-legal.css";
 
@@ -31,7 +31,7 @@ export default function V2LegalDocuments() {
   useEffect(() => {
     let active = true;
     request<Listing>("").then(value => { if (active) setListing(value); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Liste indisponible."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Liste indisponible.")); });
     return () => { active = false; };
   }, []);
 
@@ -57,7 +57,7 @@ export default function V2LegalDocuments() {
       setListing(current => current && { ...current, documents: current.documents.map(item => item.name === saved.name ? saved : item) });
       setNotice(`${legalDocument(draft.name).title} : nouvelle version publiée (${kilobytes(saved.bytes)}).`);
       setDraft(null);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Échec de la publication."); }
+    } catch (reason) { setError(errorText(reason, "Échec de la publication.")); }
     finally { setBusy(false); }
   }
 

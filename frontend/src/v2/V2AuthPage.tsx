@@ -7,6 +7,7 @@ import "./v2-setup.css";
 import "./v2-auth.css";
 
 import { authRequest, type V2User } from "./v2-auth-api";
+import { errorText } from "./v2-http";
 type Mode = "admin" | "login" | "register";
 
 export default function V2AuthPage({
@@ -46,7 +47,7 @@ export default function V2AuthPage({
       setSecondFactor("");
       onAuthenticated(user);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "L'opération a échoué.");
+      setError(errorText(reason, "L'opération a échoué."));
     } finally {
       setBusy(false);
     }

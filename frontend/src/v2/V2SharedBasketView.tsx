@@ -12,6 +12,7 @@ import { FIRST_STORES, MORE_STORES, fetchedLabel, itemKind, itemName, selectionS
 import { viewSharedBasket } from "./v2-shared-basket-api";
 import { SHARED_BASKET_PATH, keepPendingInvite, sharedItems, sharedSettings, sharedSnapshot, type SharedView } from "./v2-shared-basket";
 import "./v2-shared-basket.css";
+import { errorText } from "./v2-http";
 
 const NO_CHANGE = () => undefined;
 
@@ -28,7 +29,7 @@ export default function V2SharedBasketView({ invite }: { invite: string }) {
   useEffect(() => {
     const controller = new AbortController();
     viewSharedBasket(invite, controller.signal).then(value => { setView(value); setError(""); })
-      .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Panier partagé indisponible."); });
+      .catch(reason => { if (!controller.signal.aborted) setError(errorText(reason, "Panier partagé indisponible.")); });
     return () => controller.abort();
   }, [invite, attempt]);
   const base = useMemo(() => view ? sharedItems(view.lines) : null, [view]);

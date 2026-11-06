@@ -34,7 +34,7 @@ function StoreCompletion({ item, onSaved }: { item: StoreItem; onSaved: () => vo
       await storeRequest("/" + item.id + "/completion", "PUT", { city, postal_code: postalCode });
       onSaved();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Correction impossible.");
+      setError(errorText(reason, "Correction impossible."));
     } finally { setBusy(false); }
   }
   return <form className="v2-completion-store-form" onSubmit={event => void submit(event)}>

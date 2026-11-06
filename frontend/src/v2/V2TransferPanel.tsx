@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { saveBlob } from "./v2-download";
-import { apiError } from "./v2-http";
+import { apiError, errorText } from "./v2-http";
 
 type ImportResult = {
   products_imported: number; prices_imported: number;
@@ -36,7 +36,7 @@ export default function V2TransferPanel() {
       saveBlob(await response.blob(), `price-checker-v2-${new Date().toISOString().slice(0, 10)}.json`);
       setNotice("Archive des produits et prix publiés téléchargée.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Export impossible.");
+      setError(errorText(reason, "Export impossible."));
     } finally { setBusy(false); }
   }
 
@@ -52,7 +52,7 @@ export default function V2TransferPanel() {
       if (!response.ok) throw await refused(response);
       setPreview(await response.json() as ImportPreview);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Vérification impossible.");
+      setError(errorText(reason, "Vérification impossible."));
     } finally { setBusy(false); }
   }
 
@@ -77,7 +77,7 @@ export default function V2TransferPanel() {
         `${result.products_already_present} produit(s) et ${result.prices_already_present} prix déjà présents.`);
       setFile(null); setPreview(null); setApproved(false);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Import impossible.");
+      setError(errorText(reason, "Import impossible."));
     } finally { setBusy(false); }
   }
 

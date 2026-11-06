@@ -4,6 +4,7 @@ import {
   LEVELS, PERIODS, SOURCES, defaultLogFilters, getLogs, type LogFilters, type LogItem, type LogLevel, type LogPage, type LogPeriod, type LogSource,
 } from "./v2-logs-api";
 import "./v2-observability.css";
+import { errorText } from "./v2-http";
 
 const moment = (iso: string) => new Date(iso).toLocaleString("fr-FR", {
   day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -30,7 +31,7 @@ export default function V2ServerLogs({ active }: { active: boolean }) {
     const controller = new AbortController();
     getLogs(filters, null, controller.signal)
       .then(page => { if (!controller.signal.aborted) setFirst({ key, page }); })
-      .catch(reason => { if (!controller.signal.aborted) setFirst({ key, error: reason instanceof Error ? reason.message : "Chargement impossible." }); });
+      .catch(reason => { if (!controller.signal.aborted) setFirst({ key, error: errorText(reason, "Chargement impossible.") }); });
     return () => controller.abort();
   }, [active, key, filters]);
 
@@ -58,7 +59,7 @@ export default function V2ServerLogs({ active }: { active: boolean }) {
       const page = await getLogs(filters, next);
       setMore({ key: first.key, items: [...(extra?.items ?? []), ...page.items], next: page.next_before });
     } catch (reason) {
-      setMoreError(reason instanceof Error ? reason.message : "Chargement impossible.");
+      setMoreError(errorText(reason, "Chargement impossible."));
     } finally { setLoadingMore(false); }
   }
 
