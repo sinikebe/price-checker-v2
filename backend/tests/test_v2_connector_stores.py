@@ -41,6 +41,34 @@ def test_catalogue_requires_numeric_changelog_and_does_not_import_code(tmp_path)
         validate_catalog(tmp_path)
 
 
+def test_concurrent_first_loads_import_a_connector_once(monkeypatch, tmp_path):
+    """Modules load in worker threads; a second first call waits for the import instead of repeating it."""
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services import v2_connector_stores as service
+
+    monkeypatch.setattr(service, "store_dir", lambda identifier: tmp_path / str(identifier))
+    monkeypatch.setattr(service, "_cache", {})
+    sha = "f" * 40
+    entry = tmp_path / "1" / "revisions" / sha / "connectors" / "demo" / "entry.py"
+    entry.parent.mkdir(parents=True)
+    imports = tmp_path / "imports"
+    entry.write_text(
+        "import time\n"
+        f"with open({str(imports)!r}, 'a') as stream: stream.write('x')\n"
+        "time.sleep(0.2)  # a slow import, so the other calls arrive while it runs\n"
+        "async def enqueue(connection, product_id): return 'queued'\n"
+        "async def process_one(): pass\n")
+    try:
+        with ThreadPoolExecutor(4) as pool:
+            modules = list(pool.map(lambda _: service.load_installed(1, "demo", sha), range(4)))
+        assert imports.read_text() == "x"
+        assert all(module is modules[0] for module in modules)
+    finally:
+        sys.modules.pop(f"price_checker_connector_1_demo_{sha}", None)
+
+
 @pytest.mark.asyncio
 async def test_admin_store_install_disable_update_remove_and_public_versions(monkeypatch, tmp_path):
     from app.api.v2 import auth, connector_stores as api
