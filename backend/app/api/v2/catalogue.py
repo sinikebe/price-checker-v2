@@ -148,7 +148,10 @@ async def to_complete(
     connection = await _connect()
     try:
         products = await connection.fetch(
-            f"SELECT p.* FROM v2_products p WHERE {CURRENT} ORDER BY p.id"
+            "SELECT p.id, p.data->>'name' AS name, p.data->>'brand' AS brand, "
+            "p.data->>'package' AS package, p.data->>'quantity' AS quantity, "
+            "p.data->>'ean' AS ean, p.data->>'composition' AS composition "
+            f"FROM v2_products p WHERE {CURRENT} ORDER BY p.id"
         )
         # A store enters this public list only after a public observation exists.
         # Private drafts must never expose their store names here.
@@ -164,14 +167,12 @@ async def to_complete(
         required = []
         optional = []
         for row in products:
-            item = _product(row)
-            data = item["data"]
             missing_required = [label for key, label in PRODUCT_REQUIRED.items()
-                                if not (data.get(key) or "").strip()]
+                                if not (row[key] or "").strip()]
             missing_optional = [label for key, label in PRODUCT_OPTIONAL.items()
-                                if not (data.get(key) or "").strip()]
-            summary = {"kind": "product", "id": item["id"], "name": data.get("name") or "",
-                       "brand": data.get("brand") or "",
+                                if not (row[key] or "").strip()]
+            summary = {"kind": "product", "id": row["id"], "name": row["name"] or "",
+                       "brand": row["brand"] or "",
                        "missing": missing_required or missing_optional}
             if missing_required:
                 required.append(summary)
@@ -228,20 +229,22 @@ SEARCH_TEXT = ("lower(btrim(regexp_replace(concat_ws(' ', p.data->>'brand', p.da
                "p.data->>'commercial_name', p.data->>'quantity', p.data->>'ean'), '[ \\t\\n\\r\\f\\v]+', ' ', 'g')))")
 
 
+# What a search matches, for its parameters $1 (the collapsed text), $2 (a category) and $3 (a store id).
+SEARCH_CONDITIONS = f"""{CURRENT}
+            AND ($1='' OR strpos({SEARCH_TEXT}, lower($1)) > 0)
+            AND ($2='' OR lower({CATEGORY})=lower($2))
+            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
+
+
 def _collapse(text: str) -> str:
     return re.sub(r"[ \t\n\r\f\v]+", " ", text).strip()
+
+
 # Typing triggers searches: bound them per client. Both budgets are charged only for admitted requests.
 SUGGEST_PER_MINUTE = 10
 SUGGEST_PER_HOUR = 100
 SUGGEST_MIN_CHARS = 2
 COMPLETE_LIST_BOUNDS = (5, 200)
-
-
-def _search_conditions() -> str:
-    return f"""{CURRENT}
-            AND ($1='' OR strpos({SEARCH_TEXT}, lower($1)) > 0)
-            AND ($2='' OR lower({CATEGORY})=lower($2))
-            AND ($3::bigint IS NULL OR {STORE_MATCH})"""
 
 
 @router.get("/search")
@@ -254,13 +257,12 @@ async def search_products(
 ):
     connection = await _connect()
     try:
-        conditions = _search_conditions()
         parameters = _collapse(q), category.strip(), store_id
         total = await connection.fetchval(
-            f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters
+            f"SELECT count(*) FROM v2_products p WHERE {SEARCH_CONDITIONS}", *parameters
         )
         rows = await connection.fetch(
-            f"""SELECT p.* FROM v2_products p WHERE {conditions}
+            f"""SELECT p.* FROM v2_products p WHERE {SEARCH_CONDITIONS}
                 ORDER BY {DISPLAY_ORDER}
                 LIMIT $4 OFFSET $5""",
             *parameters, limit, offset,
@@ -298,19 +300,19 @@ async def suggest_products(
     The browser filters a list it holds as the text grows, so a request is needed again
     only when a search is too broad to be listed or the text no longer extends a known one.
     """
-    if len(_collapse(q)) < SUGGEST_MIN_CHARS:
+    text = _collapse(q)
+    if len(text) < SUGGEST_MIN_CHARS:
         raise HTTPException(status_code=422, detail=f"Saisissez au moins {SUGGEST_MIN_CHARS} caractères.")
     connection = await _connect()
     try:
         await _charge_search(connection, request)
         limit = await connection.fetchval("SELECT complete_list_max FROM v2_search_settings WHERE singleton")
-        conditions = _search_conditions()
-        parameters = _collapse(q), category.strip(), store_id
+        parameters = text, category.strip(), store_id
         total = await connection.fetchval(
-            f"SELECT count(*) FROM v2_products p WHERE {conditions}", *parameters)
+            f"SELECT count(*) FROM v2_products p WHERE {SEARCH_CONDITIONS}", *parameters)
         complete = total <= limit
         rows = await connection.fetch(
-            f"""SELECT p.* FROM v2_products p WHERE {conditions}
+            f"""SELECT p.* FROM v2_products p WHERE {SEARCH_CONDITIONS}
                 ORDER BY {DISPLAY_ORDER} LIMIT $4""",
             *parameters, limit) if complete and total else []
         return {"total": total, "complete": complete, "max": limit,
@@ -449,10 +451,10 @@ async def _recent_observations(connection, ids: list[int]) -> list[dict]:
             JOIN v2_stores s ON s.id=c.store_id
             WHERE c.available
               AND c.correction_status IS DISTINCT FROM 'active'
-        ) recent WHERE rank<=30
+        ) recent WHERE rank<=$2
         ORDER BY observed_at,id
         """,
-        ids,
+        ids, HISTORY_LIMIT,
     )
     return [
         {"id": row["id"], "product_id": row["product_id"],
