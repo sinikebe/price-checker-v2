@@ -1,4 +1,4 @@
-/* Runs on www.carrefour.fr in the visitor's own browser. It only answers the extension's own popup, one
+/* Runs on www.carrefour.fr in the visitor's own browser. It only answers the extension's own popup and worker, one
  * product at a time, with a normal same-site request made with the visitor's own session and store. */
 (function () {
   "use strict";

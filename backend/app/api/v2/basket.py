@@ -1,19 +1,23 @@
-"""Basket prices: one request, one credit. The account's credits are read here too."""
+"""Basket prices: one credit per included line. The account's credits are read here too."""
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+import asyncpg
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
+from app.api.v2.auth import _connect, _limit_key, _secure_write, _session_user, per_minute_limit
 from app.api.v2.auth_security import account_limit_key
-from app.api.v2.catalogue import MAX_BIGINT, group_rows, scope_rows
-from app.api.v2.prices import _day
-from app.api.v2.products import _product
-from app.api.v2.selections import Selection, SelectionRef, member_counts, selection_rows
+from app.api.v2.catalogue import group_rows, scope_rows
+from app.api.v2.credits import viewer_state
+from app.api.v2.products import PRODUCT_LINKS, _product
+from app.api.v2.selections import Selection, SelectionRef, current_ids, member_counts, selection_rows
+from app.core.paris_time import paris_day
+from app.db.v2_sql import MAX_BIGINT
 from app.services import v2_basket_credits as credits
 from app.services import v2_product_references as references
 from app.services import v2_logbook as logbook
@@ -26,6 +30,9 @@ MAX_PRODUCTS = 600  # distinct products priced by one request
 MAX_STORES = 200  # latest price per store and channel, per product
 MAX_CHAIN = 32
 ADMIN_FETCHES_PER_MINUTE = 60  # administrators have no credit limit, only a sanity cap against a runaway loop
+PREVIEWS_PER_MINUTE = 30
+PREVIEW_SAMPLE = 20
+PREVIEW_GROUPS = 30
 
 
 def _clean(value: str) -> str:
@@ -61,31 +68,47 @@ class BasketPricesRequest(BaseModel):
     items: list[BasketRef] = Field(min_length=1, max_length=MAX_ITEMS)
 
 
+async def _current_products(connection, product_ids) -> dict[int, asyncpg.Record | None]:
+    """The product row each reference currently stands for, by reference: a merge is followed before
+    a new version, as on the product page. None when the product is withdrawn or gone, or when its
+    chain loops or is longer than MAX_CHAIN.
+
+    One query per step of the longest chain, however many references are asked for.
+    """
+    pending = {product_id: product_id for product_id in dict.fromkeys(product_ids)}
+    seen: dict[int, set[int]] = {product_id: set() for product_id in pending}
+    result: dict[int, asyncpg.Record | None] = {}
+    for _ in range(MAX_CHAIN):
+        for original, current in list(pending.items()):
+            if current in seen[original]:
+                result[original] = None
+                del pending[original]
+            else:
+                seen[original].add(current)
+        if not pending:
+            break
+        rows = {row["id"]: row for row in await connection.fetch(
+            PRODUCT_LINKS + " WHERE p.id=ANY($1::bigint[])", list(set(pending.values())))}
+        for original, current in list(pending.items()):
+            row = rows.get(current)
+            if row is None or row["withdrawn"]:
+                result[original] = None
+                del pending[original]
+                continue
+            following = row["merged_to_id"] or row["successor_id"]
+            if following:
+                pending[original] = following
+            else:
+                result[original] = row
+                del pending[original]
+    for original in pending:
+        result[original] = None
+    return result
+
+
 async def _current_product(connection, product_id: int):
     """The product row a reference currently stands for, or None when it is withdrawn or gone."""
-    seen: set[int] = set()
-    current = product_id
-    for _ in range(MAX_CHAIN):
-        if current in seen:
-            return None
-        seen.add(current)
-        row = await connection.fetchrow(
-            """SELECT p.*,
-                      (SELECT to_id FROM v2_content_merges m
-                        WHERE m.kind='product' AND m.from_id=p.id) AS merged_to_id,
-                      (SELECT n.id FROM v2_products n WHERE n.predecessor_id=p.id
-                        ORDER BY n.id DESC LIMIT 1) AS successor_id,
-                      EXISTS(SELECT 1 FROM v2_content_withdrawals w
-                              WHERE w.kind='product' AND w.content_id=p.id) AS withdrawn
-               FROM v2_products p WHERE p.id=$1""",
-            current)
-        if row is None or row["withdrawn"]:
-            return None
-        following = row["merged_to_id"] or row["successor_id"]
-        if not following:
-            return row
-        current = following
-    return None
+    return (await _current_products(connection, [product_id]))[product_id]
 
 
 async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
@@ -137,7 +160,7 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
             entry["stores_truncated"] = True
             continue
         entry["latest_by_store"].append({
-            "id": row["id"], "price": str(row["price"]), "observed_at": _day(row["observed_at"]),
+            "id": row["id"], "price": str(row["price"]), "observed_at": paris_day(row["observed_at"]),
             "retailer": row["retailer"], "store_name": row["store_name"],
             "store_id": row["store_id"], "city": row["city"], "postal_code": row["postal_code"],
             "online": row["online"], "sales_channel": row["sales_channel"], "available": row["available"],
@@ -150,14 +173,16 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
 async def _gather(connection, items) -> dict:
     products: dict[int, dict] = {}
     lines = []
+    resolved = await _current_products(connection, [ref.id for ref in items if ref.kind == "product"])
     for ref in items:
         if ref.kind == "product":
-            row = await _current_product(connection, ref.id)
+            row = resolved[ref.id]
             rows = [row] if row else []
         elif ref.kind == "group":
             rows = await group_rows(connection, ref.name, MAX_CANDIDATES + 1)
         elif ref.kind == "selection":
-            rows = await selection_rows(connection, ref, MAX_CANDIDATES + 1, _current_product)
+            rows = await selection_rows(connection, ref, MAX_CANDIDATES + 1,
+                                        await current_ids(connection, ref, _current_products))
         else:
             rows = await scope_rows(connection, ref.department, ref.family, ref.name,
                                     MAX_CANDIDATES + 1)
@@ -184,6 +209,51 @@ async def _gather(connection, items) -> dict:
     }
 
 
+async def paid_gather(
+    connection, user: dict, refs: list, *,
+    store: Callable[[dict], Awaitable[None]] | None = None, shared: bool = False,
+) -> tuple[dict, dict]:
+    """The prices of `refs` for one credit each from `user`, and the user's credits after it.
+
+    `store(result)`, when given, saves the result in the transaction that pays for it. A refused or
+    failed reading costs nothing: without enough credits, 429 (and today's grant is still kept).
+    Administrators are not charged, only capped at a generous rate. Both outcomes are journaled, as
+    numbers only; `shared` marks a shared basket's reading.
+    """
+    cost = len(refs)
+    extra = {"shared": True} if shared else {}
+    if user["role"] == "admin":
+        # The role comes from the server-side session, never from the request.
+        await per_minute_limit(connection, account_limit_key("basket-admin", user["id"]), ADMIN_FETCHES_PER_MINUTE)
+        async with connection.transaction():
+            result = await _gather(connection, refs)
+            if store is not None:
+                await store(result)
+        await logbook.log_event(
+            connection, "basket.prices.fetched", items=cost, products=len(result["products"]),
+            truncated=any(line["truncated"] for line in result["lines"]), unlimited=True, **extra)
+        return result, credits.unlimited_state(credits.paris_now().date(), await credits.settings(connection))
+    async with connection.transaction():
+        cfg = await credits.settings(connection)
+        state = await credits.lock_and_refill(connection, user["id"], cfg)
+        result = None
+        if state["balance"] + state["bonus"] >= cost:
+            result = await _gather(connection, refs)
+            state = await credits.spend(connection, user["id"], state, cost)
+            if store is not None:
+                await store(result)
+            await logbook.log_event(
+                connection, "basket.prices.fetched", items=cost, products=len(result["products"]),
+                truncated=any(line["truncated"] for line in result["lines"]), credits_left=state["balance"], **extra)
+    # Outside the transaction, so that the daily grant applied above is kept on a refusal.
+    public = credits.account_state(state, cfg)
+    if result is None:
+        await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
+        raise credits.no_credits(public, cost, state["now"],
+                                 f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier.")
+    return result, public
+
+
 @router.get("/credits")
 async def read_credits(request: Request, response: Response):
     """The credits of the signed-in account, after today's grant."""
@@ -191,12 +261,8 @@ async def read_credits(request: Request, response: Response):
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
-        cfg = await credits.settings(connection)
-        if user["role"] == "admin":
-            return credits.unlimited_state(credits.paris_now().date(), cfg)
         async with connection.transaction():
-            state = await credits.lock_and_refill(connection, user["id"], cfg)
-        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
+            return await viewer_state(connection, request, user, await credits.settings(connection))
     finally:
         await connection.close()
 
@@ -214,43 +280,12 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
     connection = await _connect()
     try:
         user = await _session_user(connection, request)
+        result, public = await paid_gather(connection, user, payload.items)
         if user["role"] == "admin":
-            # The role comes from the server-side session, never from the request.
-            if await _bump_limit(connection, account_limit_key("basket-admin", user["id"]), 60) > ADMIN_FETCHES_PER_MINUTE:
-                raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                    detail="Trop de requêtes. Réessayez dans un instant.")
-            result = await _gather(connection, payload.items)
-            await logbook.log_event(
-                connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
-                truncated=any(line["truncated"] for line in result["lines"]), unlimited=True)
-            return {**result, "credits": credits.unlimited_state(credits.paris_now().date(), await credits.settings(connection))}
-        cost = len(payload.items)
-        async with connection.transaction():
-            cfg = await credits.settings(connection)
-            state = await credits.lock_and_refill(connection, user["id"], cfg)
-            result = None
-            if state["balance"] + state["bonus"] >= cost:
-                result = await _gather(connection, payload.items)
-                state = await credits.spend(connection, user["id"], state, cost)
-                await logbook.log_event(
-                    connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
-                    truncated=any(line["truncated"] for line in result["lines"]), credits_left=state["balance"])
-        public = credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
-        if result is None:
-            await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
-            wait = credits.seconds_until(date.fromisoformat(public["next_grant_on"]), state["now"])
-            raise HTTPException(
-                status_code=429, headers={"Retry-After": str(wait)},
-                detail={"code": "no_credits", "credits": public, "cost": cost,
-                        "message": f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier."})
-        return {**result, "credits": public, "cost": cost}
+            return {**result, "credits": public}  # nothing was charged: no cost
+        return {**result, "credits": public, "cost": len(payload.items)}
     finally:
         await connection.close()
-
-
-PREVIEWS_PER_MINUTE = 30
-PREVIEW_SAMPLE = 20
-PREVIEW_GROUPS = 30
 
 
 @router.post("/selection")
@@ -264,12 +299,10 @@ async def preview_selection(payload: Selection, request: Request, response: Resp
     connection = await _connect()
     try:
         # Open to visitors, like the catalogue, but bounded per client.
-        key = _limit_key("basket-selection-preview", request)
-        if await _bump_limit(connection, key, 60) > PREVIEWS_PER_MINUTE:
-            raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                detail="Trop de requêtes. Réessayez dans un instant.")
-        rows = await selection_rows(connection, payload, MAX_CANDIDATES + 1, _current_product)
-        counts = await member_counts(connection, payload, _current_product)
+        await per_minute_limit(connection, _limit_key("basket-selection-preview", request), PREVIEWS_PER_MINUTE)
+        ids = await current_ids(connection, payload, _current_products)
+        rows = await selection_rows(connection, payload, MAX_CANDIDATES + 1, ids)
+        counts = await member_counts(connection, payload, ids)
         groups: dict[str, dict] = {}
         for row in rows[:MAX_CANDIDATES]:
             entry = groups.setdefault(row["category_name"].casefold(), {"name": row["category_name"], "products": 0})

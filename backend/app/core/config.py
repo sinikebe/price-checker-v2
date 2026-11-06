@@ -7,12 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_ENV: str = "prod"
-    LOG_LEVEL: str = "INFO"
-    REQUEST_TIMEOUT_SECONDS: int = 15
-    SEARCH_CACHE_TTL_SECONDS: int = 900
     CORS_ALLOWED_ORIGINS: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Settings this version no longer reads (an older .env may still set them) are ignored.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property
     def cors_origins(self) -> list[str]:

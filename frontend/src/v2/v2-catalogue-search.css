@@ -1,5 +1,5 @@
 .v2-dynamic-search { display: grid; gap: 14px; margin-bottom: 8px; }
-.v2-dynamic-search-bar { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: 56px; padding: 0 8px 0 18px; border: 1px solid var(--v2-line, #dfebe4); border-radius: 999px; background: #fff; }
+.v2-dynamic-search-bar { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 8px 0 18px; border: 1px solid var(--v2-line, #dfebe4); border-radius: 999px; background: #fff; }
 .v2-dynamic-search-bar:focus-within { border-color: #2f8061; box-shadow: 0 0 0 3px rgba(47, 128, 97, .18); }
 .v2-dynamic-search-bar > svg { width: 22px; height: 22px; flex: 0 0 auto; color: var(--v2-muted, #61736d); }
 .v2-dynamic-search-bar input { flex: 1 1 auto; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--v2-ink, #18322e); font: inherit; font-size: 1.05rem; }

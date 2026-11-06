@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/v2/v2-shopping-list.ts", import.meta.url), "utf8");
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { listSetting, listViewOf, shoppingListPath, splitList, storeChoices, storeList, withChecked } =
+const { listSetting, listViewIntro, listViewOf, shoppingListPath, splitList, storeChoices, storeList, withChecked } =
   await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 
 const keyOf = item => "kind" in item ? `${item.kind}:${item.name.toLocaleLowerCase("fr")}` : `product:${item.id}`;
@@ -64,4 +64,10 @@ test("the list mode kept with the basket: all articles, the split, or one store"
 test("one store for the whole list: compared stores only, without those switched off", () => {
   assert.deepEqual(storeChoices(comparison.stores, []).map(store => store.key), ["1:in_store", "2:drive"]);
   assert.deepEqual(storeChoices(comparison.stores, ["2:drive"]).map(store => store.key), ["1:in_store"]);
+});
+
+test("the list page says what each mode lists", () => {
+  assert.equal(listViewIntro({ kind: "all" }), "Les articles du panier, à cocher en rayon.");
+  assert.equal(listViewIntro({ kind: "stores" }), "Répartie entre les magasins, au meilleur prix.");
+  assert.equal(listViewIntro({ kind: "store", key: "2:drive" }), "Tout le panier dans un magasin ; ce qui n’y a pas de prix vient en premier.");
 });

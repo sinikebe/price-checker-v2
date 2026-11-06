@@ -11,6 +11,8 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
+from app.services import v2_logbook as logbook
+
 logger = logging.getLogger(__name__)
 
 BUCKET_SECONDS = 300
@@ -39,7 +41,7 @@ _clients: dict[str, tuple[float, int]] = {}
 
 def bucket_of(moment: datetime) -> datetime:
     moment = moment.astimezone(UTC)
-    return moment.replace(minute=moment.minute - moment.minute % 5, second=0, microsecond=0)
+    return moment.replace(minute=moment.minute - moment.minute % (BUCKET_SECONDS // 60), second=0, microsecond=0)
 
 
 def group_of(route: str) -> str:
@@ -145,16 +147,15 @@ async def flush(connection) -> int:
 
 async def purge(connection) -> dict[str, int]:
     """Drop what is older than the retention, from the counters and the journal."""
-    from app.services.v2_logbook import MAX_ROWS, RETENTION_DAYS as LOG_DAYS
     removed = {}
     for table, column in (("v2_request_stats", "bucket"), ("v2_page_stats", "bucket")):
         status = await connection.execute(
             f"DELETE FROM {table} WHERE {column} < now() - make_interval(days => $1)", RETENTION_DAYS)
         removed[table] = int(status.rsplit(" ", 1)[-1])
     status = await connection.execute(
-        "DELETE FROM v2_logs WHERE at < now() - make_interval(days => $1)", LOG_DAYS)
+        "DELETE FROM v2_logs WHERE at < now() - make_interval(days => $1)", logbook.RETENTION_DAYS)
     removed["v2_logs"] = int(status.rsplit(" ", 1)[-1])
     status = await connection.execute(
-        "DELETE FROM v2_logs WHERE id < (SELECT id FROM v2_logs ORDER BY id DESC OFFSET $1 - 1 LIMIT 1)", MAX_ROWS)
+        "DELETE FROM v2_logs WHERE id < (SELECT id FROM v2_logs ORDER BY id DESC OFFSET $1 - 1 LIMIT 1)", logbook.MAX_ROWS)
     removed["v2_logs"] += int(status.rsplit(" ", 1)[-1])
     return removed

@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { PWA_CACHE_NAME } from './src/pwa/cache-keys'
 
 export default defineConfig({
   publicDir: 'public-v2',
@@ -25,12 +26,12 @@ export default defineConfig({
       globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       runtimeCaching: [{
-        urlPattern: ({ url, request }) => request.method === 'GET' && url.origin === (globalThis as unknown as { location: { origin: string } }).location.origin &&
+        urlPattern: ({ url, request, sameOrigin }) => request.method === 'GET' && sameOrigin &&
           !request.headers.has('X-PWA-Sync') &&
           ((/^\/api\/v2\/recipes(?:\/\d+)?$/.test(url.pathname) ||
             /^\/api\/v2\/products(?:\/\d+)?$/.test(url.pathname))),
         handler: 'NetworkFirst',
-        options: { networkTimeoutSeconds: 3, cacheName: 'price-checker-offline-data-v3', expiration: { maxEntries: 600 } },
+        options: { networkTimeoutSeconds: 3, cacheName: PWA_CACHE_NAME, expiration: { maxEntries: 600 } },
       }],
     },
   })],

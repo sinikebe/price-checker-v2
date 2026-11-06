@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.v2.duplicate_merges import PRODUCT_FIELDS
-from app.api.v2.products import ProductData, _validate_publish
+from app.api.v2.products import ProductData, _material_change, _validate_publish
 from app.services.quantity_parser import parse_measures
 
 
@@ -127,3 +127,21 @@ def test_publication_refuses_non_ascii_digits_in_the_barcode():
     with pytest.raises(HTTPException) as refused:
         _validate_publish(bad)
     assert refused.value.status_code == 422
+
+
+def test_only_a_new_package_pack_size_or_recipe_is_a_material_change():
+    before = {"package": "Sachet", "quantity": "500 g", "composition": ""}
+    after = {"package": "Sachet", "quantity": "500 g", "composition": ""}
+    assert not _material_change(before, after)
+    assert _material_change(before, after | {"package": "Boîte"})
+    assert _material_change(before, after | {"quantity": "750 g"})
+    # The same pack written differently, or a unit being fixed, stays a correction.
+    assert not _material_change(before, after | {"quantity": "500g"})
+    assert not _material_change(before | {"quantity": "0,5 L"}, after | {"quantity": "50 cl"})
+    assert not _material_change(before, after | {"quantity": "6 pièces"})
+    # Filling a blank composition documents the product; changing a known one does not.
+    assert not _material_change(before, after | {"composition": "Riz"})
+    assert _material_change(before | {"composition": "Riz"}, after | {"composition": "Riz, sel"})
+    assert not _material_change(before | {"composition": "Riz "}, after | {"composition": "Riz"})
+    # A field missing from a stored product reads as blank: a quantity given later is no new pack.
+    assert not _material_change({"package": "Sachet"}, after)

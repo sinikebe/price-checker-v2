@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { IScannerControls } from "@zxing/browser";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
 
 type ScannerState = "requesting" | "scanning" | "insecure" | "denied" | "no-camera" | "camera-error";
-const GTIN = /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/;
 
 export default function V2BarcodeScanner({ onClose, onDetected }: {
   onClose: () => void;
@@ -11,16 +11,20 @@ export default function V2BarcodeScanner({ onClose, onDetected }: {
   const videoRef = useRef<HTMLVideoElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const detectedRef = useRef(false);
+  // The parents pass new functions on every render: kept in refs, so that a render of the page behind
+  // the dialog does not move the focus back to the close button.
   const onDetectedRef = useRef(onDetected);
+  const onCloseRef = useRef(onClose);
   const [state, setState] = useState<ScannerState>("requesting");
 
   useEffect(() => { onDetectedRef.current = onDetected; }, [onDetected]);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
     closeRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onCloseRef.current(); };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -46,7 +50,7 @@ export default function V2BarcodeScanner({ onClose, onDetected }: {
           (result, _error, scanControls) => {
             if (!active || !result || detectedRef.current) return;
             const code = result.getText().trim();
-            if (!GTIN.test(code)) return;
+            if (!GTIN_PATTERN.test(code)) return;
             detectedRef.current = true;
             scanControls.stop();
             onDetectedRef.current(code);

@@ -94,7 +94,7 @@ class CleaningTests(unittest.TestCase):
 
     def test_cleaning_runs_the_fixed_commands_and_sums_what_they_freed(self):
         docker = FakeDocker()
-        result = cleaner.clean(docker, trigger="manual", data_dir=self.data, state_dir=self.state, now=NOW)
+        result = cleaner.clean(docker, trigger="manual", data_dir=self.data, state_dir=self.state)
         prunes = [call for call in docker.calls if "prune" in call]
         self.assertEqual(prunes, list(cleaner.PRUNE.values()))
         self.assertEqual((result["result"], result["trigger"], result["freed_bytes"]), ("done", "manual", 1_970_000_000))
@@ -102,23 +102,23 @@ class CleaningTests(unittest.TestCase):
 
     def test_an_unreadable_prune_output_is_reported_as_unknown_not_zero(self):
         result = cleaner.clean(FakeDocker(image_output="ok", cache_output=""), trigger="update",
-                               data_dir=self.data, state_dir=self.state, now=NOW)
+                               data_dir=self.data, state_dir=self.state)
         self.assertIsNone(result["freed_bytes"])
 
     def test_a_request_is_run_once_and_consumed(self):
         (self.state / "cache-clean-request.json").write_text('{"id": "a"}')
         docker = FakeDocker()
-        self.assertTrue(cleaner.process_request(self.state, self.data, docker, NOW))
+        self.assertTrue(cleaner.process_request(self.state, self.data, docker))
         self.assertFalse((self.state / "cache-clean-request.json").exists())
         self.assertEqual((self.last()["result"], self.last()["trigger"]), ("done", "manual"))
         calls = len(docker.calls)
-        self.assertFalse(cleaner.process_request(self.state, self.data, docker, NOW))
+        self.assertFalse(cleaner.process_request(self.state, self.data, docker))
         self.assertEqual(len(docker.calls), calls, "no request, no command")
 
     def test_a_failing_command_is_reported_and_the_request_is_not_replayed(self):
         (self.state / "cache-clean-request.json").write_text("{}")
         docker = FakeDocker(fail=("docker", "builder", "prune"))
-        self.assertTrue(cleaner.process_request(self.state, self.data, docker, NOW))
+        self.assertTrue(cleaner.process_request(self.state, self.data, docker))
         self.assertEqual(self.last()["result"], "failed")
         self.assertIn("returned non-zero", self.last()["message"])
         self.assertFalse((self.state / "cache-clean-request.json").exists())
@@ -127,7 +127,7 @@ class CleaningTests(unittest.TestCase):
         for number, content in enumerate(("{oops", "[1, 2]", '{"command": "rm -rf /"}')):
             (self.state / "cache-clean-request.json").write_text(content)
             docker = FakeDocker()
-            self.assertTrue(cleaner.process_request(self.state, self.data, docker, NOW), number)
+            self.assertTrue(cleaner.process_request(self.state, self.data, docker), number)
             commands = [call for call in docker.calls if "prune" in call]
             self.assertEqual(commands, list(cleaner.PRUNE.values()), content)
 
@@ -135,7 +135,7 @@ class CleaningTests(unittest.TestCase):
         target = self.data / "secret.json"
         target.write_text('{"x": 1}')
         os.symlink(target, self.state / "cache-clean-request.json")
-        self.assertTrue(cleaner.process_request(self.state, self.data, FakeDocker(), NOW))
+        self.assertTrue(cleaner.process_request(self.state, self.data, FakeDocker()))
         self.assertFalse((self.state / "cache-clean-request.json").exists(follow_symlinks=False))
         self.assertTrue(target.exists())
 
@@ -145,11 +145,11 @@ class CleaningTests(unittest.TestCase):
         self.addCleanup(os.close, holder)
         fcntl.flock(holder, fcntl.LOCK_EX)
         docker = FakeDocker()
-        self.assertFalse(cleaner.process_request(self.state, self.data, docker, NOW))
+        self.assertFalse(cleaner.process_request(self.state, self.data, docker))
         self.assertEqual(docker.calls, [])
         self.assertTrue((self.state / "cache-clean-request.json").exists())
         fcntl.flock(holder, fcntl.LOCK_UN)
-        self.assertTrue(cleaner.process_request(self.state, self.data, docker, NOW))
+        self.assertTrue(cleaner.process_request(self.state, self.data, docker))
 
     def test_figures_are_refreshed_only_when_old_or_missing(self):
         docker = FakeDocker()
@@ -165,7 +165,7 @@ class CleaningTests(unittest.TestCase):
         self.assertFalse(cleaner.refresh_usage(self.state, self.data, missing, NOW))
         self.assertFalse((self.state / "server-usage.json").exists())
         (self.state / "cache-clean-request.json").write_text("{}")
-        self.assertTrue(cleaner.process_request(self.state, self.data, missing, NOW))
+        self.assertTrue(cleaner.process_request(self.state, self.data, missing))
         self.assertEqual(self.last()["result"], "failed")
 
     def test_the_figures_file_is_readable_by_the_backend_user(self):

@@ -2,23 +2,22 @@
 from __future__ import annotations
 
 import json
-import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import connector_stores as api
 from app.api.v2 import logs
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_logbook as logbook
 from app.services import v2_observability as observability
 from app.services import v2_request_stats as stats
 from fastapi import HTTPException
+from conftest import disposable_database, requires_v2_db
 
 PERSONAL = ("Jean Dupont", "jean.dupont@example.org", "192.168.1.20", "<script>alert(1)</script>",
             "x" * 500, {"name": "Jean"}, ["a"], None, 3.5, True)
@@ -113,29 +112,32 @@ def test_a_repeating_failure_is_journaled_once_per_period(monkeypatch):
     assert logbook.allow_every(key, 600)
 
 
-pytestmark_db = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
-sync_db = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
+def test_the_throttle_forgets_keys_whose_period_is_over(monkeypatch):
+    moment = [1000.0]
+    monkeypatch.setattr(logbook.time, "monotonic", lambda: moment[0])
+    monkeypatch.setattr(logbook, "_throttle", {})
+    for number in range(1100):  # one key per failing product, each past its period before the next
+        assert logbook.allow_every(f"failure:test:{number}", 10)
+        moment[0] += 11
+    assert len(logbook._throttle) <= logbook._THROTTLE_MAX_KEYS
+    held = {f"held:{number}" for number in range(logbook._THROTTLE_MAX_KEYS)}
+    for key in held:  # still within their period: none of them may be dropped
+        logbook.allow_every(key, 3600)
+    assert logbook.allow_every("one more", 3600)
+    assert held <= set(logbook._throttle) and not any(logbook.allow_every(key, 3600) for key in held)
+
+
+def test_a_basket_fetch_may_report_a_holding_up_to_the_largest_limit():
+    fields = {"items": 1, "products": 1, "truncated": False}
+    assert logbook.validate("basket.prices.fetched", {**fields, "credits_left": 10_000})[1]["credits_left"] == 10_000
+    with pytest.raises(logbook.LogError):
+        logbook.validate("basket.prices.fetched", {**fields, "credits_left": 10_001})
 
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_logs_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_logs_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest_asyncio.fixture
@@ -164,7 +166,7 @@ async def rows(db, where="true"):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_migrations_leave_a_journal_entry_and_log_event_stores_only_the_validated_values(db):
     assert [row["event"] for row in await rows(db)] == ["system.migrated"]  # the migration run itself
     assert json.loads((await rows(db))[0]["data"])["count"] >= 30
@@ -178,7 +180,17 @@ async def test_migrations_leave_a_journal_entry_and_log_event_stores_only_the_va
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
+async def test_a_basket_fetch_from_a_large_holding_is_stored(db):
+    # An administrator may let accounts hold up to 10 000 credits (BOUNDS in app/api/v2/credits.py).
+    assert await logbook.log_event(db, "basket.prices.fetched", items=1, products=1, truncated=False, credits_left=5000)
+    assert json.loads((await rows(db, "event='basket.prices.fetched'"))[-1]["data"])["credits_left"] == 5000
+    with pytest.raises(logbook.LogError):
+        await logbook.log_event(db, "basket.prices.fetched", items=1, products=1, truncated=False, credits_left=10_001)
+
+
+@pytest.mark.asyncio
+@requires_v2_db
 async def test_an_invalid_event_is_refused_in_tests_and_dropped_in_production(db, monkeypatch):
     with pytest.raises(logbook.LogError):
         await logbook.log_event(db, "basket.prices.fetched", items=3, products=5, truncated=False, credits_left=4, username="jean")
@@ -189,7 +201,7 @@ async def test_an_invalid_event_is_refused_in_tests_and_dropped_in_production(db
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_journal_failure_never_aborts_the_callers_transaction(db, monkeypatch):
     monkeypatch.delenv("PRICE_CHECKER_V2_LOG_STRICT")
     await db.execute("ALTER TABLE v2_logs RENAME TO v2_logs_away")
@@ -199,7 +211,7 @@ async def test_a_journal_failure_never_aborts_the_callers_transaction(db, monkey
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_connector_price_is_journaled_by_the_database_whoever_saved_it(db):
     store = await db.fetchval("INSERT INTO v2_connector_stores(name,repository) VALUES('s','https://github.com/o/r') RETURNING id")
     await db.execute("INSERT INTO v2_connector_installations(connector_id,store_id,version,commit_sha) VALUES('auchan_houilles',$1,'0.1.0',$2)",
@@ -227,7 +239,7 @@ async def test_a_connector_price_is_journaled_by_the_database_whoever_saved_it(d
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_the_logs_api_filters_by_level_source_connector_and_period_and_pages_by_cursor(db, served):
     now = datetime.now(UTC)
     await db.execute("DELETE FROM v2_logs")
@@ -271,7 +283,7 @@ async def test_the_logs_api_filters_by_level_source_connector_and_period_and_pag
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_the_logs_api_refuses_bad_filters_and_non_administrators(db, served, monkeypatch):
     async with served as client:
         for params in ({"level": "trace"}, {"source": "users"}, {"connector": "Jean Dupont"}, {"connector": "a"},
@@ -286,7 +298,22 @@ async def test_the_logs_api_refuses_bad_filters_and_non_administrators(db, serve
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
+async def test_a_cursor_past_the_last_representable_date_is_refused_not_a_server_error(db, served):
+    now = datetime.now(UTC)
+    for minutes in range(3):
+        await logbook.log_event(db, "system.started", version="0.1.105", at=now - timedelta(minutes=minutes))
+    async with served as client:
+        refused = await client.get("/api/v2/logs", params={"before": "999999999999999999.1"})
+        assert refused.status_code == 422 and refused.json()["detail"] == "Position de page invalide."
+        first = await client.get("/api/v2/logs", params={"limit": 1, "level": "debug"})
+        assert first.status_code == 200 and first.json()["next_before"]
+        second = await client.get("/api/v2/logs", params={"limit": 1, "level": "debug", "before": first.json()["next_before"]})
+        assert second.status_code == 200 and second.json()["items"][0]["id"] != first.json()["items"][0]["id"]
+
+
+@pytest.mark.asyncio
+@requires_v2_db
 async def test_host_results_become_events_once_without_their_free_text(db, tmp_path):
     ran = datetime.now(UTC) - timedelta(minutes=10)
     (tmp_path / "update-last-run.json").write_text(json.dumps({
@@ -313,7 +340,7 @@ async def test_host_results_become_events_once_without_their_free_text(db, tmp_p
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_update_failure_reasons_are_closed_categories():
     for message, reason in (("CI has not passed for the target commit", "ci_not_passed"),
                             ("Remote update branch is not a fast-forward", "not_fast_forward"),
@@ -324,7 +351,7 @@ async def test_update_failure_reasons_are_closed_categories():
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_old_events_and_counters_are_purged_and_the_journal_is_capped(db, monkeypatch):
     await db.execute("DELETE FROM v2_logs")
     now = datetime.now(UTC)
@@ -343,7 +370,7 @@ async def test_old_events_and_counters_are_purged_and_the_journal_is_capped(db, 
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_the_queue_journal_summarises_a_request_and_names_each_product_queued(db):
     await api._journal_queue(db, "auchan_houilles", "basket", {"1": "queued", "2": "fresh", "3": "rate_limited", "4": "weird", "5": "queued"})
     summary = (await rows(db, "event='connector.queue.requested'"))[0]
@@ -357,7 +384,7 @@ async def test_the_queue_journal_summarises_a_request_and_names_each_product_que
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_every_registered_event_can_be_stored_and_read_back(db, served):
     await db.execute("DELETE FROM v2_logs")
     for name, (fields, connector) in SAMPLES.items():
@@ -371,7 +398,7 @@ async def test_every_registered_event_can_be_stored_and_read_back(db, served):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_connector_queue_requests_are_journaled_by_every_route(db, config, monkeypatch, tmp_path):
     monkeypatch.setenv("PRICE_CHECKER_V2_STATE_DIR", str(tmp_path))
     store = await db.fetchval("INSERT INTO v2_connector_stores(name,repository) VALUES('s','https://github.com/o/r') RETURNING id")
@@ -444,7 +471,7 @@ async def captured(config, logger_name, level, message, *args, exc=None):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_connector_exception_is_journaled_by_its_class_and_product_never_by_its_text(config):
     import logging
     logbook._throttle.clear()
@@ -458,7 +485,7 @@ async def test_a_connector_exception_is_journaled_by_its_class_and_product_never
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_refused_request_is_journaled_with_its_http_status(config):
     import logging
     logbook._throttle.clear()
@@ -469,7 +496,7 @@ async def test_a_refused_request_is_journaled_with_its_http_status(config):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_connector_that_disables_itself_is_journaled(config):
     import logging
     logbook._throttle.clear()
@@ -479,7 +506,7 @@ async def test_a_connector_that_disables_itself_is_journaled(config):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_other_loggers_and_ordinary_messages_are_not_journaled(config):
     import logging
     logbook._throttle.clear()
@@ -491,7 +518,7 @@ async def test_other_loggers_and_ordinary_messages_are_not_journaled(config):
 
 
 @pytest.mark.asyncio
-@pytestmark_db
+@requires_v2_db
 async def test_a_repeating_failure_is_journaled_once_in_a_row(config):
     import logging
     logbook._throttle.clear()

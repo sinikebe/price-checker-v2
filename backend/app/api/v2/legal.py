@@ -16,14 +16,14 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _bump_limit, _connect, _secure_write, _session_user
+from app.api.v2.auth import _connect, _require_admin_role, _secure_write, _session_user, per_minute_limit
 from app.api.v2.auth_security import account_limit_key
 from app.api.v2.setup import _state_dir
 from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/legal", tags=["v2-legal"])
-DOCUMENTS = {"mentions", "confidentialite", "conditions"}
 ORDER = ("mentions", "confidentialite", "conditions")
+DOCUMENTS = frozenset(ORDER)
 MAX_DOCUMENT_BYTES = 128 * 1024
 UPDATES_PER_MINUTE = 20
 
@@ -70,10 +70,7 @@ def _state(document: str) -> dict:
 
 
 async def _admin(connection, request: Request) -> dict:
-    user = await _session_user(connection, request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
-    return user
+    return _require_admin_role(await _session_user(connection, request))
 
 
 @router.get("")
@@ -99,6 +96,7 @@ def _write(document: str, text: str) -> None:
         raise OSError("legal document is a symlink")
     temporary = directory / f".{document}.{secrets.token_hex(6)}.tmp"
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    previous = None
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(text.encode("utf-8"))
@@ -112,8 +110,9 @@ def _write(document: str, text: str) -> None:
             os.replace(previous, directory / f"{document}.previous.md")
         os.replace(temporary, path)
     finally:
-        if temporary.exists():
-            temporary.unlink()
+        temporary.unlink(missing_ok=True)
+        if previous is not None:
+            previous.unlink(missing_ok=True)
 
 
 @router.put("/{document}")
@@ -134,9 +133,8 @@ async def update_legal_document(document: str, payload: LegalUpdate, request: Re
     connection = await _connect()
     try:
         user = await _admin(connection, request)
-        if await _bump_limit(connection, account_limit_key("legal-update", user["id"]), 60) > UPDATES_PER_MINUTE:
-            raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                detail="Trop de mises à jour. Réessayez dans une minute.")
+        await per_minute_limit(connection, account_limit_key("legal-update", user["id"]), UPDATES_PER_MINUTE,
+                               "Trop de mises à jour. Réessayez dans une minute.")
         if _state(document)["sha256"] != payload.expected_sha256:
             raise HTTPException(status_code=409,
                                 detail="Ce document a changé depuis son affichage : rechargez la page, puis recommencez.")

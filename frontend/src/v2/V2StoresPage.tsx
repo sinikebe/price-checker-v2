@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { Frame } from "./V2ProductWorkspace";
+import { V2PageFrame } from "./V2SiteHeader";
 import V2ReportControl from "./V2ReportControl";
 import V2RetailerGroupsAdmin from "./V2RetailerGroupsAdmin";
 import { storeRequest } from "./v2-stores-api";
+import { errorText } from "./v2-http";
 import "./v2-stores-page.css";
 
 type Store = {
@@ -29,38 +30,30 @@ export default function V2StoresPage({ id, user, onLogout }: {
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [actionError, setActionError] = useState("");
-  async function changeActivity(active: boolean) {
+  /** An administrator turns the store off or on, or marks it as an online platform. */
+  async function update(path: "activity" | "online", body: { active: boolean } | { online: boolean }) {
     if (!store || busy) return;
     setBusy(true); setActionError("");
     try {
-      await storeRequest("/" + store.id + "/activity", "PUT", { active });
+      await storeRequest("/" + store.id + "/" + path, "PUT", body);
       setReload(value => value + 1);
-    } catch (cause) { setActionError(String(cause)); }
+    } catch (cause) { setActionError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
-  async function changeOnline(online: boolean) {
-    if (!store || busy) return;
-    setBusy(true); setActionError("");
-    try {
-      await storeRequest("/" + store.id + "/online", "PUT", { online });
-      setReload(value => value + 1);
-    } catch (cause) { setActionError(String(cause)); }
-    finally { setBusy(false); }
-  }
-  async function removeStore(event: React.FormEvent<HTMLFormElement>) {
+  async function removeStore(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!store || busy || confirmation !== store.name) return;
     setBusy(true); setActionError("");
     try {
       await storeRequest("/" + store.id + "/delete", "POST", { confirmation });
       navigate("/v2/magasins", { replace: true });
-    } catch (cause) { setActionError(String(cause)); setBusy(false); }
+    } catch (cause) { setActionError(errorText(cause, "Opération impossible.")); setBusy(false); }
   }
   useEffect(() => {
     let active = true;
     const task = id ? storeRequest<Store>("/" + id).then(value => { if (active) setStore(value); })
       : storeRequest<Store[]>("").then(value => { if (active) setStores(value); });
-    task.catch(cause => { if (active) setError(String(cause)); });
+    task.catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active = false; };
   }, [id,reload]);
   const groups = useMemo(() => {
@@ -75,15 +68,14 @@ export default function V2StoresPage({ id, user, onLogout }: {
     return [...result];
   }, [stores,query]);
   if (id && store?.id === id && store.merged_to_id) return <Navigate to={"/v2/magasins/" + store.merged_to_id} replace />;
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     {id ? <>
       <Link to="/v2/magasins">← Tous les magasins</Link>
       {error && <p role="alert">{error}</p>}
       {!store && !error && <p>Chargement…</p>}
       {store && store.id === id && <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">MAGASIN · {store.retailer_group}</span>
         <h1>{store.name}<span>.</span></h1><p>{store.online ? "Plateforme en ligne · livraison partout" : `${store.postal_code ?? ""} ${store.city ?? ""}`}</p></div></div>
-        {store.merged_to_id ? <section className="v2-workspace-card"><h2>Fiche fusionnée</h2>
-          <p>Ce magasin a été regroupé avec <Link to={"/v2/magasins/" + store.merged_to_id}>la fiche actuelle</Link>.</p></section> : <>
+        <>
           <section className="v2-workspace-card"><h2>Informations</h2>
             <dl className="v2-workspace-facts">
               <div><dt>Groupe d’enseignes</dt><dd>{store.retailer_group}</dd></div>
@@ -99,10 +91,10 @@ export default function V2StoresPage({ id, user, onLogout }: {
             <h2>Gestion du magasin</h2>
             <p>La désactivation est temporaire : elle masque la fiche, ses prix et ses résultats de panier. Les données restent conservées et peuvent être réactivées.</p>
             <button type="button" className="v2-button v2-button-secondary" disabled={busy}
-              onClick={() => void changeActivity(!store.active)}>{store.active ? "Désactiver le magasin" : "Réactiver le magasin"}</button>
+              onClick={() => void update("activity", { active: !store.active })}>{store.active ? "Désactiver le magasin" : "Réactiver le magasin"}</button>
             <p>Une plateforme en ligne (Amazon, par exemple) n’a pas d’adresse et livre partout.</p>
             <button type="button" className="v2-button v2-button-secondary" disabled={busy}
-              onClick={() => void changeOnline(!store.online)}>{store.online ? "Ce n’est pas une plateforme en ligne" : "Marquer comme plateforme en ligne"}</button>
+              onClick={() => void update("online", { online: !store.online })}>{store.online ? "Ce n’est pas une plateforme en ligne" : "Marquer comme plateforme en ligne"}</button>
             <form onSubmit={event => void removeStore(event)}>
               <h3>Supprimer définitivement</h3>
               <p>Cette action efface le magasin et tous ses prix associés, ainsi que les brouillons et offres sources. Elle ne peut pas être annulée.</p>
@@ -114,7 +106,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
             {actionError && <p role="alert">{actionError}</p>}
           </section>}
           <V2ReportControl kind="store" contentId={store.id} user={user} />
-        </>}
+        </>
       </>}
     </> : <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">POINTS DE VENTE</span>
       <h1>Magasins<span>.</span></h1><p>Les magasins sont regroupés par enseigne. Le nom d’enseigne relevé à l’origine reste indiqué lorsqu’il diffère.</p></div></div>
@@ -134,5 +126,5 @@ export default function V2StoresPage({ id, user, onLogout }: {
         </li>)}</ul>
       </section>)}
     </>}
-  </Frame>;
+  </V2PageFrame>;
 }

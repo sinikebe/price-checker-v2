@@ -4,12 +4,15 @@ import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTrans
 import type { V2User } from "./v2-auth-api";
 import { CONNECTOR_PRICE_REFRESH_EVENT, useConnectorQueue } from "./v2-connector-page-refresh";
 import { V2ConnectorQueueIndicator } from "./V2ConnectorQueueIndicator";
-import { loadWithdrawn, lookAgain, withdrawnAt, withdrawnText, type Withdrawn } from "./v2-availability";
+import { loadWithdrawn, lookAgain, withdrawnAt, withdrawnText, type Channel, type Withdrawn } from "./v2-availability";
 import { usePaidPrices } from "./usePaidPrices";
 import V2PriceGate from "./V2PriceGate";
 import { rewardHint } from "./v2-basket-credits-api";
 import { useSiteFilter } from "./useSiteFilter";
 import { passesSiteFilter } from "./v2-site-filter";
+import { errorText } from "./v2-http";
+import { euros } from "./v2-basket-view";
+import { priceRequest, readingDay, SALES_CHANNELS } from "./v2-prices-api";
 import "./v2-price-history.css";
 
 type Observation = {
@@ -24,16 +27,18 @@ type PriceDraft = Pick<Observation, "id" | "price" | "observed_at" | "retailer" 
   source_retailer: string | null;
   capture_ean: string | null; quantity_text: string | null; captured_store_name: string | null;
 };
-type Channel = "in_store" | "drive" | "delivery";
 type DraftForm = { retailer: string; store_name: string; city: string; postal_code: string; online: boolean;
   sales_channel: Channel; price: string; observed_at: string; note: string };
 type PricesResponse = { observations: Observation[]; truncated: boolean; latest_by_store: Observation[]; stores_truncated: boolean };
-const channels: Record<Channel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
-const money = (value: string | number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(Number(value));
 const dayTime = (value: string) => new Date(value + "T12:00:00").getTime();
-const date = (value: string | number) => new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value)
-  .toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
-const seriesLabel = (row: Observation) => [row.retailer, row.store_name, ...(row.online ? ["En ligne"] : [row.city, row.postal_code]), channels[row.sales_channel]].filter(Boolean).join(" · ");
+// One formatter for the whole chart: building one per label made every hover and zoom frame slow.
+const dayFormat = new Intl.DateTimeFormat("fr-FR", { year: "numeric", month: "short", day: "numeric" });
+const date = (value: string | number) => {
+  const day = new Date(typeof value === "string" && value.length === 10 ? value + "T12:00:00" : value);
+  // A formatter throws on an invalid date, where toLocaleDateString said "Invalid Date".
+  return Number.isNaN(day.getTime()) ? day.toLocaleDateString("fr-FR") : dayFormat.format(day);
+};
+const seriesLabel = (row: Observation) => [row.retailer, row.store_name, ...(row.online ? ["En ligne"] : [row.city, row.postal_code]), SALES_CHANNELS[row.sales_channel]].filter(Boolean).join(" · ");
 function storeMeta(row: Observation) {
   const fold = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr");
   const name = fold(row.store_name);
@@ -41,39 +46,21 @@ function storeMeta(row: Observation) {
     !name.includes(fold(row.retailer)) && row.retailer,
     row.city && !name.includes(fold(row.city)) && row.city,
     row.postal_code,
-    channels[row.sales_channel],
+    SALES_CHANNELS[row.sales_channel],
   ].filter(Boolean).join(" · ");
-}
-function localToday() {
-  const value = new Date();
-  return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 function initialForm(): DraftForm {
   return { retailer: "", store_name: "", city: "", postal_code: "", online: false, sales_channel: "in_store",
-    price: "", observed_at: localToday(), note: "" };
+    price: "", observed_at: readingDay(), note: "" };
 }
-
-async function priceRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
-  const response = await fetch("/api/v2/prices" + path, {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Impossible de charger les prix.");
-  }
-  return response.json() as Promise<T>;
-}
+const LOAD_FAILED = "Impossible de charger les prix.";
 
 const chartWidth = 800, chartHeight = 300, chartLeft = 62, chartRight = 22, chartTop = 22, chartBottom = 42;
 const plotWidth = chartWidth - chartLeft - chartRight;
 const plotHeight = chartHeight - chartTop - chartBottom;
 const maxZoom = 128;
 const seriesColors = ["#1976ad", "#c05b28", "#7757b4", "#168477", "#b5467b", "#936c15", "#537f35", "#ba5050"];
-const pointLabel = (row: Observation) => [money(row.price), date(row.observed_at), seriesLabel(row)].join(" · ");
+const pointLabel = (row: Observation) => [euros(row.price), date(row.observed_at), seriesLabel(row)].join(" · ");
 type PriceSeries = { key: string; label: string; points: Observation[]; latest: Observation; color: string };
 const seriesKey = (row: Observation) => row.store_id + ":" + row.sales_channel;
 const plottable = (row: Observation) => row.available && row.correction_status !== "active"
@@ -120,7 +107,7 @@ function freshness(observedAt: string) {
     const [year, month, day] = value.slice(0, 10).split("-").map(Number);
     return Date.UTC(year, month - 1, day);
   };
-  const days = Math.max(0, Math.round((ordinal(localToday()) - ordinal(observedAt)) / 86400000));
+  const days = Math.max(0, Math.round((ordinal(readingDay()) - ordinal(observedAt)) / 86400000));
   if (!Number.isFinite(days)) return { code: "old", label: "Date à vérifier" };
   if (days <= 30) return { code: "recent", label: "Récent · 30 j max" };
   if (days <= 90) return { code: "aging", label: "À vérifier · 31–90 j" };
@@ -224,7 +211,7 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
           const value = min + (max - min) * fraction;
           const ordinate = chartTop + (1 - fraction) * plotHeight;
           return <g key={fraction}><line x1={chartLeft} y1={ordinate} x2={chartWidth - chartRight} y2={ordinate} className="v2-price-gridline" />
-            <text x={chartLeft - 10} y={ordinate + 4} textAnchor="end" className="v2-price-axis-label">{money(value)}</text></g>;
+            <text x={chartLeft - 10} y={ordinate + 4} textAnchor="end" className="v2-price-axis-label">{euros(value)}</text></g>;
         })}
         <text x={chartLeft} y={chartHeight - 12} className="v2-price-axis-label">{axisDate(visibleStart)}</text>
         <text x={chartWidth - chartRight} y={chartHeight - 12} textAnchor="end" className="v2-price-axis-label">{axisDate(visibleEnd)}</text>
@@ -249,7 +236,7 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
     </div>
     {hovered && <div id={tooltipId} className="v2-price-tooltip" role="tooltip"
       style={{ left: hovered.left, top: hovered.top, transform: hovered.above ? "translateY(-100%)" : undefined }}>
-      <strong>{money(hovered.row.price)}</strong>
+      <strong>{euros(hovered.row.price)}</strong>
       <span>{date(hovered.row.observed_at)}</span>
       <span>{seriesLabel(hovered.row)}</span>
     </div>}
@@ -280,16 +267,17 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
   const refresh = useCallback(async () => {
     try {
       setWithdrawn(await loadWithdrawn(productId));
-      if (userId != null) {
-        const nextDrafts = await priceRequest<PriceDraft[]>(`/products/${productId}/drafts`);
+      // The shopping view never shows the proposals: they are not asked for.
+      if (userId != null && !shopper) {
+        const nextDrafts = await priceRequest<PriceDraft[]>(`/products/${productId}/drafts`, LOAD_FAILED);
         setDrafts(nextDrafts);
       }
       setError("");
     } catch (reason) {
       // Keep both the chart and any unsent form fields mounted on a refresh failure.
-      setError(reason instanceof Error ? reason.message : "Chargement des prix impossible.");
+      setError(errorText(reason, "Chargement des prix impossible."));
     }
-  }, [productId, userId]);
+  }, [productId, userId, shopper]);
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     // A new reading arrived: free details are reloaded; paid prices only on request (or for an administrator).
@@ -305,14 +293,14 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     setNotice("");
     setError("");
     try {
-      await priceRequest(`/products/${productId}/drafts`, "POST", {
+      await priceRequest(`/products/${productId}/drafts`, LOAD_FAILED, "POST", {
         ...form,
       });
-      setForm(previous => ({ ...previous, price: "", note: "", observed_at: localToday() }));
+      setForm(previous => ({ ...previous, price: "", note: "", observed_at: readingDay() }));
       setNotice("Relevé envoyé. Il sera visible publiquement après validation.");
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Enregistrement impossible.");
+      setError(errorText(reason, "Enregistrement impossible."));
     } finally { setBusy(false); }
   }
 
@@ -323,7 +311,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
       setWithdrawn(await lookAgain(productId, storeId, channel));
       setNotice("Le connecteur relira cette page à son prochain passage.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Demande impossible.");
+      setError(errorText(reason, "Demande impossible."));
     } finally { setBusy(false); }
   }
 
@@ -331,11 +319,11 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     if (busy) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      await priceRequest(`/drafts/${id}/${action}`, "POST");
+      await priceRequest(`/drafts/${id}/${action}`, LOAD_FAILED, "POST");
       setNotice(action === "approve" ? "Relevé publié." : "Relevé refusé.");
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Validation impossible.");
+      setError(errorText(reason, "Validation impossible."));
     } finally { setBusy(false); }
   }
 
@@ -364,8 +352,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
           onClick={() => { void recheck(entry.store_id, entry.sales_channel); }}>Revérifier</button></>}
       </p>)}
     {site && prices && <p className="v2-price-note" role="status">Filtre de magasins du site actif{hidden > 0 ? ` : ${hidden} magasin${hidden > 1 ? "s" : ""} masqué${hidden > 1 ? "s" : ""}` : ""}.</p>}
-    <V2PriceGate cost={paid.cost} credits={paid.credits} fetchedAt={paid.fetchedAt} busy={paid.busy} error={paid.error}
-      newer={paid.newer} onPay={() => { void paid.pay(); }} subject="ce produit" />
+    <V2PriceGate paid={paid} subject="ce produit" />
     {!prices && paid.credits?.unlimited && !error && <p>Chargement des prix…</p>}
     {prices && (observations.length || latestRows.length ? <>
       <div className="v2-price-store-summary" aria-labelledby="v2-price-store-heading">
@@ -381,7 +368,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
                 {queueBadges.filter(badge => badge.store_name === item.latest.store_name)
                   .map(badge => <V2ConnectorQueueIndicator key={badge.connectorId} badge={badge} />)}</div></div>
             <div className="v2-price-store-reading">
-              <strong className={valid ? "" : "v2-price-store-invalid"}>{money(item.latest.price)}</strong>
+              <strong className={valid ? "" : "v2-price-store-invalid"}>{euros(item.latest.price)}</strong>
               {index === 0 && valid && !withdrawnHere && <span className="v2-price-store-best">Prix relevé le plus bas</span>}
               {withdrawnHere && <span className="v2-price-store-unavailable">Retiré de la gamme</span>}
               {!item.latest.available && <span className="v2-price-store-unavailable">Indisponible</span>}
@@ -406,10 +393,10 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
         <caption>Relevés publiés de ce produit</caption>
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
         <tbody>{observations.map(row => <tr key={row.id}>
-          <td>{date(row.observed_at)}</td><td><strong>{money(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
+          <td>{date(row.observed_at)}</td><td><strong>{euros(row.price)}</strong>{!row.available && <small> Indisponible</small>}{row.correction_status === "active" && <small> Contesté</small>}</td>
           <td>{row.retailer} · {row.store_name}{row.city && ` · ${row.city}`}
             {row.source_retailer && row.source_retailer !== row.retailer && ` · enseigne d’origine : ${row.source_retailer}`}</td>
-          <td>{channels[row.sales_channel]}</td>
+          <td>{SALES_CHANNELS[row.sales_channel]}</td>
           <td>{row.source === "manual" ? "Relevé validé" : row.source === "bookmarklet" ? "Capture validée" : row.source === "third_party" ? row.source_provider === "open_prices"
             ? <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts (ODbL)</a>
             : row.source_provider || "Source externe" : "Import automatique"}</td>
@@ -439,7 +426,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
               onChange={event => setForm({ ...form, postal_code: event.target.value })} /></label>
             <label>Canal<select value={form.sales_channel} disabled={busy}
               onChange={event => setForm({ ...form, sales_channel: event.target.value as Channel })}>
-              {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(SALES_CHANNELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select></label></>}
           <label>Prix en euros<input type="number" min="0" max="99999999.99" step="0.01" inputMode="decimal"
             required value={form.price} disabled={busy}
@@ -456,7 +443,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     </div>}
     {user && !shopper && drafts && drafts.length > 0 && <div className="v2-price-drafts"><h3>{user.role === "admin" ? "Propositions à examiner" : "Mes propositions"}</h3>
         <ul>{drafts.map(draft => <li key={draft.id}>
-          <span><strong>{money(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {channels[draft.sales_channel]} · {date(draft.observed_at)}
+          <span><strong>{euros(draft.price)}</strong> · {draft.retailer} · {draft.store_name} · {SALES_CHANNELS[draft.sales_channel]} · {date(draft.observed_at)}
             {draft.source_retailer && draft.source_retailer !== draft.retailer && ` · enseigne d’origine : ${draft.source_retailer}`}
             {draft.note && <small> · {draft.note}</small>}
             {draft.capture_ean && <small> · EAN capturé : {draft.capture_ean}</small>}

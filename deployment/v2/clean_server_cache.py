@@ -102,7 +102,7 @@ def measure(run: Runner, data_dir: Path, now: datetime) -> dict:
     }
 
 
-def clean(run: Runner, *, trigger: str, data_dir: Path, state_dir: Path, now: datetime) -> dict:
+def clean(run: Runner, *, trigger: str, data_dir: Path, state_dir: Path) -> dict:
     freed, known = 0, False
     for command in PRUNE.values():
         size = reclaimed(run(command))
@@ -121,8 +121,7 @@ def _failed(trigger: str, exc: Exception) -> dict:
             "message": str(exc)[:200] or exc.__class__.__name__}
 
 
-def process_request(state_dir: Path, data_dir: Path, run: Runner = run_command,
-                    now: datetime | None = None) -> bool:
+def process_request(state_dir: Path, data_dir: Path, run: Runner = run_command) -> bool:
     """Run the cleaning an administrator asked for. False when there is nothing to do or an update runs."""
     request = state_dir / REQUEST
     try:
@@ -144,8 +143,7 @@ def process_request(state_dir: Path, data_dir: Path, run: Runner = run_command,
         state_files.write_json(state_dir / LAST_RUN, {
             "at": datetime.now(UTC).isoformat(), "result": "running", "trigger": "manual"})
         try:
-            result = clean(run, trigger="manual", data_dir=data_dir, state_dir=state_dir,
-                           now=now or datetime.now(UTC))
+            result = clean(run, trigger="manual", data_dir=data_dir, state_dir=state_dir)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             result = _failed("manual", exc)
         state_files.write_json(state_dir / LAST_RUN, result)
@@ -185,8 +183,7 @@ def main() -> int:
     data_dir = Path(sys.argv[1])
     state_dir = data_dir / "state"
     try:
-        result = clean(run_command, trigger="update", data_dir=data_dir, state_dir=state_dir,
-                       now=datetime.now(UTC))
+        result = clean(run_command, trigger="update", data_dir=data_dir, state_dir=state_dir)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"Server cache cleaning failed: {exc}", file=sys.stderr)
         return 1

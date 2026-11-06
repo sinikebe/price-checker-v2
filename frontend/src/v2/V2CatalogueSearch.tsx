@@ -8,6 +8,7 @@ import { resolveBarcodePath } from "./v2-barcode";
 import {
   SEARCH_MAX_LENGTH, SEARCH_MIN_CHARS, isBarcode, sameBarcode, type SearchScope, type SearchableProduct,
 } from "./v2-catalogue-search";
+import { errorText } from "./v2-http";
 import "./v2-catalogue-search.css";
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
@@ -34,7 +35,7 @@ export default function V2CatalogueSearch<T extends SearchableProduct & { id: nu
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError(""); setUnknown("");
     try { const path = await resolveBarcodePath(barcode); if (path) navigate(path); else setUnknown(barcode); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez."); }
+    catch (reason) { setError(errorText(reason, "La recherche a échoué. Réessayez.")); }
     finally { busyRef.current = false; setBusy(false); }
   }
   function submit(event: FormEvent) {

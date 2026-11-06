@@ -1,29 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { usePwaInstall } from "./PwaInstallContext";
+import { usePwaInstall } from "./PwaInstallState";
 import { usePwaUpdate } from "./PwaUpdateState";
+import { AUTH_READY_EVENT } from "../v2/v2-account-session";
+import { useOnline } from "../v2/useOnline";
+import { normalizePath } from "../v2/v2-site-nav";
 import "./pwa-controls.css";
 import { syncV2Data } from "./data-sync";
 
 export default function PwaControls() {
-  const [online, setOnline] = useState(navigator.onLine);
+  const online = useOnline();
   const { canPrompt, installed, isIos, requestInstall } = usePwaInstall();
-  const isHome = useLocation().pathname.replace(/\/+$/, "") === "/v2";
+  const isHome = normalizePath(useLocation().pathname) === "/v2";
   const { needRefresh, dismissUpdate, applyUpdate } = usePwaUpdate();
   useEffect(() => {
-    const connected = () => { setOnline(navigator.onLine); if (navigator.onLine) void syncV2Data(); };
+    const connected = () => { if (navigator.onLine) void syncV2Data(); };
     const opened = () => { if (document.visibilityState === "visible") void syncV2Data(); };
     const authenticated = () => { void syncV2Data(); };
     window.addEventListener("online", connected);
-    window.addEventListener("offline", connected);
     document.addEventListener("visibilitychange", opened);
-    window.addEventListener("v2-auth-ready", authenticated);
+    window.addEventListener(AUTH_READY_EVENT, authenticated);
     void syncV2Data();
     return () => {
       window.removeEventListener("online", connected);
-      window.removeEventListener("offline", connected);
       document.removeEventListener("visibilitychange", opened);
-      window.removeEventListener("v2-auth-ready", authenticated);
+      window.removeEventListener(AUTH_READY_EVENT, authenticated);
     };
   }, []);
   const showInstall = !isHome && !installed && canPrompt;

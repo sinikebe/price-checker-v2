@@ -6,7 +6,6 @@ import json
 import os
 import re
 import secrets
-import tempfile
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, SecretStr
 
 from app.core.config import get_settings
+from app.core.state_files import write_atomic, write_json_atomic
 from app.db.v2_migrations import migrate_v2, ssl_option
 
 router = APIRouter(prefix="/api/v2/setup", tags=["v2-setup"])
@@ -49,6 +49,10 @@ class HostnameRequest(BaseModel):
     expected_hostname: str
 
 
+def _dev() -> bool:
+    return get_settings().APP_ENV == "dev"
+
+
 def _state_dir() -> Path:
     override = os.getenv("PRICE_CHECKER_V2_STATE_DIR")
     if override:
@@ -77,20 +81,11 @@ def _access_code() -> str:
         return path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         code = secrets.token_urlsafe(32)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=".access-", dir=directory)
-        temporary = Path(temporary_name)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                stream.write(code)
-                stream.flush()
-                os.fsync(stream.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                return path.read_text(encoding="utf-8").strip()
-            return code
-        finally:
-            temporary.unlink(missing_ok=True)
+            write_atomic(path, code.encode("utf-8"), exclusive=True)
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
+        return code
 
 
 def _require_access(code: SecretStr) -> None:
@@ -184,6 +179,11 @@ def _validated_hostname(value: str, *, allow_local: bool = False) -> str:
     return hostname
 
 
+def _public_hostname(value: str) -> str:
+    """The validated public hostname, or "" when left blank (local addresses are accepted in dev)."""
+    return _validated_hostname(value, allow_local=_dev()) if value.strip() else ""
+
+
 def _validated_config(request: DatabaseRequest, previous: dict | None) -> dict:
     provider = request.provider.strip().lower()
     host = request.host.strip().lower()
@@ -219,7 +219,7 @@ def _validated_config(request: DatabaseRequest, previous: dict | None) -> dict:
         if request.tls_mode not in {"disable", "require", "verify-full"}:
             raise HTTPException(status_code=422, detail="Mode TLS invalide.")
         if request.tls_mode == "disable" and (
-            get_settings().APP_ENV != "dev"
+            not _dev()
             or host not in {"localhost", "127.0.0.1", "::1"}
         ):
             raise HTTPException(
@@ -244,14 +244,8 @@ def _validated_config(request: DatabaseRequest, previous: dict | None) -> dict:
         )
     hostname = (previous or {}).get("public_hostname", "")
     if request.public_hostname is not None:
-        hostname = (
-            _validated_hostname(
-                request.public_hostname, allow_local=get_settings().APP_ENV == "dev"
-            )
-            if request.public_hostname.strip()
-            else ""
-        )
-    if get_settings().APP_ENV != "dev" and not hostname and previous is None:
+        hostname = _public_hostname(request.public_hostname)
+    if not _dev() and not hostname and previous is None:
         raise HTTPException(
             status_code=422, detail="Un nom d’hôte est requis en production."
         )
@@ -294,25 +288,12 @@ async def _test_connection(config: dict) -> None:
 
 def _save_config(config: dict, *, first_setup: bool) -> None:
     directory = _ensure_state_dir()
-    path = directory / "database.json"
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".database-", dir=directory)
-    temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(config, stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if first_setup:
-            try:
-                os.link(temporary, path)
-            except FileExistsError as exc:
-                raise HTTPException(
-                    status_code=409, detail="La V2 est déjà configurée."
-                ) from exc
-        else:
-            os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        write_json_atomic(directory / "database.json", config, exclusive=first_setup)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409, detail="La V2 est déjà configurée."
+        ) from exc
 
 
 def _public_config(config: dict) -> dict:
@@ -320,7 +301,7 @@ def _public_config(config: dict) -> dict:
 
 
 def _require_secure_transport(request: Request) -> None:
-    if get_settings().APP_ENV != "dev" and request.url.scheme != "https":
+    if not _dev() and request.url.scheme != "https":
         raise HTTPException(
             status_code=403,
             detail="HTTPS est requis pour configurer la base V2.",
@@ -337,7 +318,7 @@ async def _require_setup_admin_if_initialized(request: Request) -> None:
     """Keep the installation code for bootstrap; require admin after bootstrap."""
     if _read_config() is None:
         return
-    from app.api.v2.auth import _connect, _current_user
+    from app.api.v2.auth import _connect, _current_user, _require_admin_role
 
     connection = await _connect()
     try:
@@ -345,22 +326,25 @@ async def _require_setup_admin_if_initialized(request: Request) -> None:
             "SELECT admin_user_id FROM v2_installation WHERE singleton=true"
         )
         if admin_id is not None:
-            user = await _current_user(connection, request)
-            if user is None or user["role"] != "admin":
-                raise HTTPException(
-                    status_code=403, detail="Accès administrateur requis."
-                )
+            _require_admin_role(await _current_user(connection, request))
     finally:
         await connection.close()
 
 
-@router.post("/database/details")
-async def database_details(request: AccessRequest, transport: Request):
+async def _setup_guard(payload: AccessRequest, transport: Request) -> None:
+    """The checks every database route makes first: HTTPS and same origin, the installation code,
+    then an administrator session once the installation has one."""
+    # Import lazily: auth uses the setup module for its database connection.
     from app.api.v2.auth import _secure_write
 
     _secure_write(transport)
-    _require_access(request.access_code)
+    _require_access(payload.access_code)
     await _require_setup_admin_if_initialized(transport)
+
+
+@router.post("/database/details")
+async def database_details(request: AccessRequest, transport: Request):
+    await _setup_guard(request, transport)
     config = _read_config()
     if config is None:
         raise HTTPException(
@@ -371,11 +355,7 @@ async def database_details(request: AccessRequest, transport: Request):
 
 @router.post("/database/test")
 async def test_database(request: DatabaseRequest, transport: Request):
-    from app.api.v2.auth import _secure_write
-
-    _secure_write(transport)
-    _require_access(request.access_code)
-    await _require_setup_admin_if_initialized(transport)
+    await _setup_guard(request, transport)
     config = _validated_config(request, _read_config())
     await _test_connection(config)
     return {"connected": True}
@@ -393,11 +373,7 @@ async def _migrate_schema(config: dict) -> None:
 
 @router.post("/database", status_code=201)
 async def create_database(request: DatabaseRequest, transport: Request):
-    from app.api.v2.auth import _secure_write
-
-    _secure_write(transport)
-    _require_access(request.access_code)
-    await _require_setup_admin_if_initialized(transport)
+    await _setup_guard(request, transport)
     if _read_config() is not None:
         raise HTTPException(status_code=409, detail="La V2 est déjà configurée.")
     config = _validated_config(request, None)
@@ -409,11 +385,7 @@ async def create_database(request: DatabaseRequest, transport: Request):
 
 @router.put("/database")
 async def update_database(request: DatabaseRequest, transport: Request):
-    from app.api.v2.auth import _secure_write
-
-    _secure_write(transport)
-    _require_access(request.access_code)
-    await _require_setup_admin_if_initialized(transport)
+    await _setup_guard(request, transport)
     previous = _read_config()
     if previous is None:
         raise HTTPException(
@@ -436,15 +408,14 @@ async def update_database(request: DatabaseRequest, transport: Request):
 
 async def _require_admin(request: Request) -> None:
     # Import lazily: auth uses the setup module for its database connection.
-    from app.api.v2.auth import _connect, _current_user
+    from app.api.v2.auth import _connect, _current_user, _require_admin_role
 
     connection = await _connect()
     try:
         user = await _current_user(connection, request)
     finally:
         await connection.close()
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(user)
 
 
 @router.get("/hostname")
@@ -477,12 +448,8 @@ async def update_hostname(payload: HostnameRequest, request: Request):
                 "Rechargez les paramètres."
             ),
         )
-    if not payload.public_hostname.strip() and get_settings().APP_ENV != "dev":
+    if not payload.public_hostname.strip() and not _dev():
         raise HTTPException(status_code=422, detail="Un nom d’hôte est requis en production.")
-    config["public_hostname"] = (
-        _validated_hostname(payload.public_hostname, allow_local=get_settings().APP_ENV == "dev")
-        if payload.public_hostname.strip()
-        else ""
-    )
+    config["public_hostname"] = _public_hostname(payload.public_hostname)
     _save_config(config, first_setup=False)
     return {"public_hostname": config["public_hostname"]}

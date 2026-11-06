@@ -31,9 +31,11 @@ CLIENT_REFRESH_REQUESTS_PER_HOUR = 6
 # Price pages request readings on view, also anonymously. They draw on their own,
 # smaller budgets so that browsing can never use up what a basket is entitled to.
 PAGE_REFRESH_REQUESTS_PER_HOUR = 6
+CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR = 3
 PAGE_VIEWS_PER_MINUTE = 30  # price pages asking for a refresh, per client, before any connector code runs
 STATUS_HOOK_SECONDS = 5  # a connector's status hook answers within this, or the page shows it unavailable
-CLIENT_PAGE_REFRESH_REQUESTS_PER_HOUR = 3
+# What loading an installed connector's code can raise (FileNotFoundError is an OSError).
+_LOAD_ERRORS = (ImportError, ValueError, OSError)
 
 
 class StoreCreate(BaseModel):
@@ -76,6 +78,24 @@ class BasketRefreshBatch(BaseModel):
     product_ids: list[int] = Field(min_length=1, max_length=50)
 
 
+def _product_ids(payload: BasketRefreshBatch) -> list[int]:
+    """The requested products once each, in order; any id below 1 is refused."""
+    ids = list(dict.fromkeys(payload.product_ids))
+    if any(product_id <= 0 for product_id in ids):
+        raise HTTPException(status_code=422, detail="Produit invalide.")
+    return ids
+
+
+def _unranked(status: str) -> dict:
+    """A price-page status with no queue position."""
+    return {"status": status, "rank": None}
+
+
+async def _installed_module(store_id: int, connector_id: str, commit: str):
+    """Load an installed connector's pinned code off the event loop (the first load runs its import)."""
+    return await asyncio.to_thread(load_installed, store_id, connector_id, commit)
+
+
 def _catalog(raw):
     return raw if isinstance(raw, list) else json.loads(raw)
 
@@ -95,9 +115,12 @@ async def _list(connection):
         by_store.setdefault(item["store_id"], []).append(dict(item))
     result = []
     for row in stores:
+        has_key = key_path(row["id"]).is_file()
+        # Deriving the public key runs ssh-keygen: keep it off the event loop.
+        public = await asyncio.to_thread(public_key, row["id"]) if row["private"] and has_key else None
         result.append({"id": row["id"], "name": row["name"], "repository": row["repository"],
-                       "private": row["private"], "has_key": key_path(row["id"]).is_file(),
-                       "public_key": public_key(row["id"]) if row["private"] and key_path(row["id"]).is_file() else None,
+                       "private": row["private"], "has_key": has_key,
+                       "public_key": public,
                        "catalog": _catalog(row["catalog"]), "fetched_commit": row["fetched_commit"],
                        "fetched_at": row["fetched_at"], "installations": by_store.get(row["id"], [])})
     return {"stores": result}
@@ -239,6 +262,15 @@ async def _run_connector_hook(hook, connection, *, invalid: str, failed: str) ->
         raise HTTPException(status_code=503, detail=failed) from exc
 
 
+async def _resume(connection, module) -> None:
+    """Run the connector's optional resume hook, so a connector that paused itself starts again."""
+    resume = getattr(module, "resume", None)
+    if resume is not None:
+        await _run_connector_hook(
+            resume, connection, invalid="Reprise du connecteur invalide.",
+            failed="La reprise du connecteur a échoué ; consultez les journaux du serveur.")
+
+
 @router.put("/{store_id}/connectors/{connector_id}")
 async def change_installation(store_id: int, connector_id: str, payload: InstallationChange, request: Request):
     _secure_write(request)
@@ -266,8 +298,8 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                 if current and tuple(map(int, item["version"].split("."))) <= tuple(map(int, current["version"].split("."))):
                     raise HTTPException(status_code=409, detail="Une mise à jour exige une version de connecteur supérieure.")
                 try:
-                    module = await asyncio.to_thread(load_installed, store_id, connector_id, store["fetched_commit"])
-                except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+                    module = await _installed_module(store_id, connector_id, store["fetched_commit"])
+                except _LOAD_ERRORS as exc:
                     logger.warning("Connector validation failed: %s", type(exc).__name__)
                     raise HTTPException(status_code=422, detail="Code du connecteur incompatible ou introuvable.") from exc
                 setup = getattr(module, "setup", None)
@@ -288,17 +320,13 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                         "VALUES($1,$2,$3,$4)", connector_id, store_id, item["version"], store["fetched_commit"])
                     # A connector that paused itself keeps that state in its own tables across an
                     # uninstall. A fresh installation is enabled, so let it resume like an enable does.
-                    resume = getattr(module, "resume", None)
-                    if resume is not None:
-                        await _run_connector_hook(
-                            resume, connection, invalid="Reprise du connecteur invalide.",
-                            failed="La reprise du connecteur a échoué ; consultez les journaux du serveur.")
+                    await _resume(connection, module)
             elif payload.action == "rollback":
                 if not current or not current["previous_commit"]:
                     raise HTTPException(status_code=409, detail="Aucune version précédente disponible.")
                 try:
-                    await asyncio.to_thread(load_installed, store_id, connector_id, current["previous_commit"])
-                except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+                    await _installed_module(store_id, connector_id, current["previous_commit"])
+                except _LOAD_ERRORS as exc:
                     raise HTTPException(status_code=422, detail="Version précédente indisponible.") from exc
                 await connection.execute(
                     "UPDATE v2_connector_installations SET version=$1,commit_sha=$2,"
@@ -310,15 +338,10 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
                     raise HTTPException(status_code=404, detail="Connecteur non installé.")
                 if payload.action == "enable" and not current["enabled"]:
                     try:
-                        module = await asyncio.to_thread(
-                            load_installed, store_id, connector_id, current["commit_sha"])
-                    except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+                        module = await _installed_module(store_id, connector_id, current["commit_sha"])
+                    except _LOAD_ERRORS as exc:
                         raise HTTPException(status_code=422, detail="Code du connecteur indisponible.") from exc
-                    resume = getattr(module, "resume", None)
-                    if resume is not None:
-                        await _run_connector_hook(
-                            resume, connection, invalid="Reprise du connecteur invalide.",
-                            failed="La reprise du connecteur a échoué ; consultez les journaux du serveur.")
+                    await _resume(connection, module)
                 await connection.execute(
                     "UPDATE v2_connector_installations SET enabled=$1,updated_at=now() WHERE connector_id=$2",
                     payload.action == "enable", connector_id)
@@ -327,19 +350,22 @@ async def change_installation(store_id: int, connector_id: str, payload: Install
         await connection.close()
 
 
-async def _settings_hook(connection, store_id: int, connector_id: str, hook_name: str):
-    row = await connection.fetchrow(
-        "SELECT commit_sha FROM v2_connector_installations WHERE store_id=$1 AND connector_id=$2",
-        store_id,
-        connector_id,
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Connecteur non installé.")
-    try:
-        module = await asyncio.to_thread(
-            load_installed, store_id, connector_id, row["commit_sha"]
+async def _settings_hook(
+    connection, store_id: int, connector_id: str, hook_name: str, *, commit: str | None = None
+):
+    """The installed connector's settings hook; pass `commit` when the caller already read the installation."""
+    if commit is None:
+        row = await connection.fetchrow(
+            "SELECT commit_sha FROM v2_connector_installations WHERE store_id=$1 AND connector_id=$2",
+            store_id,
+            connector_id,
         )
-    except (FileNotFoundError, ImportError, ValueError, OSError) as exc:
+        if not row:
+            raise HTTPException(status_code=404, detail="Connecteur non installé.")
+        commit = row["commit_sha"]
+    try:
+        module = await _installed_module(store_id, connector_id, commit)
+    except _LOAD_ERRORS as exc:
         raise HTTPException(
             status_code=503, detail="Code du connecteur indisponible."
         ) from exc
@@ -391,14 +417,14 @@ async def update_connector_settings(
             if not row:
                 raise HTTPException(status_code=404, detail="Connecteur non installé.")
             hook = await _settings_hook(
-                connection, store_id, connector_id, "settings_write"
+                connection, store_id, connector_id, "settings_write", commit=row["commit_sha"]
             )
             try:
                 await hook(connection, payload.expected_revision, payload.values)
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             read = await _settings_hook(
-                connection, store_id, connector_id, "settings_read"
+                connection, store_id, connector_id, "settings_read", commit=row["commit_sha"]
             )
             return _without_secrets(await read(connection))
     finally:
@@ -455,10 +481,10 @@ async def enqueue_installed(
     if not row:
         return "disabled"
     try:
-        module = load_installed(row["store_id"], connector_id, row["commit_sha"])
+        module = await _installed_module(row["store_id"], connector_id, row["commit_sha"])
         hook = getattr(module, "enqueue_basket", None) if basket else None
         return await (hook if callable(hook) else module.enqueue)(connection, product_id)
-    except (FileNotFoundError, ImportError, ValueError, OSError):
+    except _LOAD_ERRORS:
         logger.exception("Connector %s unavailable", connector_id)
         return "unavailable"
 
@@ -469,24 +495,22 @@ async def page_product_statuses(connection, connector_id: str, product_ids: list
         "SELECT store_id,commit_sha FROM v2_connector_installations WHERE connector_id=$1 AND enabled",
         connector_id,
     )
-    fallback = {str(product_id): {"status": "disabled", "rank": None} for product_id in product_ids}
+    fallback = {str(product_id): _unranked("disabled") for product_id in product_ids}
     if not row:
         return fallback
     try:
-        module = await asyncio.to_thread(
-            load_installed, row["store_id"], connector_id, row["commit_sha"]
-        )
-    except (FileNotFoundError, ImportError, ValueError, OSError):
+        module = await _installed_module(row["store_id"], connector_id, row["commit_sha"])
+    except _LOAD_ERRORS:
         logger.exception("Connector %s unavailable", connector_id)
-        return {key: {"status": "unavailable", "rank": None} for key in fallback}
+        return {key: _unranked("unavailable") for key in fallback}
     hook = getattr(module, "product_statuses", None)
     if not callable(hook):
-        return {key: {"status": "unsupported", "rank": None} for key in fallback}
+        return {key: _unranked("unsupported") for key in fallback}
     try:
         raw = await asyncio.wait_for(hook(connection, product_ids), STATUS_HOOK_SECONDS)
     except Exception:  # connector code is third-party (or too slow): a price page must still load
         logger.exception("Connector %s status hook failed", connector_id)
-        return {key: {"status": "unavailable", "rank": None} for key in fallback}
+        return {key: _unranked("unavailable") for key in fallback}
     if not isinstance(raw, dict):
         raise HTTPException(status_code=503, detail="État du connecteur invalide.")
     result = {}
@@ -550,9 +574,7 @@ async def request_basket_refresh(
     connector_id: str, payload: BasketRefreshBatch, request: Request
 ):
     _secure_write(request)
-    ids = list(dict.fromkeys(payload.product_ids))
-    if any(product_id <= 0 for product_id in ids):
-        raise HTTPException(status_code=422, detail="Produit invalide.")
+    ids = _product_ids(payload)
     connection = await _connect()
     try:
         admitted = await _admit_refresh(connection, connector_id, request, ids)
@@ -576,9 +598,7 @@ async def connector_product_statuses(
     """The reading status of products (queued, being read): administrators only."""
     _secure_write(request)
     await _require_admin(request)
-    ids = list(dict.fromkeys(payload.product_ids))
-    if any(product_id <= 0 for product_id in ids):
-        raise HTTPException(status_code=422, detail="Produit invalide.")
+    ids = _product_ids(payload)
     connection = await _connect()
     try:
         return {"products": await page_product_statuses(connection, connector_id, ids)}
@@ -592,15 +612,13 @@ async def request_page_refresh(
 ):
     """Admit only eligible products; a page view never promotes basket priority."""
     _secure_write(request)
-    ids = list(dict.fromkeys(payload.product_ids))
-    if any(product_id <= 0 for product_id in ids):
-        raise HTTPException(status_code=422, detail="Produit invalide.")
+    ids = _product_ids(payload)
     connection = await _connect()
     try:
         # Bounded per client before any connector code runs (the status hook below included).
         views = await _bump_limit(connection, _limit_key("connector-page-view", request), 60)
         if views > PAGE_VIEWS_PER_MINUTE:
-            return {"products": {str(product_id): {"status": "rate_limited", "rank": None} for product_id in ids}}
+            return {"products": {str(product_id): _unranked("rate_limited") for product_id in ids}}
         before = await page_product_statuses(connection, connector_id, ids)
         candidates = [product_id for product_id in ids
                       if before[str(product_id)]["status"] == "eligible"]
@@ -613,21 +631,21 @@ async def request_page_refresh(
                 raise
             admitted = []
         if admitted is None:
-            return {"products": {str(product_id): {"status": "disabled", "rank": None}
-                                  for product_id in ids}}
+            return {"products": {str(product_id): _unranked("disabled") for product_id in ids}}
         outcomes = {}
         for product_id in admitted:
             outcomes[str(product_id)] = await enqueue_installed(connection, connector_id, product_id)
-        after = await page_product_statuses(connection, connector_id, ids)
+        # Nothing queued (budget spent): the statuses read above still hold.
+        after = dict(before) if not admitted else await page_product_statuses(connection, connector_id, ids)
         reported = {str(product_id): before[str(product_id)]["status"] for product_id in ids}
         reported.update(outcomes)
         reported.update({str(product_id): "rate_limited" for product_id in candidates[len(admitted):]})
         await _journal_queue(connection, connector_id, "page", reported)
         for product_id in candidates[len(admitted):]:
-            after[str(product_id)] = {"status": "rate_limited", "rank": None}
+            after[str(product_id)] = _unranked("rate_limited")
         for key, outcome in outcomes.items():
             if after[key]["status"] == "eligible":
-                after[key] = {"status": outcome, "rank": None}
+                after[key] = _unranked(outcome)
         return {"products": after}
     finally:
         await connection.close()
@@ -675,7 +693,7 @@ async def connector_worker() -> None:
                 await connection.close()
             for row in rows:
                 try:
-                    module = load_installed(row["store_id"], row["connector_id"], row["commit_sha"])
+                    module = await _installed_module(row["store_id"], row["connector_id"], row["commit_sha"])
                     await module.process_one()
                 except asyncio.CancelledError:
                     raise

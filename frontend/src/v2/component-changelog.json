@@ -1524,6 +1524,70 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.154",
+      "components": {
+        "application": {
+          "version": "0.1.154",
+          "notes": [
+            "Les messages d’erreur s’affichent en français, sans « Error: » ni « Failed to fetch », même quand la connexion est coupée.",
+            "Le site se charge plus vite : deux bibliothèques inutiles sont retirées et les pages légales chargent leur mise en forme à la demande.",
+            "En mode sombre, liens, boutons, séparateurs et messages d’erreur restent lisibles sur toutes les pages."
+          ]
+        },
+        "products": {
+          "version": "0.1.78",
+          "notes": [
+            "En mode courses, un seul paiement affiche à la fois le prix le plus bas et l’historique des prix d’une fiche produit.",
+            "Les dates de retrait de la gamme suivent le jour de Paris, et le graphique d’un groupe n’a plus un jour de décalage hors d’Europe.",
+            "Un produit fusionné avec un produit connu par son seul code-barres reste visible dans le catalogue et dans la recherche."
+          ]
+        },
+        "basket": {
+          "version": "0.1.56",
+          "notes": [
+            "Les prix du panier se calculent avec moins de requêtes, et la page réagit plus vite à chaque modification."
+          ]
+        },
+        "recipes": {
+          "version": "0.1.30",
+          "notes": [
+            "La recherche de recettes attend une pause dans la saisie, et les champs de l’éditeur s’arrêtent aux limites acceptées par le serveur.",
+            "Enregistrer une recette aboutit même quand le navigateur bloque les données du site."
+          ]
+        },
+        "accounts": {
+          "version": "0.1.51",
+          "notes": [
+            "Après une connexion ou une inscription, le compte est tout de suite disponible hors connexion, sans recharger la page."
+          ]
+        },
+        "open_prices": {
+          "version": "0.1.39",
+          "notes": [
+            "Un relevé Open Prices impossible à enregistrer n’arrête plus l’import des autres produits."
+          ]
+        },
+        "open_food_facts": {
+          "version": "0.1.43",
+          "notes": [
+            "Quand Open Food Facts ne répond pas, la fiche produit et la recherche affichent un seul message clair."
+          ]
+        },
+        "bookmarklet": {
+          "version": "0.1.8",
+          "notes": [
+            "La page de capture affiche les prix au format français (1,50 €) et le motif d’un refus en clair."
+          ]
+        },
+        "deployment": {
+          "version": "0.1.27",
+          "notes": [
+            "Le modèle de configuration du proxy accepte les transferts d’instance volumineux, jusqu’à 25 Mo."
+          ]
+        }
+      }
     }
   ]
 }

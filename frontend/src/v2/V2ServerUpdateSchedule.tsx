@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ApiError, errorText, requestJson } from "./v2-http";
 
 type LastRun = { at: string; result: "current" | "updated" | "failed" | "running"; trigger?: "manual" | "scheduled"; from?: string; to?: string; message?: string };
 type Schedule = {
@@ -12,19 +13,9 @@ type Schedule = {
 };
 type Draft = Pick<Schedule, "enabled" | "time" | "timezone">;
 
-async function scheduleRequest(method: "GET" | "PUT" | "POST", body?: object): Promise<Schedule> {
-  const response = await fetch(method === "POST" ? "/api/v2/updates/run" : "/api/v2/updates/schedule", {
-    method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "La planification n’a pas pu être chargée.");
-  }
-  return response.json() as Promise<Schedule>;
+function scheduleRequest(method: "GET" | "PUT" | "POST", body?: object): Promise<Schedule> {
+  return requestJson<Schedule>(method === "POST" ? "/api/v2/updates/run" : "/api/v2/updates/schedule",
+    { method, body, cache: "no-store", fallback: "La planification n’a pas pu être chargée." });
 }
 
 export default function V2ServerUpdateSchedule() {
@@ -40,7 +31,7 @@ export default function V2ServerUpdateSchedule() {
     void scheduleRequest("GET").then(value => {
       if (active) { setSaved(value); setDraft(value); }
     }).catch(reason => {
-      if (active) setError(reason instanceof Error ? reason.message : "Chargement impossible.");
+      if (active) setError(errorText(reason, "Chargement impossible."));
     });
     return () => { active = false; };
   }, []);
@@ -74,7 +65,7 @@ export default function V2ServerUpdateSchedule() {
       setSaved(value);
       setNotice("Mise à jour demandée. Le contrôle démarre au prochain passage du programmateur.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Demande impossible.");
+      setError(errorText(reason, "Demande impossible."));
     } finally {
       setPending(false);
     }
@@ -90,7 +81,7 @@ export default function V2ServerUpdateSchedule() {
       setConflict(false);
       setNotice("Planification rechargée.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Chargement impossible.");
+      setError(errorText(reason, "Chargement impossible."));
     } finally {
       setPending(false);
     }
@@ -109,9 +100,9 @@ export default function V2ServerUpdateSchedule() {
       setConflict(false);
       setNotice(value.enabled ? "Mises à jour quotidiennes planifiées." : "Planification désactivée.");
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "Enregistrement impossible.";
-      setError(message);
-      setConflict(message.includes("a changé"));
+      setError(errorText(reason, "Enregistrement impossible."));
+      // The only refusal of a save with 409: the schedule was changed meanwhile.
+      setConflict(reason instanceof ApiError && reason.status === 409);
     } finally {
       setPending(false);
     }

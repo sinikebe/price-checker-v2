@@ -1,9 +1,10 @@
 import sys
+import tomllib
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from component_versions import bump_patch, classify, stale_versions, validate
+from component_versions import ROOT, RULES, _git, bump_patch, classify, stale_versions, validate
 
 
 class ComponentVersionsTests(unittest.TestCase):
@@ -13,7 +14,7 @@ class ComponentVersionsTests(unittest.TestCase):
             {"recipes", "application"},
         )
         self.assertEqual(
-            classify(["backend/app/services/openfoodfacts_client.py"]),
+            classify(["frontend/src/v2/v2-off-browser.ts"]),
             {"open_food_facts", "application"},
         )
         self.assertEqual(
@@ -66,7 +67,7 @@ class ComponentVersionsTests(unittest.TestCase):
 
     def test_docs_tests_ci_and_generated_versions_do_not_bump(self):
         self.assertEqual(classify([
-            "README.md", "backend/tests/test_v2_off.py",
+            "README.md", "backend/tests/test_v2_off_in_browser.py",
             ".github/workflows/ci.yml", "scripts/component_versions.py",
             "frontend/src/v2/component-versions.json",
             "frontend/src/v2/component-changelog.json",
@@ -88,6 +89,29 @@ class ComponentVersionsTests(unittest.TestCase):
             "frontend/src/v2/V2ChangelogPage.tsx",
             "frontend/src/v2/v2-changelog.css",
         ]), {"application"})
+
+    def test_extension_and_image_context_files_are_versioned(self):
+        # The settings page hands the extension out from the web bundle.
+        self.assertEqual(classify(["frontend/browser-extension/carrefour-parse.js"]), {"application"})
+        self.assertEqual(classify(["backend/.dockerignore"]), {"deployment", "application"})
+        with self.assertRaisesRegex(ValueError, "future.js"):
+            classify(["frontend/browser-extension/adapters/future.js"])  # no rule reaches a subfolder yet
+
+    def test_every_rule_matches_a_tracked_file(self):
+        # A rule left behind by a deleted file would silently cover the next file of that name.
+        files = [PurePosixPath(path) for path in _git("ls-files", "-z")]
+        dead = [pattern for pattern, _ in RULES if not any(path.match(pattern) for path in files)]
+        self.assertEqual(dead, [])
+
+    def test_backend_requirements_and_package_metadata_pin_the_same_dependencies(self):
+        # The image installs requirements.txt, then the package with --no-deps:
+        # its own dependency list is never resolved, so the two lists must agree.
+        declared = tomllib.loads((ROOT / "backend/pyproject.toml").read_text())["project"]["dependencies"]
+        pinned = [
+            line.strip() for line in (ROOT / "backend/requirements.txt").read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertEqual(declared, pinned)
 
     def test_manifest_and_existing_source_paths_are_consistent(self):
         versions = validate()

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { moderationRequest } from "./v2-moderation-api";
+import { errorText } from "./v2-http";
 
 type Kind = "product" | "recipe" | "store";
 type ReportType = "general" | "duplicate";
@@ -26,7 +27,7 @@ export default function V2ReportControl({ kind, contentId, user }: {
         duplicate_url: open === "duplicate" ? duplicateUrl.trim() || null : null,
       });
       setDone(true);
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   return <section className="v2-workspace-card">

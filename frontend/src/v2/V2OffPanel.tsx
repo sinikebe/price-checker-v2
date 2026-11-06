@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { OFF_PRODUCT_PAGE, readOffProduct, validBarcode, type OffProduct } from "./v2-off-browser";
+import { OFF_PRODUCT_PAGE, OFF_UNAVAILABLE, readOffProduct, validBarcode, type OffProduct } from "./v2-off-browser";
+import type { OffRead } from "./useOffProduct";
+import { errorText } from "./v2-http";
 
 const day = (value: string) => new Date(value).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" });
 const amount = (value: number) => value.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
@@ -10,7 +12,7 @@ const amount = (value: number) => value.toLocaleString("fr-FR", { maximumFractio
  */
 export default function V2OffPanel({ ean, initial }: { ean: string; initial?: OffProduct }) {
   const barcode = ean.trim();
-  const [state, setState] = useState<{ phase: "idle" | "loading" | "missing" } | { phase: "error"; message: string } | { phase: "done"; product: OffProduct }>({ phase: "idle" });
+  const [state, setState] = useState<OffRead>({ phase: "idle" });
   // Already read for this page (a product known only by its barcode): shown without a second request.
   const shown = state.phase === "idle" && initial ? { phase: "done" as const, product: initial } : state;
   async function read() {
@@ -19,7 +21,7 @@ export default function V2OffPanel({ ean, initial }: { ean: string; initial?: Of
       const product = await readOffProduct(barcode);
       setState(product ? { phase: "done", product } : { phase: "missing" });
     } catch (reason) {
-      setState({ phase: "error", message: reason instanceof Error ? reason.message : "Open Food Facts ne répond pas pour le moment." });
+      setState({ phase: "error", message: errorText(reason, OFF_UNAVAILABLE) });
     }
   }
   return <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-off-heading">

@@ -3,6 +3,7 @@ import {
   diskLevel, diskPercent, formatBytes, getServerCache, lastRunSummary, momentLabel, requestCacheClean, type ServerCache,
 } from "./v2-server-cache-api";
 import "./v2-server-cache.css";
+import { errorText } from "./v2-http";
 
 /** Administrator-only: what the server keeps on its disk, and a button to clean its cache. */
 export default function V2ServerCache() {
@@ -14,7 +15,7 @@ export default function V2ServerCache() {
   useEffect(() => {
     let active = true;
     getServerCache().then(value => { if (active) setInfo(value); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Chargement impossible."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Chargement impossible.")); });
     return () => { active = false; };
   }, []);
 
@@ -39,7 +40,7 @@ export default function V2ServerCache() {
     try {
       setInfo(await requestCacheClean());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Demande impossible.");
+      setError(errorText(reason, "Demande impossible."));
     } finally { setPending(false); }
   }
 

@@ -25,6 +25,22 @@ export const sharedEntryQuantity = (entry: SharedBasketEntry): BasketQuantity | 
 };
 export const sharedEntryDisabled = (entry: SharedBasketEntry): boolean => Boolean(entry[disabledAt(entry)]);
 
+/**
+ * The basket item a link entry stands for. A product is only known by its id here: the caller reads its
+ * current version from the catalogue, then keeps `disabled` and `quantity` as given.
+ */
+export function sharedEntryItem(entry: SharedBasketEntry): BasketItem | { productId: number; disabled: boolean; quantity: BasketQuantity | undefined } {
+  const disabled = sharedEntryDisabled(entry), quantity = sharedEntryQuantity(entry);
+  if (entry[0] === "g" || entry[0] === "t") return { kind: entry[0] === "g" ? "group" : "text", name: entry[1], disabled, quantity };
+  if (entry[0] === "s") return { kind: "scope", department: entry[1], family: entry[2], name: entry[3], disabled, quantity };
+  if (entry[0] === "x") {
+    // Only the parts of a selection: other fields of a hand-made link (a kind, a product id) stay out of the item.
+    const { include, exclude, words } = entry[3];
+    return { kind: "selection", name: entry[1], include, exclude, words, disabled, quantity };
+  }
+  return { productId: entry[1], disabled, quantity };
+}
+
 const MAX_ITEMS = 100;
 const MAX_TOKEN_LENGTH = 12000;
 const validText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 200;

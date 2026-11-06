@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
+import { errorText } from "./v2-http";
+import { DUPLICATE_QUERY_MAX_LENGTH, originQuery } from "./v2-duplicate-query";
+import { SEARCH_DEBOUNCE_MS } from "./v2-catalogue-search";
 import "./v2-duplicate-review.css";
 
 type Kind = "product" | "store";
@@ -53,35 +56,41 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
   const [values,setValues] = useState<Record<string,string>>({});
   const [confirmed,setConfirmed] = useState<string[]>([]);
   const [error,setError] = useState("");
+  // The candidate search keeps its own failure: its next success then clears that one only, not a
+  // merge-preview error that arrived meanwhile.
+  const [searchError,setSearchError] = useState("");
   const [busy,setBusy] = useState(false);
   useEffect(() => {
     let active=true;
     moderationRequest<Detail>("/reports/" + reportId + "/duplicate")
-      .then(value => { if (active) { setDetail(value); setQuery(String(value.origin.data.name ?? value.origin.data.city ?? ""));
+      .then(value => { if (active) { setDetail(value); setError(""); setQuery(originQuery(value.origin.data));
         if (value.report.duplicate_id) setSelected(value.report.duplicate_id); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active=false; };
   },[reportId]);
   useEffect(() => {
     if (!detail) return;
     let active=true;
-    moderationRequest<Candidate[]>("/duplicate-candidates?kind=" + detail.report.kind + "&q=" + encodeURIComponent(query))
-      .then(value => { if (active) setCandidates(value.filter(item => item.id !== detail.origin.id)); })
-      .catch(cause => { if (active) setError(String(cause)); });
-    return () => { active=false; };
+    // One request once the typing pauses, rather than one per key.
+    const timer = window.setTimeout(() => {
+      moderationRequest<Candidate[]>("/duplicate-candidates?kind=" + detail.report.kind + "&q=" + encodeURIComponent(query))
+        .then(value => { if (active) { setCandidates(value.filter(item => item.id !== detail.origin.id)); setSearchError(""); } })
+        .catch(cause => { if (active) setSearchError(errorText(cause, "Opération impossible.")); });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => { active=false; window.clearTimeout(timer); };
   },[detail,query]);
   useEffect(() => {
     if (!selected) return;
     let active=true;
     moderationRequest<Preview>("/reports/" + reportId + "/merge-preview?duplicate_id=" + selected)
-      .then(value => { if (active) { setPreview(value); setValues(Object.fromEntries(value.fields.map(field => [field.key,editable(field.suggested)]))); } })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .then(value => { if (active) { setPreview(value); setValues(Object.fromEntries(value.fields.map(field => [field.key,editable(field.suggested)]))); setError(""); } })
+      .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active=false; };
   },[reportId,selected]);
   const required = useMemo(() => preview?.fields.filter(field => field.state !== "identical") ?? [],[preview]);
   async function merge() {
     if (!preview || busy) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setSearchError("");
     try {
       const result: Record<string,unknown> = {};
       for (const field of preview.fields) {
@@ -94,13 +103,14 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
         duplicate_fingerprint: preview.duplicate_fingerprint, result, confirmed_fields: confirmed,
       });
       onMerged();
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(errorText(cause, "Opération impossible.")); }
     finally { setBusy(false); }
   }
   return <section className="v2-duplicate-review" aria-label="Examen du doublon">
     <div className="v2-duplicate-heading"><h2>Examiner le doublon #{reportId}</h2>
       <button type="button" onClick={onClose}>Fermer la vue</button></div>
     {error && <p role="alert">{error}</p>}
+    {searchError && <p role="alert">{searchError}</p>}
     {!detail && !error && <p>Chargement…</p>}
     {detail && <><p>{detail.report.reason}</p><div className="v2-duplicate-pair">
       <section className="v2-duplicate-pane"><h3>Fiche signalée · #{detail.origin.id}</h3>
@@ -112,9 +122,9 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
       <section className="v2-duplicate-pane"><h3>Fiche doublon</h3>
         {detail.report.duplicate_url && <p>Lien indiqué : <code>{detail.report.duplicate_url}</code></p>}
         <label htmlFor="v2-duplicate-query">Rechercher par nom, marque, enseigne, ville, EAN ou ID</label>
-        <input id="v2-duplicate-query" type="search" value={query} onChange={event => setQuery(event.target.value)} />
+        <input id="v2-duplicate-query" type="search" maxLength={DUPLICATE_QUERY_MAX_LENGTH} value={query} onChange={event => setQuery(event.target.value)} />
         <ul className="v2-duplicate-candidates">{candidates.map(item => <li key={item.id}>
-          <button type="button" aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setCandidateConfirmed(false); setPreview(null); setConfirmed([]); setError(""); }}>
+          <button type="button" aria-pressed={selected === item.id} onClick={() => { setSelected(item.id); setCandidateConfirmed(false); setPreview(null); setConfirmed([]); setError(""); setSearchError(""); }}>
             #{item.id} · {item.name} <small>{item.detail} {item.code}</small></button>
           <Link to={sheetUrl(detail.report.kind,item.id)} target="_blank">Fiche ↗</Link>
         </li>)}</ul>

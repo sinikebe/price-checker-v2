@@ -54,7 +54,6 @@ export type LineRef =
   | { kind: "text"; name: string }
   | { kind: "scope"; department: string; family: string; name: string }
   | { kind: "selection"; name: string; include: SelectionMember[]; exclude: SelectionMember[]; words: string[] };
-/** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 /** How every member sees a shared basket: the same filters and options, kept on the server. */
 export type SharedSettings = {
   advanced: boolean; compare: CompareMode; filters: BasketFilters;
@@ -67,6 +66,7 @@ export type SharedSettings = {
 export const DEFAULT_SETTINGS: SharedSettings = {
   advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {}, checked: [], list_mode: "all",
 };
+/** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 export type LocalOp =
   | { op: "settings"; patch: Partial<SharedSettings> }
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean; item: BasketItem }
@@ -82,7 +82,7 @@ export type WireOp =
   | { op: "tick"; key: string; on: boolean };
 type KeyOf = (item: BasketItem) => string;
 
-export const SHARED_INVITE = /^#rejoindre=([1-9][0-9]{0,18}-[A-Za-z0-9_-]{22})$/;
+const SHARED_INVITE = /^#rejoindre=([1-9][0-9]{0,18}-[A-Za-z0-9_-]{22})$/;
 export const MAX_OPS = 150;
 
 /** The invitation carried by a link (`#rejoindre=…`), or null. */
@@ -203,9 +203,15 @@ export const STORAGE_NOTICE = "Un panier partagé est enregistré sur le serveur
   + "et de toute personne qui ouvre le lien du panier, sans dépenser de crédits.";
 
 const PENDING_INVITE = "v2:basket:pending-invite";
+/** This tab already looked for a shared basket of the account on the server (once per session). */
+export const sharedLookedKey = (userId: number) => `v2:basket:shared-looked:${userId}`;
 /** An invitation kept while the visitor signs in, so the link still works afterwards (this tab only). */
 export function keepPendingInvite(invite: string) {
   try { sessionStorage.setItem(PENDING_INVITE, invite); } catch { /* the link can be opened again */ }
+}
+/** Drop the kept invitation; callers catch an unavailable storage. */
+export function forgetPendingInvite() {
+  sessionStorage.removeItem(PENDING_INVITE);
 }
 export function takePendingInvite(): string | null {
   try {

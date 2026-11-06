@@ -11,19 +11,18 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.core.paris_time import paris_day
+from app.db.v2_sql import MAX_BIGINT
 
 router = APIRouter(prefix="/api/v2/availability", tags=["v2-availability"])
 
-MAX_BIGINT = 2**63 - 1
 RECHECK_BOUNDS = (0, 365)  # days; 0 means a connector never looks again by itself
 MAX_STORES = 200  # stores listed for one product
 
 
 async def _require_admin_user(connection, request: Request) -> None:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(await _current_user(connection, request))
 
 
 class AvailabilitySettingsChange(BaseModel):
@@ -87,8 +86,9 @@ async def _withdrawn(connection, product_id: int) -> dict:
     return {"stores": [{
         "store_id": row["store_id"], "store_name": row["store_name"], "city": row["city"],
         "retailer": row["retailer"], "sales_channel": row["sales_channel"],
-        "since": row["since"].date().isoformat(), "checked": row["checked_at"].date().isoformat(),
-        "next_check": row["next_check_at"].date().isoformat() if row["next_check_at"] else None,
+        # Paris days, like every other date the site shows.
+        "since": paris_day(row["since"]), "checked": paris_day(row["checked_at"]),
+        "next_check": paris_day(row["next_check_at"]) if row["next_check_at"] else None,
     } for row in rows[:MAX_STORES]], "truncated": len(rows) > MAX_STORES}
 
 

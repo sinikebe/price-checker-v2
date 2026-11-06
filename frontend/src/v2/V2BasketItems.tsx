@@ -1,11 +1,11 @@
-import { useContext, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { useConfirm } from "./useConfirm";
 import V2BasketLink from "./V2BasketLink";
 import V2BasketReplace from "./V2BasketReplace";
 import V2BasketTextAdd from "./V2BasketTextAdd";
 import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketItemKey, isFreeText, validBasketQuantity, type BasketItem, type BasketQuantity } from "./v2-basket-storage";
-import { alternatives, itemHref, itemKind, itemName, selectionSummary, type Category } from "./v2-basket-view";
+import { alternativesIndex, itemHref, itemKind, itemName, selectionSummary, type Category } from "./v2-basket-view";
 
 function QuantityEditor({ item, onChange }: { item: BasketItem; onChange: (value: BasketQuantity) => void }) {
   const readOnly = !!useContext(BasketReadOnlyContext);
@@ -45,6 +45,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
   const readOnly = !!useContext(BasketReadOnlyContext);
   // The free text line whose replacement is being chosen.
   const [replacing, setReplacing] = useState<string | null>(null);
+  const choicesOf = useMemo(() => alternativesIndex(categories ?? []), [categories]);
   const keys = new Set(items.map(basketItemKey));
   return <section className="v2-basket-panel" id="v2-basket-panel-items" aria-label="Articles du panier">
     {readOnly && <p className="v2-basket-offline-note">Hors connexion : les articles se modifient au retour de la connexion.</p>}
@@ -52,7 +53,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
     <p>Un groupe ou un ensemble compte pour un article.{advanced ? " Indiquez la quantité voulue : le total couvre des paquets entiers, la part utilisée est calculée au prorata." : ""}</p>
     <ul className="v2-basket-editor-list">{items.map(item => {
       const itemKey = basketItemKey(item);
-      const choices = alternatives(item, categories ?? []);
+      const choices = choicesOf(item);
       return <li className="v2-basket-editor-item" data-disabled={item.disabled ? "true" : "false"} key={itemKey}>
         <div className="v2-basket-editor-main"><div><span className="v2-basket-item-kind">{itemKind(item)}</span>{isFreeText(item)
           ? <span className="v2-basket-unlinked">{item.name}</span> : <V2BasketLink to={itemHref(item)}>{itemName(item)}</V2BasketLink>}

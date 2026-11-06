@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
-import V2SiteHeader from "./V2SiteHeader";
+import { V2PageFrame } from "./V2SiteHeader";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import V2OffLookup from "./V2OffLookup";
-import V2BarcodeSearch from "./V2BarcodeSearch";
 import V2OffPanel, { OffDetails } from "./V2OffPanel";
 import { useOffProduct, type OffRead } from "./useOffProduct";
+import { OFF_PRODUCT_PAGE } from "./v2-off-browser";
 import V2PriceHistory from "./V2PriceHistory";
 import V2ExtensionPriceButton from "./V2ExtensionPriceButton";
 import V2PriceDraftInbox from "./V2PriceDraftInbox";
@@ -24,10 +24,13 @@ import {
 import { formatMeasure, MEASURE_UNITS, measureUnitLabel, readExtraAmount } from "./v2-measures";
 import { rewardHint } from "./v2-basket-credits-api";
 import { useCredits } from "./useCredits";
+import { errorText } from "./v2-http";
+import { GTIN_PATTERN } from "./v2-catalogue-search";
+import { euros } from "./v2-basket-view";
 import "./v2-price-gate.css";
 import "./v2-product-workspace.css";
 
-type Mode = "catalogue" | "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
+type Mode = "mine" | "review" | "new" | "edit" | "draft" | "detail" | "history";
 type Props = { mode: Mode; id?: number; user: V2User | null; onLogout: () => Promise<void> };
 const fields: { key: "brand" | "name" | "commercial_name" | "composition" | "package" | "quantity" | "ean" | "group" | "notes" | "nutriscore" | "nova" | "nutriscore_version"; label: string; hint?: string }[] = [
   { key: "brand", label: "Marque" },
@@ -54,53 +57,39 @@ function safeProductUrl(value: string): string | null {
   catch { return null; }
 }
 
-export function Frame({ children, user, onLogout }: { children: React.ReactNode; user: V2User | null; onLogout: () => Promise<void> }) {
-  return <div className="v2-home v2-workspace">
-    <a className="v2-skip" href="#v2-workspace-main">Aller au contenu</a>
-    <V2SiteHeader user={user} onLogout={onLogout} />
-    <main id="v2-workspace-main" className="v2-wrap v2-workspace-main">{children}</main>
-  </div>;
-}
-
 function useCollection<T>(path: string, enabled = true) {
   const [result, setResult] = useState<{ path: string; data: T | null; error: string }>({ path: "", data: null, error: "" });
-  const [reload, setReload] = useState(0);
   useEffect(() => {
     if (!enabled) return;
     let active = true;
     productRequest<T>(path).then(value => { if (active) setResult({ path, data: value, error: "" }); })
-      .catch(reason => { if (active) setResult({ path, data: null, error: String(reason) }); });
+      .catch(reason => { if (active) setResult({ path, data: null, error: errorText(reason, "L'opération a échoué.") }); });
     return () => { active = false; };
-  }, [path, enabled, reload]);
+  }, [path, enabled]);
   return { data: enabled && result.path === path ? result.data : null,
-    error: enabled && result.path === path ? result.error : "",
-    refresh: () => setReload(value => value + 1) };
+    error: enabled && result.path === path ? result.error : "" };
 }
 
 function ListPage({ mode, user, onLogout }: Props) {
   const [page, setPage] = useState(0);
   const pageSize = 30;
-  const path = mode === "mine" ? "/drafts/mine" : mode === "review" ? `/drafts/review?limit=${pageSize}&offset=${page * pageSize}` : "";
-  const { data, error } = useCollection<(Draft | Product)[]>(path, mode !== "review" || user?.role === "admin");
-  const title = mode === "mine" ? "Mes brouillons" : mode === "review" ? "Propositions à valider" : "Produits publiés";
-  return <Frame user={user} onLogout={onLogout}>
+  const path = mode === "mine" ? "/drafts/mine" : `/drafts/review?limit=${pageSize}&offset=${page * pageSize}`;
+  const { data, error } = useCollection<Draft[]>(path, mode !== "review" || user?.role === "admin");
+  const title = mode === "mine" ? "Mes brouillons" : "Propositions à valider";
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>{title}<span>.</span></h1>
-      <p>{mode === "mine" ? "Vos propositions restent privées jusqu'à validation." : mode === "review" ? "Vérifiez chaque proposition avant publication." : "Seuls les produits validés sont visibles ici."}</p></div>
+      <p>{mode === "mine" ? "Vos propositions restent privées jusqu'à validation." : "Vérifiez chaque proposition avant publication."}</p></div>
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
     </div>
-    {mode === "catalogue" && <V2BarcodeSearch />}
-    {(mode === "mine" || (mode === "review" && user?.role === "admin")) && <h2 className="v2-workspace-section-title">Propositions de produits</h2>}
+    {(mode === "mine" || user?.role === "admin") && <h2 className="v2-workspace-section-title">Propositions de produits</h2>}
     {mode === "review" && user?.role !== "admin" ? <p role="alert">Accès réservé à l'administrateur.</p> :
-      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun {mode === "catalogue" ? "produit publié" : "brouillon de produit"} pour le moment.</div> :
-      <div className="v2-workspace-list">{data.map(item => {
-        const draft = "status" in item;
-        const href = draft ? "/v2/brouillons/" + item.id : "/v2/produits/" + item.id;
-        return <Link key={item.id} to={href} className="v2-workspace-list-item">
+      error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : data.length === 0 ? <div className="v2-workspace-empty">Aucun brouillon de produit pour le moment.</div> :
+      <div className="v2-workspace-list">{data.map(item =>
+        <Link key={item.id} to={"/v2/brouillons/" + item.id} className="v2-workspace-list-item">
           <div><strong>{item.data.brand} {item.data.name || "Produit sans nom"}</strong>
-            <small>{item.data.quantity || "Quantité à préciser"} · {draft ? item.status === "rejected" ? "Rejeté" : item.product_id ? "Modification" : "Nouveau produit" : "Publié"}</small></div>
-          <span>{draft ? "Voir le brouillon" : "Voir la fiche"} →</span>
-        </Link>;
-      })}</div>}
+            <small>{item.data.quantity || "Quantité à préciser"} · {item.status === "rejected" ? "Rejeté" : item.product_id ? "Modification" : "Nouveau produit"}</small></div>
+          <span>Voir le brouillon →</span>
+        </Link>)}</div>}
     {mode === "review" && data && (page > 0 || data.length === pageSize) && <div className="v2-settings-actions">
       <button type="button" className="v2-button v2-button-secondary" disabled={page === 0}
         onClick={() => setPage(value => Math.max(0, value - 1))}>Précédent</button>
@@ -110,11 +99,8 @@ function ListPage({ mode, user, onLogout }: Props) {
     </div>}
     {(mode === "mine" || mode === "review") && <V2PriceDraftInbox mode={mode} user={user} />}
     {mode === "review" && user?.role === "admin" && <><V2RecipeReviewPanel /><V2ModerationPanel /></>}
-  </Frame>;
+  </V2PageFrame>;
 }
-
-/** Lists saved by an older version of the app may lack the field. */
-const list = <T,>(value: T[] | undefined): T[] => Array.isArray(value) ? value : [];
 
 function localRead(key: string): { data: ProductData; change_kind: ChangeKind; revision: number | null } | null {
   try {
@@ -125,6 +111,14 @@ function localRead(key: string): { data: ProductData; change_kind: ChangeKind; r
       revision: Number.isInteger(parsed.revision) && parsed.revision > 0 ? parsed.revision : null };
   } catch { return null; }
 }
+// The local copy is a convenience: with site data blocked, the server's answer still counts.
+function forgetLocal(key: string) {
+  try { localStorage.removeItem(key); } catch { /* storage blocked: nothing was kept */ }
+}
+function keepLocal(key: string, value: unknown): boolean {
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+}
+const LOCAL_UNAVAILABLE = "Stockage local indisponible : copiez vos informations avant de quitter la page.";
 
 function Editor({ mode, id, user, onLogout }: Props) {
   const confirm = useConfirm();
@@ -132,12 +126,14 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const queryBarcode = new URLSearchParams(location.search).get("ean") ?? "";
-  const initialBarcode = mode === "new" && /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(queryBarcode) ? queryBarcode : "";
+  const initialBarcode = mode === "new" && GTIN_PATTERN.test(queryBarcode) ? queryBarcode : "";
   const localKey = mode === "new" ? "v2:product:new" + (user ? ":" + user.id : "") + (initialBarcode ? ":ean:" + initialBarcode : "") : mode === "edit" ? "v2:product:edit:" + (user?.id ?? "anon") + ":" + id : "v2:product:draft:" + (user?.id ?? "anon") + ":" + id;
-  const [data, setData] = useState<ProductData>(() => localRead(localKey)?.data ?? { ...emptyProduct(), ean: initialBarcode });
-  const [changeKind, setChangeKind] = useState<ChangeKind>(() => localRead(localKey)?.change_kind ?? "correction");
+  // The copy kept in this browser, read once (the page is keyed by its local key).
+  const [initialLocal] = useState(() => localRead(localKey));
+  const [data, setData] = useState<ProductData>(initialLocal?.data ?? { ...emptyProduct(), ean: initialBarcode });
+  const [changeKind, setChangeKind] = useState<ChangeKind>(initialLocal?.change_kind ?? "correction");
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [baseRevision, setBaseRevision] = useState<number | null>(() => localRead(localKey)?.revision ?? null);
+  const [baseRevision, setBaseRevision] = useState<number | null>(initialLocal?.revision ?? null);
   const [baseProduct, setBaseProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(mode !== "new");
   const [busy, setBusy] = useState(false);
@@ -145,7 +141,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
   const [notice, setNotice] = useState("");
   const [localError, setLocalError] = useState("");
   const localVersion = useRef(0);
-  const [dirty, setDirty] = useState(Boolean(localRead(localKey)));
+  const [dirty, setDirty] = useState(Boolean(initialLocal));
   const [tagInput, setTagInput] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
   const [extraUnit, setExtraUnit] = useState<MeasureUnit>("piece");
@@ -159,14 +155,14 @@ function Editor({ mode, id, user, onLogout }: Props) {
       productRequest<Draft>("/drafts/" + id).then(value => {
         if (!active) return;
         if (value.status === "approved" && value.result_product_id) {
-          localStorage.removeItem(localKey);
+          forgetLocal(localKey);
           navigate("/v2/produits/" + value.result_product_id, { replace: true });
           return;
         }
         setDraft(value);
         if (!localRead(localKey)) { setData(completeProductData(value.data)); setChangeKind(value.change_kind); setBaseRevision(value.revision); setDirty(false); }
         setLoading(false);
-      }).catch(reason => { if (active) { setError(String(reason)); setLoading(false); } });
+      }).catch(reason => { if (active) { setError(errorText(reason, "L'opération a échoué.")); setLoading(false); } });
     } else {
       Promise.all([
         productRequest<Product>("/" + id),
@@ -176,7 +172,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         const existing = myDrafts.find(item => item.product_id === id);
         if (existing) {
           const unsaved = localRead(localKey);
-          if (unsaved) localStorage.setItem("v2:product:draft:" + user?.id + ":" + existing.id, JSON.stringify(unsaved));
+          if (unsaved) keepLocal("v2:product:draft:" + user?.id + ":" + existing.id, unsaved);
           navigate("/v2/brouillons/" + existing.id, { replace: true });
           return;
         }
@@ -187,7 +183,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
         setBaseProduct(value);
         if (!localRead(localKey)) { setData(completeProductData(value.data)); setDirty(false); }
         setLoading(false);
-      }).catch(reason => { if (active) { setError(String(reason)); setLoading(false); } });
+      }).catch(reason => { if (active) { setError(errorText(reason, "L'opération a échoué.")); setLoading(false); } });
     }
     return () => { active = false; };
   }, [mode, id, localKey, user, navigate]);
@@ -202,14 +198,11 @@ function Editor({ mode, id, user, onLogout }: Props) {
     }
     if (next.quantity !== data.quantity) next = { ...next, quantity_amount: null, quantity_unit: null, quantity_count_noun: null, measures: [] };
     setData(next); setChangeKind(kind); setDirty(true); localVersion.current += 1;
-    try {
-      localStorage.setItem(localKey, JSON.stringify({ data: next, change_kind: kind, revision: draft ? baseRevision : null }));
-      setLocalError("");
-    } catch { setLocalError("Stockage local indisponible : copiez vos informations avant de quitter la page."); }
+    setLocalError(keepLocal(localKey, { data: next, change_kind: kind, revision: draft ? baseRevision : null }) ? "" : LOCAL_UNAVAILABLE);
   }
   function addExtraQuantity() {
     const amount = readExtraAmount(extraAmount, extraUnit);
-    const extras = list(data.extra_quantities);
+    const extras = data.extra_quantities;
     if (!amount) { setExtraError("Indiquez un nombre positif (3 décimales au plus, entier pour des pièces)."); return; }
     if (data.quantity_unit === extraUnit && !extras.some(item => item.unit === extraUnit)) {
       setExtraError("Cette unité est déjà donnée par la quantité du produit."); return;
@@ -235,14 +228,14 @@ function Editor({ mode, id, user, onLogout }: Props) {
       if (draft) {
         const saved = await productRequest<Draft>("/drafts/" + draft.id, "PUT", { revision: baseRevision, data, change_kind: changeKind });
         setDraft(saved); setBaseRevision(saved.revision);
-        if (snapshot === localVersion.current) { localStorage.removeItem(localKey); setDirty(false); }
+        if (snapshot === localVersion.current) { forgetLocal(localKey); setDirty(false); }
         setNotice("Brouillon enregistré sur le serveur. Vous le retrouverez sur vos autres navigateurs.");
       } else {
         const saved = await productRequest<Draft>("/drafts", "POST", { product_id: mode === "edit" ? id : null, data, change_kind: changeKind });
-        if (snapshot === localVersion.current) localStorage.removeItem(localKey);
+        if (snapshot === localVersion.current) forgetLocal(localKey);
         navigate("/v2/brouillons/" + saved.id);
       }
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); }
     finally { setBusy(false); }
   }
   const conflict = Boolean(draft && dirty && baseRevision !== draft.revision);
@@ -255,7 +248,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
     try {
       const product = await productRequest<Product>("/drafts/" + draft.id + "/approve", "POST", { revision: draft.revision });
       navigate("/v2/produits/" + product.id);
-    } catch (reason) { setError(String(reason)); setBusy(false); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); setBusy(false); }
   }
   async function reject() {
     if (!draft || busy || dirty || draft.status !== "draft") return;
@@ -265,7 +258,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
       const rejected = await productRequest<Draft>("/drafts/" + draft.id + "/reject", "POST", { revision: draft.revision });
       setDraft(rejected);
       setNotice("Proposition rejetée. Elle reste visible pour son auteur.");
-    } catch (reason) { setError(String(reason)); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); }
     finally { setBusy(false); }
   }
   async function discardSuperseded() {
@@ -274,11 +267,11 @@ function Editor({ mode, id, user, onLogout }: Props) {
     setBusy(true); setError("");
     try {
       await productRequest<{ deleted: boolean }>("/drafts/" + draft.id, "DELETE");
-      localStorage.removeItem(localKey);
+      forgetLocal(localKey);
       navigate("/v2/brouillons");
-    } catch (reason) { setError(String(reason)); setBusy(false); }
+    } catch (reason) { setError(errorText(reason, "L'opération a échoué.")); setBusy(false); }
   }
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
       <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
       <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier. Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
@@ -314,16 +307,16 @@ function Editor({ mode, id, user, onLogout }: Props) {
           </div>
           <div className="v2-workspace-structured"><h3>Autres unités de mesure</h3>
             <p>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces. Ajouter ou retirer une unité corrige la fiche existante : aucun nouveau produit n’est créé.</p>
-            <ul>{list(data.extra_quantities).map(extra => <li key={extra.unit}>{formatMeasure(extra)} <button type="button" onClick={() => persist({ ...data, extra_quantities: list(data.extra_quantities).filter(item => item.unit !== extra.unit) }, changeKind)}>Retirer</button></li>)}</ul>
+            <ul>{data.extra_quantities.map(extra => <li key={extra.unit}>{formatMeasure(extra)} <button type="button" onClick={() => persist({ ...data, extra_quantities: data.extra_quantities.filter(item => item.unit !== extra.unit) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Quantité <input inputMode="decimal" value={extraAmount} maxLength={13} onChange={event => { setExtraAmount(event.target.value); setExtraError(""); }} /></label>
             <label>Unité <select value={extraUnit} onChange={event => { setExtraUnit(event.target.value as MeasureUnit); setExtraError(""); }}>
               {MEASURE_UNITS.map(unit => <option key={unit} value={unit}>{measureUnitLabel(unit)}</option>)}</select></label>
-            <button type="button" disabled={list(data.extra_quantities).length >= MEASURE_UNITS.length} onClick={addExtraQuantity}>Ajouter l’unité</button>
+            <button type="button" disabled={data.extra_quantities.length >= MEASURE_UNITS.length} onClick={addExtraQuantity}>Ajouter l’unité</button>
             {extraError && <small role="alert">{extraError}</small>}
           </div>
           <label>Dernier contrôle nutritionnel <input type="datetime-local" value={localDateTime(data.nutrition_checked_at)} onChange={event => persist({ ...data, nutrition_checked_at: event.target.value ? new Date(event.target.value).toISOString() : null }, changeKind)} /></label>
           <small>Cette date est distincte de la récupération de la fiche Open Food Facts.</small>
-          <p>Quantité analysée : {list(data.measures).length ? list(data.measures).map(formatMeasure).join(" · ") : data.quantity_amount && data.quantity_unit ? `${data.quantity_amount} ${data.quantity_unit}${data.quantity_count_noun ? ` (${data.quantity_count_noun})` : ""}` : data.quantity ? "à analyser lors de l’enregistrement" : "à renseigner"}.</p>
+          <p>Quantité analysée : {data.measures.length ? data.measures.map(formatMeasure).join(" · ") : data.quantity_amount && data.quantity_unit ? `${data.quantity_amount} ${data.quantity_unit}${data.quantity_count_noun ? ` (${data.quantity_count_noun})` : ""}` : data.quantity ? "à analyser lors de l’enregistrement" : "à renseigner"}.</p>
           {(mode === "edit" || draft?.product_id) && <fieldset className="v2-workspace-kind"><legend>Nature de la modification</legend>
             <label><input type="radio" checked={changeKind === "correction"} onChange={() => persist(data, "correction")} /> Correction de la fiche existante</label>
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
@@ -341,15 +334,12 @@ function Editor({ mode, id, user, onLogout }: Props) {
           </details>
           <button type="button" disabled={busy} onClick={() => {
             setData(completeProductData(draft.data)); setChangeKind(draft.change_kind); setBaseRevision(draft.revision);
-            setDirty(false); setError(""); localStorage.removeItem(localKey);
+            setDirty(false); setError(""); forgetLocal(localKey);
           }}>Charger la version serveur</button>
           <button type="button" disabled={busy} onClick={() => {
             setBaseRevision(draft.revision); setError("");
             setNotice("Votre saisie locale est conservée. Cliquez sur Enregistrer pour remplacer la version serveur.");
-            try {
-              localStorage.setItem(localKey, JSON.stringify({ data, change_kind: changeKind, revision: draft.revision }));
-              setLocalError("");
-            } catch { setLocalError("Stockage local indisponible : copiez vos informations avant de quitter la page."); }
+            setLocalError(keepLocal(localKey, { data, change_kind: changeKind, revision: draft.revision }) ? "" : LOCAL_UNAVAILABLE);
           }}>Préparer le remplacement avec ma saisie</button>
         </div>}
         <div className="v2-workspace-actions">
@@ -368,24 +358,20 @@ function Editor({ mode, id, user, onLogout }: Props) {
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
         <p>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</p>
         {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
-          <ul>{draft.linked_prices.map(item => <li key={item.id}>{Number(item.price).toFixed(2)} € · {item.retailer} · {item.store_name}
+          <ul>{draft.linked_prices.map(item => <li key={item.id}>{euros(item.price)} · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}
             {item.capture_ean && ` · EAN ${item.capture_ean}`}
             {item.captured_store_name && ` · nom de la page : ${item.captured_store_name}`}
             {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul>
           <p>La fiche doit être publiée avant que ces prix puissent être validés séparément.</p></div>}
-        {data.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + data.off_source.code}
+        {data.off_source && <p>Source consultée : <a href={OFF_PRODUCT_PAGE + data.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {data.off_source.code} ↗</a><br />
           Champs repris : {data.off_source.fields.join(", ")}.</p>}
       </aside>
     </div>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
-/**
- * The product as a shopper needs it: its name, its quantity, its lowest known price, the comparable
- * products and the baskets. The rest is the contribution mode's.
- */
 /**
  * A product known only by its barcode, shown with what Open Food Facts says about it (read by this
  * browser when the page opens). The facts are kept with the basket line on this device only.
@@ -420,9 +406,13 @@ function ShoppingPriceHistory({ productId, user, current }: { productId: number;
   </details>;
 }
 
+/**
+ * The product as a shopper needs it: its name, its quantity, its lowest known price, the comparable
+ * products and the baskets. The rest is the contribution mode's.
+ */
 function ShoppingDetail({ product, id, user, onLogout, read }: { product: Product; id?: number; user: V2User | null; onLogout: () => Promise<void>; read: OffRead }) {
   const d = completeProductData(product.data);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <section className="v2-workspace-card v2-product-simple" aria-labelledby="v2-product-simple-name">
       <span className="v2-section-kicker">PRODUIT</span>
       <h1 id="v2-product-simple-name">{productTitle(product)}<span>.</span></h1>
@@ -442,7 +432,7 @@ function ShoppingDetail({ product, id, user, onLogout, read }: { product: Produc
       <h2 id="v2-product-off-heading">Chez Open Food Facts</h2>
       <OffDetails product={read.product} />
     </section>}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 function Detail({ mode, id, user, onLogout }: Props) {
@@ -452,13 +442,14 @@ function Detail({ mode, id, user, onLogout }: Props) {
   const read = useOffProduct(loaded?.off_reference ? loaded.data.ean : null);
   const product = loaded ? withOffFacts(loaded, read) : null;
   const { data: events } = useCollection<ProductEvent[]>("/" + id + "/history", contributing && mode === "history");
-  useLayoutEffect(() => { if (product) window.scrollTo(0, 0); }, [id, product]);
-  if (error) return <Frame user={user} onLogout={onLogout}><p role="alert">{error}</p></Frame>;
-  if (!product) return <Frame user={user} onLogout={onLogout}><p>Chargement…</p></Frame>;
+  // Keyed on the loaded product: `product` is a new object on every render once Open Food Facts answered.
+  useLayoutEffect(() => { if (loaded) window.scrollTo(0, 0); }, [id, loaded]);
+  if (error) return <V2PageFrame user={user} onLogout={onLogout}><p role="alert">{error}</p></V2PageFrame>;
+  if (!product) return <V2PageFrame user={user} onLogout={onLogout}><p>Chargement…</p></V2PageFrame>;
   if (product.merged_to_id) return <Navigate to={"/v2/produits/" + product.merged_to_id} replace />;
   if (!contributing) return <ShoppingDetail product={product} id={id} user={user} onLogout={onLogout} read={read} />;
   const d = completeProductData(product.data);
-  return <Frame user={user} onLogout={onLogout}>
+  return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">{product.off_reference ? "PRODUIT · CODE-BARRES SEUL" : "PRODUIT PUBLIÉ · V2"}</span><div className="v2-share-title-row"><h1>{productTitle(product)}<span>.</span></h1>
       <V2ShareButton title={productTitle(product)} url={window.location.origin + "/v2/produits/" + (product.successor_id ?? id)} /></div>
       <p>{d.commercial_name || d.quantity}</p>
@@ -489,22 +480,22 @@ function Detail({ mode, id, user, onLogout }: Props) {
         {d.group && <p><Link to={"/v2/categories/" + encodeURIComponent(d.group)}>Voir les produits du groupe « {d.group} » →</Link></p>}
         {d.tags.length > 0 && <p><strong>Étiquettes du groupe :</strong> {d.tags.join(" · ")}</p>}
         {d.nutrition_checked_at && <p><strong>Dernier contrôle nutritionnel :</strong> {new Date(d.nutrition_checked_at).toLocaleString("fr-FR")}</p>}
-        {list(d.measures).length > 0 ? <p><strong>Quantité analysée :</strong> {list(d.measures).map(formatMeasure).join(" · ")}</p>
+        {d.measures.length > 0 ? <p><strong>Quantité analysée :</strong> {d.measures.map(formatMeasure).join(" · ")}</p>
           : d.quantity_amount && d.quantity_unit && <p><strong>Quantité analysée :</strong> {d.quantity_amount} {d.quantity_unit}{d.quantity_count_noun && ` (${d.quantity_count_noun})`}</p>}
         {d.retailer_links.length > 0 && <section><h3>Fiches par enseigne</h3><ul>{d.retailer_links.map(link => <li key={link.retailer}>{safeProductUrl(link.url) ? <a href={link.url} target="_blank" rel="noopener noreferrer">{link.retailer} ↗</a> : link.retailer} · {link.source === "capture" ? "source : capture" : "source : saisie manuelle"}</li>)}</ul></section>}
-        {d.off_source && <p>Source consultée : <a href={"https://world.openfoodfacts.org/product/" + d.off_source.code}
+        {d.off_source && <p>Source consultée : <a href={OFF_PRODUCT_PAGE + d.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {d.off_source.code} ↗</a></p>}
         {product.predecessor_id && <p><Link to={"/v2/produits/" + product.predecessor_id}>Voir la version précédente →</Link></p>}
         {product.successor_id && <p><Link to={"/v2/produits/" + product.successor_id}>Voir la version actuelle →</Link></p>}
       </div>}
     {mode !== "history" && id && <V2OffPanel key={d.ean} ean={d.ean} initial={read.phase === "done" ? read.product : undefined} />}
     {id && !product.merged_to_id && <V2ReportControl kind="product" contentId={id} user={user} />}
-  </Frame>;
+  </V2PageFrame>;
 }
 
 export default function V2ProductWorkspace(props: Props) {
   const location = useLocation();
-  if (["catalogue", "mine", "review"].includes(props.mode)) return <ListPage key={props.mode + ":" + (props.user?.id ?? "anon")} {...props} />;
+  if (["mine", "review"].includes(props.mode)) return <ListPage key={props.mode + ":" + (props.user?.id ?? "anon")} {...props} />;
   if (["new", "edit", "draft"].includes(props.mode)) return <Editor key={props.mode + ":" + props.id + ":" + (props.user?.id ?? "anon") + (props.mode === "new" ? ":" + location.search : "")} {...props} />;
   return <Detail {...props} />;
 }

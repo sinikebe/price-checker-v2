@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import V2ConnectorSettings from "./V2ConnectorSettings";
+import { forgetEnabledConnectors } from "./v2-connector-refresh";
+import { errorText, requestJson } from "./v2-http";
 
 type Change = { version: string; notes: string[] };
 type Connector = { id: string; name: string; version: string; changelog: Change[] };
@@ -13,6 +15,9 @@ type Store = {
   catalog: Connector[]; installations: Installation[];
 };
 type Result = { stores: Store[] };
+type Action = "install" | "update" | "rollback" | "enable" | "disable";
+/** The notice after each connector action: "Connecteur installé.", "Connecteur activé."… */
+const DONE: Record<Action, string> = { install: "installé", update: "mis à jour", rollback: "restauré", enable: "activé", disable: "désactivé" };
 const base = "/api/v2/connector-stores";
 const newer = (candidate: string, installed: string) => {
   const next = candidate.split(".").map(Number);
@@ -23,15 +28,25 @@ const newer = (candidate: string, installed: string) => {
   return false;
 };
 
-async function request(url: string, method = "GET", body?: unknown): Promise<Result> {
-  const response = await fetch(url, { method, credentials: "same-origin", cache: "no-store",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined });
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(detail?.detail || "Opération impossible.");
-  }
-  return response.json() as Promise<Result>;
+function request(url: string, method = "GET", body?: object): Promise<Result> {
+  return requestJson<Result>(url, { method, body, cache: "no-store", fallback: "Opération impossible." });
+}
+
+/** The controls of an installed connector; an installation missing from the catalogue cannot be updated. */
+function InstalledControls({ connector, installed, canUpdate, busy, onChange, onUninstall }: {
+  connector: Connector; installed: Installation; canUpdate: boolean; busy: boolean;
+  onChange: (action: Action) => void; onUninstall: () => void;
+}) {
+  const confirm = useConfirm();
+  return <div className="v2-settings-actions">
+    <button className="v2-button" type="button" disabled={busy} onClick={() => onChange(installed.enabled ? "disable" : "enable")}>{installed.enabled ? "Désactiver" : "Activer"}</button>
+    {canUpdate && <button className="v2-button" type="button" disabled={busy} onClick={() => onChange("update")}>Mettre à jour vers v{connector.version}</button>}
+    {installed.previous_commit && <button className="v2-button" type="button" disabled={busy} onClick={() => onChange("rollback")}>Restaurer v{installed.previous_version}</button>}
+    <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
+      if (await confirm({ title: "Désinstaller le connecteur", message: `Désinstaller ${connector.name} ? Les anciens prix seront conservés.`, confirmLabel: "Désinstaller", danger: true }))
+        onUninstall();
+    }}>Désinstaller</button>
+  </div>;
 }
 
 export default function V2ConnectorStores() {
@@ -48,41 +63,41 @@ export default function V2ConnectorStores() {
   useEffect(() => {
     let active = true;
     void request(base).then(value => { if (active) setStores(value.stores); })
-      .catch(reason => { if (active) setError(String(reason)); });
+      .catch(reason => { if (active) setError(errorText(reason, "Opération impossible.")); });
     return () => { active = false; };
   }, []);
-  async function action(url: string, method = "POST", body?: unknown, success = "Modifications enregistrées.") {
+  /** `onDone` runs only once the server accepted the change: a refused one keeps what was typed. */
+  async function action(url: string, method = "POST", body?: object, success = "Modifications enregistrées.", onDone?: () => void) {
     if (busy) return;
     setBusy(true); setError(""); setNotice("");
     try {
       const value = await request(url, method, body);
+      // The price pages and the basket share a cached connector list: an install, a switch or an
+      // uninstall must show on the next page opened, not 30 seconds later.
+      forgetEnabledConnectors();
       setStores(value.stores); setNotice(success);
-    } catch (reason) { setError(String(reason)); }
+      onDone?.();
+    } catch (reason) { setError(errorText(reason, "Opération impossible.")); }
     finally { setBusy(false); }
   }
-  async function add(event: FormEvent) {
+  function add(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const value = await request(base, "POST", { name, repository, private: isPrivate,
-        private_key: isPrivate && privateKey ? privateKey : null });
-      setStores(value.stores); setName(""); setRepository(""); setPrivateKey("");
-      setNotice("Store ajouté. Récupérez son catalogue pour voir les connecteurs.");
-    } catch (reason) { setError(String(reason)); }
-    finally { setBusy(false); }
+    void action(base, "POST", { name, repository, private: isPrivate, private_key: isPrivate && privateKey ? privateKey : null },
+      "Store ajouté. Récupérez son catalogue pour voir les connecteurs.", () => { setName(""); setRepository(""); setPrivateKey(""); });
   }
-  function change(store: Store, connector: Connector, actionName: "install" | "update" | "rollback" | "enable" | "disable") {
+  function change(store: Store, connector: Connector, actionName: Action) {
     const installed = store.installations.find(item => item.connector_id === connector.id);
     void action(`${base}/${store.id}/connectors/${connector.id}`, "PUT", {
       action: actionName, expected_commit: store.fetched_commit,
       expected_installed_commit: installed?.commit_sha ?? null,
-    }, `Connecteur ${actionName === "install" ? "installé" : actionName === "update" ? "mis à jour" : actionName === "rollback" ? "restauré" : actionName === "enable" ? "activé" : "désactivé"}.`);
+    }, `Connecteur ${DONE[actionName]}.`);
   }
+  const uninstall = (store: Store, connectorId: string) =>
+    void action(`${base}/${store.id}/connectors/${connectorId}`, "DELETE", undefined, "Connecteur désinstallé.");
   return <section className="v2-settings-card v2-connector-stores" aria-labelledby="v2-connector-stores-heading">
     <h2 id="v2-connector-stores-heading">Stores de connecteurs</h2>
     <p>Ajoutez un dépôt GitHub, récupérez son catalogue, puis choisissez les connecteurs à installer. Le code installé est épinglé à une révision Git ; une nouvelle version ne s’active pas seule. N’ajoutez que des dépôts de confiance : leur code s’exécute sur le serveur.</p>
-    <form onSubmit={event => void add(event)}>
+    <form onSubmit={add}>
       <label>Nom du store<input required maxLength={100} value={name} onChange={event => setName(event.target.value)} /></label>
       <label>URL du dépôt GitHub<input required type="url" placeholder="https://github.com/organisation/connecteurs" value={repository} onChange={event => setRepository(event.target.value)} /></label>
       <label className="v2-schedule-toggle"><input type="checkbox" checked={isPrivate} onChange={event => setPrivate(event.target.checked)} />Dépôt privé</label>
@@ -102,8 +117,8 @@ export default function V2ConnectorStores() {
           event.preventDefault();
           const value = replacementKeys[store.id];
           if (!value) return;
-          void action(`${base}/${store.id}/key`, "PUT", { private_key: value }, "Clé remplacée.");
-          setReplacementKeys(keys => ({ ...keys, [store.id]: "" }));
+          void action(`${base}/${store.id}/key`, "PUT", { private_key: value }, "Clé remplacée.",
+            () => setReplacementKeys(keys => ({ ...keys, [store.id]: "" })));
         }}><textarea aria-label={`Nouvelle clé privée de ${store.name}`} value={replacementKeys[store.id] ?? ""} onChange={event => setReplacementKeys(keys => ({ ...keys, [store.id]: event.target.value }))} rows={3} autoComplete="off" required />
           <button className="v2-button" type="submit" disabled={busy}>Remplacer</button></form></details>
       </div>}
@@ -123,36 +138,24 @@ export default function V2ConnectorStores() {
           <p>{installed ? `Installé : v${installed.version} · ${installed.enabled ? "actif" : "désactivé"}` : "Non installé"} · {installed && <Link to={`/v2/versions#connector-${connector.id}`}>Journal installé</Link>}</p>
           <details><summary>Journal des versions du store</summary>{connector.changelog.map(change => <div key={change.version}><strong>v{change.version}</strong><ul>{change.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></div>)}</details>
           {!installed && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, "install")}>Installer</button>}
-          {installed && <div className="v2-settings-actions">
-            <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, installed.enabled ? "disable" : "enable")}>{installed.enabled ? "Désactiver" : "Activer"}</button>
-            {update && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, "update")}>Mettre à jour vers v{connector.version}</button>}
-            {installed.previous_commit && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store, connector, "rollback")}>Restaurer v{installed.previous_version}</button>}
-            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
-              if (await confirm({ title: "Désinstaller le connecteur", message: `Désinstaller ${connector.name} ? Les anciens prix seront conservés.`, confirmLabel: "Désinstaller", danger: true }))
-                void action(`${base}/${store.id}/connectors/${connector.id}`, "DELETE", undefined, "Connecteur désinstallé.");
-            }}>Désinstaller</button>
-          </div>}
+          {installed && <InstalledControls connector={connector} installed={installed} canUpdate={Boolean(update)} busy={busy}
+            onChange={actionName => change(store, connector, actionName)} onUninstall={() => uninstall(store, connector.id)} />}
           {installed && <V2ConnectorSettings key={`${installed.commit_sha}-${installed.enabled}`}
-            storeId={store.id} connectorId={connector.id} version={installed.version} installationEnabled={installed.enabled} />}
+            storeId={store.id} connectorId={connector.id} installationEnabled={installed.enabled} />}
         </div>;
       })}
-      {store.installations.filter(item => !store.catalog.some(connector => connector.id === item.connector_id)).map(item =>
-        <div className="v2-connector-item" key={item.connector_id}>
+      {store.installations.filter(item => !store.catalog.some(connector => connector.id === item.connector_id)).map(item => {
+        // Absent from the catalogue: the installation itself names the connector.
+        const connector: Connector = { id: item.connector_id, name: item.connector_id, version: item.version, changelog: [] };
+        return <div className="v2-connector-item" key={item.connector_id}>
           <h4>{item.connector_id} · v{item.version}</h4>
           <p>Installé mais absent du dernier catalogue · {item.enabled ? "actif" : "désactivé"} · <Link to={`/v2/versions#connector-${item.connector_id}`}>Journal installé</Link></p>
-          <div className="v2-settings-actions">
-            <button className="v2-button" type="button" disabled={busy} onClick={() => change(store,
-              { id: item.connector_id, name: item.connector_id, version: item.version, changelog: [] }, item.enabled ? "disable" : "enable")}>{item.enabled ? "Désactiver" : "Activer"}</button>
-            {item.previous_commit && <button className="v2-button" type="button" disabled={busy} onClick={() => change(store,
-              { id: item.connector_id, name: item.connector_id, version: item.version, changelog: [] }, "rollback")}>Restaurer v{item.previous_version}</button>}
-            <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={async () => {
-              if (await confirm({ title: "Désinstaller le connecteur", message: `Désinstaller ${item.connector_id} ? Les anciens prix seront conservés.`, confirmLabel: "Désinstaller", danger: true }))
-                void action(`${base}/${store.id}/connectors/${item.connector_id}`, "DELETE", undefined, "Connecteur désinstallé.");
-            }}>Désinstaller</button>
-          </div>
+          <InstalledControls connector={connector} installed={item} canUpdate={false} busy={busy}
+            onChange={actionName => change(store, connector, actionName)} onUninstall={() => uninstall(store, connector.id)} />
           <V2ConnectorSettings key={`${item.commit_sha}-${item.enabled}`}
-            storeId={store.id} connectorId={item.connector_id} version={item.version} installationEnabled={item.enabled} />
-        </div>)}
+            storeId={store.id} connectorId={item.connector_id} installationEnabled={item.enabled} />
+        </div>;
+      })}
     </div>)}
     {error && <p role="alert" className="v2-schedule-error">{error}</p>}
     {notice && <p role="status" className="v2-schedule-success">{notice}</p>}

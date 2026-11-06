@@ -2,21 +2,15 @@
 
 from __future__ import annotations
 
-import json
-import os
-import secrets
-from pathlib import Path
-
 import httpx
 import pytest
 
 from app.api.v2 import moderation, private_recipes, recipe_submissions, recipes
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 PAYLOAD = {
     "title": "Soupe de mamie", "description": "Notre version", "base_servings": "4",
@@ -28,43 +22,32 @@ PAYLOAD = {
 
 @pytest.fixture
 async def setup(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    root = await connect_v2(base)
-    database = "v2_private_recipes_" + secrets.token_hex(5)
-    await root.execute('CREATE DATABASE "' + database + '"')
-    await root.close()
-    config = {**base, "database": database}
-    await migrate_v2(config)
-    connection = await connect_v2(config)
-    users = {}
-    for name, role in (("author", "confirmed"), ("other", "confirmed"), ("admin", "admin")):
-        user_id = await connection.fetchval(
-            "INSERT INTO v2_users(username,username_key,password_hash,role) "
-            "VALUES($1,$1,'test',$2) RETURNING id", name, role,
-        )
-        users[name] = {"id": user_id, "role": role, "username": name}
+    async with disposable_database("v2_private_recipes_") as config:
+        connection = await connect_v2(config)
+        users = {}
+        for name, role in (("author", "confirmed"), ("other", "confirmed"), ("admin", "admin")):
+            user_id = await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES($1,$1,'test',$2) RETURNING id", name, role,
+            )
+            users[name] = {"id": user_id, "role": role, "username": name}
 
-    async def fake_connect():
-        return await connect_v2(config)
+        async def fake_connect():
+            return await connect_v2(config)
 
-    async def fake_user(_connection, request):
-        return users.get(request.headers.get("x-test-user"))
+        async def fake_user(_connection, request):
+            return users.get(request.headers.get("x-test-user"))
 
-    for module in (recipes, recipe_submissions, private_recipes, moderation):
-        monkeypatch.setattr(module, "_connect", fake_connect)
-    for module in (recipes, recipe_submissions, moderation):
-        monkeypatch.setattr(module, "_current_user", fake_user)
-    client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
-    try:
-        yield client, connection, users
-    finally:
-        await client.aclose()
-        await connection.close()
-        root = await connect_v2(base)
+        for module in (recipes, recipe_submissions, private_recipes, moderation):
+            monkeypatch.setattr(module, "_connect", fake_connect)
+        for module in (recipes, recipe_submissions, moderation):
+            monkeypatch.setattr(module, "_current_user", fake_user)
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
         try:
-            await root.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
+            yield client, connection, users
         finally:
-            await root.close()
+            await client.aclose()
+            await connection.close()
 
 
 def who(name: str) -> dict:

@@ -1,36 +1,26 @@
 """Portable public catalogue/prices, atomic conflicts and idempotent re-import."""
 
 import json
-import os
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
 from app.api.v2 import transfers
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from fastapi import HTTPException
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_export_import_between_two_disposable_instances(monkeypatch):
-    admin_config = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    suffix = uuid4().hex[:10]
-    source_name, target_name = f"transfer_src_{suffix}", f"transfer_dst_{suffix}"
-    admin = await connect_v2(admin_config)
-    await admin.execute(f'CREATE DATABASE "{source_name}"')
-    await admin.execute(f'CREATE DATABASE "{target_name}"')
-    source_config = {**admin_config, "database": source_name}
-    target_config = {**admin_config, "database": target_name}
-    try:
-        await migrate_v2(source_config)
-        await migrate_v2(target_config)
+    async with (
+        disposable_database("transfer_src_") as source_config,
+        disposable_database("transfer_dst_") as target_config,
+    ):
         source = await connect_v2(source_config)
         try:
             old = await source.fetchval(
@@ -234,21 +224,11 @@ async def test_export_import_between_two_disposable_instances(monkeypatch):
                                        headers={"x-test-admin": "yes"})
             assert normal.status_code == 200
             assert normal.json()["prices_already_present"] == 2
-    finally:
-        await admin.execute(f'DROP DATABASE "{source_name}" WITH (FORCE)')
-        await admin.execute(f'DROP DATABASE "{target_name}" WITH (FORCE)')
-        await admin.close()
 
 
 @pytest.mark.asyncio
 async def test_identical_product_adoption_preserves_visibility_and_idempotence(monkeypatch):
-    admin_config = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = f"transfer_adopt_{uuid4().hex[:10]}"
-    admin = await connect_v2(admin_config)
-    await admin.execute(f'CREATE DATABASE "{database}"')
-    config = {**admin_config, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("transfer_adopt_") as config:
         target = await connect_v2(config)
         product_data = {
             "name": "Sample tea", "brand": "Sample", "package": "Box",
@@ -339,9 +319,6 @@ async def test_identical_product_adoption_preserves_visibility_and_idempotence(m
                 assert await target.fetchval("SELECT count(*) FROM v2_price_observations") == 1
             finally:
                 await target.close()
-    finally:
-        await admin.execute(f'DROP DATABASE "{database}" WITH (FORCE)')
-        await admin.close()
 
 
 

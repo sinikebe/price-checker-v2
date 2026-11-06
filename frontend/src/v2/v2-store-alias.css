@@ -5,4 +5,3 @@
 .v2-store-alias-candidates { list-style: none; padding: 0; }
 .v2-store-alias-candidates li { margin: 5px 0; }
 .v2-store-alias-candidates [aria-pressed="true"] { border-color: #2f8061; box-shadow: 0 0 0 2px #2f806155; }
-html[data-v2-theme="dark"] .v2-store-alias-fields :is(input, select) { background: #172822; border-color: #517164; color: #edf5eb; }

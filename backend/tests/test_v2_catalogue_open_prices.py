@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
+import asyncpg
 import httpx
 import pytest
 
@@ -15,6 +16,7 @@ from app.api.v2 import catalogue
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as sync
+from conftest import disposable_database, requires_v2_db
 
 
 def _config():
@@ -52,7 +54,18 @@ def test_open_prices_validation_and_backoff():
     assert sync._retry_seconds("864000") == 24 * 3600
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+def test_open_prices_rejects_locations_that_do_not_fit_the_store_columns():
+    valid = _price("3017620422003")
+    location = valid["location"]
+    for fitting in ({"osm_address_city": "V" * 200}, {"osm_address_postcode": "7" * 20},
+                    {"osm_address_city": " Paris "}, {"osm_id": 2**63 - 1}, {"osm_id": -2**63}):
+        assert sync._valid_price({**valid, "location": {**location, **fitting}}, "3017620422003") is not None
+    for too_large in ({"osm_address_city": "V" * 201}, {"osm_address_postcode": "7" * 21},
+                      {"osm_id": 2**63}, {"osm_id": -2**63 - 1}):
+        assert sync._valid_price({**valid, "location": {**location, **too_large}}, "3017620422003") is None
+
+
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_catalogue_groups_and_store_filter(monkeypatch):
     config = _config()
@@ -113,7 +126,7 @@ async def test_catalogue_groups_and_store_filter(monkeypatch):
         await connection.close()
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_cycle_deduplicates_and_respects_shared_slot(monkeypatch):
     config = _config()
@@ -169,7 +182,7 @@ async def test_open_prices_cycle_deduplicates_and_respects_shared_slot(monkeypat
         await connection.close()
 
 
-@pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required")
+@requires_v2_db
 @pytest.mark.asyncio
 async def test_open_prices_429_stops_cycle_and_postpones(monkeypatch):
     config = _config()
@@ -204,3 +217,94 @@ async def test_open_prices_429_stops_cycle_and_postpones(monkeypatch):
         if product_id:
             await connection.execute("DELETE FROM v2_products WHERE id=$1", product_id)
         await connection.close()
+
+
+@pytest.fixture
+async def private_database(monkeypatch):
+    """A fresh database, so the sync sees only the products a test creates."""
+    async with disposable_database("v2_open_prices_") as config:
+        connection = await connect_v2(config)
+
+        async def fake_connect():
+            return await connect_v2(config)
+
+        monkeypatch.setattr(sync, "_connect", fake_connect)
+        monkeypatch.setattr(sync, "_read_config", lambda: config)
+        monkeypatch.setattr(sync, "get_settings", lambda: SimpleNamespace(APP_ENV="dev"))
+        try:
+            yield connection
+        finally:
+            await connection.close()
+
+
+async def _barcode_product(connection, code: str) -> int:
+    return await connection.fetchval(
+        "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+        json.dumps({"name": "Test " + code, "ean": code}),
+    )
+
+
+@requires_v2_db
+@pytest.mark.asyncio
+async def test_open_prices_database_error_skips_only_that_product(private_database, monkeypatch):
+    connection = private_database
+    codes = ["3017620422003", "5449000000996"]
+    first = await _barcode_product(connection, codes[0])
+    second = await _barcode_product(connection, codes[1])
+    monkeypatch.setattr(sync, "MIN_INTERVAL_SECONDS", 0)
+    real_save = sync._save_items
+
+    async def save_items(connection_, product_id, barcode, items):
+        if product_id == first:
+            raise asyncpg.exceptions.StringDataRightTruncationError("value too long")
+        return await real_save(connection_, product_id, barcode, items)
+
+    monkeypatch.setattr(sync, "_save_items", save_items)
+    calls = []
+
+    def respond(request):
+        calls.append(request.url.params["product_code"])
+        return httpx.Response(200, json={"items": [_price(request.url.params["product_code"])]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        assert await sync.run_sync_cycle(client) == {"status": "ok", "requested": 2, "imported": 1}
+    assert calls == codes
+    checks = {row["product_id"]: row["imported_count"] for row in await connection.fetch(
+        "SELECT product_id,imported_count FROM v2_open_prices_sync_state")}
+    assert checks == {first: 0, second: 1}, "the failed product waits 24 hours like a checked one"
+    assert await connection.fetchval(
+        "SELECT count(*) FROM v2_price_observations WHERE product_id=$1", second) == 1
+    assert await connection.fetchval(
+        "SELECT next_run_at <= now()+interval '1 hour' FROM v2_open_prices_sync_control"
+    ), "one product's error does not pause the sync"
+
+
+@requires_v2_db
+@pytest.mark.asyncio
+async def test_open_prices_check_now_reports_a_database_error(private_database, monkeypatch):
+    connection = private_database
+    code = "3017620422003"
+    product_id = await _barcode_product(connection, code)
+
+    async def save_items(*_args):
+        raise asyncpg.PostgresError("boom")
+
+    monkeypatch.setattr(sync, "_save_items", save_items)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json={"items": [_price(code)]}))) as client:
+        assert await sync.check_now(product_id, code, client) == {"status": "error", "imported": 0}
+    assert await connection.fetchval("SELECT count(*) FROM v2_open_prices_sync_state") == 0
+
+
+@requires_v2_db
+@pytest.mark.asyncio
+async def test_open_prices_store_address_is_stored_stripped(private_database):
+    connection = private_database
+    code = "3017620422003"
+    product_id = await _barcode_product(connection, code)
+    item = _price(code)
+    item["location"] = {**item["location"], "osm_address_city": " Paris ", "osm_address_postcode": " 75001 "}
+    assert await sync._save_items(connection, product_id, code, [item]) == 1
+    store = await connection.fetchrow(
+        "SELECT city,postal_code FROM v2_stores WHERE import_key='open_prices:location:44001'")
+    assert dict(store) == {"city": "Paris", "postal_code": "75001"}

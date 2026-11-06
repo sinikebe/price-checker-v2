@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CostChangedError, NoCreditsError, creditLabel, paidFetch, readCredits, shortText, type BasketCredits } from "./v2-basket-credits-api";
 import { readPaid, viewerKey, writePaid, type PaidKind } from "./v2-price-cache";
+import { errorText } from "./v2-http";
 
 export type PaidPrices<T> = {
   data: T | null; fetchedAt: string | null; credits: BasketCredits | null; cost: number;
   busy: boolean; error: string; newer: boolean; pay: (maxCost?: number) => Promise<void>; markNewer: () => void;
 };
+
+// Prices just paid for, announced to the other views of the same page in this tab (the lowest price
+// and the folded history of a product), so that one payment shows in both and none is paid twice.
+const PAID_EVENT = "v2-paid-prices";
+type PaidDetail<T> = { key: string; data: T; fetchedAt: string; credits: BasketCredits };
 
 /**
  * Prices that cost credits: shown from this browser when already paid for, fetched only on request
@@ -36,10 +42,11 @@ export function usePaidPrices<T>(userId: number | null, kind: PaidKind, id: stri
       setState({ key, data: answer, fetchedAt });
       setCredits(answer.credits);
       setNewer(false);
+      window.dispatchEvent(new CustomEvent<PaidDetail<T>>(PAID_EVENT, { detail: { key, data: answer, fetchedAt, credits: answer.credits } }));
     } catch (reason) {
       if (reason instanceof NoCreditsError) { setCredits(reason.credits); setError(shortText(reason.credits, reason.cost)); }
       else if (reason instanceof CostChangedError) { setOverride({ key, cost: reason.cost }); setError(`Le nombre de prix a changé : cette page coûte maintenant ${creditLabel(reason.cost)}. Rien n’a été dépensé.`); }
-      else setError(reason instanceof Error && reason.message ? reason.message : "Impossible de récupérer les prix. Aucun crédit n’a été dépensé.");
+      else setError(errorText(reason, "Impossible de récupérer les prix. Aucun crédit n’a été dépensé."));
     } finally { setBusy(false); }
   }, [id, viewer, kind, key, cost]);
 
@@ -57,6 +64,18 @@ export function usePaidPrices<T>(userId: number | null, kind: PaidKind, id: stri
     return () => controller.abort();
     // `pay` changes with the cost; a new page (key) is what reloads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  useEffect(() => {
+    if (!key) return;
+    const onPaid = (event: Event) => {
+      const detail = (event as CustomEvent<PaidDetail<T>>).detail;
+      if (!detail || detail.key !== key) return;
+      setState({ key, data: detail.data, fetchedAt: detail.fetchedAt });
+      setCredits(detail.credits); setNewer(false); setError("");
+    };
+    window.addEventListener(PAID_EVENT, onPaid);
+    return () => window.removeEventListener(PAID_EVENT, onPaid);
   }, [key]);
 
   const current = state.key === key;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { OFF_PRODUCT_PAGE, readOffProduct, searchOff, validBarcode, type OffMatch } from "./v2-off-browser";
+import { OFF_PRODUCT_PAGE, OFF_UNAVAILABLE, readOffProduct, searchOff, validBarcode, type OffMatch } from "./v2-off-browser";
+import { errorText } from "./v2-http";
 import type { OffField, ProductData } from "./v2-products-api";
 
 /** The identifying facts a contributor may copy from Open Food Facts; the rest stays there. */
@@ -48,7 +49,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
     if (terms.length < 2 || busy) return;
     setBusy("search"); setError(""); setSelected(null); setResults(null);
     try { setResults(await searchOff(terms, undefined, { france: !world })); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Recherche indisponible."); }
+    catch (reason) { setError(errorText(reason, "Recherche indisponible.")); }
     finally { setBusy(null); }
   }
   async function lookupBarcode() {
@@ -60,7 +61,7 @@ export default function V2OffLookup({ data, onApply, disabled }: {
       if (currentEan.current.trim() !== barcode) return;
       if (product) choose(product);
       else setError("Produit introuvable sur Open Food Facts. Vous pouvez continuer la saisie manuellement.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Open Food Facts ne répond pas pour le moment."); }
+    } catch (reason) { setError(errorText(reason, OFF_UNAVAILABLE)); }
     finally { setBusy(null); }
   }
   function apply() {

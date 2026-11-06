@@ -1,18 +1,11 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { PwaInstallContext, type InstallOutcome } from "./PwaInstallState";
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: string }>;
 };
-export type InstallOutcome = "accepted" | "dismissed" | "ios" | "manual" | "installed" | "error";
-type InstallState = {
-  canPrompt: boolean;
-  installed: boolean;
-  isIos: boolean;
-  requestInstall: () => Promise<InstallOutcome>;
-};
 
-const Context = createContext<InstallState | null>(null);
 const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
@@ -57,14 +50,7 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <Context.Provider value={{
+  return <PwaInstallContext.Provider value={{
     canPrompt: installPrompt !== null, installed, isIos, requestInstall,
-  }}>{children}</Context.Provider>;
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function usePwaInstall() {
-  const value = useContext(Context);
-  if (!value) throw new Error("usePwaInstall needs PwaInstallProvider");
-  return value;
+  }}>{children}</PwaInstallContext.Provider>;
 }

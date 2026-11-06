@@ -28,10 +28,10 @@ export type BasketSelection = {
   kind: "selection"; name: string; include: SelectionMember[]; exclude?: SelectionMember[]; words?: string[];
 } & BasketOptions;
 export type BasketItem = BasketProduct | BasketGroup | BasketScope | BasketText | BasketSelection;
-export const SELECTION_MAX_MEMBERS = 20;
-export const SELECTION_MAX_WORDS = 5;
+const SELECTION_MAX_MEMBERS = 20;
+const SELECTION_MAX_WORDS = 5;
 const memberText = (value: unknown, max: number) => value === undefined || typeof value === "string" && !!value.trim() && value.length <= max;
-export function validSelectionMember(value: unknown): value is SelectionMember {
+function validSelectionMember(value: unknown): value is SelectionMember {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const member = value as Record<string, unknown>;
   if (!memberText(member.group, 100) || !memberText(member.scope, 80) || !memberText(member.family, 80) || !memberText(member.department, 80)) return false;
@@ -76,7 +76,7 @@ export const basketItemKey = (item: BasketItem): string => "kind" in item
 export function activeBasketUser(): number | null {
   try { const value = Number(localStorage.getItem(ACTIVE_USER_KEY)); return value > 0 ? value : null; } catch { return null; }
 }
-export function basketKey(userId: number | null = activeBasketUser()) {
+function basketKey(userId: number | null = activeBasketUser()) {
   return userId ? `v2:basket:user:${userId}` : ANON_KEY;
 }
 export function readV2Basket(userId: number | null = activeBasketUser()): BasketItem[] {
@@ -99,6 +99,10 @@ export function readV2Basket(userId: number | null = activeBasketUser()): Basket
 export function writeV2Basket(items: BasketItem[], userId: number | null = activeBasketUser()) {
   localStorage.setItem(basketKey(userId), JSON.stringify(items));
   window.dispatchEvent(new Event(V2_BASKET_EVENT));
+}
+/** A deleted account no longer owns this browser's basket; callers catch an unavailable storage. */
+export function forgetActiveBasketUser(userId: number) {
+  if (localStorage.getItem(ACTIVE_USER_KEY) === String(userId)) localStorage.removeItem(ACTIVE_USER_KEY);
 }
 export function activateBasketUser(userId: number | null, preserveOffline = false) {
   if (preserveOffline) return;

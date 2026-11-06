@@ -31,8 +31,6 @@ export function productSizes(product: BasketProduct): Size[] {
   }
   return sizes;
 }
-/** The main size of one pack of a product, in grams, millilitres or pieces, when the catalogue knows it. */
-export const productSize = (product: BasketProduct): Size | null => productSizes(product)[0] ?? null;
 /** The size of one pack in a given unit, when the catalogue knows it. */
 export const productSizeIn = (product: BasketProduct, unit: BaseUnit): Size | null =>
   productSizes(product).find(size => size.unit === unit) ?? null;

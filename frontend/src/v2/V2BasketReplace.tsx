@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { suggestRequest, RateLimitedError } from "./v2-catalogue-api";
 import type { Product } from "./v2-products-api";
 import { basketItemKey, type BasketItem, type BasketText } from "./v2-basket-storage";
-import type { Category } from "./v2-basket-view";
+import { productName, type Category } from "./v2-basket-view";
 
 let categories: Promise<Category[]> | null = null;
 /** The catalogue's groups, read once per page: groups and ensembles are found among them. */
@@ -66,7 +66,7 @@ export default function V2BasketReplace({ item, taken, onPick, onClose }: {
     {scopeResults.length > 0 && <><h4>Ensembles</h4><ul>{scopeResults.map(scope =>
       choice({ kind: "scope", ...scope }, scope.name, `${scope.department} · ${scope.family}`))}</ul></>}
     {found && found.products.length > 0 && <><h4>Produits</h4><ul>{found.products.slice(0, 8).map(product =>
-      choice({ id: product.id, revision: product.revision, data: product.data }, [product.data.brand, product.data.name].filter(Boolean).join(" "), product.data.quantity || undefined))}</ul></>}
+      choice({ id: product.id, revision: product.revision, data: product.data }, productName(product), product.data.quantity || undefined))}</ul></>}
     {found && !found.complete && <p className="v2-basket-replace-note">{found.total} produits correspondent : précisez la recherche pour les voir.</p>}
     {search.length >= 2 && groups && found?.complete && !groupResults.length && !scopeResults.length && !found.products.length &&
       <p className="v2-basket-replace-note">Rien au catalogue pour « {search} » : gardez le texte libre, ou proposez le produit depuis le catalogue.</p>}

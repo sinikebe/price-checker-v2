@@ -5,46 +5,24 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 
 from app.api.v2 import auth
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
-
-
-def _config():
-    return json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_config():
-    base = _config()
-    database = "v2_boundary_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_boundary_") as config:
         yield config
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.mark.asyncio
@@ -112,12 +90,44 @@ async def test_expired_sessions_are_purged_before_a_new_session(isolated_config)
             "INSERT INTO v2_sessions(token_hash,user_id,expires_at) "
             "VALUES($1,$2,now()-interval '1 day')", "f" * 64, user_id
         )
-        await auth._issue_session(connection, Response(), user_id)
+        await auth._issue_session(connection, Response(), user_id, secure=True)
         assert await connection.fetchval(
             "SELECT count(*) FROM v2_sessions WHERE expires_at <= now()"
         ) == 0
     finally:
         await connection.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("env", "base_url", "secure"), [
+    ("dev", "https://test", True), ("dev", "http://test", False), ("prod", "https://test", True),
+])
+async def test_the_session_cookie_is_secure_whenever_the_request_is_https(
+    monkeypatch, isolated_config, env, base_url, secure,
+):
+    from types import SimpleNamespace
+
+    from app.api.v2 import setup
+
+    settings = SimpleNamespace(APP_ENV=env)
+    monkeypatch.setattr(auth, "get_settings", lambda: settings)
+    monkeypatch.setattr(setup, "get_settings", lambda: settings)  # plain HTTP is refused outside dev
+    monkeypatch.setattr(auth, "_read_config", lambda: isolated_config)
+    monkeypatch.setattr(auth, "_access_code", lambda: "ci-limit-key")
+    connection = await connect_v2(isolated_config)
+    try:
+        await connection.execute(
+            "INSERT INTO v2_users(username,username_key,password_hash,role) VALUES('cookie','cookie',$1,'visitor')",
+            await auth._hash_password("test-password-123"),
+        )
+    finally:
+        await connection.close()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=base_url) as client:
+        login = await client.post("/api/v2/auth/login", json={"username": "cookie", "password": "test-password-123"})
+        assert login.status_code == 200, login.text
+        cookie = login.headers["set-cookie"]
+        assert cookie.startswith(auth._COOKIE_NAME + "=") and "httponly" in cookie.lower()
+        assert ("; secure" in cookie.lower()) is secure, cookie
 
 
 @pytest.mark.asyncio

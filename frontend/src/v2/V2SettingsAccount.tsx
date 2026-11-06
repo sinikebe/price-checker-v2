@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { V2User } from "./v2-auth-api";
 import V2AccountDeletion from "./V2AccountDeletion";
+import { saveBlob } from "./v2-download";
+import { errorText } from "./v2-http";
 
 /** The signed-in person's own data: export and, for non-administrators, account deletion. */
 export default function V2SettingsAccount({ user, onDeleted }: { user: V2User; onDeleted: (cleared: boolean) => void }) {
@@ -14,13 +16,8 @@ export default function V2SettingsAccount({ user, onDeleted }: { user: V2User; o
         credentials: "same-origin", cache: "no-store",
       });
       if (!response.ok) throw new Error("L’export n’a pas pu être préparé.");
-      const objectUrl = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = "price-checker-v2-account.json";
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch (reason) { setExportError(String(reason)); }
+      saveBlob(await response.blob(), "price-checker-v2-account.json");
+    } catch (reason) { setExportError(errorText(reason, "L’export n’a pas pu être préparé.")); }
     finally { setExporting(false); }
   }
   return <>

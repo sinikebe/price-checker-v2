@@ -1,5 +1,6 @@
 import { cacheRecipeWrite } from "../pwa/cache-writes";
 import type { ProductData } from "./v2-products-api";
+import { ApiError, apiErrorText, errorDetail } from "./v2-http";
 
 export type RecipeUnit = "g" | "kg" | "ml" | "cl" | "l" | "piece";
 export type RecipeIngredient = {
@@ -39,7 +40,7 @@ export type RecipeReview = {
 export type RecipePage = { items: RecipeSummary[]; total: number; page: number; page_size: number };
 
 /** Paths under /api/v2/recipes that read or change the signed-in author's private recipes. */
-export const isPrivateRecipePath = (path: string): boolean => path === "/private" || path.startsWith("/private/") || path.startsWith("/private?");
+const isPrivateRecipePath = (path: string): boolean => path === "/private" || path.startsWith("/private/") || path.startsWith("/private?");
 
 export async function recipeRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
   const response = await fetch("/api/v2/recipes" + path, {
@@ -48,12 +49,11 @@ export async function recipeRequest<T>(path: string, method = "GET", body?: obje
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail : null;
-    const validation = Array.isArray(detail) && detail[0] && typeof detail[0] === "object" && "msg" in detail[0]
+    const detail = await errorDetail(response);
+    // Recipes also show the first built-in validation message, rather than a generic text.
+    const first = Array.isArray(detail) && detail[0] && typeof detail[0] === "object" && "msg" in detail[0]
       ? String(detail[0].msg) : null;
-    throw new Error(typeof detail === "string" ? detail : validation ?? "La requête a échoué.");
+    throw new ApiError(apiErrorText(detail, first ?? "La requête a échoué."), response.status);
   }
   const result = response.status === 204 ? undefined : await response.json();
   // Private recipes never enter the offline copy of public recipes, which every account on

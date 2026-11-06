@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 
@@ -26,6 +27,8 @@ _SHA = re.compile(r"^[a-f0-9]{40}$")
 _GITHUB_HOST_KEY = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
 _cache: dict[tuple[str, str], object] = {}
 _fetch_lock = asyncio.Lock()
+# Modules load in worker threads: two first calls must not run the same connector's import twice.
+_load_lock = threading.Lock()
 
 
 def repository_url(value: str) -> tuple[str, str]:
@@ -197,24 +200,27 @@ def load_installed(store_id: int, connector_id: str, commit: str):
     cache_key = (str(store_id) + "/" + connector_id, commit)
     if cache_key in _cache:
         return _cache[cache_key]
-    if not _ID.fullmatch(connector_id) or not _SHA.fullmatch(commit):
-        raise ValueError("Connecteur ou révision invalide.")
-    path = store_dir(store_id) / "revisions" / commit / "connectors" / connector_id / "entry.py"
-    if (not path.is_file() or path.is_symlink()
-            or not path.resolve().is_relative_to((store_dir(store_id) / "revisions" / commit).resolve())):
-        raise FileNotFoundError("Code du connecteur installé introuvable.")
-    name = f"price_checker_connector_{store_id}_{connector_id}_{commit}"
-    spec = importlib.util.spec_from_file_location(name, path, submodule_search_locations=[str(path.parent)])
-    if spec is None or spec.loader is None:
-        raise ImportError("Connecteur illisible.")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-        if not callable(getattr(module, "enqueue", None)) or not callable(getattr(module, "process_one", None)):
-            raise ValueError("Le connecteur doit fournir enqueue et process_one.")
-    except Exception:
-        sys.modules.pop(name, None)
-        raise
-    _cache[cache_key] = module
-    return module
+    with _load_lock:
+        if cache_key in _cache:  # loaded by another thread while this one waited
+            return _cache[cache_key]
+        if not _ID.fullmatch(connector_id) or not _SHA.fullmatch(commit):
+            raise ValueError("Connecteur ou révision invalide.")
+        path = store_dir(store_id) / "revisions" / commit / "connectors" / connector_id / "entry.py"
+        if (not path.is_file() or path.is_symlink()
+                or not path.resolve().is_relative_to((store_dir(store_id) / "revisions" / commit).resolve())):
+            raise FileNotFoundError("Code du connecteur installé introuvable.")
+        name = f"price_checker_connector_{store_id}_{connector_id}_{commit}"
+        spec = importlib.util.spec_from_file_location(name, path, submodule_search_locations=[str(path.parent)])
+        if spec is None or spec.loader is None:
+            raise ImportError("Connecteur illisible.")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+            if not callable(getattr(module, "enqueue", None)) or not callable(getattr(module, "process_one", None)):
+                raise ValueError("Le connecteur doit fournir enqueue et process_one.")
+        except Exception:
+            sys.modules.pop(name, None)
+            raise
+        _cache[cache_key] = module
+        return module

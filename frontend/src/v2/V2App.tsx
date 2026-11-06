@@ -7,6 +7,7 @@ import V2LegalPage from "./V2LegalPage";
 import V2SiteFooter from "./V2SiteFooter";
 import { V2BasketProvider } from "./V2BasketContext";
 import { reportPage } from "./v2-page-traffic";
+import { normalizePath, parseV2Route } from "./v2-site-nav";
 
 const NOTICE_DISMISSED_KEY = "v2-early-notice-dismissed";
 
@@ -36,62 +37,17 @@ function withFooter(page: ReactNode) {
 }
 
 export default function V2App() {
-  const path = useLocation().pathname.replace(/\/+$/, "") || "/";
-  const store = path.match(/^\/v2\/magasins\/(\d+)$/);
-  const product = path.match(/^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/);
-  const isProductRoute = Boolean(product);
-  useLayoutEffect(() => { if (isProductRoute) window.scrollTo(0, 0); }, [path, isProductRoute]);
+  const path = normalizePath(useLocation().pathname);
+  const route = parseV2Route(path);
+  // A product page opens at its top, even when the previous page was scrolled down.
+  const scrollsToTop = route?.kind === "workspace" && (route.mode === "detail" || route.mode === "edit" || route.mode === "history");
+  useLayoutEffect(() => { if (scrollsToTop) window.scrollTo(0, 0); }, [path, scrollsToTop]);
   useEffect(() => { reportPage(path); }, [path]);
-  const category = path.match(/^\/v2\/categories\/([^/]+)$/);
-  let categoryName: string | undefined;
-  try { categoryName = category ? decodeURIComponent(category[1]) : undefined; }
-  catch { categoryName = undefined; }
-  const settings = path.match(/^\/v2\/parametres(?:\/([^/]+))?$/);
-  const recipe = path.match(/^\/v2\/recettes\/(privees\/)?(\d+)(?:\/(modifier))?$/);
-  const draft = path.match(/^\/v2\/brouillons\/(\d+)$/);
-  const recipeMode = path === "/v2/recettes" ? "list"
-    : path === "/v2/recettes/nouvelle" ? "new"
-    : recipe ? recipe[3] ? "edit" : "detail" : undefined;
-  const workspaceMode = path === "/v2/produits" ? "catalogue"
-    : path === "/v2/produits/nouveau" ? "new"
-    : path === "/v2/brouillons" ? "mine"
-    : path === "/v2/moderation" ? "review"
-    : draft ? "draft"
-    : product ? product[2] === "modifier" ? "edit" : product[2] === "historique" ? "history" : "detail"
-    : undefined;
 
-  const captureMode = path === "/v2/capture/installer" ? "install" : path === "/v2/capture" ? "review" : undefined;
-
-  if (path === "/v2/mentions-legales") return withFooter(<V2LegalPage kind="mentions" />);
-  if (path === "/v2/confidentialite") return withFooter(<V2LegalPage kind="confidentialite" />);
-  if (path === "/v2/conditions-utilisation") return withFooter(<V2LegalPage kind="conditions" />);
-  if (path === "/v2/versions") return withFooter(<V2VersionsPage />);
-  if (path === "/v2/changelog") return withFooter(<V2ChangelogPage />);
-  const changelogComponent = path.match(/^\/v2\/changelog\/([^/]+)$/);
-  if (changelogComponent) return withFooter(<V2ChangelogPage componentId={changelogComponent[1]} />);
-  if (path === "/" || path === "/v2") return withFooter(<V2BasketProvider><V2Gateway /></V2BasketProvider>);
-  if (["/v2/settings/database", "/v2/connexion", "/v2/inscription"].includes(path)
-    || settings || workspaceMode || category || recipeMode || captureMode || path === "/v2/a-completer" || /^\/v2\/panier(?:\/partage|\/demo)?(?:\/liste)?$/.test(path) || path === "/v2/magasins" || store) {
-    return withFooter(<V2BasketProvider><V2Gateway
-      settingsMode={path === "/v2/settings/database"}
-      preferencesMode={Boolean(settings)}
-      preferencesTab={settings?.[1]}
-      authMode={path === "/v2/connexion" ? "login" : path === "/v2/inscription" ? "register" : undefined}
-      recipeMode={recipeMode}
-      captureMode={captureMode}
-      completionMode={path === "/v2/a-completer"}
-      basketMode={/^\/v2\/panier(?:\/partage|\/demo)?(?:\/liste)?$/.test(path)}
-      sharedBasketMode={path.startsWith("/v2/panier/partage")}
-      demoBasketMode={path.startsWith("/v2/panier/demo")}
-      shoppingListMode={path.endsWith("/liste")}
-      storesMode={path === "/v2/magasins" || Boolean(store)}
-      storeId={store ? Number(store[1]) : undefined}
-      recipeId={recipe ? Number(recipe[2]) : undefined}
-      privateRecipe={Boolean(recipe?.[1])}
-      categoryName={categoryName}
-      workspaceMode={workspaceMode}
-      workspaceId={draft ? Number(draft[1]) : product ? Number(product[1]) : undefined}
-    /></V2BasketProvider>);
-  }
-  return <Navigate to="/v2" replace />;
+  if (!route) return <Navigate to="/v2" replace />;
+  if (route.kind === "legal") return withFooter(<V2LegalPage kind={route.doc} />);
+  if (route.kind === "versions") return withFooter(<V2VersionsPage />);
+  if (route.kind === "changelog") return withFooter(<V2ChangelogPage componentId={route.component} />);
+  // Every other page goes through the gateway, kept mounted from one page to the next.
+  return withFooter(<V2BasketProvider><V2Gateway route={route} /></V2BasketProvider>);
 }

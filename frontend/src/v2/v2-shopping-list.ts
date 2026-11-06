@@ -58,6 +58,12 @@ export function withChecked(checked: readonly string[], key: string, on: boolean
 export type ListView = { kind: "all" } | { kind: "stores" } | { kind: "store"; key: string };
 const STORE = /^[1-9][0-9]{0,18}:(?:in_store|drive|delivery)$/;
 
+/** What the list page says under its title, in each mode. */
+export function listViewIntro(view: ListView): string {
+  return view.kind === "all" ? "Les articles du panier, à cocher en rayon." : view.kind === "stores" ? "Répartie entre les magasins, au meilleur prix."
+    : "Tout le panier dans un magasin ; ce qui n’y a pas de prix vient en premier.";
+}
+
 /** The address of a basket's list. */
 export const shoppingListPath = (basketPath: string) => basketPath + "/liste";
 

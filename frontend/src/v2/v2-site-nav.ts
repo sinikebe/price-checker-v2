@@ -1,4 +1,9 @@
-/** Pure logic of the site navigation: the bottom dock and the profile menu (no React, so it can be unit-tested). */
+/** Pure logic of the site navigation: the bottom dock, the profile menu, the back button and the header search (no React, so it can be unit-tested). */
+
+/** The path without its trailing slashes, "/" for the site root: the form every route below is matched on. */
+export function normalizePath(pathname: string): string {
+  return pathname.replace(/\/+$/, "") || "/";
+}
 
 export type DockId = "home" | "products" | "stores" | "recipes" | "basket" | "shared";
 export type DockItem = { id: DockId; label: string; to: string };
@@ -16,7 +21,7 @@ const STORES: DockItem = { id: "stores", label: "Magasins", to: "/v2/magasins" }
 const RECIPES: DockItem = { id: "recipes", label: "Recettes", to: "/v2/recettes" };
 const BASKET: DockItem = { id: "basket", label: "Panier", to: "/v2/panier" };
 /** The shared basket, next to the personal one, for an account that follows one. */
-export const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
+const SHARED_DOCK_ITEM: DockItem = { id: "shared", label: "Partagé", to: "/v2/panier/partage" };
 
 /** The dock entries for this mode: the shared basket shows once the account follows one; stores are for contributing. */
 export function dockItems(mode: AppMode, followsShared: boolean): readonly DockItem[] {
@@ -29,7 +34,7 @@ const NOT_IN_DOCK = ["/v2/produits/nouveau", "/v2/panier/demo"];
 
 /** The dock item the page belongs to, or null for pages reached from the profile menu. */
 export function activeDockId(pathname: string): DockId | null {
-  const path = pathname.replace(/\/+$/, "") || "/";
+  const path = normalizePath(pathname);
   if (path === "/" || path === "/v2") return "home";
   if (NOT_IN_DOCK.some(prefix => path === prefix || path.startsWith(prefix + "/"))) return null;
   const within = (base: string) => path === base || path.startsWith(base + "/");
@@ -118,14 +123,12 @@ export function sharedBasketLabel(count: number): string {
   return count === 0 ? "Panier partagé, vide" : count === 1 ? "Panier partagé, 1 article" : `Panier partagé, ${count} articles`;
 }
 
-const normalize = (pathname: string) => pathname.replace(/\/+$/, "") || "/";
-
 /**
  * Where the back button goes when the app has no history of its own to return to (a page opened from a
  * bookmark or a shared link): the parent page, never outside the app. Null on the home page.
  */
 export function backTarget(pathname: string): string | null {
-  const path = normalize(pathname);
+  const path = normalizePath(pathname);
   if (path === "/" || path === "/v2") return null;
   if (path.startsWith("/v2/categories/")) return "/v2/produits";
   if (path === "/v2/capture/installer" || path === "/v2/panier/demo") return "/v2";
@@ -144,5 +147,76 @@ export function searchPath(term: string): string | null {
 
 /** What the header search field shows: the current catalogue search, or nothing on other pages. */
 export function searchTermFromLocation(pathname: string, search: string): string {
-  return normalize(pathname) === "/v2/produits" ? new URLSearchParams(search).get("q") ?? "" : "";
+  return normalizePath(pathname) === "/v2/produits" ? new URLSearchParams(search).get("q") ?? "" : "";
+}
+
+/** The product pages of the workspace: a new product, the account's drafts, moderation, one draft and one product. */
+export type WorkspaceMode = "new" | "mine" | "review" | "draft" | "detail" | "edit" | "history";
+
+/** The page an address shows, read once by the application and handed to the gateway. */
+export type V2Route =
+  | { kind: "home" }
+  | { kind: "database" }
+  | { kind: "settings"; tab?: string }
+  | { kind: "auth"; mode: "login" | "register" }
+  | { kind: "stores"; id?: number }
+  | { kind: "completion" }
+  | { kind: "capture"; mode: "install" | "review" }
+  | { kind: "basket"; shared: boolean; demo: boolean; list: boolean }
+  | { kind: "recipes"; mode: "list" | "detail" | "new" | "edit"; id?: number; private: boolean }
+  | { kind: "catalogue"; category?: string }
+  | { kind: "workspace"; mode: WorkspaceMode; id?: number }
+  | { kind: "legal"; doc: "mentions" | "confidentialite" | "conditions" }
+  | { kind: "versions" }
+  | { kind: "changelog"; component?: string };
+
+/**
+ * The page at this address, or null for an address the site does not have (the application then goes
+ * home). Trailing slashes are ignored. A category name is decoded, and one that cannot be decoded opens
+ * the home page; a changelog component stays as written in the address.
+ */
+export function parseV2Route(pathname: string): V2Route | null {
+  const path = normalizePath(pathname);
+  switch (path) {
+    case "/": case "/v2": return { kind: "home" };
+    case "/v2/mentions-legales": return { kind: "legal", doc: "mentions" };
+    case "/v2/confidentialite": return { kind: "legal", doc: "confidentialite" };
+    case "/v2/conditions-utilisation": return { kind: "legal", doc: "conditions" };
+    case "/v2/versions": return { kind: "versions" };
+    case "/v2/changelog": return { kind: "changelog" };
+    case "/v2/settings/database": return { kind: "database" };
+    case "/v2/parametres": return { kind: "settings" };
+    case "/v2/connexion": return { kind: "auth", mode: "login" };
+    case "/v2/inscription": return { kind: "auth", mode: "register" };
+    case "/v2/magasins": return { kind: "stores" };
+    case "/v2/a-completer": return { kind: "completion" };
+    case "/v2/capture/installer": return { kind: "capture", mode: "install" };
+    case "/v2/capture": return { kind: "capture", mode: "review" };
+    case "/v2/recettes": return { kind: "recipes", mode: "list", private: false };
+    case "/v2/recettes/nouvelle": return { kind: "recipes", mode: "new", private: false };
+    case "/v2/produits": return { kind: "catalogue" };
+    case "/v2/produits/nouveau": return { kind: "workspace", mode: "new" };
+    case "/v2/brouillons": return { kind: "workspace", mode: "mine" };
+    case "/v2/moderation": return { kind: "workspace", mode: "review" };
+  }
+  let match = /^\/v2\/changelog\/([^/]+)$/.exec(path);
+  if (match) return { kind: "changelog", component: match[1] };
+  match = /^\/v2\/parametres\/([^/]+)$/.exec(path);
+  if (match) return { kind: "settings", tab: match[1] };
+  match = /^\/v2\/magasins\/(\d+)$/.exec(path);
+  if (match) return { kind: "stores", id: Number(match[1]) };
+  match = /^\/v2\/panier(\/partage|\/demo)?(\/liste)?$/.exec(path);
+  if (match) return { kind: "basket", shared: match[1] === "/partage", demo: match[1] === "/demo", list: Boolean(match[2]) };
+  match = /^\/v2\/recettes\/(privees\/)?(\d+)(?:\/(modifier))?$/.exec(path);
+  if (match) return { kind: "recipes", mode: match[3] ? "edit" : "detail", id: Number(match[2]), private: Boolean(match[1]) };
+  match = /^\/v2\/categories\/([^/]+)$/.exec(path);
+  if (match) {
+    try { return { kind: "catalogue", category: decodeURIComponent(match[1]) }; }
+    catch { return { kind: "home" }; }
+  }
+  match = /^\/v2\/brouillons\/(\d+)$/.exec(path);
+  if (match) return { kind: "workspace", mode: "draft", id: Number(match[1]) };
+  match = /^\/v2\/produits\/(\d+)(?:\/(modifier|historique))?$/.exec(path);
+  if (match) return { kind: "workspace", mode: match[2] === "modifier" ? "edit" : match[2] === "historique" ? "history" : "detail", id: Number(match[1]) };
+  return null;
 }

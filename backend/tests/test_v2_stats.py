@@ -2,22 +2,19 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import stats as stats_api
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services import v2_request_stats as stats
 from fastapi import HTTPException
+from conftest import disposable_database, requires_v2_db
 
 NOW = datetime(2026, 11, 1, 10, 7, 31, tzinfo=UTC)
-needs_db = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
 
 
 @pytest.fixture(autouse=True)
@@ -109,23 +106,8 @@ async def test_a_template_route_is_counted_whatever_the_id(monkeypatch):
 
 @pytest_asyncio.fixture
 async def config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_stats_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    configured = {**base, "database": database}
-    try:
-        await migrate_v2(configured)
+    async with disposable_database("v2_stats_") as configured:
         yield configured
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest_asyncio.fixture
@@ -150,7 +132,7 @@ def served(monkeypatch, config):
 
 
 @pytest.mark.asyncio
-@needs_db
+@requires_v2_db
 async def test_a_flush_adds_to_existing_buckets_and_failures_keep_the_counts(db):
     stats.record_request("/api/v2/x", "GET", 200, 10)
     stats.record_page("home", True)
@@ -175,7 +157,7 @@ async def seed_requests(db, rows):
 
 
 @pytest.mark.asyncio
-@needs_db
+@requires_v2_db
 async def test_the_statistics_sort_endpoints_by_requests_and_summarise_each_group(db, served):
     now = datetime.now(UTC)
     recent, hour_old, day_old, week_old, ancient = (now - timedelta(minutes=10), now - timedelta(minutes=90), now - timedelta(hours=5),
@@ -214,7 +196,7 @@ async def test_the_statistics_sort_endpoints_by_requests_and_summarise_each_grou
 
 
 @pytest.mark.asyncio
-@needs_db
+@requires_v2_db
 async def test_contributions_visits_and_accounts_are_counts_from_existing_timestamps(db, served):
     now = datetime.now(UTC)
     old = now - timedelta(days=45)
@@ -241,6 +223,10 @@ async def test_contributions_visits_and_accounts_are_counts_from_existing_timest
         assert counts["product_proposals"] == 2 and counts["product_proposals_approved"] == 1
         assert (counts["prices_manual"], counts["prices_bookmarklet"], counts["prices_connector"], counts["prices_open_prices"]) == (2, 1, 0, 1)
         assert counts["recipes_created"] == 1 and counts["reports"] == 0 and counts["merges"] == 0
+        assert list(counts) == ["product_proposals", "product_proposals_approved", "price_proposals", "price_proposals_approved",
+                                "prices_manual", "prices_bookmarklet", "prices_connector", "prices_open_prices",
+                                "recipes_created", "recipe_submissions", "reports", "merges", "store_aliases"]
+        assert all(type(value) is int for value in counts.values())
         month = (await client.get("/api/v2/stats", params={"period": "30d"})).json()
         assert month["traffic"]["accounts_created"] == 2 and month["traffic"]["page_views"] == 15, "45 days ago is outside 30 days"
         raw = json.dumps(day)
@@ -263,7 +249,7 @@ async def test_the_page_beacon_counts_known_pages_and_ignores_floods(monkeypatch
 
 
 @pytest.mark.asyncio
-@needs_db
+@requires_v2_db
 async def test_the_statistics_are_for_administrators_only(db, served, monkeypatch):
     async def forbidden(_request):
         raise HTTPException(status_code=403)

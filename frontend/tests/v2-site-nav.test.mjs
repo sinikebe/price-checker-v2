@@ -7,8 +7,12 @@ const source = readFileSync(new URL("../src/v2/v2-site-nav.ts", import.meta.url)
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
+const { SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, normalizePath, parseV2Route, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
+const legalSource = readFileSync(new URL("../src/v2/v2-legal-documents.ts", import.meta.url), "utf8");
+const { LEGAL_DOCUMENTS } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpileModule(legalSource, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+}).outputText).toString("base64")}`);
 
 test("shopping keeps the baskets and leaves the stores out; the contribution mode does the reverse", () => {
   assert.deepEqual(dockItems("shopping", false).map(item => item.id), ["home", "products", "recipes", "basket"]);
@@ -23,6 +27,13 @@ test("the shared basket gets its own dock entry once the account follows one", (
   assert.equal(dockItems("shopping", true).at(-1).to, "/v2/panier/partage");
   assert.equal(sharedBasketLabel(0), "Panier partagé, vide");
   assert.equal(sharedBasketLabel(3), "Panier partagé, 3 articles");
+});
+
+test("the dock holds five entries at most", () => {
+  // A sixth entry would need the narrower phone styling of the dock back: it was dropped because the dock
+  // has had five entries at most since the saved lists left it.
+  for (const mode of ["shopping", "contribute"])
+    for (const follows of [false, true]) assert.ok(dockItems(mode, follows).length <= 5, `${mode}, shared basket followed: ${follows}`);
 });
 
 test("every page maps to the right dock item", () => {
@@ -174,4 +185,70 @@ test("a search survives the round trip through the address", () => {
     const link = searchPath(term); const [path, query] = link.split("?");
     assert.equal(searchTermFromLocation(path, "?" + query), term, term);
   }
+});
+
+test("a path is matched without its trailing slashes", () => {
+  const cases = [["/", "/"], ["", "/"], ["//", "/"], ["/v2", "/v2"], ["/v2/", "/v2"], ["/v2//", "/v2"], ["/v2/produits/12/", "/v2/produits/12"]];
+  for (const [path, normalized] of cases) assert.equal(normalizePath(path), normalized, path);
+});
+
+test("every address of the site opens its page, with or without a trailing slash", () => {
+  const recipe = (mode, id, privateRecipe = false) => ({ kind: "recipes", mode, ...(id === undefined ? {} : { id }), private: privateRecipe });
+  const basket = (shared, demo, list) => ({ kind: "basket", shared, demo, list });
+  const cases = [
+    ["/", { kind: "home" }], ["/v2", { kind: "home" }],
+    ["/v2/mentions-legales", { kind: "legal", doc: "mentions" }], ["/v2/confidentialite", { kind: "legal", doc: "confidentialite" }],
+    ["/v2/conditions-utilisation", { kind: "legal", doc: "conditions" }],
+    ["/v2/versions", { kind: "versions" }], ["/v2/changelog", { kind: "changelog" }],
+    ["/v2/changelog/products", { kind: "changelog", component: "products" }],
+    ["/v2/changelog/a%20b", { kind: "changelog", component: "a%20b" }],
+    ["/v2/settings/database", { kind: "database" }],
+    ["/v2/parametres", { kind: "settings" }], ["/v2/parametres/securite", { kind: "settings", tab: "securite" }],
+    ["/v2/parametres/inconnu", { kind: "settings", tab: "inconnu" }],
+    ["/v2/connexion", { kind: "auth", mode: "login" }], ["/v2/inscription", { kind: "auth", mode: "register" }],
+    ["/v2/magasins", { kind: "stores" }], ["/v2/magasins/7", { kind: "stores", id: 7 }],
+    ["/v2/a-completer", { kind: "completion" }],
+    ["/v2/capture/installer", { kind: "capture", mode: "install" }], ["/v2/capture", { kind: "capture", mode: "review" }],
+    ["/v2/panier", basket(false, false, false)], ["/v2/panier/liste", basket(false, false, true)],
+    ["/v2/panier/partage", basket(true, false, false)], ["/v2/panier/partage/liste", basket(true, false, true)],
+    ["/v2/panier/demo", basket(false, true, false)], ["/v2/panier/demo/liste", basket(false, true, true)],
+    ["/v2/recettes", recipe("list")], ["/v2/recettes/nouvelle", recipe("new")],
+    ["/v2/recettes/5", recipe("detail", 5)], ["/v2/recettes/5/modifier", recipe("edit", 5)],
+    ["/v2/recettes/privees/5", recipe("detail", 5, true)], ["/v2/recettes/privees/5/modifier", recipe("edit", 5, true)],
+    ["/v2/produits", { kind: "catalogue" }], ["/v2/categories/Lait", { kind: "catalogue", category: "Lait" }],
+    ["/v2/categories/caf%C3%A9", { kind: "catalogue", category: "café" }],
+    ["/v2/categories/P%C3%A2tes%2Friz", { kind: "catalogue", category: "Pâtes/riz" }],
+    ["/v2/categories/%E0", { kind: "home" }],
+    ["/v2/produits/nouveau", { kind: "workspace", mode: "new" }], ["/v2/brouillons", { kind: "workspace", mode: "mine" }],
+    ["/v2/moderation", { kind: "workspace", mode: "review" }], ["/v2/brouillons/3", { kind: "workspace", mode: "draft", id: 3 }],
+    ["/v2/produits/12", { kind: "workspace", mode: "detail", id: 12 }],
+    ["/v2/produits/12/modifier", { kind: "workspace", mode: "edit", id: 12 }],
+    ["/v2/produits/12/historique", { kind: "workspace", mode: "history", id: 12 }],
+  ];
+  for (const [path, route] of cases)
+    for (const variant of [path, path + "/", path + "//"]) assert.deepEqual(parseV2Route(variant), route, variant);
+});
+
+test("an address the site does not have opens no page", () => {
+  for (const path of ["/autre", "/v2/inconnu", "/v2/produitsx", "/v2/produits/12/autre", "/v2/produits/abc", "/v2/brouillons/x",
+    "/v2/parametres/x/y", "/v2/settings", "/v2/settings/database/x", "/v2/magasins/abc", "/v2/magasins/7/modifier",
+    "/v2/recettes/privees", "/v2/recettes/privees/nouvelle", "/v2/recettes/5/historique", "/v2/panier/partage/demo",
+    "/v2/panier/liste/partage", "/v2/categories", "/v2/categories/a/b", "/v2/capture/autre", "/v2/changelog/a/b",
+    "/v2/mentions-legales/x", "/V2", "/v3"])
+    assert.equal(parseV2Route(path), null, path);
+});
+
+test("the legal pages the site lists are the ones it opens", () => {
+  assert.deepEqual(LEGAL_DOCUMENTS.map(item => item.kind), ["mentions", "confidentialite", "conditions"]);
+  for (const item of LEGAL_DOCUMENTS) assert.deepEqual(parseV2Route(item.path), { kind: "legal", doc: item.kind }, item.path);
+});
+
+test("every link of the dock, the profile menu and the back button opens a page", () => {
+  const links = [
+    ...["shopping", "contribute"].flatMap(mode => [false, true].flatMap(follows => dockItems(mode, follows).map(item => item.to))),
+    ...[null, { username: "root", role: "admin" }].flatMap(user => ["shopping", "contribute"]
+      .flatMap(mode => profileMenuSections(user, mode).flatMap(section => section.links.map(link => link.to)))),
+    ...["/v2/produits/12/modifier", "/v2/recettes/privees/5/modifier", "/v2/panier/demo/liste", "/v2/categories/Lait"].map(backTarget),
+  ];
+  for (const to of links) assert.notEqual(parseV2Route(to), null, to);
 });

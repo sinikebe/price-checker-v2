@@ -46,25 +46,6 @@ class ScheduledUpdateTests(unittest.TestCase):
         second = scheduler.schedule_at(datetime(2027, 10, 31, 1, 0, tzinfo=timezone.utc))
         self.assertEqual(first[1].date(), second[1].date())
 
-    def test_ci_skip_commit_only_allowed_for_bot_version_files(self):
-        def valid_git(*args):
-            if "--format=%s" in args:
-                return "chore: bump affected component versions [skip ci]"
-            if "--format=%ae" in args:
-                return "41898282+github-actions[bot]@users.noreply.github.com"
-            if args[0] == "diff-tree":
-                return "frontend/src/v2/component-versions.json"
-            return "parent"
-        with patch.object(scheduler, "git", side_effect=valid_git):
-            self.assertEqual(scheduler.ci_sha("target"), "parent")
-        def untrusted(*args):
-            if args[0] == "diff-tree":
-                return "backend/app/main_v2.py"
-            return valid_git(*args)
-        with patch.object(scheduler, "git", side_effect=untrusted):
-            with self.assertRaisesRegex(RuntimeError, "unexpected changes"):
-                scheduler.ci_sha("target")
-
     def test_ci_failure_is_fail_closed(self):
         schedule = {"enabled": True, "time": "02:00", "timezone": "UTC", "revision": 1}
         (scheduler.STATE / "update-schedule.json").write_text(json.dumps(schedule))
@@ -77,13 +58,13 @@ class ScheduledUpdateTests(unittest.TestCase):
                 patch.object(scheduler.os, "geteuid", return_value=0), \
                 patch.dict(scheduler.os.environ, {"PRICE_CHECKER_V2_ENV": "dev", "PRICE_CHECKER_V2_GIT_BRANCH": "dev"}), \
                 patch.object(scheduler, "git", side_effect=["old", "", "new"]) as git, \
-                patch.object(scheduler, "ci_sha", return_value="new"), \
-                patch.object(scheduler, "ci_succeeded", return_value=False), \
+                patch.object(scheduler, "ci_succeeded", return_value=False) as ci, \
                 patch.object(scheduler.clean_server_cache, "maintenance") as maintenance, \
                 patch.object(scheduler.subprocess, "run") as command:
             command.return_value.returncode = 0
             self.assertEqual(scheduler.main(), 1)
             self.assertEqual(command.call_count, 1)  # merge-base only; updater not run
+            ci.assert_called_once_with("new", "dev")  # the fetched tip itself, never another commit
             self.assertIn(("fetch", "origin", "dev"), [item.args for item in git.call_args_list])
             maintenance.assert_called_once_with(scheduler.STATE, scheduler.DATA)
         status = json.loads((scheduler.STATE / "update-last-run.json").read_text())

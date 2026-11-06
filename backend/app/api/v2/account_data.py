@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, SecretStr
 
-from app.api.v2.auth_security import account_limit_key, verify_second_factor
+from app.api.v2.auth_security import account_limit_key, second_factor_enabled, verify_second_factor
 
 from app.api.v2.auth import (
     _COOKIE_NAME,
@@ -21,6 +19,7 @@ from app.api.v2.auth import (
     _session_user,
     _verify_password,
 )
+from app.db.v2_json import decoded
 
 router = APIRouter(prefix="/api/v2/account", tags=["v2-account-data"])
 
@@ -37,8 +36,7 @@ def _rows(rows) -> list[dict]:
     for row in rows:
         item = dict(row)
         for key in _JSON_FIELDS & item.keys():
-            if isinstance(item[key], str):
-                item[key] = json.loads(item[key])
+            item[key] = decoded(item[key])
         result.append(item)
     return result
 
@@ -100,10 +98,7 @@ async def export_account_data(request: Request):
                 "SELECT id,label,scope,created_at,expires_at,last_used_at,revoked_at "
                 "FROM v2_api_tokens WHERE user_id=$1 ORDER BY id", user_id
             )
-            mfa_enabled = bool(await connection.fetchval(
-                "SELECT enabled_at IS NOT NULL FROM v2_mfa_credentials WHERE user_id=$1",
-                user_id,
-            ))
+            mfa_enabled = await second_factor_enabled(connection, user_id)
             reports = await connection.fetch(
                 "SELECT id, kind, content_id, reason, status, created_at, reviewed_at "
                 "FROM v2_content_reports WHERE reporter_id=$1 ORDER BY id", user_id

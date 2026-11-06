@@ -27,7 +27,7 @@ export const collapse = (text: string): string => text.replace(SPACES, " ").trim
 export const normalizeQuery = (text: string): string => collapse(text).toLocaleLowerCase("fr");
 
 /** The text searched in a product: its fields joined with one space, the absent ones skipped. */
-export function searchText(product: SearchableProduct): string {
+function searchText(product: SearchableProduct): string {
   const { brand, name, commercial_name, quantity, ean } = product.data;
   return normalizeQuery([brand, name, commercial_name, quantity, ean].filter(part => part != null).join(" "));
 }
@@ -43,7 +43,8 @@ export function filterProducts<T extends SearchableProduct>(items: readonly T[],
 }
 
 /** Eight, twelve, thirteen or fourteen digits: a barcode (EAN-8, UPC-A, EAN-13, GTIN-14). */
-export const isBarcode = (text: string): boolean => /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/.test(text.trim());
+export const GTIN_PATTERN = /^(?:\d{8}|\d{12}|\d{13}|\d{14})$/;
+export const isBarcode = (text: string): boolean => GTIN_PATTERN.test(text.trim());
 
 /** The same barcode written with or without its leading zeros. */
 export const sameBarcode = (a: string, b: string): boolean => a.padStart(14, "0") === b.padStart(14, "0");

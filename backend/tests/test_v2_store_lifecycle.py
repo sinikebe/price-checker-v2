@@ -3,35 +3,22 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
-from pathlib import Path
 
 import httpx
 import pytest
 
 from app.api.v2 import catalogue, prices, stores
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
 from app.services.v2_open_prices_sync import _store as open_prices_store
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest.mark.asyncio
 async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    name = "v2_store_lifecycle_" + secrets.token_hex(5)
-    root = await connect_v2(base)
-    try:
-        await root.execute('CREATE DATABASE "' + name + '"')
-    finally:
-        await root.close()
-    config = {**base, "database": name}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_store_lifecycle_") as config:
         connection = await connect_v2(config)
         try:
             admin_id = await connection.fetchval(
@@ -125,6 +112,8 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             assert (await client.get(path)).status_code == 404
             assert (await client.get(f"/api/v2/stores/{donor_id}")).status_code == 404
             assert (await client.get(path, headers=admin)).json()["active"] is False
+            assert (await client.get(path, headers=admin)).json()["impact"] == {
+                "prices": 2, "drafts": 1, "offers": 1}, "what a permanent deletion would remove"
             assert target_id not in {row["id"] for row in (await client.get("/api/v2/stores")).json()}
             assert target_id in {row["id"] for row in (await client.get("/api/v2/stores", headers=admin)).json()}
             history = (await client.get(f"/api/v2/prices/products/{product_id}")).json()
@@ -177,9 +166,12 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
                 ) == 1
             finally:
                 await connection.close()
-    finally:
-        root = await connect_v2(base)
-        try:
-            await root.execute('DROP DATABASE IF EXISTS "' + name + '" WITH (FORCE)')
-        finally:
-            await root.close()
+
+
+def test_a_typed_stores_key_is_the_one_prices_and_deletion_always_used():
+    """Connectors compute the same key and deleted stores are remembered by it: it must never drift."""
+    assert stores.manual_store_import_key(1, "Centre", "Paris", "75001") == "manual:store:1062ab0ba48f86c3fea37b27a648c3ad"
+    assert stores.manual_store_import_key(1, "Amazon", "", "", online=True) == "manual:store:571daa811187a92f3db8bf114fd653a3"
+    assert stores.manual_store_import_key(7, "CARREFOUR Market", "Lyon", "69003") == "manual:store:19e2bac602107f61636c4862b4f416b1", \
+        "the identity is folded"
+    assert stores.manual_store_import_key(1, "Centre", "Paris", "75001") == "manual:store:" + prices._hash("1|Centre|Paris|75001")

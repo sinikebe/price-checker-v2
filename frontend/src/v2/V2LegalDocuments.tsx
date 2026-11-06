@@ -1,24 +1,19 @@
 import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import V2LegalMarkdown from "./V2LegalMarkdown";
+import { apiError, errorText } from "./v2-http";
+import { legalDocument, type LegalKind } from "./v2-legal-documents";
 import "./v2-legal.css";
 
-type Name = "mentions" | "confidentialite" | "conditions";
-type Document = { name: Name; present: boolean; bytes: number; modified_at: string | null; sha256: string | null };
+type Document = { name: LegalKind; present: boolean; bytes: number; modified_at: string | null; sha256: string | null };
 type Listing = { documents: Document[]; max_bytes: number };
-type Draft = { name: Name; file: string; text: string; expected: string | null };
+type Draft = { name: LegalKind; file: string; text: string; expected: string | null };
 
-const TITLES: Record<Name, string> = { mentions: "Mentions légales", confidentialite: "Confidentialité", conditions: "Conditions d’utilisation" };
-const PAGES: Record<Name, string> = { mentions: "/v2/mentions-legales", confidentialite: "/v2/confidentialite", conditions: "/v2/conditions-utilisation" };
 const kilobytes = (bytes: number) => (bytes / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " Ko";
 const when = (value: string) => new Date(value).toLocaleString("fr-FR", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch("/api/v2/legal" + path, { credentials: "same-origin", cache: "no-store", ...init });
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => null);
-    const detail = data && typeof data === "object" && "detail" in data ? (data as { detail: unknown }).detail : null;
-    throw new Error(typeof detail === "string" ? detail : "Les documents légaux ne répondent pas. Réessayez.");
-  }
+  if (!response.ok) throw await apiError(response, "Les documents légaux ne répondent pas. Réessayez.");
   return response.json() as Promise<T>;
 }
 
@@ -36,7 +31,7 @@ export default function V2LegalDocuments() {
   useEffect(() => {
     let active = true;
     request<Listing>("").then(value => { if (active) setListing(value); })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Liste indisponible."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Liste indisponible.")); });
     return () => { active = false; };
   }, []);
 
@@ -60,9 +55,9 @@ export default function V2LegalDocuments() {
         body: JSON.stringify({ content: draft.text, expected_sha256: draft.expected }),
       });
       setListing(current => current && { ...current, documents: current.documents.map(item => item.name === saved.name ? saved : item) });
-      setNotice(`${TITLES[draft.name]} : nouvelle version publiée (${kilobytes(saved.bytes)}).`);
+      setNotice(`${legalDocument(draft.name).title} : nouvelle version publiée (${kilobytes(saved.bytes)}).`);
       setDraft(null);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Échec de la publication."); }
+    } catch (reason) { setError(errorText(reason, "Échec de la publication.")); }
     finally { setBusy(false); }
   }
 
@@ -73,17 +68,17 @@ export default function V2LegalDocuments() {
       et la version remplacée reste gardée sur le serveur. Ces fichiers ne sont jamais versés au dépôt.</p>
     {!listing ? (error ? <p role="alert" className="v2-schedule-error">{error}</p> : <p>Chargement…</p>) : <>
       <ul className="v2-legal-documents-list">{listing.documents.map(document => <li key={document.name}>
-        <div><strong>{TITLES[document.name]}</strong>
+        <div><strong>{legalDocument(document.name).title}</strong>
           <small>{document.present && document.modified_at ? `${kilobytes(document.bytes)} · modifié le ${when(document.modified_at)}` : "Absent : la page signale son indisponibilité."}</small>
-          {document.present && <a href={PAGES[document.name]} target="_blank" rel="noreferrer">Voir la page ↗</a>}</div>
+          {document.present && <a href={legalDocument(document.name).path} target="_blank" rel="noreferrer">Voir la page ↗</a>}</div>
         <label className="v2-button v2-button-secondary">Remplacer depuis un fichier
           <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" className="v2-legal-file"
-            aria-label={`Fichier Markdown pour ${TITLES[document.name]}`} disabled={busy}
+            aria-label={`Fichier Markdown pour ${legalDocument(document.name).title}`} disabled={busy}
             onChange={event => { void choose(document, event.target.files?.[0]); event.target.value = ""; }} /></label>
       </li>)}</ul>
-      {draft && <div className="v2-legal-preview" role="region" aria-label={`Aperçu : ${TITLES[draft.name]}`}>
-        <p><strong>Aperçu de « {draft.file} »</strong> pour {TITLES[draft.name]} · {kilobytes(new TextEncoder().encode(draft.text).length)}</p>
-        <div className="v2-legal-content v2-legal-preview-body"><ReactMarkdown>{draft.text}</ReactMarkdown></div>
+      {draft && <div className="v2-legal-preview" role="region" aria-label={`Aperçu : ${legalDocument(draft.name).title}`}>
+        <p><strong>Aperçu de « {draft.file} »</strong> pour {legalDocument(draft.name).title} · {kilobytes(new TextEncoder().encode(draft.text).length)}</p>
+        <div className="v2-legal-content v2-legal-preview-body"><V2LegalMarkdown text={draft.text} /></div>
         <div className="v2-legal-preview-actions">
           <button type="button" className="v2-button v2-button-primary" disabled={busy} onClick={() => void publish()}>{busy ? "Publication…" : "Publier ce document"}</button>
           <button type="button" className="v2-button v2-button-secondary" disabled={busy} onClick={() => setDraft(null)}>Annuler</button>

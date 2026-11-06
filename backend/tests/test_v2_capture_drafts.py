@@ -3,43 +3,24 @@
 from __future__ import annotations
 
 import json
-import os
-import secrets
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 import pytest_asyncio
 from app.api.v2 import prices, products
-from app.db.v2_migrations import connect_v2, migrate_v2
+from app.db.v2_migrations import connect_v2
 from app.main_v2 import app
+from conftest import disposable_database, requires_v2_db
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required"
-)
+pytestmark = requires_v2_db
 
 
 @pytest_asyncio.fixture
 async def isolated_config():
-    base = json.loads(Path(os.environ["V2_AUTH_TEST_CONFIG"]).read_text())
-    database = "v2_capture_" + secrets.token_hex(5)
-    admin = await connect_v2(base)
-    try:
-        await admin.execute('CREATE DATABASE "' + database + '"')
-    finally:
-        await admin.close()
-    config = {**base, "database": database}
-    try:
-        await migrate_v2(config)
+    async with disposable_database("v2_capture_") as config:
         yield config
-    finally:
-        admin = await connect_v2(base)
-        try:
-            await admin.execute('DROP DATABASE "' + database + '" WITH (FORCE)')
-        finally:
-            await admin.close()
 
 
 @pytest.mark.asyncio
@@ -379,3 +360,105 @@ async def test_capture_and_approval_do_not_deadlock(monkeypatch, isolated_config
             assert attached.status_code in (404, 409), attached.text
     finally:
         await connection.close()
+
+
+# The first and last representable days, with the widest offsets: no Paris day exists for them.
+EXTREME_DATES = ("0001-01-01T00:00:00+23:59", "9999-12-31T23:59:00-23:59")
+
+
+@pytest.mark.asyncio
+async def test_a_date_out_of_range_is_refused_and_a_manual_price_keeps_no_capture_provenance(
+    monkeypatch, isolated_config,
+):
+    config = isolated_config
+    connection = await connect_v2(config)
+    try:
+        users = {}
+        for key, role in (("author", "confirmed"), ("admin", "admin")):
+            users[key] = {"id": await connection.fetchval(
+                "INSERT INTO v2_users(username,username_key,password_hash,role) "
+                "VALUES($1,$1,'test',$2) RETURNING id", "dates_" + key, role), "role": role}
+        barcode = "3073781178012"
+        product_id = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id",
+            json.dumps({"ean": barcode, "name": "Produit daté", "quantity": "500 g"}))
+
+        async def fake_connect():
+            return await connect_v2(config)
+
+        async def fake_user(_connection, request):
+            return users.get(request.headers.get("x-test-user"))
+
+        monkeypatch.setattr(prices, "_connect", fake_connect)
+        monkeypatch.setattr(prices, "_current_user", fake_user)
+        author, admin = {"x-test-user": "author"}, {"x-test-user": "admin"}
+        day = datetime.now(ZoneInfo("Europe/Paris")).date().isoformat()
+        price = {"retailer": "Date Shop", "store_name": "Centre", "city": "Paris", "postal_code": "75001",
+                 "sales_channel": "in_store", "price": "1.20", "observed_at": day}
+        manual = f"/api/v2/prices/products/{product_id}/drafts"
+        capture = "/api/v2/prices/capture-drafts"
+        new_draft = {"ean": "3073781178029", "source_url": "https://example.org/p",
+                     "product_data": {"ean": "3073781178029", "name": "Nouveau", "brand": "Test",
+                                      "package": "sachet", "quantity": "1 kg"}}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test") as client:
+            for extreme in EXTREME_DATES:
+                dated = {**price, "observed_at": extreme}
+                refused = await client.post(manual, json=dated, headers=author)
+                assert refused.status_code == 422, (extreme, refused.text)
+                assert "Indiquez une date valide." in refused.text
+                assert (await client.post(capture, json={**new_draft, "price": dated}, headers=author)).status_code == 422, extreme
+            for bad_url in ("javascript:alert(1)", "not a url"):
+                for route, body in ((capture, {**new_draft, "price": price}),
+                                    (f"/api/v2/prices/products/{product_id}/capture-drafts",
+                                     {"ean": barcode, "source_url": bad_url, "price": price})):
+                    refused = await client.post(route, json={**body, "source_url": bad_url}, headers=author)
+                    assert refused.status_code == 422, (route, bad_url)
+                    assert refused.json()["detail"][0]["loc"][-1] == "source_url"
+            assert await connection.fetchval("SELECT count(*) FROM v2_price_drafts") == 0
+
+            sent = await client.post(manual, json=price, headers=author)
+            assert sent.status_code == 201, sent.text
+            stored = await connection.fetchrow(
+                "SELECT product_id,product_draft_id,entry_kind,captured_via,source_url,capture_ean,quantity_text "
+                "FROM v2_price_drafts WHERE id=$1", sent.json()["id"])
+            assert dict(stored) == {"product_id": product_id, "product_draft_id": None, "entry_kind": "manual",
+                                    "captured_via": None, "source_url": None, "capture_ean": None,
+                                    "quantity_text": "500 g"}
+            approved = await client.post(f"/api/v2/prices/drafts/{sent.json()['id']}/approve", headers=admin)
+            assert approved.status_code == 200, approved.text
+            observation = await connection.fetchrow(
+                "SELECT source,source_url,capture_ean FROM v2_price_observations WHERE id=$1",
+                approved.json()["observation_id"])
+            assert dict(observation) == {"source": "manual", "source_url": None, "capture_ean": None}
+
+            # Both bookmarklet routes file the same row shape, each with its one target.
+            drafted = await client.post(capture, json={**new_draft, "price": price}, headers=author)
+            assert drafted.status_code == 201, drafted.text
+            published = await client.post(
+                f"/api/v2/prices/products/{product_id}/capture-drafts",
+                json={"ean": barcode, "source_url": " https://example.org/q ", "price": price}, headers=author)
+            assert published.status_code == 201, published.text
+            rows = {row["id"]: dict(row) for row in await connection.fetch(
+                "SELECT id,product_id,product_draft_id,entry_kind,captured_via,source_url,capture_ean,quantity_text "
+                "FROM v2_price_drafts WHERE id=ANY($1::bigint[])",
+                [drafted.json()["price_draft_id"], published.json()["id"]])}
+            assert rows[drafted.json()["price_draft_id"]] == {
+                "id": drafted.json()["price_draft_id"], "product_id": None,
+                "product_draft_id": drafted.json()["product_draft_id"], "entry_kind": "capture",
+                "captured_via": "bookmarklet", "source_url": "https://example.org/p",
+                "capture_ean": "3073781178029", "quantity_text": "1 kg"}
+            assert rows[published.json()["id"]] == {
+                "id": published.json()["id"], "product_id": product_id, "product_draft_id": None,
+                "entry_kind": "capture", "captured_via": "bookmarklet", "source_url": "https://example.org/q",
+                "capture_ean": barcode, "quantity_text": "500 g"}
+    finally:
+        await connection.close()
+
+
+@pytest.mark.parametrize("extreme", EXTREME_DATES)
+def test_a_date_without_a_paris_day_is_a_validation_error(extreme):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="Indiquez une date valide"):
+        prices.PriceDraftCreate(retailer="R", store_name="S", city="Paris", postal_code="75001",
+                                price="1.00", observed_at=extreme)

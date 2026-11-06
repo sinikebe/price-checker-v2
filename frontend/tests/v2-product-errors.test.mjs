@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import ts from "typescript";
 
-const source = readFileSync(new URL("../src/v2/v2-product-errors.ts", import.meta.url), "utf8");
+// The shared decoder it relies on is written in, so the module loads on its own.
+const source = readFileSync(new URL("../src/v2/v2-product-errors.ts", import.meta.url), "utf8")
+  .replace(/import \{[^}]*\} from "\.\/v2-http";/, readFileSync(new URL("../src/v2/v2-http.ts", import.meta.url), "utf8"));
 const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { productErrorText } = await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const generic = "L'opération a échoué.";

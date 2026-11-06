@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CREDIT_FIELDS, creditSummary, loadCreditSettings, readAmounts, saveCreditSettings, type CreditAmounts, type CreditSettings } from "./v2-credit-settings";
+import { errorText } from "./v2-http";
 
 type Draft = Record<keyof CreditAmounts, string>;
 const draftOf = (settings: CreditSettings): Draft =>
@@ -17,7 +18,7 @@ export default function V2CreditSettings() {
     let active = true;
     loadCreditSettings()
       .then(settings => { if (active) { setSaved(settings); setDraft(draftOf(settings)); } })
-      .catch(reason => { if (active) setError(reason instanceof Error ? reason.message : "Les réglages n’ont pas pu être chargés."); });
+      .catch(reason => { if (active) setError(errorText(reason, "Les réglages n’ont pas pu être chargés.")); });
     return () => { active = false; };
   }, []);
 
@@ -34,7 +35,7 @@ export default function V2CreditSettings() {
       setSaved(next); setDraft(draftOf(next));
       setNotice("Réglages enregistrés. Ils s’appliquent dès la prochaine attribution de crédits.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Les réglages n’ont pas pu être enregistrés.");
+      setError(errorText(reason, "Les réglages n’ont pas pu être enregistrés."));
       loadCreditSettings().then(settings => { setSaved(settings); setDraft(draftOf(settings)); }).catch(() => undefined);
     } finally { setPending(false); }
   }

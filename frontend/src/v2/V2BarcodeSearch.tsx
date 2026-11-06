@@ -4,6 +4,7 @@ import V2BarcodeScanner from "./V2BarcodeScanner";
 import V2OffBarcodeResult from "./V2OffBarcodeResult";
 import { resolveBarcodePath } from "./v2-barcode";
 import { isBarcode } from "./v2-catalogue-search";
+import { errorText } from "./v2-http";
 
 export default function V2BarcodeSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
       const path = await resolveBarcodePath(code);
       if (path) navigate(path); else setUnknown(code);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "La recherche a échoué. Réessayez.");
+      setError(errorText(reason, "La recherche a échoué. Réessayez."));
     } finally {
       busyRef.current = false;
       setBusy(false);
