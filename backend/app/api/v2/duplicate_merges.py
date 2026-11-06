@@ -37,11 +37,11 @@ class MergeInput(BaseModel):
 
 
 class StoreMergeData(BaseModel):
-    name: str = Field(min_length=1,max_length=300)
-    city: str | None = Field(default=None,max_length=200)
-    postal_code: str | None = Field(default=None,max_length=20)
-    latitude: Decimal | None = Field(ge=-90,le=90)
-    longitude: Decimal | None = Field(ge=-180,le=180)
+    name: str = Field(min_length=1, max_length=300)
+    city: str | None = Field(default=None, max_length=200)
+    postal_code: str | None = Field(default=None, max_length=20)
+    latitude: Decimal | None = Field(ge=-90, le=90)
+    longitude: Decimal | None = Field(ge=-180, le=180)
     supports_drive: bool
     supports_delivery: bool
     external_store_id: str | None = Field(max_length=100)
@@ -51,15 +51,15 @@ class StoreMergeData(BaseModel):
 
     @field_validator("name")
     @classmethod
-    def nonblank(cls,value: str) -> str:
-        cleaned=value.strip()
+    def nonblank(cls, value: str) -> str:
+        cleaned = value.strip()
         if not cleaned:
             raise ValueError("Champ magasin obligatoire.")
         return cleaned
 
-    @field_validator("city","postal_code")
+    @field_validator("city", "postal_code")
     @classmethod
-    def clean_place(cls,value: str | None) -> str | None:
+    def clean_place(cls, value: str | None) -> str | None:
         return (value or "").strip() or None
 
     @model_validator(mode="after")
@@ -71,7 +71,7 @@ class StoreMergeData(BaseModel):
 
 
 def _fingerprint(value: dict) -> str:
-    return hashlib.sha256(json.dumps(value,sort_keys=True,default=str).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def _empty(value: Any) -> bool:
@@ -89,6 +89,18 @@ def _fields(kind: str, origin: dict, duplicate: dict) -> list[dict]:
                        "state": state,
                        "suggested": right if _empty(left) else left})
     return result
+
+
+def _snapshot(kind: str, row) -> dict:
+    """A product or store as the merge compares, fingerprints and records it, in JSON terms."""
+    if kind == "product":
+        return _product_data(row["data"])
+    return json.loads(json.dumps({key: row[key] for key in STORE_FIELDS}, default=str))
+
+
+def _revision(kind: str, row) -> int:
+    """The revision a merge comparison is made against: stores have none, so always 1."""
+    return row["revision"] if kind == "product" else 1
 
 
 async def _mark_manual_duplicates(connection, kind: str, origin_id: int, duplicate_id: int):
@@ -134,7 +146,7 @@ async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
         if kind == "product":
             await require_visible(connection, kind, item["id"])
             if await connection.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1)",item["id"]
+                "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1)", item["id"]
             ):
                 raise HTTPException(status_code=409, detail="Choisissez la version actuelle du produit.")
     if kind == "store":
@@ -142,7 +154,7 @@ async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
             public = await connection.fetchval(
                 "SELECT EXISTS(SELECT 1 FROM v2_stores s WHERE s.id=$1 "
                 "AND (s.osm_id IS NOT NULL OR EXISTS(SELECT 1 FROM v2_price_observations o "
-                "WHERE o.store_id=s.id)))",item["id"])
+                "WHERE o.store_id=s.id)))", item["id"])
             if not public:
                 raise HTTPException(status_code=404, detail="Magasin public introuvable.")
     if kind == "store" and origin["retailer_id"] != duplicate["retailer_id"]:
@@ -155,14 +167,7 @@ async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
             raise HTTPException(
                 status_code=422, detail="Les magasins doivent appartenir au même groupe d’enseignes."
             )
-    origin_data = _product_data(origin["data"]) if kind == "product" else {
-        key: origin[key] for key in STORE_FIELDS}
-    duplicate_data = _product_data(duplicate["data"]) if kind == "product" else {
-        key: duplicate[key] for key in STORE_FIELDS}
-    if kind == "store":
-        origin_data = json.loads(json.dumps(origin_data, default=str))
-        duplicate_data = json.loads(json.dumps(duplicate_data, default=str))
-    return origin, duplicate, origin_data, duplicate_data
+    return origin, duplicate, _snapshot(kind, origin), _snapshot(kind, duplicate)
 
 
 async def _report(connection, report_id: int, *, lock: bool = False):
@@ -218,7 +223,7 @@ async def duplicate_report(report_id: int, request: Request):
         await _admin(connection, request)
         report = await _report(connection, report_id)
         table = "v2_products" if report["kind"] == "product" else "v2_stores"
-        row = await connection.fetchrow(f"SELECT * FROM {table} WHERE id=$1",report["content_id"])
+        row = await connection.fetchrow(f"SELECT * FROM {table} WHERE id=$1", report["content_id"])
         if row is None:
             raise HTTPException(status_code=404, detail="Fiche d'origine introuvable.")
         data = decoded(row["data"]) if report["kind"] == "product" else {
@@ -251,13 +256,166 @@ async def merge_preview(report_id: int, request: Request, duplicate_id: int = Qu
                 "duplicate_id": duplicate["id"],
                 "origin_retailer": retailers.get(origin["retailer_id"]) if retailers else None,
                 "duplicate_retailer": retailers.get(duplicate["retailer_id"]) if retailers else None,
-                "origin_revision": origin["revision"] if report["kind"] == "product" else 1,
-                "duplicate_revision": duplicate["revision"] if report["kind"] == "product" else 1,
+                "origin_revision": _revision(report["kind"], origin),
+                "duplicate_revision": _revision(report["kind"], duplicate),
                 "origin_fingerprint": _fingerprint(a),
                 "duplicate_fingerprint": _fingerprint(b),
                 "fields": _fields(report["kind"], a, b)}
     finally:
         await connection.close()
+
+
+async def _merge_product(connection, admin, origin, duplicate, before: dict, proposed: dict) -> dict:
+    """Write the reviewed product into the origin, move the duplicate's prices and links to it.
+
+    The duplicate's pending product drafts are rejected. `before` is the origin as compared; the
+    result returned is the origin's new data.
+    """
+    try:
+        result = ProductData.model_validate(proposed).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Fiche produit résultante invalide.") from exc
+    _validate_publish(result)
+    if result["ean"]:
+        collision = await connection.fetchval(
+            "SELECT p.id FROM v2_products p LEFT JOIN v2_content_merges m "
+            "ON m.kind='product' AND m.from_id=p.id "
+            "WHERE COALESCE(m.to_id,p.id) <> ALL($2::bigint[]) "
+            "AND p.data->>'ean'<>'' AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
+            "AND NOT EXISTS(SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
+            "AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
+            "WHERE m.kind='product' AND m.from_id=p.id) LIMIT 1",
+            result["ean"], [origin["id"], duplicate["id"]],
+        )
+        if collision:
+            raise HTTPException(status_code=409, detail="Ce code-barres appartient à une troisième fiche.")
+    # The result is a complete product (it passed the publication checks), so an origin known only
+    # by its barcode becomes an ordinary catalogue product.
+    await connection.execute(
+        "UPDATE v2_products SET data=$1::jsonb,revision=revision+1,off_reference=false,updated_at=now() WHERE id=$2",
+        json.dumps(result), origin["id"],
+    )
+    await connection.execute(
+        "INSERT INTO v2_product_events(product_id,actor_id,event_type,before_data,after_data) "
+        "VALUES($1,$2,'merge',$3::jsonb,$4::jsonb)",
+        origin["id"], admin["id"], json.dumps(before), json.dumps(result),
+    )
+    await connection.execute(
+        "UPDATE v2_price_drafts SET product_id=$1 WHERE product_id=$2", origin["id"], duplicate["id"])
+    await _mark_manual_duplicates(connection, "product", origin["id"], duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_price_observations SET product_id=$1 WHERE product_id=$2", origin["id"], duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_recipe_ingredients SET product_id=$1 WHERE product_id=$2", origin["id"], duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_transfer_product_map SET target_id=$1 WHERE target_id=$2", origin["id"], duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_offer_product_links SET product_id=$1 WHERE product_id=$2 "
+        "AND NOT EXISTS(SELECT 1 FROM v2_offer_product_links other "
+        "WHERE other.offer_id=v2_offer_product_links.offer_id AND other.product_id=$1)",
+        origin["id"], duplicate["id"],
+    )
+    # Keep an already queued OFF fetch for the donor barcode.
+    # Its snapshot stays under the donor ID and is exposed by the
+    # canonical product's OFF source list after completion.
+    await connection.execute(
+        "INSERT INTO v2_open_prices_sync_state"
+        "(product_id,barcode,checked_at,imported_count) "
+        "SELECT $1,barcode,checked_at,imported_count FROM v2_open_prices_sync_state "
+        "WHERE product_id=$2 ON CONFLICT(product_id,barcode) DO UPDATE SET "
+        "checked_at=greatest(v2_open_prices_sync_state.checked_at,excluded.checked_at),"
+        "imported_count=v2_open_prices_sync_state.imported_count+excluded.imported_count",
+        origin["id"], duplicate["id"],
+    )
+    await connection.execute("DELETE FROM v2_open_prices_sync_state WHERE product_id=$1", duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(),rejected_by=$1 "
+        "WHERE product_id=$2 AND status='draft'", admin["id"], duplicate["id"],
+    )
+    await connection.execute("UPDATE v2_pwa_versions SET revision=revision+1 WHERE collection='products'")
+    return result
+
+
+async def _merge_store(connection, admin, origin, duplicate, proposed: dict) -> dict:
+    """Write the reviewed store into the origin and move the duplicate's prices, offers and aliases to it.
+
+    Returns the origin's new fields.
+    """
+    try:
+        result = StoreMergeData.model_validate(proposed).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Fiche magasin résultante invalide.") from exc
+    if (result["osm_id"] is None) != (result["osm_type"] is None):
+        raise HTTPException(status_code=422, detail="Identifiant OSM incomplet.")
+    for source in (origin, duplicate):
+        if source["osm_type"] is not None and source["osm_id"] is not None:
+            await connection.execute(
+                "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
+                "VALUES($1,$2,$3) ON CONFLICT(osm_type,osm_id) DO UPDATE "
+                "SET store_id=EXCLUDED.store_id",
+                source["osm_type"], source["osm_id"], origin["id"],
+            )
+    # Free donor's unique OSM identity, retained in the audit snapshot.
+    await connection.execute("UPDATE v2_stores SET osm_type=NULL,osm_id=NULL WHERE id=$1", duplicate["id"])
+    try:
+        await connection.execute(
+            "UPDATE v2_stores SET name=$1,city=$2,postal_code=$3,latitude=$4,longitude=$5,"
+            "supports_drive=$6,supports_delivery=$7,external_store_id=$8,osm_type=$9,osm_id=$10,online=$12 "
+            "WHERE id=$11", result["name"], result["city"], result["postal_code"],
+            result["latitude"], result["longitude"], result["supports_drive"],
+            result["supports_delivery"], result["external_store_id"],
+            result["osm_type"], result["osm_id"], origin["id"], result["online"],
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Champ magasin invalide.") from exc
+    # These three tables have composite (retailer_id, store_id)
+    # references. Move both keys together, retaining the original
+    # source ID even if this canonical store is merged again later.
+    await connection.execute(
+        "UPDATE v2_price_drafts SET "
+        "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
+        "retailer_id=$1,store_id=$2 WHERE store_id=$3",
+        origin["retailer_id"], origin["id"], duplicate["id"],
+    )
+    await connection.execute(
+        "UPDATE v2_offers SET "
+        "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
+        "retailer_id=$1,store_id=$2 WHERE store_id=$3",
+        origin["retailer_id"], origin["id"], duplicate["id"],
+    )
+    await _mark_manual_duplicates(connection, "store", origin["id"], duplicate["id"])
+    await connection.execute(
+        "UPDATE v2_price_observations SET "
+        "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
+        "retailer_id=$1,store_id=$2 WHERE store_id=$3",
+        origin["retailer_id"], origin["id"], duplicate["id"],
+    )
+    await connection.execute(
+        "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "
+        "SELECT $1,source,name,name_key,approved_by FROM v2_store_aliases WHERE store_id=$2 "
+        "ON CONFLICT DO NOTHING", origin["id"], duplicate["id"],
+    )
+    await connection.execute(
+        "UPDATE v2_store_alias_proposals p SET status='rejected',reviewed_by=$3,reviewed_at=now() "
+        "WHERE p.store_id=$2 AND p.status='pending' AND EXISTS "
+        "(SELECT 1 FROM v2_store_alias_proposals other WHERE other.store_id=$1 "
+        "AND other.status='pending' AND other.source=p.source AND other.name_key=p.name_key)",
+        origin["id"], duplicate["id"], admin["id"],
+    )
+    for old_name in (origin["name"], duplicate["name"]):
+        if name_key(old_name) != name_key(result["name"]):
+            await connection.execute(
+                "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "
+                "VALUES($1,'retailer',$2,$3,$4) ON CONFLICT DO NOTHING",
+                origin["id"], old_name, name_key(old_name), admin["id"],
+            )
+    await connection.execute(
+        "UPDATE v2_store_alias_proposals SET store_id=$1 WHERE store_id=$2 AND status='pending'",
+        origin["id"], duplicate["id"],
+    )
+    await connection.execute(
+        "UPDATE v2_store_osm_aliases SET store_id=$1 WHERE store_id=$2", origin["id"], duplicate["id"])
+    return result
 
 
 @router.post("/reports/{report_id}/merge")
@@ -271,10 +429,10 @@ async def merge(report_id: int, payload: MergeInput, request: Request):
             origin, duplicate, a, b = await _pair(
                 connection, report, payload.duplicate_id, lock=True)
             kind = report["kind"]
-            if (payload.origin_revision != (origin["revision"] if kind == "product" else 1)
-                    or payload.duplicate_revision != (duplicate["revision"] if kind == "product" else 1)):
-                raise HTTPException(status_code=409, detail="Une fiche a changé. Rechargez la comparaison.")
-            if payload.origin_fingerprint != _fingerprint(a) or payload.duplicate_fingerprint != _fingerprint(b):
+            if (payload.origin_revision != _revision(kind, origin)
+                    or payload.duplicate_revision != _revision(kind, duplicate)
+                    or payload.origin_fingerprint != _fingerprint(a)
+                    or payload.duplicate_fingerprint != _fingerprint(b)):
                 raise HTTPException(status_code=409, detail="Une fiche a changé. Rechargez la comparaison.")
             fields = _fields(kind, a, b)
             keys = {field["key"] for field in fields}
@@ -285,152 +443,28 @@ async def merge(report_id: int, payload: MergeInput, request: Request):
                 if field["state"] == "identical" and payload.result[field["key"]] != field["origin"]:
                     raise HTTPException(status_code=422, detail="Un champ identique a été modifié.")
             if kind == "product":
-                try:
-                    result = ProductData.model_validate(payload.result).model_dump(mode="json")
-                except ValueError as exc:
-                    raise HTTPException(status_code=422, detail="Fiche produit résultante invalide.") from exc
-                _validate_publish(result)
-                if result["ean"]:
-                    collision = await connection.fetchval(
-                        "SELECT p.id FROM v2_products p LEFT JOIN v2_content_merges m "
-                        "ON m.kind='product' AND m.from_id=p.id "
-                        "WHERE COALESCE(m.to_id,p.id) <> ALL($2::bigint[]) "
-                        "AND p.data->>'ean'<>'' AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
-                        "AND NOT EXISTS(SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
-                        "AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
-                        "WHERE m.kind='product' AND m.from_id=p.id) LIMIT 1",
-                        result["ean"],[origin["id"],duplicate["id"]],
-                    )
-                    if collision:
-                        raise HTTPException(status_code=409, detail="Ce code-barres appartient à une troisième fiche.")
-                await connection.execute(
-                    "UPDATE v2_products SET data=$1::jsonb,revision=revision+1,updated_at=now() WHERE id=$2",
-                    json.dumps(result),origin["id"],
-                )
-                await connection.execute(
-                    "INSERT INTO v2_product_events(product_id,actor_id,event_type,before_data,after_data) "
-                    "VALUES($1,$2,'merge',$3::jsonb,$4::jsonb)",
-                    origin["id"],admin["id"],json.dumps(a),json.dumps(result),
-                )
-                await connection.execute("UPDATE v2_price_drafts SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
-                await _mark_manual_duplicates(connection,"product",origin["id"],duplicate["id"])
-                await connection.execute("UPDATE v2_price_observations SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
-                await connection.execute("UPDATE v2_recipe_ingredients SET product_id=$1 WHERE product_id=$2",origin["id"],duplicate["id"])
-                await connection.execute("UPDATE v2_transfer_product_map SET target_id=$1 WHERE target_id=$2",origin["id"],duplicate["id"])
-                await connection.execute(
-                    "UPDATE v2_offer_product_links SET product_id=$1 WHERE product_id=$2 "
-                    "AND NOT EXISTS(SELECT 1 FROM v2_offer_product_links other "
-                    "WHERE other.offer_id=v2_offer_product_links.offer_id AND other.product_id=$1)",
-                    origin["id"],duplicate["id"],
-                )
-                # Keep an already queued OFF fetch for the donor barcode.
-                # Its snapshot stays under the donor ID and is exposed by the
-                # canonical product's OFF source list after completion.
-                await connection.execute(
-                    "INSERT INTO v2_open_prices_sync_state"
-                    "(product_id,barcode,checked_at,imported_count) "
-                    "SELECT $1,barcode,checked_at,imported_count FROM v2_open_prices_sync_state "
-                    "WHERE product_id=$2 ON CONFLICT(product_id,barcode) DO UPDATE SET "
-                    "checked_at=greatest(v2_open_prices_sync_state.checked_at,excluded.checked_at),"
-                    "imported_count=v2_open_prices_sync_state.imported_count+excluded.imported_count",
-                    origin["id"], duplicate["id"],
-                )
-                await connection.execute("DELETE FROM v2_open_prices_sync_state WHERE product_id=$1",duplicate["id"])
-                await connection.execute(
-                    "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(),rejected_by=$1 "
-                    "WHERE product_id=$2 AND status='draft'",admin["id"],duplicate["id"],
-                )
-                await connection.execute("UPDATE v2_pwa_versions SET revision=revision+1 WHERE collection='products'")
+                result = await _merge_product(connection, admin, origin, duplicate, a, payload.result)
             else:
-                try:
-                    result = StoreMergeData.model_validate(payload.result).model_dump()
-                except ValueError as exc:
-                    raise HTTPException(status_code=422, detail="Fiche magasin résultante invalide.") from exc
-                if (result["osm_id"] is None) != (result["osm_type"] is None):
-                    raise HTTPException(status_code=422, detail="Identifiant OSM incomplet.")
-                for source in (origin,duplicate):
-                    if source["osm_type"] is not None and source["osm_id"] is not None:
-                        await connection.execute(
-                            "INSERT INTO v2_store_osm_aliases(osm_type,osm_id,store_id) "
-                            "VALUES($1,$2,$3) ON CONFLICT(osm_type,osm_id) DO UPDATE "
-                            "SET store_id=EXCLUDED.store_id",
-                            source["osm_type"],source["osm_id"],origin["id"],
-                        )
-                # Free donor's unique OSM identity, retained in the audit snapshot.
-                await connection.execute("UPDATE v2_stores SET osm_type=NULL,osm_id=NULL WHERE id=$1",duplicate["id"])
-                try:
-                    await connection.execute(
-                        "UPDATE v2_stores SET name=$1,city=$2,postal_code=$3,latitude=$4,longitude=$5,"
-                        "supports_drive=$6,supports_delivery=$7,external_store_id=$8,osm_type=$9,osm_id=$10,online=$12 "
-                        "WHERE id=$11",result["name"],result["city"],result["postal_code"],
-                        result["latitude"],result["longitude"],result["supports_drive"],
-                        result["supports_delivery"],result["external_store_id"],
-                        result["osm_type"],result["osm_id"],origin["id"],result["online"],
-                    )
-                except (TypeError, ValueError) as exc:
-                    raise HTTPException(status_code=422, detail="Champ magasin invalide.") from exc
-                # These three tables have composite (retailer_id, store_id)
-                # references. Move both keys together, retaining the original
-                # source ID even if this canonical store is merged again later.
-                await connection.execute(
-                    "UPDATE v2_price_drafts SET "
-                    "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
-                    "retailer_id=$1,store_id=$2 WHERE store_id=$3",
-                    origin["retailer_id"], origin["id"], duplicate["id"],
-                )
-                await connection.execute(
-                    "UPDATE v2_offers SET "
-                    "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
-                    "retailer_id=$1,store_id=$2 WHERE store_id=$3",
-                    origin["retailer_id"], origin["id"], duplicate["id"],
-                )
-                await _mark_manual_duplicates(connection,"store",origin["id"],duplicate["id"])
-                await connection.execute(
-                    "UPDATE v2_price_observations SET "
-                    "source_retailer_id=COALESCE(source_retailer_id,retailer_id),"
-                    "retailer_id=$1,store_id=$2 WHERE store_id=$3",
-                    origin["retailer_id"], origin["id"], duplicate["id"],
-                )
-                await connection.execute(
-                    "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "
-                    "SELECT $1,source,name,name_key,approved_by FROM v2_store_aliases WHERE store_id=$2 "
-                    "ON CONFLICT DO NOTHING",origin["id"],duplicate["id"],
-                )
-                await connection.execute(
-                    "UPDATE v2_store_alias_proposals p SET status='rejected',reviewed_by=$3,reviewed_at=now() "
-                    "WHERE p.store_id=$2 AND p.status='pending' AND EXISTS "
-                    "(SELECT 1 FROM v2_store_alias_proposals other WHERE other.store_id=$1 "
-                    "AND other.status='pending' AND other.source=p.source AND other.name_key=p.name_key)",
-                    origin["id"],duplicate["id"],admin["id"],
-                )
-                for old_name in (origin["name"],duplicate["name"]):
-                    if name_key(old_name) != name_key(result["name"]):
-                        await connection.execute(
-                            "INSERT INTO v2_store_aliases(store_id,source,name,name_key,approved_by) "
-                            "VALUES($1,'retailer',$2,$3,$4) ON CONFLICT DO NOTHING",
-                            origin["id"],old_name,name_key(old_name),admin["id"],
-                        )
-                await connection.execute("UPDATE v2_store_alias_proposals SET store_id=$1 WHERE store_id=$2 AND status='pending'",origin["id"],duplicate["id"])
-                await connection.execute("UPDATE v2_store_osm_aliases SET store_id=$1 WHERE store_id=$2",origin["id"],duplicate["id"])
+                result = await _merge_store(connection, admin, origin, duplicate, payload.result)
             await connection.execute(
                 "INSERT INTO v2_content_merges(kind,from_id,to_id,report_id,from_snapshot,to_snapshot,"
                 "result_snapshot,merged_by) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8)",
-                kind,duplicate["id"],origin["id"],report_id,
-                json.dumps(b),json.dumps(a),json.dumps(result,default=str),admin["id"],
+                kind, duplicate["id"], origin["id"], report_id,
+                json.dumps(b), json.dumps(a), json.dumps(result, default=str), admin["id"],
             )
             await connection.execute(
                 "UPDATE v2_content_merges SET to_id=$1 WHERE kind=$2 AND to_id=$3",
-                origin["id"],kind,duplicate["id"],
+                origin["id"], kind, duplicate["id"],
             )
             await connection.execute(
                 "UPDATE v2_content_reports SET status='merged',duplicate_id=$1,reviewed_at=now(),reviewed_by=$2 "
-                "WHERE id=$3",duplicate["id"],admin["id"],report_id,
+                "WHERE id=$3", duplicate["id"], admin["id"], report_id,
             )
             await connection.execute(
                 "UPDATE v2_content_reports SET status='merged',reviewed_at=now(),reviewed_by=$3 "
                 "WHERE kind=$1 AND report_type='duplicate' AND status='open' "
-                "AND (content_id=$2 OR duplicate_id=$2)",kind,duplicate["id"],admin["id"],
+                "AND (content_id=$2 OR duplicate_id=$2)", kind, duplicate["id"], admin["id"],
             )
-        return {"id":origin["id"],"merged_from_id":duplicate["id"],"status":"merged"}
+        return {"id": origin["id"], "merged_from_id": duplicate["id"], "status": "merged"}
     finally:
         await connection.close()

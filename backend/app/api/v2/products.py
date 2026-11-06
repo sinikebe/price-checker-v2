@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
+import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -260,6 +261,23 @@ def _pack_size_changed(before: str, after: str) -> bool:
     return old[0].amount != new[0].amount
 
 
+def _material_change(before: dict, data: dict) -> bool:
+    """Whether a proposal changes what the existing reference is, which needs a new version.
+
+    Filling a previously blank composition documents the existing reference; changing an
+    established recipe or pack size creates a new version. Writing the same pack differently,
+    or fixing its unit, stays a correction of the same reference.
+    """
+    return (
+        before.get("package", "").strip() != data["package"].strip()
+        or _pack_size_changed(before.get("quantity", ""), data["quantity"])
+        or (
+            bool(before.get("composition", "").strip())
+            and before["composition"].strip() != data["composition"].strip()
+        )
+    )
+
+
 def _validate_publish(data: dict):
     for key, label in (
         ("name", "nom"),
@@ -469,13 +487,9 @@ async def create_draft(payload: DraftCreate, request: Request):
                 )
                 if base_revision is None:
                     raise HTTPException(status_code=404, detail="Produit introuvable.")
-                successor_id = await connection.fetchval(
-                    "SELECT id FROM v2_products WHERE predecessor_id=$1 "
-                    "ORDER BY id DESC LIMIT 1",
-                    payload.product_id,
-                )
-                if successor_id is not None or await connection.fetchval(
-                    "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
+                if await connection.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1) "
+                    "OR EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
                     payload.product_id,
                 ):
                     raise HTTPException(
@@ -493,16 +507,12 @@ async def create_draft(payload: DraftCreate, request: Request):
                 payload.change_kind,
             )
             return _draft(row)
-    except Exception as exc:
+    except asyncpg.UniqueViolationError as exc:
         # The partial unique index prevents parallel duplicate proposals for one
         # author and published product.
-        from asyncpg import UniqueViolationError
-
-        if isinstance(exc, UniqueViolationError):
-            raise HTTPException(
-                status_code=409, detail="Un brouillon existe déjà pour ce produit."
-            ) from exc
-        raise
+        raise HTTPException(
+            status_code=409, detail="Un brouillon existe déjà pour ce produit."
+        ) from exc
     finally:
         await connection.close()
 
@@ -590,6 +600,92 @@ async def reject_draft(draft_id: int, payload: DraftApproval, request: Request):
         await connection.close()
 
 
+async def _locked_base(connection, draft) -> tuple[dict, bool]:
+    """The product a draft edits, locked until the approval ends: its data and its barcode-only flag.
+
+    Refuses (409) a product merged into another, changed since the draft was written, or already
+    replaced by a newer version.
+    """
+    product_id = draft["product_id"]
+    await require_visible(connection, "product", product_id)
+    if await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
+        product_id,
+    ):
+        raise HTTPException(status_code=409, detail="Ce produit a été fusionné.")
+    existing = await connection.fetchrow(
+        "SELECT * FROM v2_products WHERE id=$1 FOR UPDATE",
+        product_id,
+    )
+    if existing is None or existing["revision"] != draft["base_revision"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Le produit a changé depuis la création du brouillon.",
+        )
+    if await connection.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1)",
+        product_id,
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Cette référence possède déjà une version suivante.",
+        )
+    return decoded(existing["data"]), existing["off_reference"]
+
+
+async def _barcode_reference(connection, barcode: str, product_id: int | None) -> tuple[int, dict] | None:
+    """The barcode-only product an approval completes, and its data; None if no other product has it.
+
+    Approvals of the same GTIN are serialised, then the barcode is checked again inside this
+    transaction, so two pending proposals cannot publish duplicate current references concurrently.
+    A product merged into another stands for the product it was merged into. `product_id` is the
+    product the draft edits (None for a new product). Refuses (409) a barcode that belongs to a
+    published product: a complete one, or any other product when the draft edits an existing one.
+    """
+    await lock_gtin(connection, barcode)
+    collision = await connection.fetchval(
+        "SELECT COALESCE(m.to_id,p.id) FROM v2_products p LEFT JOIN v2_content_merges m "
+        "ON m.kind='product' AND m.from_id=p.id "
+        "WHERE COALESCE(m.to_id,p.id) IS DISTINCT FROM $2 "
+        "AND p.data->>'ean' <> '' "
+        "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
+        "AND NOT EXISTS (SELECT 1 FROM v2_products next "
+        "WHERE next.predecessor_id=p.id) "
+        "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
+        "WHERE w.kind='product' AND w.content_id=p.id) LIMIT 1",
+        barcode,
+        product_id,
+    )
+    if collision is None:
+        return None
+    if product_id is None:
+        # A barcode-only product is completed by the first approved proposal for its barcode.
+        row = await connection.fetchrow(
+            "SELECT off_reference, data FROM v2_products WHERE id=$1 FOR UPDATE", collision,
+        )
+        if row is not None and row["off_reference"]:
+            return collision, decoded(row["data"])
+    raise HTTPException(
+        status_code=409,
+        detail="Ce code-barres appartient déjà à un produit publié.",
+    )
+
+
+async def _record_event(connection, product_id, draft_id, actor_id, event_type, before, serialized_after):
+    """Add an approval to a product's history: its data before (None when created) and after (JSON text)."""
+    await connection.execute(
+        "INSERT INTO v2_product_events"
+        "(product_id,draft_id,actor_id,event_type,before_data,after_data) "
+        "VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)",
+        product_id,
+        draft_id,
+        actor_id,
+        event_type,
+        json.dumps(before) if before is not None else None,
+        serialized_after,
+    )
+
+
 @router.post("/drafts/{draft_id}/approve")
 async def approve_draft(draft_id: int, payload: DraftApproval, request: Request):
     _secure_write(request)
@@ -610,50 +706,13 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                 )
             data = _product_data(draft["data"])
             _validate_publish(data)
+            serialized = json.dumps(data)
             before = None
-            reference = False
+            barcode_only = False
             if draft["product_id"] is not None:
-                await require_visible(connection, "product", draft["product_id"])
-                if await connection.fetchval(
-                    "SELECT EXISTS(SELECT 1 FROM v2_content_merges WHERE kind='product' AND from_id=$1)",
-                    draft["product_id"],
-                ):
-                    raise HTTPException(status_code=409, detail="Ce produit a été fusionné.")
-                existing = await connection.fetchrow(
-                    "SELECT * FROM v2_products WHERE id=$1 FOR UPDATE",
-                    draft["product_id"],
-                )
-                if existing is None or existing["revision"] != draft["base_revision"]:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Le produit a changé depuis la création du brouillon.",
-                    )
-                successor = await connection.fetchval(
-                    "SELECT EXISTS(SELECT 1 FROM v2_products WHERE predecessor_id=$1)",
-                    draft["product_id"],
-                )
-                if successor:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Cette référence possède déjà une version suivante.",
-                    )
-                before = decoded(existing["data"])
-                reference = existing["off_reference"]
-                # Filling a previously blank composition documents the existing
-                # reference; changing an established recipe or pack size creates
-                # a new version. Writing the same pack differently, or fixing its
-                # unit, stays a correction of the same reference.
-                material = (
-                    before.get("package", "").strip() != data["package"].strip()
-                    or _pack_size_changed(
-                        before.get("quantity", ""), data["quantity"]
-                    )
-                    or bool(before.get("composition", "").strip())
-                    and (
-                        before["composition"].strip() != data["composition"].strip()
-                    )
-                )
-                if material and not reference and draft["change_kind"] != "new_version":
+                before, barcode_only = await _locked_base(connection, draft)
+                if (_material_change(before, data) and not barcode_only
+                        and draft["change_kind"] != "new_version"):
                     raise HTTPException(
                         status_code=422,
                         detail=(
@@ -662,47 +721,14 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                         ),
                     )
             barcode = data["ean"].strip()
-            if barcode:
-                # Serialize approvals of the same GTIN, then recheck inside
-                # this transaction so two pending proposals cannot publish
-                # duplicate current references concurrently.
-                await lock_gtin(connection, barcode)
-                collision = await connection.fetchval(
-                    "SELECT p.id FROM v2_products p LEFT JOIN v2_content_merges m "
-                    "ON m.kind='product' AND m.from_id=p.id "
-                    "WHERE COALESCE(m.to_id,p.id) IS DISTINCT FROM $2 "
-                    "AND p.data->>'ean' <> '' "
-                    "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
-                    "AND NOT EXISTS (SELECT 1 FROM v2_products next "
-                    "WHERE next.predecessor_id=p.id) "
-                    "AND NOT EXISTS (SELECT 1 FROM v2_content_withdrawals w "
-                    "WHERE w.kind='product' AND w.content_id=p.id) LIMIT 1",
-                    barcode,
-                    draft["product_id"],
-                )
-                if collision is not None:
-                    # A barcode-only product is completed by the first approved proposal for its barcode.
-                    if draft["product_id"] is None and await connection.fetchval(
-                        "SELECT off_reference FROM v2_products WHERE id=$1 FOR UPDATE", collision,
-                    ):
-                        reference_id = collision
-                    else:
-                        raise HTTPException(
-                            status_code=409,
-                            detail="Ce code-barres appartient déjà à un produit publié.",
-                        )
-                else:
-                    reference_id = None
-            else:
-                reference_id = None
-            if reference_id is not None:
-                before = decoded(await connection.fetchval("SELECT data FROM v2_products WHERE id=$1", reference_id))
+            found = await _barcode_reference(connection, barcode, draft["product_id"]) if barcode else None
+            reference_id, before = found if found else (None, before)
             if existing_id := draft["product_id"] or reference_id:
-                if draft["change_kind"] == "new_version" and reference_id is None and not reference:
+                if draft["change_kind"] == "new_version" and reference_id is None and not barcode_only:
                     product = await connection.fetchrow(
                         "INSERT INTO v2_products(data,predecessor_id) "
                         "VALUES($1::jsonb,$2) RETURNING *",
-                        json.dumps(data),
+                        serialized,
                         existing_id,
                     )
                     event_type = "new_version"
@@ -710,37 +736,22 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     product = await connection.fetchrow(
                         "UPDATE v2_products SET data=$1::jsonb,revision=revision+1,"
                         "off_reference=false,updated_at=now() WHERE id=$2 RETURNING *",
-                        json.dumps(data),
+                        serialized,
                         existing_id,
                     )
                     event_type = "correction"
             else:
                 product = await connection.fetchrow(
                     "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING *",
-                    json.dumps(data),
+                    serialized,
                 )
                 event_type = "created"
-            await connection.execute(
-                "INSERT INTO v2_product_events"
-                "(product_id,draft_id,actor_id,event_type,before_data,after_data) "
-                "VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)",
-                product["id"],
-                draft_id,
-                user["id"],
-                event_type,
-                json.dumps(before) if before is not None else None,
-                json.dumps(data),
+            await _record_event(
+                connection, product["id"], draft_id, user["id"], event_type, before, serialized,
             )
             if event_type == "new_version":
-                await connection.execute(
-                    "INSERT INTO v2_product_events"
-                    "(product_id,draft_id,actor_id,event_type,before_data,after_data) "
-                    "VALUES($1,$2,$3,'superseded',$4::jsonb,$5::jsonb)",
-                    draft["product_id"],
-                    draft_id,
-                    user["id"],
-                    json.dumps(before),
-                    json.dumps(data),
+                await _record_event(
+                    connection, draft["product_id"], draft_id, user["id"], "superseded", before, serialized,
                 )
             await connection.execute(
                 "UPDATE v2_product_drafts SET status='approved',approved_at=now(),"

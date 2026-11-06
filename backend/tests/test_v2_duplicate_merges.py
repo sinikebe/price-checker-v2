@@ -14,7 +14,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from app.api.v2 import duplicate_merges, moderation, prices, products, stores
+from app.api.v2 import catalogue, duplicate_merges, moderation, prices, products, stores
 from app.db.v2_migrations import connect_v2, migrate_v2
 from app.main_v2 import app
 from app.services import v2_open_prices_sync as sync
@@ -127,9 +127,9 @@ async def data(monkeypatch):
         async def fake_user(_connection, request):
             return users.get(request.headers.get("x-test-user"))
 
-        for module in (moderation, duplicate_merges, stores, products, prices):
+        for module in (moderation, duplicate_merges, stores, products, prices, catalogue):
             monkeypatch.setattr(module, "_connect", fake_connect)
-        for module in (moderation, stores, prices):
+        for module in (moderation, stores, prices, products):
             monkeypatch.setattr(module, "_current_user", fake_user)
         yield config, users, retailer, stores_ids, product_ids, offer
     finally:
@@ -491,6 +491,113 @@ async def test_review_is_private_and_rejects_stale_store_comparison(data):
             )
         finally:
             await connection.close()
+
+
+NUTELLA = "3017620422003"
+SPREAD = {"name": "Tartinade noisette", "brand": "Test", "package": "Pot", "quantity": "400 g"}
+
+
+async def report_and_merge(client, origin_id: int, duplicate_id: int):
+    """Report `duplicate_id` as a duplicate of `origin_id`, then merge them with the suggested values."""
+    report = await client.post(
+        "/api/v2/moderation/reports",
+        json={"kind": "product", "content_id": origin_id, "report_type": "duplicate",
+              "duplicate_url": f"https://test/v2/produits/{duplicate_id}"},
+        headers={"x-test-user": "author"},
+    )
+    assert report.status_code == 201, report.text
+    preview = await client.get(
+        f"/api/v2/moderation/reports/{report.json()['id']}/merge-preview",
+        params={"duplicate_id": duplicate_id}, headers={"x-test-user": "admin"},
+    )
+    assert preview.status_code == 200, preview.text
+    merged = await client.post(
+        f"/api/v2/moderation/reports/{report.json()['id']}/merge",
+        json=merge_body(preview.json()), headers={"x-test-user": "admin"},
+    )
+    assert merged.status_code == 200, merged.text
+
+
+@pytest.mark.asyncio
+async def test_a_barcode_only_product_merged_with_a_full_one_joins_the_catalogue(data):
+    config = data[0]
+    connection = await connect_v2(config)
+    try:
+        barcode_only = await connection.fetchval(
+            "INSERT INTO v2_products(data,off_reference) VALUES($1::jsonb,true) RETURNING id",
+            json.dumps({"ean": NUTELLA}),
+        )
+        full = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id", json.dumps(SPREAD),
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://test"
+        ) as client:
+            await report_and_merge(client, barcode_only, full)
+            found = await client.get("/api/v2/catalogue/search", params={"q": SPREAD["name"]})
+        assert found.status_code == 200, found.text
+        assert [item["id"] for item in found.json()["items"]] == [barcode_only]
+        row = await connection.fetchrow("SELECT data,off_reference FROM v2_products WHERE id=$1", barcode_only)
+        assert row["off_reference"] is False
+        assert json.loads(row["data"])["ean"] == NUTELLA
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_approval_refuses_a_barcode_merged_into_a_published_product(data):
+    config, users = data[0], data[1]
+    connection = await connect_v2(config)
+    try:
+        barcode_only = await connection.fetchval(
+            "INSERT INTO v2_products(data,off_reference) VALUES($1::jsonb,true) RETURNING id",
+            json.dumps({"ean": NUTELLA}),
+        )
+        full = await connection.fetchval(
+            "INSERT INTO v2_products(data) VALUES($1::jsonb) RETURNING id", json.dumps(SPREAD),
+        )
+        # Proposed while the barcode still belonged to a barcode-only product.
+        draft = await connection.fetchval(
+            "INSERT INTO v2_product_drafts(author_id,data) VALUES($1,$2::jsonb) RETURNING id",
+            users["author"]["id"], json.dumps({**SPREAD, "name": "Pâte à tartiner", "ean": NUTELLA}),
+        )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="https://test"
+        ) as client:
+            await report_and_merge(client, full, barcode_only)
+            approved = await client.post(
+                f"/api/v2/products/drafts/{draft}/approve",
+                json={"revision": 1}, headers={"x-test-user": "admin"},
+            )
+        assert approved.status_code == 409, approved.text
+        assert approved.json()["detail"] == "Ce code-barres appartient déjà à un produit publié."
+        donor = await connection.fetchrow("SELECT data,off_reference FROM v2_products WHERE id=$1", barcode_only)
+        assert donor["off_reference"] is True and json.loads(donor["data"]) == {"ean": NUTELLA}
+        assert await connection.fetchval("SELECT status FROM v2_product_drafts WHERE id=$1", draft) == "draft"
+    finally:
+        await connection.close()
+
+
+@pytest.mark.asyncio
+async def test_refused_reports_count_toward_the_report_limit(data):
+    product_ids = data[4]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://test"
+    ) as client:
+        for _ in range(10):
+            missing = await client.post(
+                "/api/v2/moderation/reports",
+                json={"kind": "product", "content_id": 999999999, "report_type": "duplicate"},
+                headers={"x-test-user": "author"},
+            )
+            assert missing.status_code == 404, missing.text
+        limited = await client.post(
+            "/api/v2/moderation/reports",
+            json={"kind": "product", "content_id": product_ids[0], "report_type": "duplicate"},
+            headers={"x-test-user": "author"},
+        )
+    assert limited.status_code == 429, limited.text
+    assert limited.json()["detail"] == "Trop de signalements."
 
 
 def open_price(barcode: str, price_id: int, *, location_id: int = 55103,

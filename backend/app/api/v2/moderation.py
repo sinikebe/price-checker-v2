@@ -78,29 +78,31 @@ async def create_report(payload: ReportInput, request: Request):
         duplicate_id = _duplicate_id(payload.kind, payload.duplicate_url)
         if duplicate_id == payload.content_id:
             raise HTTPException(status_code=422, detail="La fiche ne peut pas être son propre doublon.")
+        # Counted outside the transaction, so a refused report (missing content, already reported)
+        # still uses the budget instead of being rolled back with it.
+        key = hashlib.sha256(f"report:{user['id']}".encode()).hexdigest()
+        if await _bump_limit(connection, key, 3600) > 10:
+            raise HTTPException(status_code=429, detail="Trop de signalements.")
         async with connection.transaction():
-            key = hashlib.sha256(f"report:{user['id']}".encode()).hexdigest()
-            if await _bump_limit(connection, key, 3600) > 10:
-                raise HTTPException(status_code=429, detail="Trop de signalements.")
             if payload.kind == "store":
                 visible = await connection.fetchval(
                     "SELECT EXISTS(SELECT 1 FROM v2_stores s WHERE s.id=$1 "
                     "AND s.active AND (s.osm_id IS NOT NULL OR EXISTS(SELECT 1 FROM v2_price_observations o "
                     "WHERE o.store_id=s.id)) AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
-                    "WHERE m.kind='store' AND m.from_id=s.id))",payload.content_id)
+                    "WHERE m.kind='store' AND m.from_id=s.id))", payload.content_id)
                 if not visible:
                     raise HTTPException(status_code=404, detail="Magasin introuvable.")
             else:
                 await require_visible(connection, payload.kind, payload.content_id)
                 if payload.kind == "product" and await connection.fetchval(
                     "SELECT EXISTS(SELECT 1 FROM v2_content_merges "
-                    "WHERE kind='product' AND from_id=$1)",payload.content_id,
+                    "WHERE kind='product' AND from_id=$1)", payload.content_id,
                 ):
                     raise HTTPException(status_code=404, detail="Produit introuvable.")
             if duplicate_id is not None:
                 duplicate_id = await connection.fetchval(
                     "SELECT to_id FROM v2_content_merges WHERE kind=$1 AND from_id=$2",
-                    payload.kind,duplicate_id,
+                    payload.kind, duplicate_id,
                 ) or duplicate_id
                 if duplicate_id == payload.content_id:
                     raise HTTPException(status_code=422, detail="La fiche ne peut pas être son propre doublon.")
@@ -108,8 +110,8 @@ async def create_report(payload: ReportInput, request: Request):
                 "INSERT INTO v2_content_reports(kind,content_id,reporter_id,reason,report_type,duplicate_url,duplicate_id) "
                 "VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",
                 payload.kind, payload.content_id, user["id"],
-                reason or "Doublon potentiel",payload.report_type,
-                payload.duplicate_url.strip() if payload.duplicate_url else None,duplicate_id,
+                reason or "Doublon potentiel", payload.report_type,
+                payload.duplicate_url.strip() if payload.duplicate_url else None, duplicate_id,
             )
         return {"id": report_id, "status": "open"}
     except asyncpg.UniqueViolationError as exc:
