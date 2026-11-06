@@ -150,11 +150,11 @@ async def export_products_prices(request: Request):
         stores = await connection.fetch(
             "SELECT id, retailer_id, name, city, postal_code, supports_drive, "
             "supports_delivery, online FROM v2_stores WHERE id = ANY($1::bigint[]) ORDER BY id",
-            [row["store_id"] for row in prices],
+            sorted({row["store_id"] for row in prices}),
         )
         retailers = await connection.fetch(
             "SELECT id, name FROM v2_retailers WHERE id = ANY($1::bigint[]) ORDER BY id",
-            [row["retailer_id"] for row in stores],
+            sorted({row["retailer_id"] for row in stores}),
         )
         bundle = {
             "format": "price-checker-v2-transfer", "schema_version": 1,
@@ -331,7 +331,11 @@ def _approval_token(body: bytes | bytearray, approvals: list[tuple[int, str]]) -
     return hashlib.sha256(bytes(body) + b"\x00" + stamp).hexdigest()
 
 
-async def _read_bundle(request: Request) -> tuple[bytearray, TransferBundle]:
+async def _read_bundle(request: Request) -> tuple[
+    bytearray, TransferBundle, dict[int, TransferProduct], dict[int, TransferRetailer],
+    dict[int, TransferStore], dict[int, TransferPrice],
+]:
+    """The uploaded archive (raw bytes, for the approval token), parsed and checked, with its records by id."""
     body = bytearray()
     async for part in request.stream():
         body.extend(part)
@@ -341,8 +345,8 @@ async def _read_bundle(request: Request) -> tuple[bytearray, TransferBundle]:
         bundle = TransferBundle.model_validate_json(body)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Format de transfert V2 invalide.") from exc
-    _validate_import_bundle(bundle)
-    return body, bundle
+    products, retailers, stores, prices = _validate_import_bundle(bundle)
+    return body, bundle, products, retailers, stores, prices
 
 
 async def _reject_own_archive(connection: asyncpg.Connection, bundle: TransferBundle) -> None:
@@ -357,8 +361,7 @@ async def _reject_own_archive(connection: asyncpg.Connection, bundle: TransferBu
 async def preview_import(request: Request):
     _secure_write(request)
     await _require_admin(request)
-    body, bundle = await _read_bundle(request)
-    _, retailers, stores, _ = _validate_import_bundle(bundle)
+    body, bundle, _, retailers, stores, _ = await _read_bundle(request)
     connection = await _connect()
     try:
         await _reject_own_archive(connection, bundle)
@@ -451,8 +454,7 @@ async def import_products_prices(
 ):
     _secure_write(request)
     await _require_admin(request)
-    body, bundle = await _read_bundle(request)
-    products, retailers, stores, prices = _validate_import_bundle(bundle)
+    body, bundle, products, retailers, stores, prices = await _read_bundle(request)
     predecessor_ids = {p.predecessor_id for p in bundle.products if p.predecessor_id is not None}
     connection = await _connect()
     try:

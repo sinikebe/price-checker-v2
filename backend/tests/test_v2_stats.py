@@ -241,6 +241,10 @@ async def test_contributions_visits_and_accounts_are_counts_from_existing_timest
         assert counts["product_proposals"] == 2 and counts["product_proposals_approved"] == 1
         assert (counts["prices_manual"], counts["prices_bookmarklet"], counts["prices_connector"], counts["prices_open_prices"]) == (2, 1, 0, 1)
         assert counts["recipes_created"] == 1 and counts["reports"] == 0 and counts["merges"] == 0
+        assert list(counts) == ["product_proposals", "product_proposals_approved", "price_proposals", "price_proposals_approved",
+                                "prices_manual", "prices_bookmarklet", "prices_connector", "prices_open_prices",
+                                "recipes_created", "recipe_submissions", "reports", "merges", "store_aliases"]
+        assert all(type(value) is int for value in counts.values())
         month = (await client.get("/api/v2/stats", params={"period": "30d"})).json()
         assert month["traffic"]["accounts_created"] == 2 and month["traffic"]["page_views"] == 15, "45 days ago is outside 30 days"
         raw = json.dumps(day)

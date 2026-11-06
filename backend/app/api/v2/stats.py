@@ -17,16 +17,24 @@ from app.services import v2_request_stats as stats
 
 router = APIRouter(prefix="/api/v2/stats", tags=["v2-stats"])
 
-# Each contribution kind counts rows the application already stores, by their own timestamp.
-CONTRIBUTIONS = (
+# Each contribution kind counts rows the application already stores, by their own timestamp. The response
+# lists them in this order: proposals, published prices by source, then the other contributions.
+PROPOSALS = (
     ("product_proposals", "SELECT count(*) FROM v2_product_drafts WHERE created_at >= $1"),
     ("product_proposals_approved", "SELECT count(*) FROM v2_product_drafts WHERE approved_at >= $1"),
     ("price_proposals", "SELECT count(*) FROM v2_price_drafts WHERE created_at >= $1"),
     ("price_proposals_approved", "SELECT count(*) FROM v2_price_drafts WHERE status = 'approved' AND reviewed_at >= $1"),
-    ("prices_manual", "SELECT count(*) FROM v2_price_observations WHERE source = 'manual' AND created_at >= $1"),
-    ("prices_bookmarklet", "SELECT count(*) FROM v2_price_observations WHERE source = 'bookmarklet' AND created_at >= $1"),
-    ("prices_connector", "SELECT count(*) FROM v2_price_observations WHERE source = 'connector' AND created_at >= $1"),
-    ("prices_open_prices", "SELECT count(*) FROM v2_price_observations WHERE source = 'third_party' AND created_at >= $1"),
+)
+# One pass for the four sources: v2_price_observations is the largest table and has no index on
+# created_at, so each separate count would read all of it.
+PRICES = (
+    "SELECT count(*) FILTER (WHERE source = 'manual') AS prices_manual, "
+    "count(*) FILTER (WHERE source = 'bookmarklet') AS prices_bookmarklet, "
+    "count(*) FILTER (WHERE source = 'connector') AS prices_connector, "
+    "count(*) FILTER (WHERE source = 'third_party') AS prices_open_prices "
+    "FROM v2_price_observations WHERE created_at >= $1"
+)
+CONTRIBUTIONS = (
     ("recipes_created", "SELECT count(*) FROM v2_recipes WHERE created_at >= $1"),
     ("recipe_submissions", "SELECT count(*) FROM v2_recipe_submissions WHERE created_at >= $1"),
     ("reports", "SELECT count(*) FROM v2_content_reports WHERE created_at >= $1"),
@@ -79,7 +87,9 @@ async def read_stats(request: Request, response: Response, period: Literal["1h",
             "SELECT page, sum(views)::bigint AS views, sum(visits)::bigint AS visits FROM v2_page_stats "
             "WHERE bucket >= $1 GROUP BY page ORDER BY views DESC, page", since)
         accounts = await connection.fetchval("SELECT count(*) FROM v2_users WHERE created_at >= $1", since)
-        contributions = {key: await connection.fetchval(sql, since) for key, sql in CONTRIBUTIONS}
+        contributions = {key: await connection.fetchval(sql, since) for key, sql in PROPOSALS}
+        contributions.update(dict(await connection.fetchrow(PRICES, since)))
+        contributions.update({key: await connection.fetchval(sql, since) for key, sql in CONTRIBUTIONS})
     finally:
         await connection.close()
     groups: dict[str, dict] = {}

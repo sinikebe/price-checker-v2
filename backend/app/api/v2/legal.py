@@ -22,8 +22,8 @@ from app.api.v2.setup import _state_dir
 from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/legal", tags=["v2-legal"])
-DOCUMENTS = {"mentions", "confidentialite", "conditions"}
 ORDER = ("mentions", "confidentialite", "conditions")
+DOCUMENTS = frozenset(ORDER)
 MAX_DOCUMENT_BYTES = 128 * 1024
 UPDATES_PER_MINUTE = 20
 

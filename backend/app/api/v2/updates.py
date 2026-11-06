@@ -59,9 +59,7 @@ def _read_schedule(directory: Path) -> dict:
 def _status(directory: Path, schedule: dict) -> dict:
     try:
         last_run = json.loads((directory / "update-last-run.json").read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        last_run = None
-    except (OSError, ValueError):
+    except (OSError, ValueError):  # a missing or unreadable record: no run to show
         last_run = None
     manual_state = ("running" if (directory / "update-manual-active.json").exists()
                     else "queued" if (directory / "update-manual-request.json").exists()

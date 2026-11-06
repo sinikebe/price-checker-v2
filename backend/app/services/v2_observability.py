@@ -38,7 +38,9 @@ def _update_reason(message) -> str:
 
 async def _once(connection, event: str, run_at: str, at: datetime, **fields) -> int:
     """Record a host result only once: the host files are overwritten by each run, so they are polled."""
-    if await connection.fetchval("SELECT 1 FROM v2_logs WHERE event=$1 AND data->>'run_at'=$2 LIMIT 1", event, run_at):
+    # The event was stored with this exact `at`: matching it lets v2_logs_at_idx find the row without a scan.
+    if await connection.fetchval("SELECT 1 FROM v2_logs WHERE at=$3 AND event=$1 AND data->>'run_at'=$2 LIMIT 1",
+                                 event, run_at, at):
         return 0
     return int(await logbook.log_event(connection, event, at=at, run_at=run_at, **fields))
 
