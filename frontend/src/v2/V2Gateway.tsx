@@ -424,6 +424,8 @@ export default function V2Gateway({ settingsMode = false, preferencesMode = fals
   }, []);
 
   function authenticated(user: V2User) {
+    // Remembered now, as the session read at start-up is: offline before the next reload, the account still opens.
+    rememberOfflineUser(user);
     const next = authMode ? new URLSearchParams(route.search).get("next") : null;
     setLoginRedirect(next === "capture" ? "/v2/capture" : next === "panier" ? "/v2/panier" : "/v2");
     setAuthStatus({ admin_initialized: true, user });
