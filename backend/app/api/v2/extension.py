@@ -7,7 +7,6 @@ posts its results), never for a token: a price recorded here is public at once, 
 """
 from __future__ import annotations
 
-import json
 import re
 from decimal import Decimal
 from typing import Literal
@@ -16,12 +15,12 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _bump_limit, _connect, _current_user, _secure_write
-from app.api.v2.catalogue import CURRENT
+from app.db.v2_json import decoded
+from app.db.v2_sql import CURRENT_PRODUCT, MAX_BIGINT
 from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/extension", tags=["v2-extension"])
 
-MAX_BIGINT = 2**63 - 1
 MAX_PLAN_PRODUCTS = 200
 MAX_PLAN_ITEMS = 60
 FRESH_DAYS = 7
@@ -98,7 +97,7 @@ async def plan(payload: PlanRequest, request: Request, response: Response):
             f"""SELECT p.id,p.data->>'ean' AS ean,p.data->>'brand' AS brand,p.data->>'name' AS name
                 FROM unnest($1::bigint[]) WITH ORDINALITY AS wanted(id,position)
                 JOIN v2_products p ON p.id=wanted.id
-                WHERE {CURRENT} AND p.data->>'ean' ~ '^([0-9]{{8}}|[0-9]{{12,14}})$'
+                WHERE {CURRENT_PRODUCT} AND p.data->>'ean' ~ '^([0-9]{{8}}|[0-9]{{12,14}})$'
                   AND NOT EXISTS (SELECT 1 FROM v2_price_observations o
                                   WHERE o.product_id=p.id AND o.store_id=$2 AND o.sales_channel=$3
                                     AND o.observed_at>=now()-($4::int * interval '1 day')
@@ -151,8 +150,8 @@ async def record_reading(payload: ReadingCreate, request: Request, response: Res
                 "WHERE s.id=$1 AND s.active", payload.store_id)
             if store is None or ADAPTERS[payload.adapter]["keyword"] not in store["retailer"].lower():
                 raise HTTPException(status_code=422, detail="Ce magasin n’est pas celui de l’enseigne lue.")
-            product = await connection.fetchrow(f"SELECT p.data FROM v2_products p WHERE p.id=$1 AND {CURRENT}", payload.product_id)
-            data = (product["data"] if isinstance(product["data"], dict) else json.loads(product["data"])) if product else {}
+            product = await connection.fetchrow(f"SELECT p.data FROM v2_products p WHERE p.id=$1 AND {CURRENT_PRODUCT}", payload.product_id)
+            data = decoded(product["data"]) if product else {}
             ean = data.get("ean", "")
             if product is None or not isinstance(ean, str) or not _same_ean(ean, payload.ean):
                 raise HTTPException(status_code=422, detail="Le code-barres ne correspond pas à ce produit.")

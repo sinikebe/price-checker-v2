@@ -6,14 +6,17 @@ import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.core.paris_time import paris_day
 from app.core.url_validation import validate_clickable_url
-from app.services.barcodes import normalize_barcode
+from app.db.v2_json import decoded
+from app.db.v2_locks import lock_gtin
+from app.db.v2_sql import CURRENT_PRODUCT
+from app.services.barcodes import is_gtin, normalize_barcode
 from app.services import v2_basket_credits as credits
 from app.services import v2_product_references as references
 from app.services.quantity_parser import parse_measures
@@ -197,19 +200,18 @@ class DraftApproval(BaseModel):
     revision: int = Field(ge=1)
 
 
-def _decoded(value):
-    return json.loads(value) if isinstance(value, str) else value
+def _product_data(raw) -> dict:
+    """Stored product JSON as the API serves it (validated, projections recomputed)."""
+    return ProductData.model_validate(decoded(raw)).model_dump(mode="json")
 
 
 def _product(row):
     return {
         "id": row["id"],
-        "data": ProductData.model_validate(_decoded(row["data"])).model_dump(
-            mode="json"
-        ),
+        "data": _product_data(row["data"]),
         "revision": row["revision"],
         "predecessor_id": row["predecessor_id"],
-        "updated_at": row["updated_at"].astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
+        "updated_at": paris_day(row["updated_at"]),
         # Known only by its barcode: the browser reads its name and details from Open Food Facts.
         "off_reference": bool(row.get("off_reference", False)),
     }
@@ -221,9 +223,7 @@ def _draft(row):
         "product_id": row["product_id"],
         "author_id": row["author_id"],
         "author": row.get("author"),
-        "data": ProductData.model_validate(_decoded(row["data"])).model_dump(
-            mode="json"
-        ),
+        "data": _product_data(row["data"]),
         "base_revision": row["base_revision"],
         "revision": row["revision"],
         "status": row["status"],
@@ -271,11 +271,7 @@ def _validate_publish(data: dict):
             raise HTTPException(
                 status_code=422, detail=f"Le champ {label} est nécessaire pour publier."
             )
-    if data["ean"] and (
-        not data["ean"].isascii()
-        or not data["ean"].isdigit()
-        or len(data["ean"]) not in (8, 12, 13, 14)
-    ):
+    if data["ean"] and not is_gtin(data["ean"]):
         raise HTTPException(
             status_code=422,
             detail="Le code EAN/GTIN doit contenir 8, 12, 13 ou 14 chiffres.",
@@ -296,12 +292,7 @@ async def list_products():
     connection = await _connect()
     try:
         rows = await connection.fetch(
-            "SELECT p.* FROM v2_products p WHERE NOT p.off_reference AND NOT EXISTS ("
-            "SELECT 1 FROM v2_content_withdrawals w "
-            "WHERE w.kind='product' AND w.content_id=p.id) "
-            "AND NOT EXISTS (SELECT 1 FROM v2_products next WHERE next.predecessor_id=p.id) "
-            "AND NOT EXISTS (SELECT 1 FROM v2_content_merges m WHERE m.kind='product' AND m.from_id=p.id) "
-            "ORDER BY p.updated_at DESC, p.id DESC"
+            f"SELECT p.* FROM v2_products p WHERE {CURRENT_PRODUCT} ORDER BY p.updated_at DESC, p.id DESC"
         )
         return [_product(row) for row in rows]
     finally:
@@ -360,12 +351,7 @@ class BarcodeList(BaseModel):
 async def products_by_barcodes(payload: BarcodeList):
     """Which of these barcodes (up to 20) have a current product here, and its id: the results of a
     search at Open Food Facts are marked with it. Invalid codes are left out."""
-    codes = []
-    for raw in payload.codes:
-        try:
-            codes.append(normalize_barcode(raw))
-        except HTTPException:
-            continue
+    codes = [code for code in (raw.strip() for raw in payload.codes) if is_gtin(code)]
     if not codes:
         return {"matches": {}}
     connection = await _connect()
@@ -410,9 +396,7 @@ async def review_drafts(
 ):
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+        _require_admin_role(await _user(connection, request), "Réservé à l'administrateur.")
         rows = await connection.fetch(
             "SELECT d.*, u.username AS author FROM v2_product_drafts d "
             "JOIN v2_users u ON u.id=d.author_id WHERE d.status='draft' "
@@ -582,9 +566,7 @@ async def reject_draft(draft_id: int, payload: DraftApproval, request: Request):
     _secure_write(request)
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Rejet réservé à l'administrateur.")
+        user = _require_admin_role(await _user(connection, request), "Rejet réservé à l'administrateur.")
         async with connection.transaction():
             row = await connection.fetchrow(
                 "UPDATE v2_product_drafts SET status='rejected',rejected_at=now(), "
@@ -613,11 +595,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
     _secure_write(request)
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(
-                status_code=403, detail="Validation réservée à l'administrateur."
-            )
+        user = _require_admin_role(await _user(connection, request), "Validation réservée à l'administrateur.")
         async with connection.transaction():
             draft = await connection.fetchrow(
                 "SELECT * FROM v2_product_drafts WHERE id=$1 FOR UPDATE",
@@ -630,9 +608,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                     status_code=409,
                     detail="Ce brouillon a changé depuis votre relecture. Rechargez-le.",
                 )
-            data = ProductData.model_validate(_decoded(draft["data"])).model_dump(
-                mode="json"
-            )
+            data = _product_data(draft["data"])
             _validate_publish(data)
             before = None
             reference = False
@@ -661,7 +637,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                         status_code=409,
                         detail="Cette référence possède déjà une version suivante.",
                     )
-                before = _decoded(existing["data"])
+                before = decoded(existing["data"])
                 reference = existing["off_reference"]
                 # Filling a previously blank composition documents the existing
                 # reference; changing an established recipe or pack size creates
@@ -690,10 +666,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
                 # Serialize approvals of the same GTIN, then recheck inside
                 # this transaction so two pending proposals cannot publish
                 # duplicate current references concurrently.
-                await connection.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended(lpad($1,14,'0'),0))",
-                    barcode,
-                )
+                await lock_gtin(connection, barcode)
                 collision = await connection.fetchval(
                     "SELECT p.id FROM v2_products p LEFT JOIN v2_content_merges m "
                     "ON m.kind='product' AND m.from_id=p.id "
@@ -723,7 +696,7 @@ async def approve_draft(draft_id: int, payload: DraftApproval, request: Request)
             else:
                 reference_id = None
             if reference_id is not None:
-                before = _decoded(await connection.fetchval("SELECT data FROM v2_products WHERE id=$1", reference_id))
+                before = decoded(await connection.fetchval("SELECT data FROM v2_products WHERE id=$1", reference_id))
             if existing_id := draft["product_id"] or reference_id:
                 if draft["change_kind"] == "new_version" and reference_id is None and not reference:
                     product = await connection.fetchrow(
@@ -801,9 +774,9 @@ async def product_history(product_id: int):
             {
                 "id": row["id"],
                 "event_type": row["event_type"],
-                "created_at": row["created_at"].astimezone(ZoneInfo("Europe/Paris")).date().isoformat(),
-                "before": _decoded(row["before_data"]),
-                "after": _decoded(row["after_data"]),
+                "created_at": paris_day(row["created_at"]),
+                "before": decoded(row["before_data"]),
+                "after": decoded(row["after_data"]),
             }
             for row in rows
         ]

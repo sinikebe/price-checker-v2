@@ -12,27 +12,25 @@ transaction, so a refused or failed reading spends nothing.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+
+from fastapi import HTTPException
+
+from app.core.paris_time import PARIS
 
 DEFAULTS = {"daily_grant": 50, "hold_max": 100, "visitor_daily": 10,
             "reward_price": 5, "reward_product": 10, "reward_recipe": 10}
 REWARD_KINDS = ("price", "product", "recipe")
-_PARIS = ZoneInfo("Europe/Paris")
 
 
 def paris_now() -> datetime:
-    return datetime.now(_PARIS)
+    return datetime.now(PARIS)
 
 
 async def settings(connection) -> dict:
-    """The current amounts, or the defaults on a database that has no settings row yet."""
-    row = None
-    if await connection.fetchval("SELECT to_regclass('v2_credit_settings') IS NOT NULL"):
-        has_rewards = await connection.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
-            "WHERE table_name='v2_credit_settings' AND column_name='reward_price')")
-        columns = "daily_grant,hold_max,visitor_daily,revision" + (",reward_price,reward_product,reward_recipe" if has_rewards else "")
-        row = await connection.fetchrow(f"SELECT {columns} FROM v2_credit_settings WHERE singleton")
+    """The current amounts, or the defaults if the settings row is missing."""
+    row = await connection.fetchrow(
+        "SELECT daily_grant,hold_max,visitor_daily,revision,reward_price,reward_product,reward_recipe "
+        "FROM v2_credit_settings WHERE singleton")
     return {**DEFAULTS, **dict(row)} if row else {**DEFAULTS, "revision": 0}
 
 
@@ -81,8 +79,18 @@ def visitor_state(remaining: int, today: date, cfg: dict) -> dict:
 
 
 def seconds_until(day: date, now: datetime) -> int:
-    midnight = datetime.combine(day, datetime.min.time(), tzinfo=_PARIS)
+    midnight = datetime.combine(day, datetime.min.time(), tzinfo=PARIS)
     return max(1, int((midnight - now).total_seconds()))
+
+
+def no_credits(state: dict, cost: int, now: datetime, message: str) -> HTTPException:
+    """The 429 refusal of a reading the credits in `state` cannot pay for, to raise.
+
+    Clients read `detail.code` and `detail.credits`; Retry-After is the wait until the next grant.
+    """
+    wait = seconds_until(date.fromisoformat(state["next_grant_on"]), now)
+    return HTTPException(status_code=429, headers={"Retry-After": str(wait)},
+                         detail={"code": "no_credits", "credits": state, "cost": cost, "message": message})
 
 
 async def lock_and_refill(connection, user_id: int, cfg: dict) -> dict:
@@ -119,8 +127,7 @@ async def reward(connection, user_id: int, kind: str, contribution_id: int) -> i
     """
     cfg = await settings(connection)
     credits = cfg.get("reward_" + kind, 0) if kind in REWARD_KINDS else 0
-    if credits <= 0 or not await connection.fetchval(
-            "SELECT to_regclass('v2_credit_rewards') IS NOT NULL"):
+    if credits <= 0:
         return 0
     if await connection.fetchval("SELECT role FROM v2_users WHERE id=$1", user_id) in (None, "admin"):
         return 0

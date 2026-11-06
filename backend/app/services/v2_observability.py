@@ -2,27 +2,23 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.state_files import aware_datetime, read_json_object
 from app.services import v2_logbook as logbook
 from app.services import v2_request_stats as stats
 
 logger = logging.getLogger(__name__)
-_SHA = re.compile(r"[0-9a-f]{7,40}")
+_SHA = re.compile(logbook.SHA_HEX)
 MAX_BYTES = 262_144
 
 
-def _read(path: Path) -> dict | list | None:
+def _read(path: Path) -> dict | None:
     try:
-        with path.open("r", encoding="utf-8") as stream:
-            raw = stream.read(MAX_BYTES + 1)
-        if len(raw) > MAX_BYTES:
-            return None
-        return json.loads(raw)
+        return read_json_object(path, MAX_BYTES)
     except (OSError, ValueError):
         return None
 
@@ -47,20 +43,12 @@ async def _once(connection, event: str, run_at: str, at: datetime, **fields) -> 
     return int(await logbook.log_event(connection, event, at=at, run_at=run_at, **fields))
 
 
-def _moment(value) -> datetime | None:
-    try:
-        moment = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
-        return None
-    return moment if moment.tzinfo else None
-
-
 async def ingest_host_events(connection, state_dir: Path) -> int:
     """Journal the last update, the last cache cleaning and the host alerts, each once."""
     added = 0
     update = _read(state_dir / "update-last-run.json")
     if isinstance(update, dict) and update.get("result") in ("updated", "current", "failed"):
-        at = _moment(update.get("at"))
+        at = aware_datetime(update.get("at"))
         if at:
             fields = {"trigger": update.get("trigger") if update.get("trigger") in ("manual", "scheduled") else "scheduled",
                       "result": update["result"]}
@@ -72,7 +60,7 @@ async def ingest_host_events(connection, state_dir: Path) -> int:
             added += await _once(connection, "update.finished", at.isoformat(), at, **fields)
     cache = _read(state_dir / "cache-clean-last-run.json")
     if isinstance(cache, dict) and cache.get("result") in ("done", "failed"):
-        at = _moment(cache.get("at"))
+        at = aware_datetime(cache.get("at"))
         if at:
             fields = {"trigger": cache.get("trigger") if cache.get("trigger") in ("manual", "update") else "manual",
                       "result": cache["result"]}
@@ -84,7 +72,7 @@ async def ingest_host_events(connection, state_dir: Path) -> int:
         for alert in health["alerts"][-72:]:
             if not isinstance(alert, dict):
                 continue
-            at = _moment(alert.get("at"))
+            at = aware_datetime(alert.get("at"))
             pct = alert.get("pct")
             if at and alert.get("metric") in ("cpu", "memory", "disk") and isinstance(pct, (int, float)) and not isinstance(pct, bool):
                 added += await _once(connection, "host.alert", at.isoformat(), at,
@@ -137,8 +125,8 @@ async def announce_start(connect, version: str) -> None:
         logger.warning("Start event skipped: %s", exc.__class__.__name__)
 
 
-_CONNECTOR_LOGGER = re.compile(r"^price_checker_connector_\d+_(?P<id>[a-z][a-z0-9_-]{1,63})_[0-9a-f]{40}$")
-_ERROR_CLASS = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,59}")
+_CONNECTOR_LOGGER = re.compile(rf"^price_checker_connector_\d+_(?P<id>{logbook.CONNECTOR_ID})_[0-9a-f]{{40}}$")
+_ERROR_CLASS = re.compile(logbook.ERROR_CLASS)
 
 
 class ConnectorFailureCapture(logging.Handler):

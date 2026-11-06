@@ -14,7 +14,7 @@ import json
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
+from app.api.v2.auth import _connect, _limit_key, _require_admin_role, _secure_write, _session_user, per_minute_limit
 from app.api.v2.auth_security import account_limit_key
 from app.api.v2.basket import GroupRef, ProductRef, ScopeRef, _clean, _gather
 from app.api.v2.selections import SelectionRef
@@ -37,12 +37,9 @@ class DemoBasket(BaseModel):
 
 
 async def _admin(connection, request: Request) -> dict:
-    user = await _session_user(connection, request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
-    if await _bump_limit(connection, account_limit_key("demo-basket-save", user["id"]), 60) > SAVES_PER_MINUTE:
-        raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                            detail="Trop d’enregistrements. Réessayez dans une minute.")
+    user = _require_admin_role(await _session_user(connection, request))
+    await per_minute_limit(connection, account_limit_key("demo-basket-save", user["id"]), SAVES_PER_MINUTE,
+                           "Trop d’enregistrements. Réessayez dans une minute.")
     return user
 
 
@@ -97,9 +94,7 @@ async def read_demo_basket(request: Request):
     """The saved demo basket (`demo` is null without one): articles, settings and the prices read when saved."""
     connection = await _connect()
     try:
-        if await _bump_limit(connection, _limit_key("demo-basket-read", request), 60) > READS_PER_MINUTE:
-            raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                detail="Trop de requêtes. Réessayez dans un instant.")
+        await per_minute_limit(connection, _limit_key("demo-basket-read", request), READS_PER_MINUTE)
         row = await connection.fetchrow(
             "SELECT title, content::text AS content, saved_at FROM v2_demo_basket WHERE id = 1")
     finally:

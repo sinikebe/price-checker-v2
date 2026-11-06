@@ -16,7 +16,8 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.db.v2_locks import lock_store_lifecycle
 from app.services.v2_write_limits import check_write_limit, lock_account_writes
 
 router = APIRouter(prefix="/api/v2/stores", tags=["v2-stores"])
@@ -374,7 +375,7 @@ async def set_store_activity(store_id: int, payload: StoreActivity, request: Req
         await _admin(connection, request)
         async with connection.transaction():
             # Serialize lifecycle changes with portable V2 imports.
-            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+            await lock_store_lifecycle(connection)
             row = await connection.fetchrow(
                 "SELECT id,active FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
@@ -406,7 +407,7 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
         await _admin(connection, request)
         async with connection.transaction():
             # Serialize lifecycle changes with portable V2 imports.
-            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+            await lock_store_lifecycle(connection)
             store = await connection.fetchrow(
                 "SELECT id,name FROM v2_stores WHERE id=$1 FOR UPDATE", store_id,
             )
@@ -568,10 +569,7 @@ async def create_alias_proposal(store_id: int, payload: AliasProposalInput, requ
 
 
 async def _admin(connection, request: Request) -> dict:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
-    return user
+    return _require_admin_role(await _current_user(connection, request))
 
 
 @router.get("/alias-proposals/pending")

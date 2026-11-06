@@ -1,12 +1,12 @@
 """Administrator-only view of bounded host-side resource samples."""
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.api.v2.setup import _require_admin, _state_dir
+from app.core.state_files import read_json_object
 
 router = APIRouter(prefix="/api/v2/host-health", tags=["v2-host-health"])
 
@@ -17,11 +17,7 @@ async def host_health(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     path = _state_dir() / "host-health.json"
     try:
-        with path.open("r", encoding="utf-8") as stream:
-            raw = stream.read(65537)
-        if len(raw) > 65536:
-            raise ValueError("Host-health state is too large")
-        state = json.loads(raw)
+        state = read_json_object(path, 65536)
     except FileNotFoundError:
         return {"available": False, "reason": "not_installed"}
     except (OSError, ValueError) as exc:

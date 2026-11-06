@@ -11,19 +11,17 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.db.v2_sql import MAX_BIGINT
 
 router = APIRouter(prefix="/api/v2/availability", tags=["v2-availability"])
 
-MAX_BIGINT = 2**63 - 1
 RECHECK_BOUNDS = (0, 365)  # days; 0 means a connector never looks again by itself
 MAX_STORES = 200  # stores listed for one product
 
 
 async def _require_admin_user(connection, request: Request) -> None:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(await _current_user(connection, request))
 
 
 class AvailabilitySettingsChange(BaseModel):

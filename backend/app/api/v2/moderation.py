@@ -11,7 +11,7 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.api.v2.auth import _bump_limit, _connect, _current_user, _secure_write
+from app.api.v2.auth import _bump_limit, _connect, _current_user, _require_admin_role, _secure_write
 from app.services.v2_visibility import require_visible
 
 router = APIRouter(prefix="/api/v2/moderation", tags=["v2-moderation"])
@@ -43,10 +43,7 @@ class ReportDecision(BaseModel):
 
 
 async def _admin(connection, request: Request) -> dict:
-    user = await _current_user(connection, request)
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
-    return user
+    return _require_admin_role(await _current_user(connection, request))
 
 
 @router.get("/withdrawn")

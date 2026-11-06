@@ -4,41 +4,42 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.api.v2.auth import _connect, _secure_write
-from app.api.v2.products import ProductData
+from app.api.v2.products import ProductData, _product_data
 from app.api.v2.setup import _require_admin
+from app.core.paris_time import PARIS, paris_day, paris_noon
 from app.core.url_validation import validate_clickable_url
+from app.db.v2_json import decoded
+from app.db.v2_locks import lock_store_lifecycle
+from app.db.v2_sql import MAX_BIGINT
 
 router = APIRouter(prefix="/api/v2/transfers", tags=["v2-transfers"])
 MAX_BUNDLE_BYTES = 24 * 1024 * 1024
-MAX_ID = 9223372036854775807
-_PARIS = ZoneInfo("Europe/Paris")
 
 
 class TransferProduct(BaseModel):
-    id: int = Field(ge=1, le=MAX_ID)
-    predecessor_id: int | None = Field(default=None, ge=1, le=MAX_ID)
+    id: int = Field(ge=1, le=MAX_BIGINT)
+    predecessor_id: int | None = Field(default=None, ge=1, le=MAX_BIGINT)
     data: ProductData
 
 
 class TransferRetailer(BaseModel):
-    id: int = Field(ge=1, le=MAX_ID)
+    id: int = Field(ge=1, le=MAX_BIGINT)
     name: str = Field(min_length=1, max_length=200)
 
 
 class TransferStore(BaseModel):
-    id: int = Field(ge=1, le=MAX_ID)
-    retailer_id: int = Field(ge=1, le=MAX_ID)
+    id: int = Field(ge=1, le=MAX_BIGINT)
+    retailer_id: int = Field(ge=1, le=MAX_BIGINT)
     name: str = Field(min_length=1, max_length=300)
     city: str | None = Field(default=None, max_length=200)
     postal_code: str | None = Field(default=None, max_length=20)
@@ -48,9 +49,9 @@ class TransferStore(BaseModel):
 
 
 class TransferPrice(BaseModel):
-    id: int = Field(ge=1, le=MAX_ID)
-    product_id: int = Field(ge=1, le=MAX_ID)
-    store_id: int = Field(ge=1, le=MAX_ID)
+    id: int = Field(ge=1, le=MAX_BIGINT)
+    product_id: int = Field(ge=1, le=MAX_BIGINT)
+    store_id: int = Field(ge=1, le=MAX_BIGINT)
     source: Literal["manual", "bookmarklet", "connector", "third_party"]
     source_provider: str | None = Field(default=None, max_length=50)
     source_url: str | None = Field(default=None, max_length=1000)
@@ -75,7 +76,7 @@ class TransferPrice(BaseModel):
     @classmethod
     def parse_day(cls, value):
         if isinstance(value, str) and len(value) == 10:
-            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+            return paris_noon(date.fromisoformat(value))
         return value
 
     @field_validator("observed_at")
@@ -83,7 +84,7 @@ class TransferPrice(BaseModel):
     def normalize_day(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("La date du relevé doit inclure un fuseau horaire.")
-        return datetime.combine(value.astimezone(_PARIS).date(), time(12), tzinfo=_PARIS)
+        return paris_noon(value.astimezone(PARIS).date())
 
 
 class TransferBundle(BaseModel):
@@ -114,10 +115,6 @@ def _fingerprint(product: TransferProduct) -> str:
 
 def _key(source: UUID, kind: str, source_id: int) -> str:
     return f"pcv2:{source.hex}:{kind}:{source_id}"
-
-
-def _decoded(value):
-    return json.loads(value) if isinstance(value, str) else value
 
 
 @router.get("/export")
@@ -163,13 +160,13 @@ async def export_products_prices(request: Request):
             "format": "price-checker-v2-transfer", "schema_version": 1,
             "source_instance": str(source),
             "products": [{"id": row["id"], "predecessor_id": row["predecessor_id"],
-                          "data": _decoded(row["data"])} for row in products],
+                          "data": decoded(row["data"])} for row in products],
             "retailers": [dict(row) for row in retailers],
             "stores": [dict(row) for row in stores],
             "prices": [{**dict(row), "price": str(row["price"]),
                         "unit_price_amount": (str(row["unit_price_amount"])
                                               if row["unit_price_amount"] is not None else None),
-                        "observed_at": row["observed_at"].astimezone(_PARIS).date().isoformat()} for row in prices],
+                        "observed_at": paris_day(row["observed_at"])} for row in prices],
         }
         body = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).encode()
         if len(body) > MAX_BUNDLE_BYTES:
@@ -226,8 +223,7 @@ async def _import_products(
                     "SELECT data, predecessor_id FROM v2_products WHERE id=$1", mapped["target_id"]
                 )
                 if target is None or mapped["fingerprint"] != fingerprint or (
-                    ProductData.model_validate(_decoded(target["data"])).model_dump(mode="json")
-                    != product.data.model_dump(mode="json")
+                    _product_data(target["data"]) != product.data.model_dump(mode="json")
                 ) or (
                     product.predecessor_id is not None
                     and target["predecessor_id"] != product_map[product.predecessor_id]
@@ -256,9 +252,7 @@ async def _import_products(
                         "LIMIT 1", ean, ancestors,
                     )
                     if collision is not None:
-                        existing = ProductData.model_validate(
-                            _decoded(collision["data"])
-                        ).model_dump(mode="json")
+                        existing = _product_data(collision["data"])
                         if (product.predecessor_id is None and not collision["withdrawn"]
                                 and existing == product.data.model_dump(mode="json")):
                             existing_id = collision["id"]
@@ -463,7 +457,7 @@ async def import_products_prices(
     connection = await _connect()
     try:
         async with connection.transaction():
-            await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+            await lock_store_lifecycle(connection)
             await _reject_own_archive(connection, bundle)
             warnings, approvals = await _location_warnings(
                 connection, bundle.source_instance, retailers, stores

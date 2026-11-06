@@ -7,8 +7,9 @@ import json
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import Field
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
-from app.api.v2.recipes import RecipeInput, _decoded, _detail, _replace_ingredients
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
+from app.api.v2.recipes import RecipeInput, _detail, _replace_ingredients
+from app.db.v2_json import decoded
 from app.services import v2_basket_credits as credits
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
@@ -46,10 +47,7 @@ async def _target_revision(connection, recipe_id: int, author_id: int, *, lock: 
 
 
 async def _admin(connection, request: Request):
-    user = await _person(connection, request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Validation réservée à l'administrateur.")
-    return user
+    return _require_admin_role(await _person(connection, request), "Validation réservée à l'administrateur.")
 
 
 @router.get("/mine")
@@ -88,7 +86,7 @@ async def review_queue(
             "ORDER BY s.created_at,s.id LIMIT $1 OFFSET $2",
             limit, offset,
         )
-        return [{**dict(row), "payload": _decoded(row["payload"])} for row in rows]
+        return [{**dict(row), "payload": decoded(row["payload"])} for row in rows]
     finally:
         await connection.close()
 
@@ -106,7 +104,7 @@ async def submission_detail(submission_id: int, request: Request, response: Resp
         )
         if row is None or (row["author_id"] != user["id"] and user["role"] != "admin"):
             raise HTTPException(status_code=404, detail="Proposition introuvable.")
-        return {**dict(row), "payload": _decoded(row["payload"])}
+        return {**dict(row), "payload": decoded(row["payload"])}
     finally:
         await connection.close()
 
@@ -205,7 +203,7 @@ async def approve_submission(submission_id: int, request: Request):
             )
             if submission is None or submission["status"] != "pending":
                 raise HTTPException(status_code=404, detail="Proposition à valider introuvable.")
-            payload = RecipeInput.model_validate(_decoded(submission["payload"]))
+            payload = RecipeInput.model_validate(decoded(submission["payload"]))
             if submission["recipe_id"] is None:
                 recipe_id = await connection.fetchval(
                     "INSERT INTO v2_recipes"

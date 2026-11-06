@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.api.v2.auth import _connect, _current_user, _secure_write
+from app.api.v2.auth import _connect, _current_user, _require_admin_role, _secure_write
 from app.api.v2.credits import charge
 from app.services import v2_basket_credits as credits
 from app.services.barcodes import normalize_barcode
 from app.api.v2.products import ProductData
 from app.api.v2.stores import AliasSource, propose_alias, visible_store
+from app.core.paris_time import PARIS, paris_day, paris_noon
 from app.core.url_validation import validate_clickable_url
+from app.db.v2_json import decoded
+from app.db.v2_locks import lock_gtin, lock_store_lifecycle
 from app.services.v2_price_history import COMPACT_HISTORY_CTE
 from app.services.v2_visibility import require_visible
 from app.services.v2_write_limits import (
@@ -33,12 +34,6 @@ from app.services.v2_write_limits import (
 PRODUCT_PRICES_COST = 1  # one product, one credit
 
 router = APIRouter(prefix="/api/v2/prices", tags=["v2-prices"])
-_PARIS = ZoneInfo("Europe/Paris")
-
-
-def _day(value: datetime) -> str:
-    return value.astimezone(_PARIS).date().isoformat()
-
 
 class PriceDraftCreate(BaseModel):
     retailer: str = Field(min_length=1, max_length=200)
@@ -85,7 +80,7 @@ class PriceDraftCreate(BaseModel):
     @classmethod
     def parse_day(cls, value):
         if isinstance(value, str) and len(value) == 10:
-            return datetime.combine(date.fromisoformat(value), time(12), tzinfo=_PARIS)
+            return paris_noon(date.fromisoformat(value))
         return value
 
     @field_validator("observed_at")
@@ -93,10 +88,10 @@ class PriceDraftCreate(BaseModel):
     def valid_date(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Indiquez une date et un fuseau horaire.")
-        day = value.astimezone(_PARIS).date()
-        if day > datetime.now(_PARIS).date():
+        day = value.astimezone(PARIS).date()
+        if day > datetime.now(PARIS).date():
             raise ValueError("Un prix ne peut pas être relevé dans le futur.")
-        return datetime.combine(day, time(12), tzinfo=_PARIS)
+        return paris_noon(day)
 
 
 class CaptureDraftCreate(BaseModel):
@@ -179,7 +174,7 @@ async def _retailer_store(
     # the source-tombstone check and their insert. Lifecycle actions use this
     # lock before taking a store row lock.
     if payload.store_id is None:
-        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+        await lock_store_lifecycle(connection)
     retailer_id = await connection.fetchval(
         "SELECT id FROM v2_retailers WHERE lower(name)=lower($1) ORDER BY id LIMIT 1",
         payload.retailer,
@@ -260,7 +255,7 @@ def _observation(row: asyncpg.Record) -> dict:
     return {
         "id": row["id"],
         "price": str(row["price"]),
-        "observed_at": _day(row["observed_at"]),
+        "observed_at": paris_day(row["observed_at"]),
         "retailer": row["retailer"],
         "retailer_id": row["retailer_id"],
         "source_retailer": row["source_retailer"],
@@ -284,7 +279,7 @@ def _draft(row: asyncpg.Record) -> dict:
         "author": row["author"],
         "author_id": row["author_id"],
         "price": str(row["price"]),
-        "observed_at": _day(row["observed_at"]),
+        "observed_at": paris_day(row["observed_at"]),
         "retailer": row["retailer"],
         "source_retailer": row["source_retailer"],
         "store_name": row["store_name"],
@@ -457,9 +452,7 @@ async def review_price_drafts(
 ):
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Réservé à l'administrateur.")
+        _require_admin_role(await _user(connection, request), "Réservé à l'administrateur.")
         return await _draft_inbox(
             connection, owner_id=None, limit=limit, offset=offset,
         )
@@ -503,10 +496,7 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
             # already takes these locks in that order. A new draft has no row.
             # Share the approval lock: a product published between lookup and
             # submission must not receive a second, competing initial draft.
-            await connection.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(lpad($1,14,'0'),0))",
-                barcode,
-            )
+            await lock_gtin(connection, barcode)
             published = await connection.fetchval(
                 "SELECT p.id FROM v2_products p WHERE p.data->>'ean' <> '' "
                 "AND lpad(p.data->>'ean',14,'0')=lpad($1,14,'0') "
@@ -532,9 +522,7 @@ async def create_capture_drafts(payload: CaptureDraftCreate, request: Request):
                     user["id"], payload.product_data.model_dump_json(),
                 )
                 created = True
-            data = draft["data"]
-            if isinstance(data, str):
-                data = json.loads(data)
+            data = decoded(draft["data"])
             if not data.get("ean") or data["ean"].zfill(14) != barcode.zfill(14):
                 raise HTTPException(
                     status_code=409, detail="L’EAN du brouillon a changé. Rechargez la capture.",
@@ -640,9 +628,7 @@ async def _review(draft_id: int, request: Request, *, approve: bool) -> dict:
     _secure_write(request)
     connection = await _connect()
     try:
-        user = await _user(connection, request)
-        if user["role"] != "admin":
-            raise HTTPException(status_code=403, detail="Validation réservée à l’administrateur.")
+        user = _require_admin_role(await _user(connection, request), "Validation réservée à l’administrateur.")
         async with connection.transaction():
             draft = await connection.fetchrow(
                 "SELECT * FROM v2_price_drafts WHERE id=$1 FOR UPDATE", draft_id

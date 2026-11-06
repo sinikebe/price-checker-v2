@@ -6,7 +6,6 @@ import json
 import os
 import re
 import secrets
-import tempfile
 from ipaddress import IPv6Address, ip_address
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -16,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, SecretStr
 
 from app.core.config import get_settings
+from app.core.state_files import write_atomic, write_json_atomic
 from app.db.v2_migrations import migrate_v2, ssl_option
 
 router = APIRouter(prefix="/api/v2/setup", tags=["v2-setup"])
@@ -77,20 +77,11 @@ def _access_code() -> str:
         return path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         code = secrets.token_urlsafe(32)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=".access-", dir=directory)
-        temporary = Path(temporary_name)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-                stream.write(code)
-                stream.flush()
-                os.fsync(stream.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                return path.read_text(encoding="utf-8").strip()
-            return code
-        finally:
-            temporary.unlink(missing_ok=True)
+            write_atomic(path, code.encode("utf-8"), exclusive=True)
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
+        return code
 
 
 def _require_access(code: SecretStr) -> None:
@@ -294,25 +285,12 @@ async def _test_connection(config: dict) -> None:
 
 def _save_config(config: dict, *, first_setup: bool) -> None:
     directory = _ensure_state_dir()
-    path = directory / "database.json"
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".database-", dir=directory)
-    temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(config, stream)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if first_setup:
-            try:
-                os.link(temporary, path)
-            except FileExistsError as exc:
-                raise HTTPException(
-                    status_code=409, detail="La V2 est déjà configurée."
-                ) from exc
-        else:
-            os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        write_json_atomic(directory / "database.json", config, exclusive=first_setup)
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409, detail="La V2 est déjà configurée."
+        ) from exc
 
 
 def _public_config(config: dict) -> dict:
@@ -337,7 +315,7 @@ async def _require_setup_admin_if_initialized(request: Request) -> None:
     """Keep the installation code for bootstrap; require admin after bootstrap."""
     if _read_config() is None:
         return
-    from app.api.v2.auth import _connect, _current_user
+    from app.api.v2.auth import _connect, _current_user, _require_admin_role
 
     connection = await _connect()
     try:
@@ -345,11 +323,7 @@ async def _require_setup_admin_if_initialized(request: Request) -> None:
             "SELECT admin_user_id FROM v2_installation WHERE singleton=true"
         )
         if admin_id is not None:
-            user = await _current_user(connection, request)
-            if user is None or user["role"] != "admin":
-                raise HTTPException(
-                    status_code=403, detail="Accès administrateur requis."
-                )
+            _require_admin_role(await _current_user(connection, request))
     finally:
         await connection.close()
 
@@ -436,15 +410,14 @@ async def update_database(request: DatabaseRequest, transport: Request):
 
 async def _require_admin(request: Request) -> None:
     # Import lazily: auth uses the setup module for its database connection.
-    from app.api.v2.auth import _connect, _current_user
+    from app.api.v2.auth import _connect, _current_user, _require_admin_role
 
     connection = await _connect()
     try:
         user = await _current_user(connection, request)
     finally:
         await connection.close()
-    if user is None or user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Accès administrateur requis.")
+    _require_admin_role(user)
 
 
 @router.get("/hostname")

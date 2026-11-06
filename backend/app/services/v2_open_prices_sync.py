@@ -12,10 +12,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
-from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -23,9 +22,10 @@ from app.api.v2.auth import _bump_limit, _connect
 from app.api.v2.setup import _read_config
 from app.api.v2.stores import name_key
 from app.core.config import get_settings
+from app.core.paris_time import PARIS, paris_noon
+from app.db.v2_locks import lock_store_lifecycle
 
 logger = logging.getLogger(__name__)
-PARIS = ZoneInfo("Europe/Paris")
 MAX_PRODUCTS_PER_CYCLE = 4
 PRICE_PAGE_SIZE = 100
 MIN_INTERVAL_SECONDS = 15
@@ -71,7 +71,7 @@ def _valid_price(item: dict, barcode: str) -> tuple[dict, Decimal, datetime] | N
         amount = value.quantize(Decimal("0.01"))
     except (ValueError, TypeError, InvalidOperation, KeyError):
         return None
-    return location, amount, datetime.combine(observed, time(12), tzinfo=PARIS)
+    return location, amount, paris_noon(observed)
 
 
 def _retry_seconds(header: str | None) -> int:
@@ -216,7 +216,7 @@ async def _save_items(connection, product_id: int, barcode: str, items: list) ->
     imported = 0
     async with connection.transaction():
         # Share the lifecycle lock before any tombstone or store lookup.
-        await connection.execute("SELECT pg_advisory_xact_lock(795244, 1)")
+        await lock_store_lifecycle(connection)
         for item in items:
             if not isinstance(item, dict):
                 continue

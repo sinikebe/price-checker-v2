@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.v2.auth import _bump_limit, _connect, _limit_key, _secure_write, _session_user
+from app.api.v2.auth import _connect, _limit_key, _secure_write, _session_user, per_minute_limit
 from app.api.v2.auth_security import account_limit_key
-from app.api.v2.catalogue import MAX_BIGINT, group_rows, scope_rows
-from app.api.v2.prices import _day
+from app.api.v2.catalogue import group_rows, scope_rows
 from app.api.v2.products import _product
 from app.api.v2.selections import Selection, SelectionRef, member_counts, selection_rows
+from app.core.paris_time import paris_day
+from app.db.v2_sql import MAX_BIGINT
 from app.services import v2_basket_credits as credits
 from app.services import v2_product_references as references
 from app.services import v2_logbook as logbook
@@ -137,7 +138,7 @@ async def _latest_prices(connection, product_ids: list[int]) -> dict[int, dict]:
             entry["stores_truncated"] = True
             continue
         entry["latest_by_store"].append({
-            "id": row["id"], "price": str(row["price"]), "observed_at": _day(row["observed_at"]),
+            "id": row["id"], "price": str(row["price"]), "observed_at": paris_day(row["observed_at"]),
             "retailer": row["retailer"], "store_name": row["store_name"],
             "store_id": row["store_id"], "city": row["city"], "postal_code": row["postal_code"],
             "online": row["online"], "sales_channel": row["sales_channel"], "available": row["available"],
@@ -216,9 +217,7 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
         user = await _session_user(connection, request)
         if user["role"] == "admin":
             # The role comes from the server-side session, never from the request.
-            if await _bump_limit(connection, account_limit_key("basket-admin", user["id"]), 60) > ADMIN_FETCHES_PER_MINUTE:
-                raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                    detail="Trop de requêtes. Réessayez dans un instant.")
+            await per_minute_limit(connection, account_limit_key("basket-admin", user["id"]), ADMIN_FETCHES_PER_MINUTE)
             result = await _gather(connection, payload.items)
             await logbook.log_event(
                 connection, "basket.prices.fetched", items=len(payload.items), products=len(result["products"]),
@@ -238,11 +237,8 @@ async def fetch_basket_prices(payload: BasketPricesRequest, request: Request, re
         public = credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
         if result is None:
             await logbook.log_event(connection, "basket.prices.refused", reason="no_credits")
-            wait = credits.seconds_until(date.fromisoformat(public["next_grant_on"]), state["now"])
-            raise HTTPException(
-                status_code=429, headers={"Retry-After": str(wait)},
-                detail={"code": "no_credits", "credits": public, "cost": cost,
-                        "message": f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier."})
+            raise credits.no_credits(public, cost, state["now"],
+                                     f"Il faut {cost} crédit{'s' if cost > 1 else ''} pour ce panier.")
         return {**result, "credits": public, "cost": cost}
     finally:
         await connection.close()
@@ -264,10 +260,7 @@ async def preview_selection(payload: Selection, request: Request, response: Resp
     connection = await _connect()
     try:
         # Open to visitors, like the catalogue, but bounded per client.
-        key = _limit_key("basket-selection-preview", request)
-        if await _bump_limit(connection, key, 60) > PREVIEWS_PER_MINUTE:
-            raise HTTPException(status_code=429, headers={"Retry-After": "60"},
-                                detail="Trop de requêtes. Réessayez dans un instant.")
+        await per_minute_limit(connection, _limit_key("basket-selection-preview", request), PREVIEWS_PER_MINUTE)
         rows = await selection_rows(connection, payload, MAX_CANDIDATES + 1, _current_product)
         counts = await member_counts(connection, payload, _current_product)
         groups: dict[str, dict] = {}

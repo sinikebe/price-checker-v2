@@ -155,6 +155,15 @@ async def _bump_limit(connection: asyncpg.Connection, key: str, seconds: int) ->
     )
 
 
+async def per_minute_limit(
+    connection: asyncpg.Connection, key: str, maximum: int,
+    detail: str = "Trop de requêtes. Réessayez dans un instant.",
+) -> None:
+    """Count one request for `key` in its one-minute window; beyond `maximum`, 429 with Retry-After: 60."""
+    if await _bump_limit(connection, key, 60) > maximum:
+        raise HTTPException(status_code=429, headers={"Retry-After": "60"}, detail=detail)
+
+
 async def _purge_expired_limits(connection: asyncpg.Connection) -> None:
     # Registration has the longest window (one hour).
     await connection.execute(
@@ -241,6 +250,13 @@ async def _session_user(connection: asyncpg.Connection, request: Request) -> dic
     user = await _current_user(connection, request)
     if user is None:
         raise HTTPException(status_code=401, detail="Connectez-vous.")
+    return user
+
+
+def _require_admin_role(user: dict | None, detail: str = "Accès administrateur requis.") -> dict:
+    """The user, when an administrator; otherwise 403 with `detail` (anonymous callers included)."""
+    if user is None or user["role"] != "admin":
+        raise HTTPException(status_code=403, detail=detail)
     return user
 
 

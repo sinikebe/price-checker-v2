@@ -1,7 +1,6 @@
 """Administrator view of the operational journal (see app/services/v2_logbook.py)."""
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -9,6 +8,7 @@ from fastapi import APIRouter, Query, Request, Response
 
 from app.api.v2.auth import _connect
 from app.api.v2.setup import _require_admin
+from app.db.v2_json import decoded
 from app.services.v2_logbook import CONNECTOR_ID, LEVELS, SOURCES
 from app.services.v2_request_stats import PERIODS
 
@@ -25,7 +25,7 @@ def _cursor(row) -> str:
 def _item(row) -> dict:
     return {"id": row["id"], "at": row["at"].astimezone(UTC).isoformat(), "level": _NAMES[row["level"]],
             "source": row["source"], "event": row["event"], "connector": row["connector"],
-            "data": json.loads(row["data"]) if isinstance(row["data"], str) else row["data"]}
+            "data": decoded(row["data"])}
 
 
 @router.get("")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -21,6 +19,7 @@ from app.api.v2.auth import (
     _session_user,
     _verify_password,
 )
+from app.db.v2_json import decoded
 
 router = APIRouter(prefix="/api/v2/account", tags=["v2-account-data"])
 
@@ -37,8 +36,7 @@ def _rows(rows) -> list[dict]:
     for row in rows:
         item = dict(row)
         for key in _JSON_FIELDS & item.keys():
-            if isinstance(item[key], str):
-                item[key] = json.loads(item[key])
+            item[key] = decoded(item[key])
         result.append(item)
     return result
 

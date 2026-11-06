@@ -23,7 +23,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.api.v2.catalogue import CATEGORY, CURRENT, MAX_BIGINT
+from app.db.v2_sql import CATEGORY, CURRENT_PRODUCT, DISPLAY_ORDER, MAX_BIGINT
 from app.services.v2_catalogue_hierarchy import UNCATEGORIZED, fold
 
 MAX_MEMBERS = 20  # parts included, and as many excluded
@@ -157,7 +157,7 @@ def selection_where(selection: Selection, params: list, product_ids: dict[int, i
 
 
 FROM = (f"FROM v2_products p LEFT JOIN v2_catalogue_classifications c ON c.group_key=lower({CATEGORY}) "
-        f"WHERE {CURRENT}")
+        f"WHERE {CURRENT_PRODUCT}")
 
 
 async def current_ids(connection, selection: Selection, current_product) -> dict[int, int | None]:
@@ -177,7 +177,7 @@ async def selection_rows(connection, selection: Selection, limit: int, current_p
     params.append(limit)
     return await connection.fetch(
         f"SELECT p.*, {CATEGORY} AS category_name {FROM} AND {where} "
-        f"ORDER BY lower(p.data->>'brand'), lower(p.data->>'name'), p.id LIMIT ${len(params)}",
+        f"ORDER BY {DISPLAY_ORDER} LIMIT ${len(params)}",
         *params)
 
 

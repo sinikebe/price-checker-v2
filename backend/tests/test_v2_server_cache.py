@@ -100,6 +100,7 @@ async def test_a_cleaning_is_queued_once_and_only_where_the_host_timer_exists(st
         assert queued.status_code == 202 and queued.json()["state"] == "queued"
         request = json.loads((state / "cache-clean-request.json").read_text())
         assert set(request) == {"id", "requested_at"}, "nothing from the client is stored"
+        assert (state / "cache-clean-request.json").stat().st_mode & 0o777 == 0o644, "the host timer reads it"
         assert (await client.post(URL + "/clean")).status_code == 409
         assert (await client.get(URL)).json()["state"] == "queued"
     assert [item.name for item in state.iterdir() if item.name.startswith(".cache-clean-")] == []

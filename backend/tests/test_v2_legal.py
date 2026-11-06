@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from app.api.v2 import legal
+from app.api.v2 import auth, legal
 from app.main_v2 import app
 
 
@@ -53,7 +53,7 @@ def _admin_client(tmp_path, monkeypatch, role="admin"):
     monkeypatch.setattr(legal, "_state_dir", lambda: tmp_path)
     monkeypatch.setattr(legal, "_connect", connect)
     monkeypatch.setattr(legal, "_session_user", session_user)
-    monkeypatch.setattr(legal, "_bump_limit", bump)
+    monkeypatch.setattr(auth, "_bump_limit", bump)  # the counter behind per_minute_limit
     monkeypatch.setattr(legal.logbook, "log_event", log_event)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://test")
     return client, events

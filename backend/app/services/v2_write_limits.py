@@ -7,6 +7,7 @@ import hashlib
 from fastapi import HTTPException
 
 from app.api.v2.auth import _bump_limit
+from app.db.v2_locks import ACCOUNT_WRITES
 
 MAX_WRITES_PER_HOUR = 60
 MAX_PRODUCT_DRAFTS = 30
@@ -33,7 +34,7 @@ async def lock_account_writes(connection, user: dict) -> None:
     (open drafts, counts) of that account."""
     if user["role"] == "admin":
         return
-    await connection.execute("SELECT pg_advisory_xact_lock(783216, $1)", user["id"])
+    await connection.execute(f"SELECT pg_advisory_xact_lock({ACCOUNT_WRITES}, $1)", user["id"])
 
 
 async def check_open_limit(

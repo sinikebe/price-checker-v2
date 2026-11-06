@@ -13,14 +13,14 @@ from pydantic import BaseModel, Field
 
 from app.api.v2.auth import _connect, _secure_write
 from app.api.v2.recipes import (
-    _PARIS,
     RecipeInput,
     RecipeUpdate,
-    _decoded,
     _detail,
     _replace_ingredients,
     _user,
 )
+from app.core.paris_time import paris_day
+from app.db.v2_json import decoded
 from app.services.v2_write_limits import (
     MAX_RECIPES,
     check_open_limit,
@@ -99,7 +99,7 @@ async def my_private_recipes(request: Request, response: Response):
         )
         return {"items": [
             {**dict(row), "base_servings": str(row["base_servings"]),
-             "updated_at": row["updated_at"].astimezone(_PARIS).date().isoformat()}
+             "updated_at": paris_day(row["updated_at"])}
             for row in rows
         ], "limit": MAX_PRIVATE_RECIPES}
     finally:
@@ -231,7 +231,7 @@ async def publish_private_recipe(recipe_id: int, payload: Publication, request: 
                 "FROM v2_recipe_ingredients WHERE recipe_id=$1 ORDER BY position", recipe_id,
             )
             content = RecipeInput.model_validate({
-                **dict(recipe), "steps": _decoded(recipe["steps"]),
+                **dict(recipe), "steps": decoded(recipe["steps"]),
                 "ingredients": [dict(item) for item in ingredients],
             })
             ids = [item.product_id for item in content.ingredients if item.product_id is not None]

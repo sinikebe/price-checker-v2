@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.v2.auth import _connect, _secure_write
 from app.api.v2.moderation import _admin
-from app.api.v2.products import ProductData, _decoded, _validate_publish
+from app.api.v2.products import ProductData, _product_data, _validate_publish
 from app.api.v2.stores import name_key
+from app.db.v2_json import decoded
+from app.db.v2_sql import LIVE_PRODUCT
 from app.services.v2_visibility import require_visible
 
 router = APIRouter(prefix="/api/v2/moderation", tags=["v2-duplicate-merges"])
@@ -153,9 +155,9 @@ async def _pair(connection, report, duplicate_id: int, *, lock: bool = False):
             raise HTTPException(
                 status_code=422, detail="Les magasins doivent appartenir au même groupe d’enseignes."
             )
-    origin_data = ProductData.model_validate(_decoded(origin["data"])).model_dump(mode="json") if kind == "product" else {
+    origin_data = _product_data(origin["data"]) if kind == "product" else {
         key: origin[key] for key in STORE_FIELDS}
-    duplicate_data = ProductData.model_validate(_decoded(duplicate["data"])).model_dump(mode="json") if kind == "product" else {
+    duplicate_data = _product_data(duplicate["data"]) if kind == "product" else {
         key: duplicate[key] for key in STORE_FIELDS}
     if kind == "store":
         origin_data = json.loads(json.dumps(origin_data, default=str))
@@ -189,11 +191,7 @@ async def candidates(request: Request, kind: Literal["product", "store"],
                 "p.data->>'ean' AS code FROM v2_products p WHERE "
                 "(lower(p.data->>'name') LIKE $1 OR lower(p.data->>'brand') LIKE $1 "
                 "OR p.data->>'ean' LIKE $1 OR p.id::text=$2) "
-                "AND NOT EXISTS(SELECT 1 FROM v2_products n WHERE n.predecessor_id=p.id) "
-                "AND NOT EXISTS(SELECT 1 FROM v2_content_withdrawals w "
-                "WHERE w.kind='product' AND w.content_id=p.id) "
-                "AND NOT EXISTS(SELECT 1 FROM v2_content_merges m "
-                "WHERE m.kind='product' AND m.from_id=p.id) "
+                f"AND {LIVE_PRODUCT} "
                 "ORDER BY p.id DESC LIMIT 30", term, q.strip(),
             )
         else:
@@ -223,7 +221,7 @@ async def duplicate_report(report_id: int, request: Request):
         row = await connection.fetchrow(f"SELECT * FROM {table} WHERE id=$1",report["content_id"])
         if row is None:
             raise HTTPException(status_code=404, detail="Fiche d'origine introuvable.")
-        data = _decoded(row["data"]) if report["kind"] == "product" else {
+        data = decoded(row["data"]) if report["kind"] == "product" else {
             key: row[key] for key in STORE_FIELDS}
         retailer = (await connection.fetchval(
             "SELECT name FROM v2_retailers WHERE id=$1", row["retailer_id"],
