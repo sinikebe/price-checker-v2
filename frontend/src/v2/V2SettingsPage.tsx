@@ -54,7 +54,7 @@ export default function V2SettingsPage({ user, tabSlug, onAccountDeleted, onLogo
         <V2ExtensionDownload key={`extension-${user.id}`} />
       </>;
       case "server": return user?.role === "admin" && <>
-        <V2SettingsServer userId={user.id} />
+        <V2SettingsServer userId={user.id} active={active} />
         <V2CreditSettings key={`credits-${user.id}`} />
         <V2ReferenceSettings key={`references-${user.id}`} />
       </>;

@@ -7,9 +7,9 @@ import V2ServerUpdateSchedule from "./V2ServerUpdateSchedule";
 import V2TransferPanel from "./V2TransferPanel";
 
 /** Administrator-only: the instance itself (host health, disk space and cache, server updates, catalogue search, data transfer, legal documents, hostname and database). */
-export default function V2SettingsServer({ userId }: { userId: number }) {
+export default function V2SettingsServer({ userId, active }: { userId: number; active: boolean }) {
   return <>
-    <V2HostHealth />
+    <V2HostHealth active={active} />
     <V2ServerCache key={`cache-${userId}`} />
     <V2ServerUpdateSchedule key={userId} />
     <V2SearchSettings key={`search-${userId}`} />
