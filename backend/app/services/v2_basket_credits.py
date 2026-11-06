@@ -5,7 +5,8 @@ An account is granted `daily_grant` credits on its first use of each Paris day a
 up to the limit. A visitor without an account has `visitor_daily` price views per Paris day, counted
 per network address (an HMAC of it, never the address), with nothing carried over. Administrators
 are not counted. A contribution an administrator validates earns contribution credits (`bonus`):
-no holding limit, no expiry, spent only once the daily credits are used up. The amounts are administrator settings. Every function runs inside the caller's
+no holding limit, no expiry, spent only once the daily credits are used up.
+The amounts are administrator settings. Every function runs inside the caller's
 transaction, so a refused or failed reading spends nothing.
 """
 
@@ -58,6 +59,11 @@ def public_state(balance: int, today: date, cfg: dict, bonus: int = 0) -> dict:
         "unlimited": False,
         "visitor": False,
     }
+
+
+def account_state(state: dict, cfg: dict) -> dict:
+    """The public credits of an account, from its state after lock_and_refill or spend."""
+    return public_state(state["balance"], state["today"], cfg, state["bonus"])
 
 
 def unlimited_state(today: date, cfg: dict) -> dict:

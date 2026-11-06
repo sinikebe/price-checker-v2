@@ -43,9 +43,9 @@ async def charge(connection, request: Request, cost: int) -> dict:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
         spent = await credits.spend(connection, user["id"], state, cost)
         if spent is None:
-            raise credits.no_credits(credits.public_state(state["balance"], state["today"], cfg, state["bonus"]),
+            raise credits.no_credits(credits.account_state(state, cfg),
                                      cost, now, "Pas assez de crédits pour afficher ces prix.")
-        return credits.public_state(spent["balance"], spent["today"], cfg, spent["bonus"])
+        return credits.account_state(spent, cfg)
     remaining = await credits.visitor_spend(connection, _visitor_key(request), cost, now.date(), cfg["visitor_daily"])
     if remaining is None:
         used = await credits.visitor_used(connection, _visitor_key(request), now.date())
@@ -61,7 +61,7 @@ async def viewer_state(connection, request: Request, user, cfg: dict) -> dict:
         return credits.unlimited_state(today, cfg)
     if user is not None:
         state = await credits.lock_and_refill(connection, user["id"], cfg)
-        return credits.public_state(state["balance"], state["today"], cfg, state["bonus"])
+        return credits.account_state(state, cfg)
     used = await credits.visitor_used(connection, _visitor_key(request), today)
     return credits.visitor_state(max(0, cfg["visitor_daily"] - used), today, cfg)
 

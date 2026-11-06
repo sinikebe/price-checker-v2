@@ -130,6 +130,14 @@ async def test_products_follow_their_new_version_and_bad_shapes_are_refused(setu
     client, _connection, ids = setup
     replaced = (await client.post(PREVIEW, json={"name": "Eau", "include": [{"product": ids["Eau plate"]}]})).json()
     assert [item["id"] for item in replaced["sample"]] == [ids["Successor"]]
+    # A product member, old version or current, counts the current product; an unknown one counts nothing.
+    members = (await client.post(PREVIEW, json={"name": "Eau", "include": [
+        {"product": ids["Eau plate"]}, {"product": ids["Successor"]}, {"product": 999999}, {"group": "Eaux plates"},
+        {"scope": "Jus d'orange"}, {"family": "Jus de fruits", "department": "Boissons"}, {"department": "Boissons"}],
+        "exclude": [{"product": ids["Eau plate"]}]})).json()
+    assert [(member["level"], member["products"]) for member in members["include"]] == [
+        ("product", 1), ("product", 1), ("product", 0), ("group", 1), ("scope", 3), ("family", 5), ("department", 6)]
+    assert ids["Successor"] not in {item["id"] for item in members["sample"]}, "excluding the old version excludes the current one"
     for wrong in (
         {"name": "x", "include": []},
         {"name": "x", "include": [{}]},

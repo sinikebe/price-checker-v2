@@ -16,14 +16,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.api.v2.auth import _connect, _limit_key, _require_admin_role, _secure_write, _session_user, per_minute_limit
 from app.api.v2.auth_security import account_limit_key
-from app.api.v2.basket import GroupRef, ProductRef, ScopeRef, _clean, _gather
+from app.api.v2.basket import MAX_ITEMS, GroupRef, ProductRef, ScopeRef, _clean, _gather
 from app.api.v2.selections import SelectionRef
-from app.api.v2.shared_baskets import DEFAULT_SETTINGS, NewLine, Settings
+from app.api.v2.shared_baskets import DEFAULT_SETTINGS, NewLine, Settings, _json_with
 from app.services import v2_logbook as logbook
 
 router = APIRouter(prefix="/api/v2/demo-basket", tags=["v2-demo-basket"])
 
-MAX_LINES = 100  # as many as one price request takes
+MAX_LINES = MAX_ITEMS  # as many as one price request takes
 MAX_STORED_BYTES = 2_000_000  # what every visitor of the demo downloads
 READS_PER_MINUTE = 60  # a page reads it once; this only stops a runaway loop
 SAVES_PER_MINUTE = 10
@@ -107,8 +107,8 @@ async def read_demo_basket(request: Request):
     if request.headers.get("if-none-match") == headers["ETag"]:
         return Response(status_code=304, headers=headers)
     # The content is stored as JSON already: it is sent as it is, not parsed again.
-    head = json.dumps({"title": row["title"], "saved_at": saved_at}, ensure_ascii=False)[:-1]
-    return Response('{"demo":' + head + ',"content":' + row["content"] + "}}", media_type="application/json", headers=headers)
+    body = '{"demo":' + _json_with({"title": row["title"], "saved_at": saved_at}, "content", row["content"]) + "}"
+    return Response(body, media_type="application/json", headers=headers)
 
 
 @router.put("")

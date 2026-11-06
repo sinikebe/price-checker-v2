@@ -795,25 +795,31 @@ async def product_history(product_id: int):
         await connection.close()
 
 
+# A product with what replaced it, if anything: a merge, or the newest of its new versions.
+PRODUCT_LINKS = """SELECT p.*,
+                      (SELECT to_id FROM v2_content_merges m
+                        WHERE m.kind='product' AND m.from_id=p.id) AS merged_to_id,
+                      (SELECT n.id FROM v2_products n WHERE n.predecessor_id=p.id
+                        ORDER BY n.id DESC LIMIT 1) AS successor_id,
+                      EXISTS(SELECT 1 FROM v2_content_withdrawals w
+                              WHERE w.kind='product' AND w.content_id=p.id) AS withdrawn
+               FROM v2_products p"""
+
+
+async def _product_links(connection, product_id: int):
+    """The product row with merged_to_id, successor_id and withdrawn, or None."""
+    return await connection.fetchrow(PRODUCT_LINKS + " WHERE p.id=$1", product_id)
+
+
 @router.get("/{product_id}")
 async def get_product(product_id: int):
     connection = await _connect()
     try:
-        await require_visible(connection, "product", product_id)
-        row = await connection.fetchrow(
-            "SELECT * FROM v2_products WHERE id=$1", product_id
-        )
-        if row is None:
-            raise HTTPException(status_code=404, detail="Produit introuvable.")
+        row = await _product_links(connection, product_id)
+        if row is None or row["withdrawn"]:
+            raise HTTPException(status_code=404, detail="Contenu introuvable.")
         if row["off_reference"]:
             await references.touch(connection, [product_id])  # opened: in use
-        product = _product(row)
-        product["merged_to_id"] = await connection.fetchval(
-            "SELECT to_id FROM v2_content_merges WHERE kind='product' AND from_id=$1",product_id)
-        product["successor_id"] = await connection.fetchval(
-            "SELECT id FROM v2_products WHERE predecessor_id=$1 "
-            "ORDER BY id DESC LIMIT 1", product_id
-        )
-        return product
+        return {**_product(row), "merged_to_id": row["merged_to_id"], "successor_id": row["successor_id"]}
     finally:
         await connection.close()
