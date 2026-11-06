@@ -14,10 +14,12 @@ const load = () => import("data:text/javascript;base64," + Buffer.from(`${output
 
 function network({ connectors = ["auchan"], refuse = () => false, online = true } = {}) {
   const posts = [];
+  posts.versionReads = 0;
   Object.defineProperty(globalThis, "navigator", { value: { onLine: online }, configurable: true });
   globalThis.fetch = async (url, init = {}) => {
     if (String(url).endsWith("/connector-stores/versions")) {
-      return new Response(JSON.stringify({ connectors: connectors.map(id => ({ id, enabled: true })) }));
+      posts.versionReads += 1;
+      return new Response(JSON.stringify({ connectors: connectors.map(id => ({ id, name: id, enabled: true })) }));
     }
     const connector = String(url).split("/connector-stores/")[1].split("/")[0];
     const ids = JSON.parse(init.body).product_ids;
@@ -72,4 +74,38 @@ test("the same products are not requested again within a minute, and nothing is 
   const offline = network({ online: false });
   await requestBasketConnectorRefresh([4, 5]);
   assert.equal(offline.length, 0);
+});
+
+test("the connector list is read once for requests within 30 seconds, and shared with the price pages", async () => {
+  const posts = network({ connectors: ["auchan", "chronodrive"] });
+  const { enabledConnectors, requestBasketConnectorRefresh } = await load();
+  await requestBasketConnectorRefresh([1]);
+  await requestBasketConnectorRefresh([2]);
+  assert.deepEqual((await enabledConnectors()).map(item => item.name), ["auchan", "chronodrive"]);
+  assert.equal(posts.versionReads, 1);
+  assert.deepEqual(posts.map(post => [post.connector, post.ids]), [
+    ["auchan", [1]], ["chronodrive", [1]], ["auchan", [2]], ["chronodrive", [2]],
+  ]);
+});
+
+test("a connector list that could not be read is asked again", async () => {
+  const posts = network();
+  const working = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("offline"); };
+  const { enabledConnectors } = await load();
+  assert.deepEqual(await enabledConnectors(), []);
+  globalThis.fetch = working;
+  assert.deepEqual((await enabledConnectors()).map(item => item.id), ["auchan"]);
+  assert.equal(posts.versionReads, 1);
+});
+
+test("a forgotten connector list is read again on the next call", async () => {
+  const posts = network();
+  const { enabledConnectors, forgetEnabledConnectors } = await load();
+  await enabledConnectors();
+  await enabledConnectors();
+  assert.equal(posts.versionReads, 1);
+  forgetEnabledConnectors();
+  await enabledConnectors();
+  assert.equal(posts.versionReads, 2);
 });

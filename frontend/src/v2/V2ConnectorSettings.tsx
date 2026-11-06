@@ -8,8 +8,8 @@ type Settings = {
     eligible_count?: number; consecutive_failures?: number; next_run_at?: string | null };
 };
 
-export default function V2ConnectorSettings({ storeId, connectorId, version, installationEnabled }: {
-  storeId: number; connectorId: string; version: string; installationEnabled: boolean;
+export default function V2ConnectorSettings({ storeId, connectorId, installationEnabled }: {
+  storeId: number; connectorId: string; installationEnabled: boolean;
 }) {
   const endpoint = `/api/v2/connector-stores/${storeId}/connectors/${encodeURIComponent(connectorId)}/settings`;
   const [saved, setSaved] = useState<Settings | null>(null);
@@ -37,7 +37,7 @@ export default function V2ConnectorSettings({ storeId, connectorId, version, ins
         .catch(() => { /* Keep the last readable count and any unsaved draft. */ });
     }, 60_000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [endpoint, version, open]);
+  }, [endpoint, open]);
 
   async function save(event: FormEvent) {
     event.preventDefault();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { storeRequest } from "./v2-stores-api";
 import { errorText } from "./v2-http";
 
@@ -18,7 +18,7 @@ export default function V2RetailerGroupsAdmin({ onChanged }: { onChanged: () => 
       .catch(cause => { if (active) setError(errorText(cause, "Opération impossible.")); });
     return () => { active = false; };
   }, [reload]);
-  async function create(event: React.FormEvent<HTMLFormElement>) {
+  async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true); setError("");
