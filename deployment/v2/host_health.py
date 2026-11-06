@@ -113,7 +113,8 @@ def collect(state_dir: Path, *, at: datetime | None = None,
         memory = memory_usage(proc_meminfo if proc_meminfo is not None else Path("/proc/meminfo").read_text())
         disk = disk_usage(filesystem if filesystem is not None else os.statvfs("/"))
         result = updated_state(previous, at or datetime.now(UTC), cpu, memory, disk)
-        name = f".host-health-{os.getpid()}-{secrets.token_hex(8)}"
+        # Beside the target, so the final rename never leaves the state directory.
+        name = state_dir / f".host-health-{os.getpid()}-{secrets.token_hex(8)}"
         descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -122,7 +123,7 @@ def collect(state_dir: Path, *, at: datetime | None = None,
                 os.fsync(stream.fileno())
             os.replace(name, target)
         finally:
-            Path(name).unlink(missing_ok=True)
+            name.unlink(missing_ok=True)
         return result
 
 

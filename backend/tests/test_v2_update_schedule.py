@@ -106,8 +106,6 @@ def test_manual_runner_uses_ci_gate_and_reports_result(tmp_path, monkeypatch):
             return old
         if args == ("rev-parse", "FETCH_HEAD"):
             return target
-        if args == ("show", "-s", "--format=%s", target):
-            return "feature"
         return ""
 
     monkeypatch.setattr(runner, "git", fake_git)

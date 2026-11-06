@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run from a clean checkout of the main branch.
+# Run from a clean checkout of main (or dev for a development instance).
 if [[ ${EUID} -ne 0 ]]; then
   echo "Run as root (sudo); this script prepares protected server state." >&2
   exit 1

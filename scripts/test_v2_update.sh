@@ -4,14 +4,12 @@ set -euo pipefail
 # Exercise the guarded updater with a disposable Git remote, Compose project,
 # PostgreSQL volume and data directory.
 [[ $EUID -eq 0 ]] || { echo "Run this integration test as root." >&2; exit 1; }
-for tool in docker git curl python3; do command -v "$tool" >/dev/null; done
+for tool in docker git curl python3; do command -v "$tool" >/dev/null || { echo "Missing: $tool" >&2; exit 1; }; done
 source_dir=$(cd "$(dirname "$0")/.." && pwd)
 sandbox=$(mktemp -d /tmp/price-checker-v2-ci-XXXXXX)
 bare=$sandbox/origin.git
 repo=$sandbox/source
 export PRICE_CHECKER_V2_ENV=dev
-# Older main revisions keep Dockerfile.web outside the frontend build context.
-export COMPOSE_BAKE=false
 export PRICE_CHECKER_V2_DATA_DIR=$sandbox/data
 # Do not mask the host's real private dev while exercising disposable instances.
 export PRICE_CHECKER_V2_MAINTENANCE_MARKER=$sandbox/maintenance
@@ -19,6 +17,9 @@ export PRICE_CHECKER_V2_DB_NAME=v2_ci_update
 export PRICE_CHECKER_V2_PORT=18083
 export COMPOSE_PROJECT_NAME=price-checker-v2-ci-update-$$
 compose=(docker compose --env-file "$repo/.env" -f "$repo/deployment/v2/compose.yaml")
+# One count per seeded row kind; compared before the update, after it and in the restored backup.
+sentinel_sql="SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);"
+sentinels() { "${compose[@]}" exec -T db psql -At -U v2_ci_update -d "$1" -c "$sentinel_sql"; }
 cleanup() {
   result=$?
   trap - EXIT
@@ -73,7 +74,7 @@ FROM v2_products p CROSS JOIN v2_retailers r
 JOIN v2_stores s ON s.retailer_id=r.id
 WHERE p.data->>'name'='CI upgrade sentinel' AND r.code='ci';
 SQL
-before=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
+before=$(sentinels v2_ci_update)
 [[ $before == "1|1|1|1|1" ]] || { echo "Fixture was not seeded: $before" >&2; exit 1; }
 
 git -C "$source_dir" push -q "$bare" "$head:refs/heads/main"
@@ -83,7 +84,7 @@ PRICE_CHECKER_V2_EXPECTED_SHA=$head "$repo/deployment/v2/update.sh"
 "${compose[@]}" run --rm --no-deps \
   -v "$PRICE_CHECKER_V2_DATA_DIR/postgres/migration.json:/migration/database.json:ro" \
   -e PRICE_CHECKER_V2_STATE_DIR=/migration backend python -m app.db.v2_migrations
-after=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
+after=$(sentinels v2_ci_update)
 [[ $after == "$before" ]] || { echo "Data changed across update: $before -> $after" >&2; exit 1; }
 remaining_basket_table=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_update -c "SELECT to_regclass('v2_user_baskets') IS NULL")
 [[ $remaining_basket_table == t ]] || { echo "Obsolete server basket table remains after update." >&2; exit 1; }
@@ -98,7 +99,7 @@ backup=$(find "$PRICE_CHECKER_V2_DATA_DIR/backups" -name '*.dump' -size +0c -pri
 [[ -n $backup ]] || { echo "Updater did not create a backup." >&2; exit 1; }
 "${compose[@]}" exec -T db createdb -U v2_ci_update v2_ci_restore
 "${compose[@]}" exec -T db pg_restore -U v2_ci_update --no-owner --no-acl -d v2_ci_restore < "$backup"
-restored=$("${compose[@]}" exec -T db psql -At -U v2_ci_update -d v2_ci_restore -c "SELECT (SELECT count(*) FROM v2_users WHERE username_key='ci_upgrade'), (SELECT count(*) FROM v2_products WHERE data->>'name'='CI upgrade sentinel'), (SELECT count(*) FROM v2_product_drafts WHERE data->>'name'='CI private draft'), (SELECT count(*) FROM v2_recipes WHERE title='CI upgrade recipe'), (SELECT count(*) FROM v2_price_observations WHERE price=12.34);")
+restored=$(sentinels v2_ci_restore)
 [[ $restored == "$before" ]] || { echo "Backup restore lost data: $before -> $restored" >&2; exit 1; }
 "${compose[@]}" exec -T db dropdb -U v2_ci_update v2_ci_restore
 echo "Upgrade smoke passed: installed $head, account/product/draft/recipe/price retained, backup restored, API healthy."

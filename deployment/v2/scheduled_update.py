@@ -23,10 +23,6 @@ REPO = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ["PRICE_CHECKER_V2_DATA_DIR"])
 STATE = DATA / "state"
 TIME = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
-VERSION_FILES = {
-    "frontend/src/v2/component-versions.json", "frontend/package.json",
-    "frontend/package-lock.json", "backend/pyproject.toml",
-}
 
 
 def atomic_json(path: Path, value: dict) -> None:
@@ -65,19 +61,6 @@ def schedule_at(now: datetime) -> tuple[dict, datetime] | None:
 
 def git(*args: str) -> str:
     return subprocess.check_output(["git", "-C", str(REPO), *args], text=True).strip()
-
-
-def ci_sha(target: str) -> str:
-    subject = git("show", "-s", "--format=%s", target)
-    author = git("show", "-s", "--format=%ae", target)
-    if subject != "chore: bump affected component versions [skip ci]":
-        return target
-    if author != "41898282+github-actions[bot]@users.noreply.github.com":
-        raise RuntimeError("Untrusted CI-skip commit")
-    changed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", target).splitlines())
-    if not changed or not changed <= VERSION_FILES:
-        raise RuntimeError("CI-skip commit has unexpected changes")
-    return git("rev-parse", f"{target}^")
 
 
 def ci_succeeded(sha: str, branch: str = "main") -> bool:
@@ -152,7 +135,7 @@ def main() -> int:
             if subprocess.run(["git", "-C", str(REPO), "merge-base",
                                "--is-ancestor", old, target], check=False).returncode != 0:
                 raise RuntimeError("Remote update branch is not a fast-forward")
-            if old != target and not ci_succeeded(ci_sha(target), branch):
+            if old != target and not ci_succeeded(target, branch):
                 raise RuntimeError("CI has not passed for the target commit")
             env = os.environ.copy()
             env["PRICE_CHECKER_V2_EXPECTED_SHA"] = target
