@@ -10,7 +10,7 @@ const output = ts.transpileModule(source, {
 const { SEARCH_MAX_LENGTH, activeDockId, backTarget, basketLabel, dockItems, initials, normalizePath, parseV2Route, sharedBasketLabel, nextMenuIndex, profileMenuSections, roleLabel, searchPath, searchTermFromLocation } = await import(
   `data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 const legalSource = readFileSync(new URL("../src/v2/v2-legal-documents.ts", import.meta.url), "utf8");
-const { LEGAL_DOCUMENTS } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpileModule(legalSource, {
+const { LEGAL_DOCUMENTS, plainLegalText } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpileModule(legalSource, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText).toString("base64")}`);
 
@@ -251,4 +251,13 @@ test("every link of the dock, the profile menu and the back button opens a page"
     ...["/v2/produits/12/modifier", "/v2/recettes/privees/5/modifier", "/v2/panier/demo/liste", "/v2/categories/Lait"].map(backTarget),
   ];
   for (const to of links) assert.notEqual(parseV2Route(to), null, to);
+});
+
+test("a legal text stays readable without the Markdown renderer", () => {
+  const text = "*Version du 5 novembre 2026.*\n\n## Contact\n\nÉcrire à **sini** : [contact](mailto:contact@example.org).\nRéponse sous un mois.\n\n\n";
+  assert.deepEqual(plainLegalText(text), [
+    "*Version du 5 novembre 2026.*",
+    "Contact",
+    "Écrire à sini : contact (mailto:contact@example.org).\nRéponse sous un mois.",
+  ]);
 });

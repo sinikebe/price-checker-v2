@@ -11,3 +11,12 @@ export const LEGAL_DOCUMENTS: readonly { kind: LegalKind; title: string; path: s
 ];
 
 export const legalDocument = (kind: LegalKind) => LEGAL_DOCUMENTS.find(item => item.kind === kind)!;
+
+/** Markdown read as plain text: heading and emphasis marks removed, each link followed by its address. */
+export function plainLegalText(text: string): string[] {
+  return text.split(/\n\s*\n/).map(block => block.trim()
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 ($2)"))
+    .filter(Boolean);
+}
