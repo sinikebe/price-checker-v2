@@ -1,14 +1,29 @@
-import { useContext } from "react";
+import { useContext, type ReactNode } from "react";
 import V2BasketLines from "./V2BasketLines";
 import { BasketReadOnlyContext, readOnlyTitle } from "./v2-basket-read-only";
 import type { ListView } from "./v2-shopping-list";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
-import { pricePosition, purchaseTotalCents, type BasketComparison, type BasketPrice, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
+import { pricePosition, purchaseTotalCents, readingKey, type BasketComparison, type BasketPrice, type CompareMode, type PriceChoice, type StoreSaving } from "./v2-basket-comparison";
 import type { BaseUnit } from "./v2-basket-quantity";
-import { itemName, money, reactivationText, savingText, storeName, surplusText } from "./v2-basket-view";
+import { comparisonTitle, itemName, money, reactivationText, savingText, storeName, surplusText } from "./v2-basket-view";
 import { withdrawnPricesText } from "./v2-availability";
 
 export type OffStore = { key: string; reading: BasketPrice; gain: StoreSaving | null };
+
+/**
+ * The heading of a basket's results: their title, when the prices were fetched (`fetched`, a sentence with
+ * its final period), the way to the list, and in the quantities mode how the totals are worked out.
+ */
+export function ComparisonHeading({ mode, advanced, fetched, onList, advancedNote = true }: {
+  mode: CompareMode; advanced: boolean; fetched: ReactNode; onList: () => void;
+  /** Explain the shared packs and the per-article choices when the quantities mode is on. */
+  advancedNote?: boolean;
+}) {
+  return <div className="v2-basket-comparison-heading"><div><h2>{comparisonTitle(mode, advanced)}</h2>
+    <p>{fetched} Déplacement et frais de livraison exclus.</p>
+    <button type="button" className="v2-button v2-button-secondary v2-list-entry" onClick={onList}>Liste de courses →</button>
+    {advancedNote && advanced && <p>Les paquets communs sont mutualisés dans les totaux. Les choix automatiques sont faits par article : cette sélection n’est pas un minimum global garanti.</p>}</div></div>;
+}
 
 /**
  * The split across retailers, then the cheapest stores. Everything is computed from the fetched prices.
@@ -33,7 +48,7 @@ export default function V2BasketResults({ comparison, split, offStores, onStoreA
   const showUsed = advanced || unit;
   const splitStores = new Map<string, PriceChoice[]>();
   for (const choice of split.split) {
-    const storeKey = choice.reading.store_id + ":" + choice.reading.sales_channel;
+    const storeKey = readingKey(choice.reading);
     splitStores.set(storeKey, [...(splitStores.get(storeKey) ?? []), choice]);
   }
   // The stores that bring the most come first: the last ones are the first candidates to leave out of the shopping.

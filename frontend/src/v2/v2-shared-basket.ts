@@ -54,7 +54,6 @@ export type LineRef =
   | { kind: "text"; name: string }
   | { kind: "scope"; department: string; family: string; name: string }
   | { kind: "selection"; name: string; include: SelectionMember[]; exclude: SelectionMember[]; words: string[] };
-/** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 /** How every member sees a shared basket: the same filters and options, kept on the server. */
 export type SharedSettings = {
   advanced: boolean; compare: CompareMode; filters: BasketFilters;
@@ -67,6 +66,7 @@ export type SharedSettings = {
 export const DEFAULT_SETTINGS: SharedSettings = {
   advanced: false, compare: "price", filters: { storeIds: [], cities: [], departments: [] }, stores_off: [], units: {}, checked: [], list_mode: "all",
 };
+/** A change as the browser keeps it until the server confirms it: an addition carries its item to show it meanwhile. */
 export type LocalOp =
   | { op: "settings"; patch: Partial<SharedSettings> }
   | { op: "add"; line: LineRef; quantity: BasketQuantity | null; disabled: boolean; item: BasketItem }

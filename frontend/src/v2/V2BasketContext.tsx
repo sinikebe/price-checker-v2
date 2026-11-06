@@ -10,12 +10,12 @@ import { useSharedBasket, type SharedBasketControls } from "./useSharedBasket";
 export type BasketApi = {
   items: BasketItem[];
   add: (item: BasketItem) => void;
-  remove: (item: BasketItem | number) => void;
+  remove: (item: BasketItem) => void;
   setEnabled: (item: BasketItem, enabled: boolean) => void;
   setQuantity: (item: BasketItem, quantity: BasketQuantity | undefined) => void;
   addQuantities: (entries: { item: BasketItem; quantity: BasketQuantity }[]) => { added: number; merged: number; conflicts: number };
   replace: (item: BasketItem, next: BasketItem) => void;
-  has: (item: BasketItem | number) => boolean;
+  has: (item: BasketItem) => boolean;
   clear: () => void;
   replaceAll: (incoming: BasketItem[]) => void;
   merge: (incoming: BasketItem[]) => number;
@@ -40,7 +40,7 @@ function basketApi(items: BasketItem[], current: () => BasketItem[], write: (nex
   return {
     items,
     add: item => { const now = current(); if (!now.some(saved => basketItemKey(saved) === basketItemKey(item))) update([...now, item]); },
-    remove: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+    remove: item => { const key = basketItemKey(item);
       update(current().filter(saved => basketItemKey(saved) !== key)); },
     setEnabled: (item, enabled) => { const key = basketItemKey(item);
       update(current().map(saved => basketItemKey(saved) === key ? { ...saved, disabled: !enabled } : saved)); },
@@ -64,7 +64,7 @@ function basketApi(items: BasketItem[], current: () => BasketItem[], write: (nex
       if (key !== nextKey && now.some(saved => basketItemKey(saved) === nextKey)) return;
       update(now.map(saved => basketItemKey(saved) === key
         ? { ...next, disabled: saved.disabled, quantity: saved.quantity } : saved)); },
-    has: item => { const key = typeof item === "number" ? "product:" + item : basketItemKey(item);
+    has: item => { const key = basketItemKey(item);
       return items.some(saved => basketItemKey(saved) === key); },
     clear: () => { update([]); },
     replaceAll: incoming => update(incoming),

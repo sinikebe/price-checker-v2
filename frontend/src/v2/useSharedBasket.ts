@@ -5,26 +5,36 @@ import {
 } from "./v2-shared-basket-api";
 import {
   MAX_OPS, activityText, allowedOffline, applyOps, applySettings, diffOps, forgetSharedCache, newFromOthers, queueOps, readSharedCache, readSharedId,
-  sharedItems, sharedLookedKey, sharedSettings, tickOps, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedSettings,
+  sharedItems, sharedLookedKey, sharedSettings, tickOps, wireOps, writeSharedId, writeSharedQueue, writeSharedState, type LocalOp, type SharedBasket, type SharedLine, type SharedSettings,
 } from "./v2-shared-basket";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import { errorText } from "./v2-http";
 
 export type SharedStatus = "connecting" | "live" | "retrying" | "offline";
 const GONE = "Ce panier partagé n’est plus accessible : il a été supprimé ou vous en avez été retiré. Vous retrouvez votre panier.";
+// The same empty lists on every render before the basket loads, so the memos built on them hold.
+const NO_LINES: SharedLine[] = [];
+const NO_UNAVAILABLE: SharedLine[] = [];
 
+// Each wait removes every listener it added when it ends, so a long poll leaves none behind on the
+// effect's signal; a signal already aborted ends it at once.
 /** Wait `ms`, or less when the page is closed or the connection comes back. */
 function pause(ms: number, signal: AbortSignal) {
   return new Promise<void>(resolve => {
-    const done = () => { clearTimeout(timer); window.removeEventListener("online", done); resolve(); };
+    if (signal.aborted) { resolve(); return; }
+    const done = () => { clearTimeout(timer); window.removeEventListener("online", done); signal.removeEventListener("abort", done); resolve(); };
     const timer = setTimeout(done, ms);
     window.addEventListener("online", done, { once: true });
     signal.addEventListener("abort", done, { once: true });
   });
 }
+/** Wait until the page is shown again, or closed. */
 function visible(signal: AbortSignal) {
   return new Promise<void>(resolve => {
-    const done = () => { if (!document.hidden || signal.aborted) { document.removeEventListener("visibilitychange", done); resolve(); } };
+    if (signal.aborted) { resolve(); return; }
+    const done = () => {
+      if (!document.hidden || signal.aborted) { document.removeEventListener("visibilitychange", done); signal.removeEventListener("abort", done); resolve(); }
+    };
     document.addEventListener("visibilitychange", done);
     signal.addEventListener("abort", done, { once: true });
   });
@@ -234,7 +244,7 @@ export function useSharedBasket(userId: number | null) {
   }, [forget]);
 
   return {
-    sharedId, basket: current, items, view, settings, setSettings, setChecked, lines: base?.lines ?? [], unavailable: base?.unavailable ?? [],
+    sharedId, basket: current, items, view, settings, setSettings, setChecked, lines: base?.lines ?? NO_LINES, unavailable: base?.unavailable ?? NO_UNAVAILABLE,
     /** When the server last confirmed the basket shown (ISO date), kept for offline use. */
     syncedAt,
     status: (offline ? "offline" : !current ? "connecting" : live ? "live" : "retrying") as SharedStatus,

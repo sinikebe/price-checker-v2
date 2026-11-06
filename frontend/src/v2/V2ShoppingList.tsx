@@ -116,7 +116,7 @@ export default function V2ShoppingList({ view, onView, items, comparison, split,
   return <div className="v2-shopping-list">
     {!ticksLocked && <div className="v2-list-toolbar">
       <Link className="v2-button v2-button-secondary" to={basePath}>← {sharedName ? "Panier partagé" : "Panier"}</Link>
-      <button type="button" className="v2-button v2-button-secondary" disabled={!checked.length || ticksLocked} onClick={() => onChecked([])}>Tout décocher</button>
+      <button type="button" className="v2-button v2-button-secondary" disabled={!checked.length} onClick={() => onChecked([])}>Tout décocher</button>
     </div>}
     {readOnly && !sharedName && <p className="v2-basket-offline-note" role="status">Hors connexion : vous pouvez cocher les articles ; le mode de la liste change au retour de la connexion.</p>}
     <fieldset className="v2-list-modes" disabled={readOnly} title={readOnly ? readOnlyTitle(readOnlyMode) : undefined}>

@@ -10,7 +10,7 @@ const source = readFileSync(new URL("../src/v2/v2-basket-share.ts", import.meta.
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const { encodeBasketShare, decodeBasketShare, sharedEntryName } =
+const { encodeBasketShare, decodeBasketShare, sharedEntryItem, sharedEntryName } =
   await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
 const labelsSource = readFileSync(new URL("../src/v2/v2-basket-share-labels.ts", import.meta.url), "utf8");
 const labelsOutput = ts.transpileModule(labelsSource, {
@@ -94,4 +94,40 @@ test("a selection travels in a link with its parts, its exclusions and its words
   const forged = btoa(JSON.stringify([1, [["x", "Tout", 0, { include: [{ product: 1, group: "Lait" }], exclude: [], words: [] }]]]))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   assert.equal(decodeBasketShare("#panier=" + forged), null);
+});
+
+test("each link entry becomes the basket item it stands for; a product keeps only its id", () => {
+  const spec = { include: [{ family: "Jus de fruits", department: "Boissons" }], exclude: [{ group: "Nectar de pomme" }], words: ["bio"] };
+  const kilo = { amount: "2", unit: "kg" }, pieces = { amount: "3", unit: "piece" };
+  const cases = [
+    // Version 1 links: no quantity.
+    [["p", 14, "Côte d’Or Chocolat noir", 0], { productId: 14, disabled: false, quantity: undefined }],
+    [["g", "Lait", 1], { kind: "group", name: "Lait", disabled: true, quantity: undefined }],
+    [["t", "Sel fin", 0], { kind: "text", name: "Sel fin", disabled: false, quantity: undefined }],
+    [["s", "Épicerie", "Riz", "Basmati", 1], { kind: "scope", department: "Épicerie", family: "Riz", name: "Basmati", disabled: true, quantity: undefined }],
+    [["x", "Jus bio", 0, spec], { kind: "selection", name: "Jus bio", ...spec, disabled: false, quantity: undefined }],
+    // Version 2 links: a quantity, or null for none.
+    [["p", 14, "Côte d’Or Chocolat noir", 1, kilo], { productId: 14, disabled: true, quantity: kilo }],
+    [["g", "Lait", 0, null], { kind: "group", name: "Lait", disabled: false, quantity: undefined }],
+    [["t", "Sel fin", 1, pieces], { kind: "text", name: "Sel fin", disabled: true, quantity: pieces }],
+    [["s", "Épicerie", "Riz", "Basmati", 0, kilo], { kind: "scope", department: "Épicerie", family: "Riz", name: "Basmati", disabled: false, quantity: kilo }],
+    [["x", "Jus bio", 1, spec, pieces], { kind: "selection", name: "Jus bio", ...spec, disabled: true, quantity: pieces }],
+  ];
+  for (const [entry, expected] of cases) {
+    const item = sharedEntryItem(entry);
+    assert.deepEqual(item, expected, JSON.stringify(entry));
+    assert.deepEqual(Object.keys(item), Object.keys(expected), "the same properties, in the same order: " + JSON.stringify(entry));
+  }
+  // What a decoded link gives, end to end.
+  const decoded = decodeBasketShare(encodeBasketShare([{ kind: "group", name: "Pâtes", quantity: { amount: "1", unit: "package" } }, { id: 7, revision: 1, data: { name: "Lait" }, disabled: true }]));
+  assert.deepEqual(decoded.map(sharedEntryItem), [
+    { kind: "group", name: "Pâtes", disabled: false, quantity: { amount: "1", unit: "package" } },
+    { productId: 7, disabled: true, quantity: undefined },
+  ]);
+  // A hand-made link can add fields to a selection's parts: they stay out, and the entry stays a selection.
+  const stray = btoa(JSON.stringify([1, [["x", "Jus bio", 0, { ...spec, productId: 123, kind: "group", name: "Lait" }]]]))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const [strayEntry] = decodeBasketShare("#panier=" + stray);
+  assert.deepEqual(sharedEntryItem(strayEntry), { kind: "selection", name: "Jus bio", ...spec, disabled: false, quantity: undefined });
+  assert.equal("productId" in sharedEntryItem(strayEntry), false);
 });

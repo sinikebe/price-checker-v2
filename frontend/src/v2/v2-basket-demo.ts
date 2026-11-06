@@ -1,13 +1,16 @@
 /**
- * The demo basket shown on the home page and at /v2/panier/demo: a month of groceries (eighteen articles and
- * their quantities), four fictional stores and their fictional prices. Nothing is fetched or sent: the prices are built here, dated from today, and the
- * basket comparison runs on them as it does on fetched prices.
+ * The demo basket shown on the home page and at /v2/panier/demo, from one of two sources: the app's own
+ * example (a month of groceries, eighteen articles and their quantities, in four fictional stores, priced
+ * here from today), or the basket an administrator saved with the prices the server read then (read from
+ * GET /api/v2/demo-basket and checked by savedDemo). Either way the basket comparison runs on these prices
+ * as it does on fetched ones, and what the visitor changes is kept in this tab only (session storage).
  */
 import { basketItemKey, validBasketQuantity, validSelection, type BasketItem, type BasketProduct, type BasketQuantity } from "./v2-basket-storage";
 import type { BasketPrice, BasketPriceResponse } from "./v2-basket-comparison";
 import type { BasketSnapshot } from "./v2-basket-snapshot";
 import type { SharedSettings } from "./v2-shared-basket";
 import type { MeasureUnit, ProductData } from "./v2-products-api";
+import type { ConfirmOptions } from "./useConfirm";
 
 export const DEMO_BASKET_PATH = "/v2/panier/demo";
 
@@ -149,20 +152,31 @@ function demoSnapshot(today: Date): BasketSnapshot {
 }
 
 /**
+ * Where a demo comes from. `fictional`: the app's example, with fictional stores, products and prices and
+ * no catalogue pages. `savedAt`: when an administrator saved it (its prices were read then); null for the
+ * app's example.
+ */
+export type DemoOrigin = { fictional: true; savedAt: null } | { fictional: false; savedAt: string };
+/**
  * A demo basket: the app's own fictional example, or a basket an administrator saved with the prices
  * read at that moment. Either way the browser computes everything from `snapshot`.
  */
-export type DemoSource = {
+export type DemoSource = DemoOrigin & {
   /** Which demo this is: the app's example, or the moment an administrator saved one. */
   id: string;
   title: string;
-  /** The app's example: fictional stores, products and prices, with no catalogue pages. */
-  fictional: boolean;
-  /** When an administrator saved it (its prices were read then); null for the app's example. */
-  savedAt: string | null;
   items: BasketItem[];
   settings: SharedSettings;
   snapshot: BasketSnapshot;
+};
+/** The day a demo was saved, as its notices write it ("3 novembre 2026"). */
+export const demoDate = (value: string) => new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+/** The dialog before an administrator goes back to the app's example, the same from every place that offers it. */
+export const BUILTIN_DEMO_CONFIRM: ConfirmOptions = {
+  title: "Revenir à l’exemple intégré",
+  message: "Revenir à l’exemple intégré, avec des prix fictifs ? Le panier de démonstration enregistré sera effacé.",
+  confirmLabel: "Revenir à l’exemple",
+  danger: true,
 };
 
 const BUILTIN_SETTINGS: SharedSettings = {

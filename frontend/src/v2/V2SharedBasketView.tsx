@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import V2BasketResults from "./V2BasketResults";
+import V2BasketResults, { ComparisonHeading } from "./V2BasketResults";
 import V2ShoppingList from "./V2ShoppingList";
 import { useBasketComparison } from "./useBasketComparison";
 import { useBasketView } from "./useBasketView";
@@ -8,7 +8,7 @@ import { BasketLinksContext } from "./v2-basket-links";
 import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { basketQuantityLabel } from "./v2-basket-share-labels";
 import { basketItemKey, isPriceable } from "./v2-basket-storage";
-import { FIRST_STORES, MORE_STORES, comparisonTitle, fetchedLabel, itemKind, itemName, selectionSummary } from "./v2-basket-view";
+import { FIRST_STORES, MORE_STORES, fetchedLabel, itemKind, itemName, selectionSummary } from "./v2-basket-view";
 import { viewSharedBasket } from "./v2-shared-basket-api";
 import { SHARED_BASKET_PATH, keepPendingInvite, sharedItems, sharedSettings, sharedSnapshot, type SharedView } from "./v2-shared-basket";
 import "./v2-shared-basket.css";
@@ -79,9 +79,8 @@ export default function V2SharedBasketView({ invite }: { invite: string }) {
           {!snapshot || !priceItems.length ? <><h2>Comparer les prix</h2>
             <p>{priceItems.length ? "Aucun prix n’a encore été récupéré pour ce panier. Un membre connecté peut les récupérer avec ses crédits : tout le monde les voit ensuite." : "Ce panier n’a pas encore d’article à comparer."}</p></>
             : <>
-              <div className="v2-basket-comparison-heading"><div><h2>{comparisonTitle(display.mode, display.advanced)}</h2>
-                <p>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)} par un membre du panier. Déplacement et frais de livraison exclus.</p>
-                <button type="button" className="v2-button v2-button-secondary v2-list-entry" onClick={() => setTab("list")}>Liste de courses →</button></div></div>
+              <ComparisonHeading mode={display.mode} advanced={display.advanced} advancedNote={false} onList={() => setTab("list")}
+                fetched={<>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)} par un membre du panier.</>} />
               {priced.stale.length > 0 && <p className="v2-basket-stale" role="status">Pas encore dans le relevé de prix : {priced.stale.map(itemName).join(", ")}.</p>}
               {comparison && split && <V2BasketResults comparison={comparison} split={split} offStores={offStores} onStoreActive={NO_CHANGE} items={lineItems}
                 advanced={display.advanced} mode={display.mode} limited={priced.limited.length} shownCount={shown} onShowMore={() => setShown(shown + MORE_STORES)}

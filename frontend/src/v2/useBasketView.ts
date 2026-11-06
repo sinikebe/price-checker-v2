@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { emptyBasketFilters, type BasketFilters, type CompareMode } from "./v2-basket-comparison";
 import { readBasketDefaultStores } from "./v2-basket-default-stores";
-import { readStoresOff, writeStoresOff } from "./v2-basket-store-off";
-import { readUnitChoices, writeUnitChoices, type UnitChoiceMap } from "./v2-measures";
+import type { BaseUnit } from "./v2-basket-quantity";
+import { basketItemKey, type BasketItem } from "./v2-basket-storage";
+import { readStoresOff, withStoreOff, writeStoresOff } from "./v2-basket-store-off";
+import { readUnitChoices, withUnitChoice, writeUnitChoices, type UnitChoiceMap } from "./v2-measures";
 import type { SharedSettings } from "./v2-shared-basket";
 import { listSetting, listViewOf, type ListView } from "./v2-shopping-list";
 
@@ -17,7 +19,7 @@ export type BasketView = {
   /** The list: all articles, split across stores, or one store (shared live in a shared basket). */
   listView: ListView; setListView: (value: ListView) => void;
 };
-type SharedView = {
+type SharedViewSettings = {
   settings: SharedSettings; setSettings: (patch: Partial<SharedSettings>) => void;
   /** Ticks sent one article at a time (a shared basket); without it, the ticks are a setting like the others. */
   setChecked?: (keys: string[]) => void;
@@ -45,7 +47,7 @@ function readChecked(userId: number | null): string[] {
  * switched off and the store filters. The personal basket keeps them in this browser; a shared
  * basket keeps them on the server, the same for every member and changed live.
  */
-export function useBasketView(userId: number | null, shared: SharedView | null): BasketView {
+export function useBasketView(userId: number | null, shared: SharedViewSettings | null): BasketView {
   const [advanced, setAdvancedState] = useState(() => readFlag(BASKET_ADVANCED_KEY, "1"));
   const [mode, setModeState] = useState<CompareMode>(() => readFlag("v2:basket:compare", "unit") ? "unit" : "price");
   const [unitState, setUnitState] = useState(() => ({ userId, choices: readUnitChoices(userId) }));
@@ -75,5 +77,16 @@ export function useBasketView(userId: number | null, shared: SharedView | null):
     filters, setFilters,
     checked: checkedState.keys, setChecked: value => { const keys = value.slice(0, 100); setCheckedState({ userId, keys }); writeValue(checkedKey(userId), JSON.stringify(keys)); },
     listView: listViewOf(listState.mode), setListView: value => { const mode = listSetting(value); setListState({ userId, mode }); writeValue(listModeKey(userId), mode); },
+  };
+}
+
+/**
+ * The two changes a basket's results make to how it is shown: a store switched off or back on in the
+ * split, and the unit an article is compared in (the choices of articles gone from the basket are dropped).
+ */
+export function basketDisplayActions(display: Pick<BasketView, "storesOff" | "setStoresOff" | "units" | "setUnits">, items: readonly BasketItem[]) {
+  return {
+    setStoreActive: (key: string, active: boolean) => display.setStoresOff(withStoreOff(display.storesOff, key, !active)),
+    chooseUnit: (item: BasketItem, unit: BaseUnit) => display.setUnits(withUnitChoice(display.units, basketItemKey(item), unit, items.map(basketItemKey))),
   };
 }

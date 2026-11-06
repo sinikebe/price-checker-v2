@@ -4,7 +4,8 @@ import { BasketReadOnlyContext } from "./v2-basket-read-only";
 import { pricePosition, type PriceChoice } from "./v2-basket-comparison";
 import { basketItemKey, type BasketItem } from "./v2-basket-storage";
 import type { BaseUnit } from "./v2-basket-quantity";
-import { freshness, itemHref, itemName, money, productName, quantityText, shortDate, surplusText, unitName, unitPriceText } from "./v2-basket-view";
+import { basketQuantityLabel } from "./v2-basket-share-labels";
+import { freshness, itemHref, itemName, money, productName, shortDate, surplusText, unitName, unitPriceText } from "./v2-basket-view";
 
 /** Switches the unit an article is compared in, when its products are measured in several (per kg, per piece). */
 function UnitSwitch({ choice, onUnit }: { choice: PriceChoice; onUnit: (item: BasketItem, unit: BaseUnit) => void }) {
@@ -36,7 +37,7 @@ function DatedPrice({ choice, range, onUnit }: { choice: PriceChoice; range: { m
 
 function ChoiceLabel({ choice, advanced }: { choice: PriceChoice; advanced: boolean }) {
   return <span className="v2-basket-choice"><V2BasketLink to={itemHref(choice.item)}>{itemName(choice.item)}</V2BasketLink>
-    {advanced && choice.item.quantity && <small>Demandé : {quantityText(choice.item.quantity)}</small>}
+    {advanced && choice.item.quantity && <small>Demandé : {basketQuantityLabel(choice.item.quantity)}</small>}
     {!("kind" in choice.item) && choice.product.id !== choice.item.id && <small>Référence actuelle : <V2BasketLink to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</V2BasketLink></small>}
     {"kind" in choice.item && <small>Choix : <V2BasketLink to={"/v2/produits/" + choice.product.id}>{productName(choice.product)}</V2BasketLink>
       {choice.product.data.quantity && " · " + choice.product.data.quantity}</small>}</span>;
