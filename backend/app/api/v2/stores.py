@@ -30,6 +30,18 @@ def name_key(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", ascii_text))
 
 
+def manual_store_import_key(
+    retailer_id: int, name: str, city: str, postal_code: str, *, online: bool = False,
+) -> str:
+    """The import key of a store a contributor typed in, from what identifies it.
+
+    The connectors compute the same key, and a deleted store is remembered by it, so a later price
+    with the same retailer, name and address does not create the store again.
+    """
+    identity = "|".join((str(retailer_id), name, city, postal_code, *(("online",) if online else ())))
+    return "manual:store:" + hashlib.sha256(identity.casefold().encode("utf-8")).hexdigest()[:32]
+
+
 def _location_compatible(row, city: str, postal_code: str) -> bool:
     if row["online"]:
         return True  # an online platform has no address and delivers everywhere
@@ -431,11 +443,8 @@ async def delete_store(store_id: int, payload: StoreDeletion, request: Request):
             sources = {"import:" + row["import_key"] for row in rows if row["import_key"]}
             for row in rows:
                 if row["city"] and row["postal_code"]:
-                    identity = "|".join((str(row["retailer_id"]), row["name"],
-                                         row["city"], row["postal_code"]))
-                    sources.add("import:manual:store:" + hashlib.sha256(
-                        identity.casefold().encode("utf-8")
-                    ).hexdigest()[:32])
+                    sources.add("import:" + manual_store_import_key(
+                        row["retailer_id"], row["name"], row["city"], row["postal_code"]))
             sources.update("osm:" + row["osm_type"] + ":" + str(row["osm_id"])
                            for row in rows if row["osm_id"] is not None)
             aliases = await connection.fetch(

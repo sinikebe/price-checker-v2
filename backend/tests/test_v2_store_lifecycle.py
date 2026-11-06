@@ -183,3 +183,12 @@ async def test_deactivate_reactivate_and_permanently_delete_store(monkeypatch):
             await root.execute('DROP DATABASE IF EXISTS "' + name + '" WITH (FORCE)')
         finally:
             await root.close()
+
+
+def test_a_typed_stores_key_is_the_one_prices_and_deletion_always_used():
+    """Connectors compute the same key and deleted stores are remembered by it: it must never drift."""
+    assert stores.manual_store_import_key(1, "Centre", "Paris", "75001") == "manual:store:1062ab0ba48f86c3fea37b27a648c3ad"
+    assert stores.manual_store_import_key(1, "Amazon", "", "", online=True) == "manual:store:571daa811187a92f3db8bf114fd653a3"
+    assert stores.manual_store_import_key(7, "CARREFOUR Market", "Lyon", "69003") == "manual:store:19e2bac602107f61636c4862b4f416b1", \
+        "the identity is folded"
+    assert stores.manual_store_import_key(1, "Centre", "Paris", "75001") == "manual:store:" + prices._hash("1|Centre|Paris|75001")
