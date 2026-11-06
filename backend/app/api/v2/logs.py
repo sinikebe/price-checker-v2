@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.api.v2.auth import _connect
 from app.api.v2.setup import _require_admin
@@ -41,17 +41,21 @@ async def read_logs(
     """Events at or above a level, newest first. `before` is the `next_before` of the previous page."""
     await _require_admin(request)
     response.headers["Cache-Control"] = "no-store"
+    if before:
+        microseconds, _, identifier = before.partition(".")
+        try:
+            position = (_EPOCH + timedelta(microseconds=int(microseconds)), int(identifier))
+        except OverflowError as exc:
+            # The pattern bounds the digits, not the date: a cursor past year 9999 is not a page.
+            raise HTTPException(status_code=422, detail="Position de page invalide.") from exc
+    else:
+        position = (None, None)
     since = datetime.now(UTC) - PERIODS[period]
     sources = sorted(set(source)) or list(SOURCES)
     connection = await _connect()
     try:
         scope = "at >= $1 AND source = ANY($2::text[]) AND ($3::text IS NULL OR connector = $3)"
         base = (since, sources, connector)
-        if before:
-            microseconds, _, identifier = before.partition(".")
-            position = (_EPOCH + timedelta(microseconds=int(microseconds)), int(identifier))
-        else:
-            position = (None, None)
         rows = await connection.fetch(
             f"SELECT id,at,level,source,event,connector,data FROM v2_logs WHERE {scope} AND level >= $4 "
             "AND ($5::timestamptz IS NULL OR (at, id) < ($5, $6::bigint)) ORDER BY at DESC, id DESC LIMIT $7",

@@ -121,3 +121,25 @@ async def test_legal_updates_are_limited(tmp_path, monkeypatch):
         assert (await client.put("/api/v2/legal/mentions", headers=ADMIN, json={"content": "## Un"})).status_code == 200
         limited = await client.put("/api/v2/legal/mentions", headers=ADMIN, json={"content": "## Deux"})
         assert limited.status_code == 429 and limited.headers["retry-after"] == "60"
+
+
+@pytest.mark.asyncio
+async def test_a_failed_copy_of_the_replaced_version_leaves_no_temporary_file(tmp_path, monkeypatch):
+    client, _events = _admin_client(tmp_path, monkeypatch)
+    async with client:
+        first = await client.put("/api/v2/legal/mentions", headers=ADMIN, json={"content": "## Un"})
+        assert first.status_code == 200
+        opened, fdopen = {"count": 0}, legal.os.fdopen
+
+        def fail_on_the_copy(descriptor, *args, **kwargs):
+            opened["count"] += 1
+            if opened["count"] == 2:  # the first opens the new text, the second the copy of the replaced one
+                raise OSError("disk full")
+            return fdopen(descriptor, *args, **kwargs)
+        monkeypatch.setattr(legal.os, "fdopen", fail_on_the_copy)
+        refused = await client.put("/api/v2/legal/mentions", headers=ADMIN,
+                                   json={"content": "## Deux", "expected_sha256": first.json()["sha256"]})
+        assert refused.status_code == 503 and opened["count"] == 2
+    directory = tmp_path / "legal"
+    assert [p.name for p in directory.iterdir() if p.name.startswith(".")] == [], "no temporary file left"
+    assert (directory / "mentions.md").read_text(encoding="utf-8") == "## Un"

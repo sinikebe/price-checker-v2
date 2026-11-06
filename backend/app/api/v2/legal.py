@@ -96,6 +96,7 @@ def _write(document: str, text: str) -> None:
         raise OSError("legal document is a symlink")
     temporary = directory / f".{document}.{secrets.token_hex(6)}.tmp"
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    previous = None
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(text.encode("utf-8"))
@@ -109,8 +110,9 @@ def _write(document: str, text: str) -> None:
             os.replace(previous, directory / f"{document}.previous.md")
         os.replace(temporary, path)
     finally:
-        if temporary.exists():
-            temporary.unlink()
+        temporary.unlink(missing_ok=True)
+        if previous is not None:
+            previous.unlink(missing_ok=True)
 
 
 @router.put("/{document}")

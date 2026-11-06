@@ -378,10 +378,10 @@ async def test_enrollment_revokes_login_issued_while_it_waited(isolated_config, 
         resume = asyncio.Event()
         original = auth._issue_session
 
-        async def pause_before_session(connection, response, user_id):
+        async def pause_before_session(connection, response, user_id, **options):
             issuing.set()
             await asyncio.wait_for(resume.wait(), 5)
-            await original(connection, response, user_id)
+            await original(connection, response, user_id, **options)
 
         monkeypatch.setattr(auth, "_issue_session", pause_before_session)
         login_task = asyncio.create_task(racing.post("/api/v2/auth/login", json={

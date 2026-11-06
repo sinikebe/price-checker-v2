@@ -260,8 +260,15 @@ def _require_admin_role(user: dict | None, detail: str = "Accès administrateur 
     return user
 
 
+def _secure_cookie(request: Request) -> bool:
+    """Whether the session cookie gets the Secure flag: always over HTTPS, so that only plain-HTTP
+    development access (http://127.0.0.1:8080) goes without. Behind the web container the scheme is the
+    one the trusted proxy forwarded (TrustedWebProxyMiddleware)."""
+    return get_settings().APP_ENV != "dev" or request.url.scheme == "https"
+
+
 async def _issue_session(
-    connection: asyncpg.Connection, response: Response, user_id: int
+    connection: asyncpg.Connection, response: Response, user_id: int, *, secure: bool
 ) -> None:
     await connection.execute("DELETE FROM v2_sessions WHERE expires_at <= now()")
     token = secrets.token_urlsafe(32)
@@ -280,7 +287,7 @@ async def _issue_session(
         max_age=_SESSION_SECONDS,
         path="/api/v2",
         httponly=True,
-        secure=get_settings().APP_ENV != "dev",
+        secure=secure,
         samesite="lax",
     )
 
@@ -366,7 +373,7 @@ async def create_admin(
                 "UPDATE v2_installation SET admin_user_id=$1 WHERE singleton=true",
                 user["id"],
             )
-            await _issue_session(connection, response, user["id"])
+            await _issue_session(connection, response, user["id"], secure=_secure_cookie(request))
             return _public_user(user)
     finally:
         await connection.close()
@@ -407,7 +414,7 @@ async def register(credentials: Credentials, request: Request, response: Respons
             raise HTTPException(
                 status_code=409, detail="Ce pseudo est déjà utilisé."
             ) from exc
-        await _issue_session(connection, response, user["id"])
+        await _issue_session(connection, response, user["id"], secure=_secure_cookie(request))
         return _public_user(user)
     finally:
         await connection.close()
@@ -476,7 +483,7 @@ async def login(credentials: Credentials, request: Request, response: Response):
                         "UPDATE v2_users SET password_hash=$1 WHERE id=$2",
                         await _hash_password(password), user["id"],
                     )
-                await _issue_session(connection, response, user["id"])
+                await _issue_session(connection, response, user["id"], secure=_secure_cookie(request))
         if factor_limited:
             raise HTTPException(status_code=429, detail="Trop de tentatives. Réessayez plus tard.")
         if not factor_ok:

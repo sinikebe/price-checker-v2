@@ -319,6 +319,21 @@ async def test_the_logs_api_refuses_bad_filters_and_non_administrators(db, serve
 
 @pytest.mark.asyncio
 @pytestmark_db
+async def test_a_cursor_past_the_last_representable_date_is_refused_not_a_server_error(db, served):
+    now = datetime.now(UTC)
+    for minutes in range(3):
+        await logbook.log_event(db, "system.started", version="0.1.105", at=now - timedelta(minutes=minutes))
+    async with served as client:
+        refused = await client.get("/api/v2/logs", params={"before": "999999999999999999.1"})
+        assert refused.status_code == 422 and refused.json()["detail"] == "Position de page invalide."
+        first = await client.get("/api/v2/logs", params={"limit": 1, "level": "debug"})
+        assert first.status_code == 200 and first.json()["next_before"]
+        second = await client.get("/api/v2/logs", params={"limit": 1, "level": "debug", "before": first.json()["next_before"]})
+        assert second.status_code == 200 and second.json()["items"][0]["id"] != first.json()["items"][0]["id"]
+
+
+@pytest.mark.asyncio
+@pytestmark_db
 async def test_host_results_become_events_once_without_their_free_text(db, tmp_path):
     ran = datetime.now(UTC) - timedelta(minutes=10)
     (tmp_path / "update-last-run.json").write_text(json.dumps({
