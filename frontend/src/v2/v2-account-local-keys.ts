@@ -29,8 +29,8 @@ function draftKeys(id: string) {
 /**
  * What signing out removes from this browser: the account's private data that another person using
  * the device should not find (shared basket copies and their unsent changes, drafts, the account kept
- * for offline use). The personal
- * basket and its settings stay, as before: they are this device's basket, shown only to the account.
+ * for offline use). The personal basket and its settings stay, as before: they are this device's
+ * basket, shown only to the account.
  */
 export function logoutLocalKeys(keys: readonly string[], userId: number): string[] {
   const id = String(userId);

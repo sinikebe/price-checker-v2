@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallContext";
+import { usePwaInstall, type InstallOutcome } from "../pwa/PwaInstallState";
 import { useV2Basket } from "./V2BasketContext";
 import { useAppMode } from "./useAppMode";
 import V2SiteHeader from "./V2SiteHeader";
@@ -63,7 +63,7 @@ export default function V2HomePage({ user, onLogout }: {
   const { installed, requestInstall } = usePwaInstall();
   const [installMessage, setInstallMessage] = useState("");
   const basketCount = items.length;
-  // Shopping: baskets first. Contribution: contributing, without the baskets.
+  // Shopping: baskets first. Contribution: the catalogue tools, without the baskets.
   const { mode, canSwitch, setMode } = useAppMode();
   const contributing = mode === "contribute";
 
