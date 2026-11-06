@@ -7,9 +7,11 @@ import bookmarkletSource from "./bookmarklet-capture.js?raw";
 import versions from "./component-versions.json";
 import captureRetailers from "./capture-retailers.json";
 import { storeMatchesPath, storeRequest, type StoreCandidate, type StoreMatches } from "./v2-stores-api";
-import { errorDetail } from "./v2-http";
+import { errorText } from "./v2-http";
 import { GTIN_PATTERN } from "./v2-catalogue-search";
 import { euros } from "./v2-basket-view";
+import type { Channel } from "./v2-availability";
+import { priceRequest, readingDay, SALES_CHANNELS } from "./v2-prices-api";
 import "./v2-capture.css";
 
 type CapturedStore = { name: string; city: string | null; postalCode: string | null;
@@ -20,8 +22,7 @@ type Payload = { v: 2; url: string; host: string; name: string | null; brand: st
 type Match = { kind: "product" | "draft"; id: number };
 type Resolution = { status: "loading" | "product" | "draft" | "missing" | "no-ean" | "error";
   id?: number; product?: Product; draft?: Draft; message?: string };
-type SalesChannel = "in_store" | "drive" | "delivery";
-type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: SalesChannel | "" };
+type Store = { retailer: string; store_name: string; city: string; postal_code: string; sales_channel: Channel | "" };
 type ProductFields = Pick<ProductData, "name" | "brand" | "package" | "quantity">;
 type Submitted = { productId?: number; productDraftId?: number; createdProductDraft?: boolean; aliasProposed?: boolean };
 type StoreSelection = { candidate: StoreCandidate; aliasName: string | null };
@@ -30,8 +31,8 @@ function capturedProductFields(payload: Payload | null): ProductFields {
     package: "", quantity: (payload?.quantity || "").slice(0, 80) };
 }
 const pendingKey = "v2:capture:pending";
+const NOT_SAVED = "Le relevé n’a pas été enregistré.";
 const bookmarkletLabel = "Capturer ce prix v" + versions.bookmarklet.version;
-const channels: Record<SalesChannel, string> = { in_store: "En magasin", drive: "Drive", delivery: "Livraison" };
 const fallbackStore: Store = { retailer: "", store_name: "", city: "", postal_code: "", sales_channel: "" };
 
 function retailerFor(host: string) {
@@ -79,7 +80,7 @@ function storedStore(retailer: string): Store {
     if (raw) {
       const data = JSON.parse(raw) as Partial<Store>;
       if (data.retailer === retailer && typeof data.store_name === "string" && typeof data.city === "string"
-        && typeof data.postal_code === "string" && data.sales_channel && data.sales_channel in channels)
+        && typeof data.postal_code === "string" && data.sales_channel && data.sales_channel in SALES_CHANNELS)
         return { retailer, store_name: data.store_name, city: data.city, postal_code: data.postal_code,
           sales_channel: data.sales_channel };
     }
@@ -102,11 +103,6 @@ async function findStoreMatches(input: Store): Promise<StoreMatches> {
     return { matches: [], exact_store_id: null };
   }
   return storeRequest<StoreMatches>(storeMatchesPath(input));
-}
-
-function today() {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
 function Install({ user, onLogout }: { user: V2User | null; onLogout: () => Promise<void> }) {
@@ -155,7 +151,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   const storeEditVersion = useRef(0);
   const [productFields, setProductFields] = useState<ProductFields>(() => capturedProductFields(payload));
   const [price, setPrice] = useState(payload?.price?.toFixed(2) || "");
-  const [observedAt, setObservedAt] = useState(today());
+  const [observedAt, setObservedAt] = useState(readingDay);
   const [note, setNote] = useState(payload && retailerFor(payload.host) ? "Page produit : " + payload.url : "");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -186,7 +182,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         }
       }).catch(reason => {
         if (active && storeEditVersion.current === storeVersion) {
-          setStoreSearch("error"); setStoreError(reason instanceof Error ? reason.message : "Recherche indisponible.");
+          setStoreSearch("error"); setStoreError(errorText(reason, "Recherche indisponible."));
         }
       });
     } else setStoreSearch("idle");
@@ -205,7 +201,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       return { status: "product", id: match.id, product } as Resolution;
     }).then(next => { if (active) setResolution(next); }).catch(reason => {
       if (active) setResolution(reason instanceof ProductApiError && reason.status === 404
-        ? { status: "missing" } : { status: "error", message: reason instanceof Error ? reason.message : "Recherche indisponible." });
+        ? { status: "missing" } : { status: "error", message: errorText(reason, "Recherche indisponible.") });
     });
     return () => { active = false; };
   }, [payload, user?.id]);
@@ -235,7 +231,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       if (exact) chooseStore(exact);
     } catch (reason) {
       if (storeEditVersion.current === version) {
-        setStoreSearch("error"); setStoreError(reason instanceof Error ? reason.message : "Recherche indisponible.");
+        setStoreSearch("error"); setStoreError(errorText(reason, "Recherche indisponible."));
       }
     }
   }
@@ -262,26 +258,18 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
           propose_store_alias: Boolean(selectedStore.aliasName), alias_source: "retailer" } : {}) };
       let next: Submitted;
       if (resolution.status === "product" && resolution.id) {
-        const response = await fetch("/api/v2/prices/products/" + resolution.id + "/capture-drafts", {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ean: payload.ean, source_url: payload.url, price: pricePayload }),
-        });
-        if (!response.ok) throw await submissionError(response);
-        const result = await response.json() as { alias_proposal_id: number | null };
+        const result = await priceRequest<{ alias_proposal_id: number | null }>("/products/" + resolution.id + "/capture-drafts",
+          NOT_SAVED, "POST", { ean: payload.ean, source_url: payload.url, price: pricePayload });
         next = { productId: resolution.id, aliasProposed: Boolean(result.alias_proposal_id) };
       } else {
         const retailer = retailerFor(payload.host);
         const productData: ProductData = { ...emptyProduct(), ...productFields, ean: payload.ean,
           retailer_links: retailer ? [{ retailer, url: payload.url, source: "capture" }] : [] };
-        const response = await fetch("/api/v2/prices/capture-drafts", {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ean: payload.ean, source_url: payload.url, price: pricePayload,
-            ...(resolution.status === "draft" && resolution.id
-              ? { product_draft_id: resolution.id } : { product_data: productData }) }),
-        });
-        if (!response.ok) throw await submissionError(response);
-        const result = await response.json() as { product_draft_id: number; created_product_draft: boolean;
-          alias_proposal_id: number | null };
+        const result = await priceRequest<{ product_draft_id: number; created_product_draft: boolean;
+          alias_proposal_id: number | null }>("/capture-drafts", NOT_SAVED, "POST", {
+          ean: payload.ean, source_url: payload.url, price: pricePayload,
+          ...(resolution.status === "draft" && resolution.id
+            ? { product_draft_id: resolution.id } : { product_data: productData }) });
         next = { productDraftId: result.product_draft_id, createdProductDraft: result.created_product_draft,
           aliasProposed: Boolean(result.alias_proposal_id) };
       }
@@ -289,7 +277,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       try { sessionStorage.removeItem(pendingKey); } catch { /* No-op. */ }
       window.history.replaceState(null, "", "/v2/capture");
       setSent(next);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Enregistrement impossible."); }
+    } catch (reason) { setError(errorText(reason, "Enregistrement impossible.")); }
     finally { busyRef.current = false; setBusy(false); }
   }
   const canContribute = resolution.status === "product" || resolution.status === "draft" || resolution.status === "missing";
@@ -357,10 +345,10 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
               <label>Code postal<input required={!selectedStore} readOnly={Boolean(selectedStore)} maxLength={20} value={store.postal_code} onChange={event => editStore({ ...store, postal_code: event.target.value })} /></label>
               <label>Canal<select required value={store.sales_channel} onChange={event => setStore({ ...store, sales_channel: event.target.value as Store["sales_channel"] })}>
                 <option value="">Choisir le canal</option>
-                {Object.entries(channels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {Object.entries(SALES_CHANNELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>{!payload.store?.channel && <small>La page n’a pas indiqué le canal. Choisissez celui du prix affiché.</small>}</label>
               <label>Prix du conditionnement, en €<input required type="number" min="0.01" max="99999999.99" step="0.01" inputMode="decimal" value={price} onChange={event => setPrice(event.target.value)} /></label>
-              <label>Date du relevé<input required type="date" max={today()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
+              <label>Date du relevé<input required type="date" max={readingDay()} value={observedAt} onChange={event => setObservedAt(event.target.value)} /></label>
               <label>Précision facultative<input maxLength={1000} value={note} onChange={event => setNote(event.target.value)} />
                 <small>Ce texte sera public après validation. Retirez l’URL si elle ne désigne pas une fiche publique.</small></label>
             </div>
@@ -373,11 +361,6 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
       </>}
     </section>
   </V2PageFrame>;
-}
-
-async function submissionError(response: Response): Promise<Error> {
-  const detail = await errorDetail(response);
-  return new Error(typeof detail === "string" ? detail : "Le relevé n’a pas été enregistré.");
 }
 
 export default function V2CapturePage({ mode, user, onLogout }: { mode: "install" | "review"; user: V2User | null; onLogout: () => Promise<void> }) {

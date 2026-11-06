@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
-import { errorText, requestJson } from "./v2-http";
+import { errorText } from "./v2-http";
 import { euros } from "./v2-basket-view";
+import { priceRequest } from "./v2-prices-api";
 import "./v2-price-draft-inbox.css";
 
 type Item = {
@@ -16,10 +17,7 @@ type Result = { items: Item[]; total: number; limit: number; offset: number };
 type Mode = "mine" | "review";
 const PAGE_SIZE = 30;
 const channels = { in_store: "Magasin", drive: "Drive", delivery: "Livraison" };
-
-function request<T>(path: string, method = "GET"): Promise<T> {
-  return requestJson<T>("/api/v2/prices" + path, { method, cache: "no-store", fallback: "Impossible de charger les propositions de prix." });
-}
+const LOAD_FAILED = "Impossible de charger les propositions de prix.";
 
 export default function V2PriceDraftInbox({ mode, user }: { mode: Mode; user: V2User | null }) {
   const [page, setPage] = useState(0);
@@ -31,19 +29,19 @@ export default function V2PriceDraftInbox({ mode, user }: { mode: Mode; user: V2
     if (!user || (mode === "review" && user.role !== "admin")) return;
     let active = true;
     const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
-    request<Result>(`/drafts/${mode}?${query}`).then(value => {
+    priceRequest<Result>(`/drafts/${mode}?${query}`, LOAD_FAILED).then(value => {
       if (!active) return;
       if (page > 0 && page * PAGE_SIZE >= value.total) setPage(page - 1);
       else { setResult(value); setError(""); }
-    }).catch(reason => { if (active) { setResult(null); setError(errorText(reason, "Impossible de charger les propositions de prix.")); } });
+    }).catch(reason => { if (active) { setResult(null); setError(errorText(reason, LOAD_FAILED)); } });
     return () => { active = false; };
   }, [mode, user, page, reload]);
 
   async function review(id: number, action: "approve" | "reject") {
     if (busy !== null) return;
     setBusy(id); setError("");
-    try { await request(`/drafts/${id}/${action}`, "POST"); setReload(value => value + 1); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Validation impossible."); }
+    try { await priceRequest(`/drafts/${id}/${action}`, LOAD_FAILED, "POST"); setReload(value => value + 1); }
+    catch (reason) { setError(errorText(reason, "Validation impossible.")); }
     finally { setBusy(null); }
   }
 
