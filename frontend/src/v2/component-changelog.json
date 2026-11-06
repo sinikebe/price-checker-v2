@@ -1572,7 +1572,7 @@
         "open_food_facts": {
           "version": "0.1.43",
           "notes": [
-            "Quand Open Food Facts ne répond pas, la fiche produit et la recherche affichent un seul message clair."
+            "Quand Open Food Facts ne répond pas, la fiche produit et la recherche affichent un message clair en français au lieu d’une erreur technique."
           ]
         },
         "bookmarklet": {
