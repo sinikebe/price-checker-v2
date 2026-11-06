@@ -1572,7 +1572,7 @@
         "open_food_facts": {
           "version": "0.1.43",
           "notes": [
-            "Quand Open Food Facts ne répond pas, la fiche produit et la recherche affichent un seul message clair."
+            "Quand Open Food Facts ne répond pas, la fiche produit et la recherche affichent un message clair en français au lieu d’une erreur technique."
           ]
         },
         "bookmarklet": {
@@ -1585,6 +1585,17 @@
           "version": "0.1.27",
           "notes": [
             "Le modèle de configuration du proxy accepte les transferts d’instance volumineux, jusqu’à 25 Mo."
+          ]
+        }
+      }
+    },
+    {
+      "application_version": "0.1.155",
+      "components": {
+        "application": {
+          "version": "0.1.155",
+          "notes": [
+            "Si la mise en forme des pages légales ne peut pas se charger, leur texte s’affiche quand même, en paragraphes simples."
           ]
         }
       }

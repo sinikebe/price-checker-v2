@@ -45,3 +45,6 @@ html[data-v2-theme="dark"] .v2-legal-nav a[aria-current="page"] { background: #2
 html[data-v2-theme="dark"] .v2-legal-documents-list a { color: #aee1a8; }
 html[data-v2-theme="dark"] .v2-legal-preview { background: #1e3a2e; border-color: #517164; }
 html[data-v2-theme="dark"] .v2-legal-preview-body { background: #14231f; }
+
+/* Plain-text fallback when the Markdown renderer could not be loaded: keep the line breaks of the text. */
+.v2-legal-plain p { white-space: pre-line; }
