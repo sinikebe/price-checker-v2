@@ -417,3 +417,27 @@ async def test_the_role_comes_from_the_session_not_from_the_request(served, conf
         boasting = {**acting(ana), "x-role": "admin", "x-admin": "1"}
         assert (await client.post("/api/v2/basket/prices", headers=boasting, json=body)).status_code == 429
         assert (await client.get("/api/v2/basket/credits", headers=boasting)).json()["unlimited"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_large_holding_is_journaled_with_what_is_left(served, config):
+    (ana, _ben), _stores, products = await seed(config)
+    await amounts(config, 50, 5000)
+    connection = await connect_v2(config)
+    try:  # already granted today: the fetch starts from 2000 credits
+        await connection.execute(
+            "INSERT INTO v2_basket_credits(user_id,balance,granted_on) VALUES($1,2000,$2)", ana, MONDAY)
+    finally:
+        await connection.close()
+    body = {"items": [{"kind": "product", "id": products[0]}]}
+    async with served as client:
+        fetched = await client.post("/api/v2/basket/prices", headers=acting(ana), json=body)
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["credits"]["balance"] == 1999
+    connection = await connect_v2(config)
+    try:
+        logged = [json.loads(row["data"]) for row in await connection.fetch(
+            "SELECT data FROM v2_logs WHERE event='basket.prices.fetched' ORDER BY id")]
+    finally:
+        await connection.close()
+    assert [entry["credits_left"] for entry in logged] == [1999]

@@ -113,6 +113,28 @@ def test_a_repeating_failure_is_journaled_once_per_period(monkeypatch):
     assert logbook.allow_every(key, 600)
 
 
+def test_the_throttle_forgets_keys_whose_period_is_over(monkeypatch):
+    moment = [1000.0]
+    monkeypatch.setattr(logbook.time, "monotonic", lambda: moment[0])
+    monkeypatch.setattr(logbook, "_throttle", {})
+    for number in range(1100):  # one key per failing product, each past its period before the next
+        assert logbook.allow_every(f"failure:test:{number}", 10)
+        moment[0] += 11
+    assert len(logbook._throttle) <= logbook._THROTTLE_MAX_KEYS
+    held = {f"held:{number}" for number in range(logbook._THROTTLE_MAX_KEYS)}
+    for key in held:  # still within their period: none of them may be dropped
+        logbook.allow_every(key, 3600)
+    assert logbook.allow_every("one more", 3600)
+    assert held <= set(logbook._throttle) and not any(logbook.allow_every(key, 3600) for key in held)
+
+
+def test_a_basket_fetch_may_report_a_holding_up_to_the_largest_limit():
+    fields = {"items": 1, "products": 1, "truncated": False}
+    assert logbook.validate("basket.prices.fetched", {**fields, "credits_left": 10_000})[1]["credits_left"] == 10_000
+    with pytest.raises(logbook.LogError):
+        logbook.validate("basket.prices.fetched", {**fields, "credits_left": 10_001})
+
+
 pytestmark_db = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
 sync_db = pytest.mark.skipif(not os.getenv("V2_AUTH_TEST_CONFIG"), reason="Disposable V2 PostgreSQL required")
 
@@ -175,6 +197,16 @@ async def test_migrations_leave_a_journal_entry_and_log_event_stores_only_the_va
     moment = datetime(2026, 10, 1, 8, 0, tzinfo=UTC)
     await logbook.log_event(db, "connector.queue.added", connector="auchan_houilles", product_id=7, origin="page", at=moment)
     assert (await rows(db, "event='connector.queue.added'"))[0]["at"] == moment
+
+
+@pytest.mark.asyncio
+@pytestmark_db
+async def test_a_basket_fetch_from_a_large_holding_is_stored(db):
+    # An administrator may let accounts hold up to 10 000 credits (BOUNDS in app/api/v2/credits.py).
+    assert await logbook.log_event(db, "basket.prices.fetched", items=1, products=1, truncated=False, credits_left=5000)
+    assert json.loads((await rows(db, "event='basket.prices.fetched'"))[-1]["data"])["credits_left"] == 5000
+    with pytest.raises(logbook.LogError):
+        await logbook.log_event(db, "basket.prices.fetched", items=1, products=1, truncated=False, credits_left=10_001)
 
 
 @pytest.mark.asyncio
