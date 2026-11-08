@@ -939,6 +939,56 @@
       "component": "pwa",
       "version": "0.1.35",
       "reason": "État d’installation séparé de son fournisseur et suivi de connexion partagé, sans nouveauté hors connexion à annoncer."
+    },
+    {
+      "component": "products",
+      "version": "0.1.79",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "recipes",
+      "version": "0.1.31",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "basket",
+      "version": "0.1.57",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "database",
+      "version": "0.1.60",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "open_food_facts",
+      "version": "0.1.44",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "accounts",
+      "version": "0.1.52",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "pwa",
+      "version": "0.1.36",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "deployment",
+      "version": "0.1.28",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "open_prices",
+      "version": "0.1.40",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "bookmarklet",
+      "version": "0.1.9",
+      "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
     }
   ]
 }
