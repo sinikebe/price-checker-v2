@@ -1,4 +1,5 @@
 import { useContext, useMemo, useState } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import V2BasketLink from "./V2BasketLink";
 import V2BasketReplace from "./V2BasketReplace";
@@ -50,7 +51,7 @@ export default function V2BasketItems({ items, advanced, categories, categoryErr
   return <section className="v2-basket-panel" id="v2-basket-panel-items" aria-label="Articles du panier">
     {readOnly && <p className="v2-basket-offline-note">Hors connexion : les articles se modifient au retour de la connexion.</p>}
     {onAddText && <V2BasketTextAdd onAdd={onAddText} />}
-    <p>Un groupe ou un ensemble compte pour un article.{advanced ? " Indiquez la quantité voulue : le total couvre des paquets entiers, la part utilisée est calculée au prorata." : ""}</p>
+    <p className="v2-info-line"><V2Info showLabel>Un groupe ou un ensemble compte pour un article.{advanced ? " Indiquez la quantité voulue : le total couvre des paquets entiers, la part utilisée est calculée au prorata." : ""}</V2Info></p>
     <ul className="v2-basket-editor-list">{items.map(item => {
       const itemKey = basketItemKey(item);
       const choices = choicesOf(item);

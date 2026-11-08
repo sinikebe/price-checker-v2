@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import V2Info from "./V2Info";
 import { useSiteFilter } from "./useSiteFilter";
 import { emptyBasketFilters, type BasketFilters } from "./v2-basket-comparison";
 import { basketFiltersSummary, sameBasketFilters, siteFilterCriteria, siteFilterSummary } from "./v2-site-filter";
@@ -59,8 +60,8 @@ export default function V2BasketFilters({ filters, onChange, storeOptions, store
     </>}
   </section>;
   return <section className="v2-basket-panel" id="v2-basket-panel-filters" aria-label="Filtrer les magasins comparés">
-    <p>Filtrez les magasins déjà récupérés, sans dépenser de crédit. Les filtres se cumulent.{shared
-      ? " Ils sont partagés : chaque membre voit ce panier avec eux, sauf s’il a activé le filtre de magasins du site." : ""}</p>
+    <p className="v2-info-line"><V2Info showLabel>Filtrez les magasins déjà récupérés, sans dépenser de crédit. Les filtres se cumulent.{shared
+      ? " Ils sont partagés : chaque membre voit ce panier avec eux, sauf s’il a activé le filtre de magasins du site." : ""}</V2Info></p>
     <div className="v2-basket-filter-grid">
       <MultiFilter title="Magasins" options={storeOptions} selected={filters.storeIds} onChange={storeIds => onChange({ ...filters, storeIds })} label={storeLabel} />
       <MultiFilter title="Communes" options={cityOptions} selected={filters.cities} onChange={cities => onChange({ ...filters, cities })} label={city => city} />

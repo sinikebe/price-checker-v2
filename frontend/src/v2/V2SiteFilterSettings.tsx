@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import V2Info from "./V2Info";
 import { useSiteFilter } from "./useSiteFilter";
 import { postalDepartment } from "./v2-basket-comparison";
 import { directoryStoreLabel as storeLabel, siteFilterSummary, type DirectoryStore, type SiteFilter, type SiteFilterStore } from "./v2-site-filter";
@@ -64,8 +65,7 @@ export default function V2SiteFilterSettings() {
     catch (reason) { setError(errorText(reason, "Enregistrement impossible sur cet appareil.")); }
   }
   return <section className="v2-settings-card v2-site-filter" aria-labelledby="v2-site-filter-heading">
-    <h2 id="v2-site-filter-heading">Filtre de magasins pour tout le site</h2>
-    <p>Activé, il limite tous les prix affichés (fiches produits, groupes, ensembles, paniers et listes de courses) aux magasins, communes et départements choisis. Les filtres des paniers sont alors remplacés par celui-ci. Le panier de démonstration n’est pas concerné.</p>
+    <h2 id="v2-site-filter-heading">Filtre de magasins pour tout le site <V2Info>Activé, il limite tous les prix affichés (fiches produits, groupes, ensembles, paniers et listes de courses) aux magasins, communes et départements choisis. Les filtres des paniers sont alors remplacés par celui-ci. Le panier de démonstration n’est pas concerné.</V2Info></h2>
     <label className="v2-site-filter-switch"><input type="checkbox" checked={draft.enabled}
       onChange={event => { setDraft({ ...draft, enabled: event.target.checked }); setNotice(""); }} />Activer le filtre sur tout le site</label>
     {directory === null && !error ? <p>Chargement des magasins…</p> : <div className="v2-site-filter-grid">
@@ -76,7 +76,7 @@ export default function V2SiteFilterSettings() {
       <Choices title="Magasins" options={[...new Set([...storeIds, ...draft.stores.map(store => store.id)])]} selected={draft.stores.map(store => store.id)}
         label={labelOf} search onChange={setStores} />
     </div>}
-    <p className="v2-settings-note">Choix actuel : {siteFilterSummary(draft)}. Les critères se cumulent ; les plateformes en ligne passent les filtres de commune et de département.</p>
+    <p className="v2-settings-note">Choix actuel : {siteFilterSummary(draft)}. <V2Info>Les critères se cumulent ; les plateformes en ligne passent les filtres de commune et de département.</V2Info></p>
     <div className="v2-settings-actions">
       <button type="button" className="v2-button v2-button-primary" disabled={!changed} onClick={keep}>Enregistrer sur cet appareil</button>
       <button type="button" className="v2-button v2-button-secondary" disabled aria-describedby="v2-site-filter-cloud">Enregistrer dans le cloud</button>

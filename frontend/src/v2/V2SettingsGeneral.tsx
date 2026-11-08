@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import V2Info from "./V2Info";
 import { useV2Theme } from "./V2ThemeContext";
 import { usePwaUpdate } from "../pwa/PwaUpdateState";
 import versions from "./component-versions.json";
@@ -19,8 +20,7 @@ export default function V2SettingsGeneral() {
   const { checkState, checkForUpdates, applyUpdate } = usePwaUpdate();
   return <>
     <section className="v2-settings-card" aria-labelledby="v2-theme-heading">
-      <h2 id="v2-theme-heading">Apparence</h2>
-      <p>Choisissez le thème de cet appareil.</p>
+      <h2 id="v2-theme-heading">Apparence <V2Info>Choisissez le thème de cet appareil.</V2Info></h2>
       <fieldset className="v2-theme-options">
         <legend>Thème de l’application</legend>
         {([ ["system", "Système"], ["light", "Clair"], ["dark", "Sombre"] ] as const).map(([value, label]) =>
@@ -32,14 +32,13 @@ export default function V2SettingsGeneral() {
       </fieldset>
     </section>
     <section className="v2-settings-card" aria-labelledby="v2-update-heading">
-      <h2 id="v2-update-heading">Mises à jour</h2>
+      <h2 id="v2-update-heading">Mises à jour <V2Info>La mise à jour actualise l’application sur cet appareil, pas le serveur. Elle recharge cette page : terminez vos modifications en cours avant de continuer.</V2Info></h2>
       <p>Version installée : <strong>{versions.application.version}</strong></p>
       <p className="v2-settings-status" role="status" aria-live="polite">{updateMessages[checkState]}</p>
       <div className="v2-settings-actions">
         <button type="button" className="v2-button v2-button-secondary" onClick={() => void checkForUpdates()} disabled={checkState === "checking"}>Vérifier les mises à jour</button>
         {checkState === "available" && <button type="button" className="v2-button v2-button-primary" onClick={() => void applyUpdate()}>Mettre à jour l’application</button>}
       </div>
-      <p className="v2-settings-note">La mise à jour actualise l’application sur cet appareil, pas le serveur. Elle recharge cette page : terminez vos modifications en cours avant de continuer.</p>
       <Link className="v2-settings-link" to="/v2/versions">Détail des versions →</Link>
     </section>
   </>;

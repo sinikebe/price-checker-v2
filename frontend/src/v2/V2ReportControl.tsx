@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { Link } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { moderationRequest } from "./v2-moderation-api";
@@ -39,11 +40,10 @@ export default function V2ReportControl({ kind, contentId, user }: {
         {kind !== "recipe" && <button type="button" className="v2-button v2-button-secondary" onClick={() => setOpen("duplicate")}>Signaler un doublon</button>}
       </div> : <form onSubmit={event => { void submit(event); }}>
         <h3>{open === "duplicate" ? "Doublon potentiel" : "Problème sur la fiche"}</h3>
-        {open === "duplicate" && <><label htmlFor={"report-url-" + kind + "-" + contentId}>URL de l’autre fiche (facultative)</label>
+        {open === "duplicate" && <><label htmlFor={"report-url-" + kind + "-" + contentId}>URL de l’autre fiche (facultative) <V2Info>L’administrateur pourra rechercher le doublon si vous n’avez pas son lien.</V2Info></label>
           <input id={"report-url-" + kind + "-" + contentId} type="url" value={duplicateUrl}
             placeholder={window.location.origin + "/v2/" + (kind === "product" ? "produits" : "magasins") + "/123"}
-            onChange={event => setDuplicateUrl(event.target.value)} />
-          <p>L’administrateur pourra rechercher le doublon si vous n’avez pas son lien.</p></>}
+            onChange={event => setDuplicateUrl(event.target.value)} /></>}
         <label htmlFor={"report-reason-" + kind + "-" + contentId}>{open === "duplicate" ? "Précisions (facultatives)" : "Motif du signalement"}</label>
         <textarea id={"report-reason-" + kind + "-" + contentId} value={reason}
           minLength={open === "general" ? 10 : undefined} maxLength={1000} required={open === "general"} rows={3}

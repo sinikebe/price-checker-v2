@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { storeRequest } from "./v2-stores-api";
 import { errorText } from "./v2-http";
 
@@ -39,8 +40,7 @@ export default function V2RetailerGroupsAdmin({ onChanged }: { onChanged: () => 
     finally { setBusy(false); }
   }
   return <details className="v2-workspace-card v2-retailer-groups-admin">
-    <summary>Gérer les groupes d’enseignes</summary>
-    <p>Ces groupes organisent l’annuaire. Les noms d’enseigne d’origine restent attachés aux magasins et aux relevés de prix.</p>
+    <summary>Gérer les groupes d’enseignes <V2Info>Ces groupes organisent l’annuaire. Les noms d’enseigne d’origine restent attachés aux magasins et aux relevés de prix.</V2Info></summary>
     {error && <p role="alert">{error}</p>}
     {!groups && !error && <p>Chargement…</p>}
     <form onSubmit={event => { void create(event); }}>

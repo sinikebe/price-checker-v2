@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { Link, useNavigate } from "react-router-dom";
 import { useConfirm } from "./useConfirm";
 import { V2PageFrame } from "./V2SiteHeader";
@@ -168,7 +169,7 @@ export default function V2RecipeEditor({ mode, id, privateRecipe = false, user, 
   const hint = isPrivate ? null : rewardHint("recipe", credits);
   return <V2PageFrame section="recipes" user={user} onLogout={onLogout}>
     <Link className="v2-recipes-back" to={cancelTo}>← Recettes</Link>
-    <div className="v2-recipes-heading"><div><span className="v2-section-kicker">ATELIER RECETTE</span><h1>{replay ? "Modifier une proposition" : mode === "new" ? "Nouvelle recette" : isPrivate ? "Modifier la recette privée" : "Modifier la recette"}<span>.</span></h1><p>Un ingrédient peut viser une référence précise ou laisser le choix dans un groupe. {isPrivate ? "Cette recette reste privée : vous seul la voyez." : "La recette, ses étapes et ses notes seront publiées après validation : évitez les informations personnelles."}</p></div></div>
+    <div className="v2-recipes-heading"><div><span className="v2-section-kicker">ATELIER RECETTE</span><h1>{replay ? "Modifier une proposition" : mode === "new" ? "Nouvelle recette" : isPrivate ? "Modifier la recette privée" : "Modifier la recette"}<span>.</span> <V2Info>Un ingrédient peut viser une référence précise ou laisser le choix dans un groupe.</V2Info></h1><p>{isPrivate ? "Cette recette reste privée : vous seul la voyez." : "La recette, ses étapes et ses notes seront publiées après validation : évitez les informations personnelles."}</p></div></div>
     {(loading || !replayLoaded) && <p>Chargement…</p>}
     {error && <p role="alert" className="v2-recipes-error">{error}</p>}
     {replay && !userId && <p role="alert" className="v2-recipes-error">Connectez-vous pour reprendre cette proposition.</p>}

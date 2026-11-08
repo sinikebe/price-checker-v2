@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import V2Info from "./V2Info";
 import { OFF_PRODUCT_PAGE, OFF_UNAVAILABLE, readOffProduct, searchOff, validBarcode, type OffMatch } from "./v2-off-browser";
 import { errorText } from "./v2-http";
 import type { OffField, ProductData } from "./v2-products-api";
@@ -79,9 +80,8 @@ export default function V2OffLookup({ data, onApply, disabled }: {
   }
   return <section className="v2-workspace-card v2-off-card" aria-labelledby="v2-off-lookup-heading">
     <div className="v2-off-heading"><div><span className="v2-section-kicker">SOURCE EXTERNE</span>
-      <h2 id="v2-off-lookup-heading">Open Food Facts</h2></div><span className="v2-off-mark">OFF ↗</span></div>
-    <p>Retrouvez le produit chez Open Food Facts pour reprendre son nom, sa marque, sa quantité ou son code-barres.
-      La recherche part de votre navigateur : votre adresse IP est transmise à Open Food Facts.</p>
+      <h2 id="v2-off-lookup-heading">Open Food Facts <V2Info>Retrouvez le produit chez Open Food Facts pour reprendre son nom, sa marque, sa quantité ou son code-barres.
+      La recherche part de votre navigateur : votre adresse IP est transmise à Open Food Facts.</V2Info></h2></div><span className="v2-off-mark">OFF ↗</span></div>
     {/* Inside the product form: no nested form, Enter searches instead of saving the draft. */}
     <div className="v2-off-search">
       <label><span>Recherche par nom</span><input value={query} disabled={disabled}
@@ -124,8 +124,8 @@ export default function V2OffLookup({ data, onApply, disabled }: {
       })}</div>
       <button type="button" className="v2-button v2-button-primary" disabled={disabled || checked.length === 0}
         onClick={apply}>Reprendre {checked.length ? checked.length + " information" + (checked.length > 1 ? "s" : "") : "les informations choisies"}</button>
-      <p className="v2-off-note">Seul le brouillon local change. La composition, le Nutri-Score et le groupe NOVA restent chez Open Food Facts :
-        la fiche publiée les affiche à la demande.</p>
+      <V2Info>Seul le brouillon local change. La composition, le Nutri-Score et le groupe NOVA restent chez Open Food Facts :
+        la fiche publiée les affiche à la demande.</V2Info>
     </div>}
   </section>;
 }

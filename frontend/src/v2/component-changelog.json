@@ -1599,6 +1599,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.156",
+      "components": {
+        "application": {
+          "version": "0.1.156",
+          "notes": [
+            "Les textes d’aide sont rangés dans des bulles d’information : un petit « i » près des titres et des champs les affiche au clic, au toucher ou au survol."
+          ]
+        }
+      }
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import V2LegalMarkdown from "./V2LegalMarkdown";
 import { apiError, errorText } from "./v2-http";
 import { legalDocument, type LegalKind } from "./v2-legal-documents";
@@ -62,10 +63,9 @@ export default function V2LegalDocuments() {
   }
 
   return <section className="v2-settings-card v2-legal-documents" aria-labelledby="v2-legal-documents-heading">
-    <h2 id="v2-legal-documents-heading">Documents légaux</h2>
-    <p>Les mentions légales, la notice de confidentialité et les conditions d’utilisation de cette instance, en Markdown
+    <h2 id="v2-legal-documents-heading">Documents légaux <V2Info>Les mentions légales, la notice de confidentialité et les conditions d’utilisation de cette instance, en Markdown
       ({listing ? kilobytes(listing.max_bytes) : "128 Ko"} au plus). Choisissez un fichier, vérifiez l’aperçu, puis publiez : la page change aussitôt
-      et la version remplacée reste gardée sur le serveur. Ces fichiers ne sont jamais versés au dépôt.</p>
+      et la version remplacée reste gardée sur le serveur. Ces fichiers ne sont jamais versés au dépôt.</V2Info></h2>
     {!listing ? (error ? <p role="alert" className="v2-schedule-error">{error}</p> : <p>Chargement…</p>) : <>
       <ul className="v2-legal-documents-list">{listing.documents.map(document => <li key={document.name}>
         <div><strong>{legalDocument(document.name).title}</strong>

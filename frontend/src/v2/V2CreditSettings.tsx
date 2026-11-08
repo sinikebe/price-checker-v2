@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { CREDIT_FIELDS, creditSummary, loadCreditSettings, readAmounts, saveCreditSettings, type CreditAmounts, type CreditSettings } from "./v2-credit-settings";
 import { errorText } from "./v2-http";
 
@@ -42,8 +43,7 @@ export default function V2CreditSettings() {
 
   const invalidField = amounts && "invalid" in amounts ? CREDIT_FIELDS.find(field => field.key === amounts.invalid) : undefined;
   return <section className="v2-settings-card v2-credit-settings" aria-labelledby="v2-credit-settings-heading">
-    <h2 id="v2-credit-settings-heading">Crédits pour voir les prix</h2>
-    <p>Chaque prix affiché coûte des crédits, pour éviter qu’un robot lise tout le catalogue. Les contributions validées rapportent des crédits de contribution, sans limite ni expiration. Les administrateurs ne sont pas comptés.</p>
+    <h2 id="v2-credit-settings-heading">Crédits pour voir les prix <V2Info>Chaque prix affiché coûte des crédits, pour éviter qu’un robot lise tout le catalogue. Les contributions validées rapportent des crédits de contribution, sans limite ni expiration. Les administrateurs ne sont pas comptés.</V2Info></h2>
     {saved === null ? (error ? <p className="v2-schedule-error" role="alert">{error}</p> : <p>Chargement…</p>) : <form onSubmit={save}>
       <div className="v2-schedule-fields">
         {CREDIT_FIELDS.map(field => <label key={field.key}>{field.label}

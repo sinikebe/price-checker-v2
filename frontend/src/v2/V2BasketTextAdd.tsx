@@ -1,4 +1,5 @@
 import { useContext, useState } from "react";
+import V2Info from "./V2Info";
 import { BasketReadOnlyContext, readOnlyTitle } from "./v2-basket-read-only";
 import { FREE_TEXT_MAX } from "./v2-basket-storage";
 
@@ -18,14 +19,13 @@ export default function V2BasketTextAdd({ onAdd }: { onAdd: (name: string) => st
     setMessage(refused ?? `« ${name} » ajouté au panier, à compléter plus tard.`);
     if (!refused) setText("");
   }}>
-    <label>Ajouter un texte libre
+    <label>Ajouter un texte libre <V2Info>Pour un article pas encore au catalogue : il figure dans la liste de courses, sans prix, et se remplace ensuite par un produit, un groupe ou un ensemble.</V2Info>
       <span className="v2-basket-text-add-row">
         <input value={text} maxLength={FREE_TEXT_MAX} placeholder="Ex. : sauce tomate de la marque du magasin" disabled={!!readOnly}
           onChange={event => { setText(event.target.value); setMessage(""); }} />
         <button type="submit" className="v2-button v2-button-secondary" disabled={!name || !!readOnly} title={readOnly ? readOnlyTitle(readOnly) : undefined}>Ajouter</button>
       </span>
     </label>
-    <small>Pour un article pas encore au catalogue : il figure dans la liste de courses, sans prix, et se remplace ensuite par un produit, un groupe ou un ensemble.</small>
     {message && <p role="status">{message}</p>}
   </form>;
 }

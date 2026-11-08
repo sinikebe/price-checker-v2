@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { V2PageFrame } from "./V2SiteHeader";
@@ -88,11 +89,9 @@ export default function V2StoresPage({ id, user, onLogout }: {
               {store.aliases && store.aliases.length > 0 && <div><dt>Autres noms validés</dt><dd>{store.aliases.map(alias => `${alias.name} (${sourceName[alias.source] ?? alias.source})`).join(" · ")}</dd></div>}
             </dl></section>
           {user?.role === "admin" && <section className="v2-workspace-card v2-store-management">
-            <h2>Gestion du magasin</h2>
-            <p>La désactivation est temporaire : elle masque la fiche, ses prix et ses résultats de panier. Les données restent conservées et peuvent être réactivées.</p>
+            <h2>Gestion du magasin <V2Info>La désactivation est temporaire : elle masque la fiche, ses prix et ses résultats de panier. Les données restent conservées et peuvent être réactivées. Une plateforme en ligne (Amazon, par exemple) n’a pas d’adresse et livre partout.</V2Info></h2>
             <button type="button" className="v2-button v2-button-secondary" disabled={busy}
               onClick={() => void update("activity", { active: !store.active })}>{store.active ? "Désactiver le magasin" : "Réactiver le magasin"}</button>
-            <p>Une plateforme en ligne (Amazon, par exemple) n’a pas d’adresse et livre partout.</p>
             <button type="button" className="v2-button v2-button-secondary" disabled={busy}
               onClick={() => void update("online", { online: !store.online })}>{store.online ? "Ce n’est pas une plateforme en ligne" : "Marquer comme plateforme en ligne"}</button>
             <form onSubmit={event => void removeStore(event)}>
@@ -109,7 +108,7 @@ export default function V2StoresPage({ id, user, onLogout }: {
         </>
       </>}
     </> : <><div className="v2-workspace-heading"><div><span className="v2-section-kicker">POINTS DE VENTE</span>
-      <h1>Magasins<span>.</span></h1><p>Les magasins sont regroupés par enseigne. Le nom d’enseigne relevé à l’origine reste indiqué lorsqu’il diffère.</p></div></div>
+      <h1>Magasins<span>.</span> <V2Info>Les magasins sont regroupés par enseigne. Le nom d’enseigne relevé à l’origine reste indiqué lorsqu’il diffère.</V2Info></h1></div></div>
       <label className="v2-stores-search" htmlFor="v2-store-search">Rechercher un magasin
         <input id="v2-store-search" type="search" value={query} onChange={event => setQuery(event.target.value)}
           placeholder="Enseigne, magasin, ville ou code postal" /></label>
