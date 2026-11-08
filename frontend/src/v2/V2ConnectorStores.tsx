@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import V2ConnectorSettings from "./V2ConnectorSettings";
@@ -95,8 +96,8 @@ export default function V2ConnectorStores() {
   const uninstall = (store: Store, connectorId: string) =>
     void action(`${base}/${store.id}/connectors/${connectorId}`, "DELETE", undefined, "Connecteur désinstallé.");
   return <section className="v2-settings-card v2-connector-stores" aria-labelledby="v2-connector-stores-heading">
-    <h2 id="v2-connector-stores-heading">Stores de connecteurs</h2>
-    <p>Ajoutez un dépôt GitHub, récupérez son catalogue, puis choisissez les connecteurs à installer. Le code installé est épinglé à une révision Git ; une nouvelle version ne s’active pas seule. N’ajoutez que des dépôts de confiance : leur code s’exécute sur le serveur.</p>
+    <h2 id="v2-connector-stores-heading">Stores de connecteurs <V2Info>Ajoutez un dépôt GitHub, récupérez son catalogue, puis choisissez les connecteurs à installer. Le code installé est épinglé à une révision Git ; une nouvelle version ne s’active pas seule.</V2Info></h2>
+    <p>N’ajoutez que des dépôts de confiance : leur code s’exécute sur le serveur.</p>
     <form onSubmit={add}>
       <label>Nom du store<input required maxLength={100} value={name} onChange={event => setName(event.target.value)} /></label>
       <label>URL du dépôt GitHub<input required type="url" placeholder="https://github.com/organisation/connecteurs" value={repository} onChange={event => setRepository(event.target.value)} /></label>

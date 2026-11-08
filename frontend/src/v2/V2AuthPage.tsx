@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { Link } from "react-router-dom";
 import V2Brand from "./V2Brand";
 import { useDocumentTitle } from "./useDocumentTitle";
@@ -82,12 +83,12 @@ export default function V2AuthPage({
               <div className="v2-auth-admin-name"><span>Pseudo administrateur</span><strong>admin</strong></div>
             ) : (
               <div className="v2-setup-field">
-                <label htmlFor="v2-username">Pseudo</label>
+                <label htmlFor="v2-username">Pseudo{isRegister && <V2Info>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore. Ce pseudo sert à vous connecter et aux échanges privés avec la modération.</V2Info>}</label>
                 <input id="v2-username" type="text" autoComplete="username" autoCapitalize="off"
                   spellCheck={false} minLength={3} maxLength={32} required value={username}
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="Votre pseudo" />
-                {isRegister && <small>3 à 32 caractères : lettres, chiffres, point, tiret ou underscore. Ce pseudo sert à vous connecter et aux échanges privés avec la modération. Il n’est pas affiché comme auteur public ; évitez néanmoins les informations personnelles.</small>}
+                {isRegister && <small>Il n’est pas affiché comme auteur public ; évitez néanmoins les informations personnelles.</small>}
               </div>
             )}
             {isAdmin && (
@@ -106,10 +107,9 @@ export default function V2AuthPage({
               {mode !== "login" && <small>{passwordMinimum} caractères minimum.</small>}
             </div>
             {mode === "login" && <div className="v2-setup-field">
-              <label htmlFor="v2-account-second-factor">Code de validation ou de secours</label>
+              <label htmlFor="v2-account-second-factor">Code de validation ou de secours <V2Info>À renseigner si la double authentification est activée.</V2Info></label>
               <input id="v2-account-second-factor" type="text" autoComplete="one-time-code" value={secondFactor}
                 onChange={event => setSecondFactor(event.target.value)} />
-              <small>À renseigner si la double authentification est activée.</small>
             </div>}
             {mode !== "login" && (
               <div className="v2-setup-field">

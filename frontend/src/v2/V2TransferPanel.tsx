@@ -1,4 +1,5 @@
 import { useState } from "react";
+import V2Info from "./V2Info";
 import { saveBlob } from "./v2-download";
 import { apiError, errorText } from "./v2-http";
 
@@ -82,8 +83,7 @@ export default function V2TransferPanel() {
   }
 
   return <section className="v2-settings-card v2-transfer" aria-labelledby="v2-transfer-heading">
-    <h2 id="v2-transfer-heading">Transférer produits et prix</h2>
-    <p>Exportez les fiches produit publiées et leurs relevés de prix validés vers une autre installation de Price Checker. Les comptes, brouillons privés, paniers et recettes ne sont pas inclus.</p>
+    <h2 id="v2-transfer-heading">Transférer produits et prix <V2Info>Exportez les fiches produit publiées et leurs relevés de prix validés vers une autre installation de Price Checker. Les comptes, brouillons privés, paniers et recettes ne sont pas inclus. L’import est effectué entièrement ou pas du tout. Il peut être répété sans créer de doublon. Un conflit de code-barres ou un produit déjà importé puis modifié bloque l’archive entière, sans écraser les données locales.</V2Info></h2>
     <div className="v2-settings-actions">
       <button type="button" className="v2-button v2-button-secondary" disabled={busy}
         onClick={() => void exportData()}>Exporter un fichier JSON</button>
@@ -125,7 +125,6 @@ export default function V2TransferPanel() {
         disabled={!file || !preview || busy || inactive.length > 0 || (deleted.length > 0 && !approved)}
         onClick={() => void importData()}>{busy ? "Transfert en cours…" : "Importer sur cette instance"}</button>
     </div>
-    <p className="v2-settings-note">L’import est effectué entièrement ou pas du tout. Il peut être répété sans créer de doublon. Un conflit de code-barres ou un produit déjà importé puis modifié bloque l’archive entière, sans écraser les données locales.</p>
     {error && <p className="v2-schedule-error" role="alert">{error}</p>}
     {notice && <p className="v2-schedule-success" role="status">{notice}</p>}
   </section>;

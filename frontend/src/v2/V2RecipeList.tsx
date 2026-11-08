@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import { Link, useLocation } from "react-router-dom";
 import { V2PageFrame } from "./V2SiteHeader";
 import { decimalText } from "../recipes/quantity";
@@ -60,8 +61,7 @@ export default function V2RecipeList({ user, onLogout }: Props) {
     <div className="v2-recipes-heading"><div><span className="v2-section-kicker">À CUISINER</span><h1>Recettes<span>.</span></h1><p>Des ingrédients précis quand vous le souhaitez, ou un groupe pour garder le choix.</p></div>
       {contributing && <Link className="v2-button v2-button-primary" to="/v2/recettes/nouvelle">Ajouter une recette →</Link>}</div>
     {location.search.includes("proposition=envoyee") && <p role="status" className="v2-recipes-card">Proposition envoyée. Elle sera visible publiquement après validation.</p>}
-    {user && <section className="v2-recipes-card" aria-label="Mes recettes privées"><h2>Mes recettes privées</h2>
-      <p className="v2-recipes-private-note">Visibles par vous seul, sans validation et sans crédits.</p>
+    {user && <section className="v2-recipes-card" aria-label="Mes recettes privées"><h2>Mes recettes privées <V2Info>Visibles par vous seul, sans validation et sans crédits.</V2Info></h2>
       {ownError && <p role="alert">{ownError}</p>}
       {own && !own.items.length && !ownError && <p>{contributing ? "Aucune recette privée. Choisissez « Privée » en ajoutant une recette." : "Aucune recette privée. Le mode contribution permet d’en écrire."}</p>}
       {own && own.items.length > 0 && <div className="v2-recipes-list">{own.items.map(recipe => <Link key={recipe.id} to={privatePath(recipe.id)} className="v2-recipes-tile"><strong>{recipe.title}</strong><span>{decimalText(recipe.base_servings)} portions · {recipe.ingredient_count} ingrédients</span>{recipe.publication && <span className="v2-recipes-private-badge">{recipe.publication === "pending" ? "Publication en attente" : "Publication refusée"}</span>}</Link>)}</div>}

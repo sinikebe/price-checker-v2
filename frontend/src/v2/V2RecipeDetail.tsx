@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import V2Info from "./V2Info";
 import { Link, useNavigate } from "react-router-dom";
 import { useConfirm } from "./useConfirm";
 import { V2PageFrame } from "./V2SiteHeader";
@@ -163,13 +164,12 @@ export default function V2RecipeDetail({ id, privateRecipe = false, user, onLogo
           <button type="button" className="v2-button v2-button-secondary" disabled={publishing} onClick={() => { void withdrawPublication(currentRecipe.publication!.submission_id); }}>Retirer la demande</button>
         </> : <>
           {currentRecipe.publication?.status === "rejected" && <p>Votre dernière demande de publication a été refusée. Vous pouvez modifier la recette puis la proposer de nouveau.</p>}
-          <p>Pour la partager avec tout le monde, proposez-la à la publication : un administrateur la relit, puis elle devient publique et vous rapporte des crédits de contribution.</p>
           <button type="button" className="v2-button v2-button-primary" disabled={publishing} onClick={() => { void publish(); }}>{publishing ? "Envoi…" : "Proposer à la publication"}</button>
+          <V2Info>Pour la partager avec tout le monde, proposez-la à la publication : un administrateur la relit, puis elle devient publique et vous rapporte des crédits de contribution.</V2Info>
         </>}
       </section>}
-      <div className="v2-recipes-detail-grid"><section className="v2-recipes-card"><h2>Ingrédients</h2>
+      <div className="v2-recipes-detail-grid"><section className="v2-recipes-card"><h2>Ingrédients{!contributing && <V2Info>Ajoutez les ingrédients au panier pour comparer le coût des paquets et des quantités utilisées. Les ingrédients facultatifs sont décochés par défaut.</V2Info>}</h2>
         <label className="v2-recipes-servings">Pour <input aria-label="Nombre de portions" type="number" min="0.001" step="0.001" value={servings} onChange={event => setServings(event.target.value)} /> portions</label>
-        {!contributing && <p>Ajoutez les ingrédients au panier pour comparer le coût des paquets et des quantités utilisées. Les ingrédients facultatifs sont décochés par défaut.</p>}
         {basketError && <p role="alert" className="v2-recipes-error">{basketError}</p>}
         <ul className="v2-recipes-ingredients">{currentRecipe.ingredients.map((item, index) => {
           const choices = item.group_name ? byGroup.get(item.group_name.trim().toLocaleLowerCase()) ?? [] : [];

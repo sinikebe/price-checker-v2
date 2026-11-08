@@ -219,6 +219,8 @@ RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("frontend/src/v2/useDocumentTitle.ts", ("application",)),
     ("frontend/src/v2/useDebouncedValue.ts", ("application",)),
     ("frontend/src/v2/V2SiteIcons.tsx", ("application",)),
+    ("frontend/src/v2/V2Info.tsx", ("application",)),
+    ("frontend/src/v2/v2-info.css", ("application",)),
     ("frontend/src/v2/v2-site-nav.ts", ("application",)),
     ("frontend/src/v2/v2-site-nav.css", ("application",)),
     ("frontend/src/v2/V2AppMode.tsx", ("application",)),

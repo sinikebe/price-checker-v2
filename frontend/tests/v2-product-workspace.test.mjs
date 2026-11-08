@@ -22,6 +22,7 @@ const navigate = path => { navigations.push(path); };
 const nothing = () => null;
 const component = { default: nothing };
 const { default: V2ProductWorkspace } = await loadModule("V2ProductWorkspace.tsx", {
+  "./V2Info": { default: () => null },
   "react-router-dom": {
     Link: ({ to, className, children }) => h("a", { href: to, className }, children),
     Navigate: nothing, useLocation: () => ({ search: "" }), useNavigate: () => navigate,

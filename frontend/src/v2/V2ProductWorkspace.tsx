@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { V2PageFrame } from "./V2SiteHeader";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
@@ -77,8 +78,7 @@ function ListPage({ mode, user, onLogout }: Props) {
   const { data, error } = useCollection<Draft[]>(path, mode !== "review" || user?.role === "admin");
   const title = mode === "mine" ? "Mes brouillons" : "Propositions à valider";
   return <V2PageFrame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>{title}<span>.</span></h1>
-      <p>{mode === "mine" ? "Vos propositions restent privées jusqu'à validation." : "Vérifiez chaque proposition avant publication."}</p></div>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>{title}<span>.</span> <V2Info>{mode === "mine" ? "Vos propositions restent privées jusqu'à validation." : "Vérifiez chaque proposition avant publication."}</V2Info></h1></div>
       <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>
     </div>
     {(mode === "mine" || user?.role === "admin") && <h2 className="v2-workspace-section-title">Propositions de produits</h2>}
@@ -273,8 +273,8 @@ function Editor({ mode, id, user, onLogout }: Props) {
   }
   return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CONTRIBUTION · {mode === "new" ? "NOUVEAU PRODUIT" : "BROUILLON"}</span>
-      <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span></h1>
-      <p>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier. Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
+      <h1>{mode === "new" ? "Ajouter un produit" : mode === "edit" ? "Modifier un produit" : "Votre proposition"}<span>.</span> <V2Info>La saisie est enregistrée dans ce navigateur à chaque modification. « Enregistrer » la rend disponible après connexion sur vos autres appareils. Seul un administrateur peut publier.</V2Info></h1>
+      <p>Les textes et liens seront publics après validation : évitez les informations personnelles.</p></div>
       <Link className="v2-button v2-button-secondary" to="/v2/brouillons">Mes brouillons</Link>
     </div>
     {draft?.status === "rejected" && <div role="status"><p>Cette proposition a été rejetée. Elle ne peut plus être publiée ni modifiée.</p><button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => { void discardSuperseded(); }}>Supprimer ce brouillon rejeté</button></div>}
@@ -292,8 +292,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
               <input value={data[field.key]} onChange={event => persist({ ...data, [field.key]: event.target.value }, changeKind)} />}
             {field.hint && <small>{field.hint}</small>}
           </label>)}</div>
-          <div className="v2-workspace-structured"><h3>Étiquettes du groupe</h3>
-            <p>Plusieurs étiquettes peuvent décrire le même groupe comparable.</p>
+          <div className="v2-workspace-structured"><h3>Étiquettes du groupe <V2Info>Plusieurs étiquettes peuvent décrire le même groupe comparable.</V2Info></h3>
             <ul>{data.tags.map(tag => <li key={tag}>{tag} <button type="button" onClick={() => persist({ ...data, tags: data.tags.filter(item => item !== tag) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Nouvelle étiquette <input value={tagInput} onChange={event => setTagInput(event.target.value)} maxLength={100} /></label>
             <button type="button" onClick={() => { const tag = tagInput.trim(); if (tag && data.group.trim() && !data.tags.some(item => item.toLocaleLowerCase() === tag.toLocaleLowerCase())) persist({ ...data, tags: [...data.tags, tag] }, changeKind); setTagInput(""); }}>Ajouter l’étiquette</button>
@@ -305,8 +304,7 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <label>URL de la fiche <input type="url" value={urlInput} onChange={event => setUrlInput(event.target.value)} maxLength={1000} /></label>
             <button type="button" onClick={() => { const retailer = retailerInput.trim(); const url = urlInput.trim(); if (!retailer || !/^https?:\/\//i.test(url)) return; persist({ ...data, retailer_links: [...data.retailer_links.filter(link => link.retailer.toLocaleLowerCase() !== retailer.toLocaleLowerCase()), { retailer, url, source: "manual" }] }, changeKind); setRetailerInput(""); setUrlInput(""); }}>Ajouter ou remplacer le lien</button>
           </div>
-          <div className="v2-workspace-structured"><h3>Autres unités de mesure</h3>
-            <p>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces. Ajouter ou retirer une unité corrige la fiche existante : aucun nouveau produit n’est créé.</p>
+          <div className="v2-workspace-structured"><h3>Autres unités de mesure <V2Info>Un produit peut se mesurer de plusieurs façons : au poids, au volume ou à la pièce (4 pièces pour 500 g). Chaque unité ajoutée permet de comparer son prix au kilo, au litre ou à la pièce dans le panier. Un lot écrit « 4x125 g » compte déjà ses 4 pièces. Ajouter ou retirer une unité corrige la fiche existante : aucun nouveau produit n’est créé.</V2Info></h3>
             <ul>{data.extra_quantities.map(extra => <li key={extra.unit}>{formatMeasure(extra)} <button type="button" onClick={() => persist({ ...data, extra_quantities: data.extra_quantities.filter(item => item.unit !== extra.unit) }, changeKind)}>Retirer</button></li>)}</ul>
             <label>Quantité <input inputMode="decimal" value={extraAmount} maxLength={13} onChange={event => { setExtraAmount(event.target.value); setExtraError(""); }} /></label>
             <label>Unité <select value={extraUnit} onChange={event => { setExtraUnit(event.target.value as MeasureUnit); setExtraError(""); }}>
@@ -314,13 +312,11 @@ function Editor({ mode, id, user, onLogout }: Props) {
             <button type="button" disabled={data.extra_quantities.length >= MEASURE_UNITS.length} onClick={addExtraQuantity}>Ajouter l’unité</button>
             {extraError && <small role="alert">{extraError}</small>}
           </div>
-          <label>Dernier contrôle nutritionnel <input type="datetime-local" value={localDateTime(data.nutrition_checked_at)} onChange={event => persist({ ...data, nutrition_checked_at: event.target.value ? new Date(event.target.value).toISOString() : null }, changeKind)} /></label>
-          <small>Cette date est distincte de la récupération de la fiche Open Food Facts.</small>
+          <label>Dernier contrôle nutritionnel <V2Info>Cette date est distincte de la récupération de la fiche Open Food Facts.</V2Info> <input type="datetime-local" value={localDateTime(data.nutrition_checked_at)} onChange={event => persist({ ...data, nutrition_checked_at: event.target.value ? new Date(event.target.value).toISOString() : null }, changeKind)} /></label>
           <p>Quantité analysée : {data.measures.length ? data.measures.map(formatMeasure).join(" · ") : data.quantity_amount && data.quantity_unit ? `${data.quantity_amount} ${data.quantity_unit}${data.quantity_count_noun ? ` (${data.quantity_count_noun})` : ""}` : data.quantity ? "à analyser lors de l’enregistrement" : "à renseigner"}.</p>
-          {(mode === "edit" || draft?.product_id) && <fieldset className="v2-workspace-kind"><legend>Nature de la modification</legend>
+          {(mode === "edit" || draft?.product_id) && <fieldset className="v2-workspace-kind"><legend>Nature de la modification <V2Info>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</V2Info></legend>
             <label><input type="radio" checked={changeKind === "correction"} onChange={() => persist(data, "correction")} /> Correction de la fiche existante</label>
             <label><input type="radio" checked={changeKind === "new_version"} onChange={() => persist(data, "new_version")} /> Nouvelle version de la référence vendue</label>
-            <small>Ajouter ou changer une unité, corriger l’unité de la quantité ou la réécrire à l’identique (415 g, 415g ; 0,5 L, 50 cl) reste une correction : même produit, mêmes prix. Une autre taille dans la même unité (250 g, 220 g), un autre conditionnement ou une autre composition demandent une nouvelle version.</small>
           </fieldset>}
         </fieldset>
         <V2OffLookup data={data} disabled={busy || readonly}
@@ -353,17 +349,15 @@ function Editor({ mode, id, user, onLogout }: Props) {
         {notice && <p role="status">{notice}</p>}
         {!user && <p>Sans connexion, le brouillon reste sur ce navigateur. <Link to="/v2/connexion">Se connecter</Link></p>}
       </form>
-      <aside className="v2-workspace-card v2-workspace-aside"><h2>Visibilité</h2>
+      <aside className="v2-workspace-card v2-workspace-aside"><h2>Visibilité <V2Info>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</V2Info></h2>
         <p>{draft ? "Ce brouillon est visible par son auteur et les administrateurs." : "La saisie locale n'est visible que dans ce navigateur."}</p>
         <p>Le produit public {baseProduct || draft?.product_id ? "reste inchangé tant que la proposition n'est pas validée." : "n'apparaîtra qu'après validation."}</p>
-        <p>Modifier une composition déjà renseignée ou le format exige une nouvelle version liée à l'ancienne fiche.</p>
-        {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche</h3>
+        {draft?.linked_prices && draft.linked_prices.length > 0 && <div><h3>Prix joints à cette fiche <V2Info>La fiche doit être publiée avant que ces prix puissent être validés séparément.</V2Info></h3>
           <ul>{draft.linked_prices.map(item => <li key={item.id}>{euros(item.price)} · {item.retailer} · {item.store_name}
             {item.quantity_text && ` · ${item.quantity_text}`}
             {item.capture_ean && ` · EAN ${item.capture_ean}`}
             {item.captured_store_name && ` · nom de la page : ${item.captured_store_name}`}
-            {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul>
-          <p>La fiche doit être publiée avant que ces prix puissent être validés séparément.</p></div>}
+            {` · ${item.status === "draft" ? "En attente" : item.status === "approved" ? "Validé" : "Refusé"}`}</li>)}</ul></div>}
         {data.off_source && <p>Source consultée : <a href={OFF_PRODUCT_PAGE + data.off_source.code}
           target="_blank" rel="noreferrer">Open Food Facts · {data.off_source.code} ↗</a><br />
           Champs repris : {data.off_source.fields.join(", ")}.</p>}

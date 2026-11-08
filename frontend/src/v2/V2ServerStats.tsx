@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import {
   CONTRIBUTION_LABELS, GROUP_LABELS, PAGE_LABELS, STATS_PERIODS, formatCount, formatRate, getStats, partialPeriod, sortEndpoints,
   type EndpointSort, type Stats, type StatsPeriod,
@@ -33,8 +34,7 @@ export default function V2ServerStats({ active }: { active: boolean }) {
   const loading = !result || result.key !== key;
   const endpoints = stats ? sortEndpoints(stats.endpoints, sort) : [];
   return <section className="v2-settings-card v2-observability v2-stats" aria-labelledby="v2-stats-heading">
-    <h2 id="v2-stats-heading">Statistiques</h2>
-    <p>Des nombres, rien d’autre : les requêtes par point d’accès, les contributions, les pages vues et les comptes créés. Aucune adresse, aucun compte ni aucune URL n’est enregistré. Une visite est le premier affichage d’une page dans un onglet du navigateur ; ce n’est pas un nombre de personnes.</p>
+    <h2 id="v2-stats-heading">Statistiques <V2Info>Des nombres, rien d’autre : les requêtes par point d’accès, les contributions, les pages vues et les comptes créés. Aucune adresse, aucun compte ni aucune URL n’est enregistré. Une visite est le premier affichage d’une page dans un onglet du navigateur ; ce n’est pas un nombre de personnes.</V2Info></h2>
     <div className="v2-stats-toolbar">
       <div className="v2-logs-chips" role="group" aria-label="Période">{STATS_PERIODS.map(item => <button key={item.id} type="button" className="v2-logs-chip"
         aria-pressed={period === item.id} onClick={() => setPeriod(item.id)}>{item.label}</button>)}</div>

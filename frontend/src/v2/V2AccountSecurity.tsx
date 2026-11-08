@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { errorText, requestJson } from "./v2-http";
 import {
@@ -125,11 +126,9 @@ export default function V2AccountSecurity() {
 
   return <>
     <section className="v2-settings-card v2-account-security" aria-labelledby="v2-mfa-heading">
-      <h2 id="v2-mfa-heading">Double authentification</h2>
-      <p>Protégez votre connexion avec une application d’authentification et des codes de secours à usage unique.</p>
+      <h2 id="v2-mfa-heading">Double authentification <V2Info>Protégez votre connexion avec une application d’authentification et des codes de secours à usage unique.</V2Info></h2>
       {mfa === null ? <p>Chargement…</p> : mfa.enabled ? <>
-        <p><strong>Activée</strong> · {mfa.recovery_codes_remaining} code(s) de secours restant(s).</p>
-        <p className="v2-settings-note">Pour modifier cette protection, confirmez votre mot de passe et un code actuel ou de secours.</p>
+        <p><strong>Activée</strong> · {mfa.recovery_codes_remaining} code(s) de secours restant(s). <V2Info>Pour modifier cette protection, confirmez votre mot de passe et un code actuel ou de secours.</V2Info></p>
         <form onSubmit={regenerate} className="v2-security-form">
           <h3>Renouveler les codes de secours</h3>
           <label>Mot de passe<input type="password" autoComplete="current-password" required value={regenerateForm.password} onChange={event => regenerateForm.setPassword(event.target.value)} /></label>
@@ -150,7 +149,7 @@ export default function V2AccountSecurity() {
           <label>Confirmez votre mot de passe<input type="password" autoComplete="current-password" required value={setupForm.password} onChange={event => setupForm.setPassword(event.target.value)} /></label>
           <button className="v2-button v2-button-secondary" disabled={busy}>Configurer</button>
         </form> : <>
-          <p>Saisissez cette clé dans une application compatible TOTP. La préparation expire au bout de 15 minutes.</p>
+          <p className="v2-info-line"><V2Info showLabel>Saisissez cette clé dans une application compatible TOTP. La préparation expire au bout de 15 minutes.</V2Info></p>
           <code className="v2-security-secret">{setup.secret}</code>
           <p className="v2-settings-note"><a href={setup.provisioning_uri}>Ouvrir dans une application d’authentification</a></p>
           <form onSubmit={confirm} className="v2-security-form">
@@ -171,8 +170,7 @@ export default function V2AccountSecurity() {
       </div>}
     </section>
     <section className="v2-settings-card v2-account-security" aria-labelledby="v2-tokens-heading">
-      <h2 id="v2-tokens-heading">Jetons API</h2>
-      <p>Utilisez un jeton dans l’en-tête <code>Authorization: Bearer &lt;jeton&gt;</code> pour appeler l’API sans cookie. Il ne donne jamais accès à l’administration. <a href="/api/v2/docs">Documentation de l’API</a>.</p>
+      <h2 id="v2-tokens-heading">Jetons API <V2Info>Utilisez un jeton dans l’en-tête <code>Authorization: Bearer &lt;jeton&gt;</code> pour appeler l’API sans cookie. Il ne donne jamais accès à l’administration. <a href="/api/v2/docs">Documentation de l’API</a>.</V2Info></h2>
       <form onSubmit={createToken} className="v2-security-form">
         <label>Nom du jeton<input type="text" maxLength={80} required value={label} onChange={event => setLabel(event.target.value)} placeholder="Mon application" /></label>
         <label>Accès<select value={scope} onChange={event => setScope(event.target.value as "read" | "contribute")}>

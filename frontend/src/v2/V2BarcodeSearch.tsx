@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { useNavigate } from "react-router-dom";
 import V2BarcodeScanner from "./V2BarcodeScanner";
 import V2OffBarcodeResult from "./V2OffBarcodeResult";
@@ -48,7 +49,7 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
   }
 
   return <form className={"v2-barcode-search" + (compact ? " v2-barcode-search-compact" : "")} onSubmit={search}>
-    <label htmlFor={compact ? "v2-home-barcode" : "v2-catalogue-barcode"}>Rechercher par code-barres</label>
+    <label htmlFor={compact ? "v2-home-barcode" : "v2-catalogue-barcode"}>Rechercher par code-barres <V2Info>Un code connu ouvre sa fiche ; sinon, Open Food Facts est consulté depuis votre navigateur.</V2Info></label>
     <div className="v2-barcode-search-row">
       <input id={compact ? "v2-home-barcode" : "v2-catalogue-barcode"} type="text"
         inputMode="numeric" autoComplete="off" value={barcode} disabled={busy}
@@ -58,7 +59,6 @@ export default function V2BarcodeSearch({ compact = false }: { compact?: boolean
       <button className="v2-button v2-button-secondary" type="button" disabled={busy} onClick={() => setScannerOpen(true)}>📷 Scanner</button>
     </div>
     {error && <p id={compact ? "v2-home-barcode-error" : "v2-catalogue-barcode-error"} role="alert">{error}</p>}
-    <small>Un code connu ouvre sa fiche ; sinon, Open Food Facts est consulté depuis votre navigateur.</small>
     {unknown && <V2OffBarcodeResult key={unknown} code={unknown} />}
     {scannerOpen && <V2BarcodeScanner onClose={() => setScannerOpen(false)} onDetected={handleDetected} />}
   </form>;

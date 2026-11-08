@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { V2PageFrame } from "./V2SiteHeader";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -214,7 +215,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
   const personalSettings = { advanced: display.advanced, compare: display.mode, filters: display.filters, stores_off: display.storesOff, units: display.units };
 
   return <BasketReadOnlyContext.Provider value={readOnly ? "offline" : false}><V2PageFrame section="basket" user={user} onLogout={onLogout}>
-      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharedMode ? "Panier partagé" : "Mon panier"}<span>.</span></h1><p>{sharing ? "Modifié en direct par ses membres, avec les mêmes réglages pour tous." : sharedMode ? "Un panier que plusieurs comptes remplissent ensemble, en direct." : "Comparez les prix de vos courses."}</p></div><div className="v2-basket-heading-actions">{basket && items.length > 0 && <Link className="v2-button v2-button-secondary" to={shoppingListPath(basePath)}>Liste de courses</Link>}
+      <div className="v2-recipes-heading v2-basket-heading"><div><span className="v2-section-kicker">VOS COURSES</span><h1>{sharedMode ? "Panier partagé" : "Mon panier"}<span>.</span> <V2Info>{sharing ? "Modifié en direct par ses membres, avec les mêmes réglages pour tous." : sharedMode ? "Un panier que plusieurs comptes remplissent ensemble, en direct." : "Comparez les prix de vos courses."}</V2Info></h1></div><div className="v2-basket-heading-actions">{basket && items.length > 0 && <Link className="v2-button v2-button-secondary" to={shoppingListPath(basePath)}>Liste de courses</Link>}
         {!(invite && !user) && <Link className="v2-button v2-button-secondary" to="/v2/produits">Ajouter un article →</Link>}</div></div>
       {readOnly && !sharing && <p className="v2-basket-offline-note" role="status">Hors connexion : le panier est en lecture seule et sa liste de courses se coche toujours. Le reste se modifie au retour de la connexion.</p>}
       {sharedLink && <V2BasketLinkImport entries={sharedEntries} importing={importing} error={importError} readOnly={readOnly}
@@ -240,8 +241,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
         </div>
         {panel === "share" && !readOnly && <div className="v2-basket-panel" id="v2-basket-panel-share">
           {sharing ? <SharedInvite shared={shared} user={user} /> : <SharedStart shared={shared} user={user} items={items} startSettings={personalSettings} copyByDefault />}
-          <h3 className="v2-shared-copy-title">Envoyer une copie</h3>
-          <p className="v2-shared-hint">Une copie figée du panier, sans compte et sans rien enregistrer sur le serveur.</p>
+          <h3 className="v2-shared-copy-title">Envoyer une copie <V2Info>Une copie figée du panier, sans compte et sans rien enregistrer sur le serveur.</V2Info></h3>
           <V2BasketShare items={items} url={shareUrl} />
           {user?.role === "admin" && <V2DemoBasketSave items={items} settings={{ ...personalSettings, list_mode: listSetting(display.listView) }} />}</div>}
         {panel === "items" && <V2BasketItems items={items} advanced={advanced} categories={categories} categoryError={categoryError}
@@ -259,8 +259,7 @@ export default function V2BasketPage({ user, onLogout, sharedMode = false, listM
           </section>
             : <section className="v2-basket-comparison v2-recipes-card" aria-label="Comparaison des prix">
               {!snapshot ? <>
-                <h2>Comparer les prix</h2>
-                <p>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${balanceText(credits)})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</p>
+                <h2>Comparer les prix <V2Info>Les prix sont récupérés à la demande, {credits?.unlimited ? "sans limite pour votre compte administrateur" : <>pour 1 crédit par article inclus, soit {creditLabel(fetchCost)} pour ce panier{credits ? ` (${balanceText(credits)})` : ""}</>}. Ensuite, filtrer les magasins, exclure un article ou passer au panier avancé ne coûte rien.</V2Info></h2>
               </> : <>
                 <ComparisonHeading mode={mode} advanced={advanced} onList={() => openList({ kind: "stores" })}
                   fetched={<>Prix récupérés le {fetchedLabel(snapshot.fetchedAt)}{sharing ? fetchedBy ? ` par ${fetchedBy}, pour tous les membres` : ", pour tous les membres" : ""}.</>} />

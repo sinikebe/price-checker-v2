@@ -1,4 +1,5 @@
 import { useContext, useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { Link, useNavigate } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
@@ -165,8 +166,7 @@ export function SharedStart({ shared, user, items, startSettings, copyByDefault 
       <ul className="v2-shared-list">{list.map(item => <li key={item.id}><span><strong>{item.name}</strong> · {item.owner ? "créé par vous" : `de ${item.owner_name}`} · {plural(item.lines, "article")} · {plural(item.members, "membre")}</span>
         <button type="button" className="v2-button v2-button-secondary" onClick={() => { shared.open(item.id); navigate(SHARED_BASKET_PATH); }}>{item.id === shared.sharedId ? "Afficher" : "Ouvrir"}</button></li>)}</ul></>}
     {listError && <p role="alert">{listError}</p>}
-    <h3>Partager en direct</h3>
-    <p>Un panier partagé se remplit à plusieurs : les personnes que vous invitez voient en direct ce qui y est ajouté, et peuvent ajouter, cocher ou retirer des articles. Filtres et options sont les mêmes pour tous. Votre panier personnel reste à part, sur cet appareil : chaque produit peut aller dans l’un ou dans l’autre.</p>
+    <h3>Partager en direct <V2Info>Un panier partagé se remplit à plusieurs : les personnes que vous invitez voient en direct ce qui y est ajouté, et peuvent ajouter, cocher ou retirer des articles. Filtres et options sont les mêmes pour tous. Votre panier personnel reste à part, sur cet appareil : chaque produit peut aller dans l’un ou dans l’autre.</V2Info></h3>
     <p className="v2-shared-warning">{STORAGE_NOTICE}</p>
     <form className="v2-shared-create" onSubmit={event => {
       event.preventDefault();

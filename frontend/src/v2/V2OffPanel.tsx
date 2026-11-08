@@ -1,4 +1,5 @@
 import { useState } from "react";
+import V2Info from "./V2Info";
 import { OFF_PRODUCT_PAGE, OFF_UNAVAILABLE, readOffProduct, validBarcode, type OffProduct } from "./v2-off-browser";
 import type { OffRead } from "./useOffProduct";
 import { errorText } from "./v2-http";
@@ -26,14 +27,13 @@ export default function V2OffPanel({ ean, initial }: { ean: string; initial?: Of
   }
   return <section className="v2-workspace-card v2-off-full" aria-labelledby="v2-off-heading">
     <div className="v2-off-full-header"><div><span className="v2-section-kicker">SOURCE EXTERNE</span>
-      <h2 id="v2-off-heading">Open Food Facts</h2></div>
+      <h2 id="v2-off-heading">Open Food Facts{validBarcode(barcode) && shown.phase !== "done" && <V2Info>Composition, Nutri-Score, groupe NOVA et valeurs nutritionnelles, lus directement par votre navigateur
+        chez Open Food Facts : votre adresse IP leur est transmise, et Price Checker ne conserve rien de cette lecture.</V2Info>}</h2></div>
       {validBarcode(barcode) && shown.phase !== "done" && <button type="button" className="v2-button v2-button-secondary"
         disabled={shown.phase === "loading"} onClick={() => { void read(); }}>
         {shown.phase === "loading" ? "Lecture…" : "Afficher les informations d’Open Food Facts"}</button>}
     </div>
-    {!validBarcode(barcode) ? <p>Ajoutez un code-barres au produit pour consulter Open Food Facts.</p>
-      : shown.phase !== "done" && <p>Composition, Nutri-Score, groupe NOVA et valeurs nutritionnelles, lus directement par votre navigateur
-        chez Open Food Facts : votre adresse IP leur est transmise, et Price Checker ne conserve rien de cette lecture.</p>}
+    {!validBarcode(barcode) && <p>Ajoutez un code-barres au produit pour consulter Open Food Facts.</p>}
     {shown.phase === "missing" && <p role="status">Ce code-barres n’est pas encore sur Open Food Facts.{" "}
       <a href={OFF_PRODUCT_PAGE + barcode} target="_blank" rel="noreferrer">L’y ajouter ↗</a></p>}
     {shown.phase === "error" && <p role="alert" className="v2-off-error">{shown.message}</p>}

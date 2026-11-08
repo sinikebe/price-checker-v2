@@ -1,4 +1,5 @@
 import { useContext } from "react";
+import V2Info from "./V2Info";
 import { Link } from "react-router-dom";
 import { BasketLinksContext } from "./v2-basket-links";
 import { BasketReadOnlyContext, readOnlyTitle } from "./v2-basket-read-only";
@@ -130,10 +131,10 @@ export default function V2ShoppingList({ view, onView, items, comparison, split,
           {choices.map(store => <option key={store.key} value={store.key}>{store.reading.retailer} · {storeName(store.reading)} · {money(store.cents)} · {store.coverage}/{items.length}</option>)}
         </select></label>}
     </fieldset>
-    {sharedName && <p className="v2-list-note">Liste de « {sharedName} » : le mode et les articles cochés sont les mêmes pour tous ses membres, en direct.</p>}
+    {sharedName && <p className="v2-list-note">Liste de « {sharedName} » <V2Info>Le mode et les articles cochés sont les mêmes pour tous ses membres, en direct.</V2Info></p>}
     {view.kind === "all" && onAddText && <V2BasketTextAdd onAdd={onAddText} />}
     {view.kind === "all" && (items.length ? <section className="v2-list-section" aria-label="Tous les articles">
-      <header><div><h2>Tous les articles</h2><p>Les articles inclus du panier, sans prix : cochez-les en rayon.</p></div>
+      <header><div><h2>Tous les articles <V2Info>Les articles inclus du panier, sans prix : cochez-les en rayon.</V2Info></h2></div>
         <div className="v2-list-section-total"><strong>{done}/{items.length}</strong><small>pris</small></div></header>
       <ul>{items.map(item => <Article key={basketItemKey(item)} item={item} advanced={advanced} checked={ticked.has(basketItemKey(item))}
         onCheck={on => check(basketItemKey(item), on)} addedBy={addedBy?.(item)} />)}</ul>
@@ -144,8 +145,7 @@ export default function V2ShoppingList({ view, onView, items, comparison, split,
       : "Aucun magasin ne correspond aux filtres du panier, hors magasins désactivés."}</p>}
     {one && <Section section={one} advanced={advanced} checked={ticked} onCheck={check} missingTitle="Pas de prix dans ce magasin" />}
     {whole && <>
-      {whole.unpriced.length > 0 && <section className="v2-list-section v2-list-missing" aria-label="Sans prix"><h2>Sans prix dans les magasins comparés</h2>
-        <p>À chercher sur place : repérez une alternative et relevez son prix.</p>
+      {whole.unpriced.length > 0 && <section className="v2-list-section v2-list-missing" aria-label="Sans prix"><h2>Sans prix dans les magasins comparés <V2Info>À chercher sur place : repérez une alternative et relevez son prix.</V2Info></h2>
         <ul>{whole.unpriced.map(line => <Line key={line.key} line={line} advanced={advanced} checked={ticked.has(line.key)} onCheck={on => check(line.key, on)} />)}</ul></section>}
       {whole.sections.map(section => <Section key={section.key} section={section} advanced={advanced} checked={ticked} onCheck={check} missingTitle="Pas de prix ici" />)}
       {!whole.sections.length && !whole.unpriced.length && <p>Rien à acheter : activez des articles du panier.</p>}

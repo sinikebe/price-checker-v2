@@ -1,4 +1,5 @@
 import { useState } from "react";
+import V2Info from "./V2Info";
 import type { V2User } from "./v2-auth-api";
 import V2AccountDeletion from "./V2AccountDeletion";
 import { saveBlob } from "./v2-download";
@@ -22,8 +23,7 @@ export default function V2SettingsAccount({ user, onDeleted }: { user: V2User; o
   }
   return <>
     <section className="v2-settings-card" aria-labelledby="v2-account-data-heading">
-      <h2 id="v2-account-data-heading">Mes données</h2>
-      <p>Téléchargez votre compte, vos brouillons, recettes, relevés et signalements au format JSON.</p>
+      <h2 id="v2-account-data-heading">Mes données <V2Info>Téléchargez votre compte, vos brouillons, recettes, relevés et signalements au format JSON.</V2Info></h2>
       <button type="button" className="v2-button v2-button-secondary" disabled={exporting}
         onClick={() => { void exportAccount(); }}>{exporting ? "Préparation…" : "Exporter mes données"}</button>
       {exportError && <p role="alert">{exportError}</p>}

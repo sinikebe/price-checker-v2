@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { Link, useLocation } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
 import { V2PageFrame } from "./V2SiteHeader";
@@ -283,7 +284,7 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
   const canContribute = resolution.status === "product" || resolution.status === "draft" || resolution.status === "missing";
   return <V2PageFrame user={user} onLogout={onLogout}>
     <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CAPTURE DE PRIX <span className="v2-beta-tag">Bêta</span></span>
-      <h1>Vérifier le relevé<span>.</span></h1><p>Les informations relevées doivent être vérifiées. Aucun prix n’est publié automatiquement.</p></div></div>
+      <h1>Vérifier le relevé<span>.</span> <V2Info>Les informations relevées doivent être vérifiées. Aucun prix n’est publié automatiquement.</V2Info></h1></div></div>
     <section className="v2-workspace-card v2-capture">
       {sent ? <div role="status"><h2>{sent.productDraftId ? sent.createdProductDraft ? "Fiche et prix proposés" : "Prix joint au brouillon" : "Relevé proposé"}</h2>
         <p>{sent.productDraftId ? "La fiche reste privée jusqu’à validation. Son prix sera examiné séparément après publication de la fiche." : "Le prix restera privé jusqu’à validation."}</p>
@@ -303,18 +304,17 @@ function Review({ user, onLogout }: { user: V2User | null; onLogout: () => Promi
         {resolution.status === "error" && <p role="alert">{resolution.message} Réessayez en rechargeant la page.</p>}
         {resolution.status === "no-ean" && <p role="alert">Aucun EAN vérifiable sur cette page. Recherchez le produit dans le <Link to="/v2/produits">catalogue</Link>, puis proposez son prix sur sa fiche.</p>}
         {resolution.status === "product" && resolution.product && <div className="v2-capture-match"><strong>Produit trouvé :</strong> <Link to={"/v2/produits/" + resolution.id}>{[resolution.product.data.brand, resolution.product.data.name, resolution.product.data.quantity].filter(Boolean).join(" · ")}</Link></div>}
-        {resolution.status === "draft" && resolution.draft && <div className="v2-capture-match"><strong>Votre brouillon pour cet EAN :</strong> <Link to={"/v2/brouillons/" + resolution.id}>{[resolution.draft.data.brand, resolution.draft.data.name, resolution.draft.data.quantity].filter(Boolean).join(" · ") || payload.ean}</Link><p>Le prix peut y être joint maintenant ; il sera examiné séparément après la publication de la fiche.</p></div>}
+        {resolution.status === "draft" && resolution.draft && <div className="v2-capture-match"><strong>Votre brouillon pour cet EAN :</strong> <Link to={"/v2/brouillons/" + resolution.id}>{[resolution.draft.data.brand, resolution.draft.data.name, resolution.draft.data.quantity].filter(Boolean).join(" · ") || payload.ean}</Link> <V2Info>Le prix peut y être joint maintenant ; il sera examiné séparément après la publication de la fiche.</V2Info></div>}
         {resolution.status === "missing" && <p>Ce produit n’est pas encore dans le catalogue. Cette action créera un brouillon privé avec l’EAN {payload.ean} et y joindra le prix en une seule soumission. Complétez la fiche avant sa validation si des informations manquent.</p>}
         {canContribute && (user ? <form onSubmit={event => void submit(event)}>
           <fieldset disabled={busy}>
-            {resolution.status === "missing" && <div className="v2-price-fields"><h3>Fiche produit proposée</h3>
+            {resolution.status === "missing" && <div className="v2-price-fields"><h3>Fiche produit proposée <V2Info>Les champs manquants pourront être complétés dans le brouillon avant validation de la fiche.</V2Info></h3>
               <label>Nom<input maxLength={160} value={productFields.name} onChange={event => setProductFields({ ...productFields, name: event.target.value })} /></label>
               <label>Marque<input maxLength={100} value={productFields.brand} onChange={event => setProductFields({ ...productFields, brand: event.target.value })} /></label>
               <label>Conditionnement<input maxLength={160} value={productFields.package} onChange={event => setProductFields({ ...productFields, package: event.target.value })} placeholder="À compléter si connu" /></label>
               <label>Quantité<input maxLength={80} value={productFields.quantity} onChange={event => setProductFields({ ...productFields, quantity: event.target.value })} /></label>
-              <p>Les champs manquants pourront être complétés dans le brouillon avant validation de la fiche.</p>
             </div>}
-            <p>Vérifiez le magasin réellement sélectionné sur la fiche. Son nom est prérempli quand la page permet de l’identifier ; un magasin voisin n’est jamais choisi à sa place.</p>
+            <p className="v2-info-line"><V2Info label="Vérifier le magasin" showLabel>Vérifiez le magasin réellement sélectionné sur la fiche. Son nom est prérempli quand la page permet de l’identifier ; un magasin voisin n’est jamais choisi à sa place.</V2Info></p>
             {payload.store ? <p>Magasin lu sur la page : <strong>{payload.store.name}</strong>{payload.store.city && ` · ${payload.store.city}`}{payload.store.postalCode && ` · ${payload.store.postalCode}`}</p>
               : <p>Aucun magasin sélectionné n’a été identifié dans la page. Saisissez-le avant le relevé.</p>}
             <div className="v2-capture-store-choice">

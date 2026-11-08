@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import {
   diskLevel, diskPercent, formatBytes, getServerCache, lastRunSummary, momentLabel, requestCacheClean, type ServerCache,
 } from "./v2-server-cache-api";
@@ -47,8 +48,7 @@ export default function V2ServerCache() {
   const usage = info?.usage ?? null;
   const percent = usage ? diskPercent(usage.disk) : 0;
   return <section className="v2-settings-card v2-server-cache" aria-labelledby="v2-cache-heading">
-    <h2 id="v2-cache-heading">Espace disque et cache</h2>
-    <p>Chaque mise à jour laisse d’anciennes images et du cache de build sur le serveur. Le nettoyage les supprime ; il ne touche ni à la base de données ni aux sauvegardes.</p>
+    <h2 id="v2-cache-heading">Espace disque et cache <V2Info>Chaque mise à jour laisse d’anciennes images et du cache de build sur le serveur. Le nettoyage les supprime ; il ne touche ni à la base de données ni aux sauvegardes.</V2Info></h2>
     {usage && <>
       <div className="v2-cache-disk">
         <div className="v2-cache-bar" role="meter" aria-label="Disque utilisé" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} data-level={diskLevel(percent)}>

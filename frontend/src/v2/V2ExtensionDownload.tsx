@@ -1,4 +1,5 @@
 import { useState } from "react";
+import V2Info from "./V2Info";
 import { saveBlob } from "./v2-download";
 
 /** Administrator card: the browser extension, ready to load in a Chromium-based browser. */
@@ -20,8 +21,7 @@ export default function V2ExtensionDownload() {
   }
 
   return <section className="v2-settings-card v2-extension-download" aria-labelledby="v2-extension-heading">
-    <h2 id="v2-extension-heading">Extension de navigateur (prototype)</h2>
-    <p>Certaines enseignes bloquent les lectures automatiques depuis un serveur. L’extension lit un prix sur le site de l’enseigne, dans votre navigateur, avec votre session et votre magasin choisi, puis le propose à cette instance. Carrefour pour l’instant. Réservé aux administrateurs.</p>
+    <h2 id="v2-extension-heading">Extension de navigateur (prototype) <V2Info>Certaines enseignes bloquent les lectures automatiques depuis un serveur. L’extension lit un prix sur le site de l’enseigne, dans votre navigateur, avec votre session et votre magasin choisi, puis le propose à cette instance. Carrefour pour l’instant. Réservé aux administrateurs.</V2Info></h2>
     <ol className="v2-extension-steps">
       <li>Téléchargez l’archive et décompressez-la.</li>
       <li>Dans Chrome, Edge ou Brave : <code>chrome://extensions</code>, mode développeur, puis « Charger l’extension non empaquetée » sur le dossier décompressé.</li>
