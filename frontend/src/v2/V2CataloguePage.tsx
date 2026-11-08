@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import V2ShareButton from "./V2ShareButton";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import type { V2User } from "./v2-auth-api";
@@ -176,9 +177,7 @@ function CategoryChart({ detail, products, metric, showGroup = false }: { detail
       <li key={product.id}><span style={{ backgroundColor: colors[index % colors.length] }} /><Link to={"/v2/produits/" + product.id}>{productName(product)}</Link>{showGroup && <small> · {product.data.group || "Sans groupe"}</small>}
         {!byProduct.has(product.id) && <small> · {metric !== "price" && !productSizeIn(product, metric) ? "quantité non comparable" : "aucun prix"}</small>}</li>
     )}</ul>
-    {metric !== "price" && products.some(product => !productSizeIn(product, metric)) &&
-      <p className="v2-catalogue-source">Les produits sans quantité compatible avec {metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.</p>}
-    <p className="v2-catalogue-source">Historique : jusqu’à {detail.history_limit_per_product} points récents par produit. Les signalements Open Prices consécutifs au même prix sont résumés par le premier et le dernier jour de la période. Ces prix sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL).</p>
+    <p className="v2-catalogue-source">Ces prix sont des relevés tiers, non vérifiés par Price Checker. Source : <a href="https://prices.openfoodfacts.org" target="_blank" rel="noreferrer">Open Prices / Open Food Facts</a> (ODbL). <V2Info>Historique : jusqu’à {detail.history_limit_per_product} points récents par produit. Les signalements Open Prices consécutifs au même prix sont résumés par le premier et le dernier jour de la période.{metric !== "price" && products.some(product => !productSizeIn(product, metric)) && ` Les produits sans quantité compatible avec ${metricUnits[metric]} restent dans la liste, mais ne sont pas tracés.`}</V2Info></p>
   </div>;
 }
 const NOT_CLASSIFIED = "Le classement n’a pas été enregistré.";
@@ -207,17 +206,14 @@ function ClassificationEditor({ name, current, onSaved }: {
     finally { setBusy(false); }
   }
   return <form className="v2-catalogue-classification" onSubmit={save}>
-    <h2>Classement du groupe</h2>
-    <p>Ce classement concerne tous les produits du groupe, sans modifier leur groupe comparable ni leurs prix.</p>
-    {current.classification_source !== "manual" && <p>Valeurs préremplies à vérifier ; elles peuvent être corrigées ici.</p>}
+    <h2>Classement du groupe <V2Info>Ce classement concerne tous les produits du groupe, sans modifier leur groupe comparable ni leurs prix.{current.classification_source !== "manual" && " Valeurs préremplies à vérifier ; elles peuvent être corrigées ici."}</V2Info></h2>
     <fieldset disabled={busy}>
       <label>Rayon <input required maxLength={80} value={department} onChange={event => setDepartment(event.target.value)} /></label>
       <label>Famille <input required maxLength={80} value={family} onChange={event => setFamily(event.target.value)} /></label>
-      <label>Ensemble de comparaison (facultatif)
+      <label>Ensemble de comparaison (facultatif) <V2Info>Les groupes du même rayon et de la même famille portant ce nom seront comparés ensemble. Laissez vide pour afficher le groupe directement.</V2Info>
         <input maxLength={80} list="v2-comparison-scope-options" value={scope} onChange={event => setScope(event.target.value)}
           placeholder="Ex. Jus d’orange" />
         <datalist id="v2-comparison-scope-options">{scopeOptions.map(value => <option key={value} value={value} />)}</datalist>
-        <small>Les groupes du même rayon et de la même famille portant ce nom seront comparés ensemble. Laissez vide pour afficher le groupe directement.</small>
       </label>
       <button className="v2-button v2-button-secondary" type="submit">Enregistrer le classement</button>
     </fieldset>
@@ -253,10 +249,9 @@ function ComparisonContent({ detail, showGroup = false, awaitingPrices = false, 
   }
   return <>
     <div className="v2-catalogue-detail-controls">
-      <label htmlFor="category-subset">Produits à garder
+      <label htmlFor="category-subset">Produits à garder <V2Info>Filtre le nom, le nom commercial et les mots-clés des produits.</V2Info>
         <input id="category-subset" type="search" value={subset} onChange={event => changeSubset(event.target.value)}
           placeholder="Ex. sans pulpe" />
-        <small>Filtre le nom, le nom commercial et les mots-clés des produits.</small>
       </label>
       <label htmlFor="category-metric">Métrique du graphique
         <select id="category-metric" value={metric} onChange={event => changeMetric(event.target.value)}>
@@ -357,8 +352,8 @@ function ScopePage({ department, family, scope, user, onLogout }: Props & { depa
       <Link to={browsePath(department, family)}><LevelBadge level="family" /> {family}</Link>
     </nav>
     <div className="v2-workspace-heading"><div><LevelBadge level="scope" />
-      <div className="v2-share-title-row"><h1>{scope}<span>.</span></h1>
-      {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div><p>{contributing ? "Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis." : "Les groupes de produits de cet ensemble."}</p></div>
+      <div className="v2-share-title-row"><h1>{scope}<span>.</span> <V2Info>{contributing ? "Comparez les prix de tous les groupes de cet ensemble, ou ouvrez un groupe précis." : "Les groupes de produits de cet ensemble."}</V2Info></h1>
+      {data && <V2ShareButton title={"Ensemble · " + scope} url={window.location.origin + browsePath(department, family, scope)} />}</div></div>
       {data && <V2BasketAddButtons item={basketScope} what="scope" />}</div>
     {error ? <p role="alert">{error}</p> : !data ? <p>Chargement…</p> : <>
       <h2>Groupes comparables inclus</h2>
@@ -438,9 +433,8 @@ function CatalogueIndex({ user, onLogout, categories }: Props & {
   ];
   const result = search.data;
   return <V2PageFrame user={user} onLogout={onLogout}>
-    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>Produits<span>.</span></h1>
-      <p>{contributing ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
-        : "Parcourez les rayons ou recherchez un produit, puis ajoutez-le à votre panier."}</p></div>
+    <div className="v2-workspace-heading"><div><span className="v2-section-kicker">CATALOGUE V2</span><h1>Produits<span>.</span> <V2Info>{contributing ? "Parcourez les rayons, familles, ensembles facultatifs et groupes comparables, ou recherchez une référence."
+        : "Parcourez les rayons ou recherchez un produit, puis ajoutez-le à votre panier."}</V2Info></h1></div>
       {contributing && <Link className="v2-button v2-button-primary" to="/v2/produits/nouveau">Ajouter un produit →</Link>}
     </div>
     {!contributing && <p className="v2-catalogue-test-note" role="note"><strong>Catalogue de test.</strong> Cette liste de produits sert aux essais

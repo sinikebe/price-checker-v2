@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { select } from "d3-selection";
 import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior, type ZoomTransform } from "d3-zoom";
 import type { V2User } from "./v2-auth-api";
@@ -196,8 +197,8 @@ function InteractivePriceChart({ series, points }: { series: PriceSeries[]; poin
         <button type="button" onClick={resetView} disabled={transform.k <= 1.001}>Réinitialiser</button>
       </div>
       <span className="v2-price-chart-range" role="status">{axisDate(visibleStart)} – {axisDate(visibleEnd)}{transform.k > 1.001 && " · ×" + transform.k.toFixed(1)}</span>
+      <V2Info label="Aide du graphique">Chaque couleur de courbe correspond à un magasin et un canal. À la souris : molette pour zoomer dans le temps, glisser pour se déplacer. Sur mobile et au clavier, utilisez les boutons.</V2Info>
     </div>
-    <p className="v2-price-chart-help">Chaque couleur de courbe correspond à un magasin et un canal. À la souris : molette pour zoomer dans le temps, glisser pour se déplacer. Sur mobile et au clavier, utilisez les boutons.</p>
     <div className="v2-price-chart-scroll">
       <svg ref={svgRef} className="v2-price-chart" viewBox={["0", "0", chartWidth, chartHeight].join(" ")}
         role="group" aria-labelledby="v2-price-chart-title v2-price-chart-description">
@@ -340,10 +341,9 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     return a.label.localeCompare(b.label, "fr");
   });
   return <section className="v2-workspace-card v2-price-history" aria-labelledby="v2-price-heading">
-    <div className="v2-price-heading"><div><h2 id="v2-price-heading">Prix relevés</h2>
+    <div className="v2-price-heading"><div><h2 id="v2-price-heading">Prix relevés <V2Info>Une évolution distincte par magasin et canal : aucun trait ne relie deux points de vente différents.{observations.some(row => row.source_provider === "open_prices") && " Les signalements Open Prices consécutifs au même prix sont résumés par leur premier et leur dernier jour ; un seul point est montré si tous datent du même jour. Les relevés bruts restent conservés."}</V2Info></h2>
       {queueBadges.filter(badge => !comparison.some(item => item.latest.store_name === badge.store_name))
-        .map(badge => <V2ConnectorQueueIndicator key={badge.connectorId} badge={badge} />)}
-      <p>Une évolution distincte par magasin et canal : aucun trait ne relie deux points de vente différents.</p></div>
+        .map(badge => <V2ConnectorQueueIndicator key={badge.connectorId} badge={badge} />)}</div>
     </div>
     {withdrawn.stores.filter(entry => !comparison.some(item => item.latest.store_id === entry.store_id && item.latest.sales_channel === entry.sales_channel))
       .map(entry => <p key={`${entry.store_id}:${entry.sales_channel}`} className="v2-price-note">
@@ -356,8 +356,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     {!prices && paid.credits?.unlimited && !error && <p>Chargement des prix…</p>}
     {prices && (observations.length || latestRows.length ? <>
       <div className="v2-price-store-summary" aria-labelledby="v2-price-store-heading">
-        <h3 id="v2-price-store-heading">Dernier relevé par magasin et canal</h3>
-        <p>Prix comparables classés du moins cher au plus cher. La date indique le relevé, pas une garantie de prix actuel.</p>
+        <h3 id="v2-price-store-heading">Dernier relevé par magasin et canal <V2Info>Prix comparables classés du moins cher au plus cher. La date indique le relevé, pas une garantie de prix actuel. Fraîcheur : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Un relevé ancien peut avoir changé.</V2Info></h3>
         <ul className="v2-price-store-list">{comparison.map((item, index) => {
           const age = freshness(item.latest.observed_at);
           const valid = plottable(item.latest);
@@ -381,14 +380,9 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
                 onClick={() => { void recheck(withdrawnHere.store_id, withdrawnHere.sales_channel); }}>Revérifier</button></>}</small>}
           </li>;
         })}</ul>
-        <p className="v2-price-freshness-help">Fraîcheur : vert ≤ 30 jours, orange 31 à 90 jours, gris au-delà. Un relevé ancien peut avoir changé.</p>
         {prices.stores_truncated && <p className="v2-price-note">Seuls les 200 magasins et canaux relevés le plus récemment sont comparés.</p>}
       </div>
       <PriceChart series={series} />
-      {observations.some(row => row.source_provider === "open_prices") && <p className="v2-price-note">
-        Les signalements Open Prices consécutifs au même prix sont résumés par leur premier et leur dernier jour ;
-        un seul point est montré si tous datent du même jour. Les relevés bruts restent conservés.
-      </p>}
       <div className="v2-price-table-scroll"><table>
         <caption>Relevés publiés de ce produit</caption>
         <thead><tr><th>Date</th><th>Prix</th><th>Enseigne et point de vente</th><th>Canal</th><th>Source</th></tr></thead>
@@ -406,8 +400,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
     </> : <p>{site && (allObservations.length || prices.latest_by_store.length) ? "Aucun prix relevé dans les magasins du filtre du site."
       : "Aucun prix publié pour cette référence. Un relevé validé apparaîtra ici."}</p>)}
     {user && current && !shopper && <div className="v2-price-contribute">
-      <h3>Proposer un relevé</h3>
-      <p>Votre prix restera privé jusqu’à validation. Indiquez le prix du conditionnement affiché sur cette fiche.</p>
+      <h3>Proposer un relevé <V2Info>Votre prix restera privé jusqu’à validation. Indiquez le prix du conditionnement affiché sur cette fiche.</V2Info></h3>
       <form onSubmit={event => void submit(event)}>
         <div className="v2-price-fields">
           <label>Enseigne<input required maxLength={200} value={form.retailer} disabled={busy}
@@ -418,7 +411,7 @@ export default function V2PriceHistory({ productId, user, current, shopper = fal
             onChange={event => setForm(event.target.checked
               ? { ...form, online: true, city: "", postal_code: "", sales_channel: "delivery" }
               : { ...form, online: false, sales_channel: "in_store" })} />
-            Plateforme en ligne<small>Amazon, par exemple : pas d’adresse, livraison partout.</small></label>
+            Plateforme en ligne <V2Info>Amazon, par exemple : pas d’adresse, livraison partout.</V2Info></label>
           {!form.online && <>
             <label>Ville ou zone desservie<input required maxLength={200} value={form.city} disabled={busy}
               onChange={event => setForm({ ...form, city: event.target.value })} /></label>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import V2Info from "./V2Info";
 import { useConfirm } from "./useConfirm";
 import { Link } from "react-router-dom";
 import { reloadDemoSource, useDemoSource } from "./useDemoSource";
@@ -26,9 +27,8 @@ export default function V2DemoBasketSave({ items, settings }: { items: BasketIte
     finally { setBusy(false); }
   }
   return <section className="v2-demo-save" aria-labelledby="v2-demo-save-heading">
-    <h3 id="v2-demo-save-heading">Panier de démonstration</h3>
-    <p>Réservé aux administrateurs. Ce panier devient l’exemple de l’accueil : ses articles, leurs quantités et ses réglages,
-      avec les prix que le serveur relit maintenant. Tout le monde pourra le voir et le manipuler, sans compte ni crédit, jusqu’au prochain remplacement.</p>
+    <h3 id="v2-demo-save-heading">Panier de démonstration <V2Info>Réservé aux administrateurs. Ce panier devient l’exemple de l’accueil : ses articles, leurs quantités et ses réglages,
+      avec les prix que le serveur relit maintenant. Tout le monde pourra le voir et le manipuler, sans compte ni crédit, jusqu’au prochain remplacement.</V2Info></h3>
     <p className="v2-shared-hint">{saved ? `Actuellement : «\u00a0${saved.title}\u00a0», enregistré le ${demoDate(saved.savedAt)}.` : "Actuellement : l’exemple intégré, avec des prix fictifs."}{" "}
       <Link to={DEMO_BASKET_PATH}>Voir la démonstration</Link></p>
     <form className="v2-demo-save-form" onSubmit={async event => {

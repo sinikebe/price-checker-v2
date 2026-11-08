@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import V2Info from "./V2Info";
 import { Link, useNavigate } from "react-router-dom";
 import { useAppMode } from "./useAppMode";
 import { barcodeProduct } from "./v2-barcode";
@@ -79,8 +80,7 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
         {busy === "search" ? "Recherche…" : terms.length >= 2 ? `Chercher « ${terms.slice(0, 40)} » chez Open Food Facts` : "Chercher aussi chez Open Food Facts"}</button>
     </div>
     <label className="v2-off-world"><input type="checkbox" checked={world} disabled={busy !== null} onChange={event => changeWorld(event.target.checked)} />
-      Inclure les produits vendus hors de France</label>
-    <p className="v2-catalogue-source">Leur catalogue compte bien plus de produits. La recherche part de votre navigateur quand vous validez une recherche (Entrée) ou cliquez, jamais pendant la saisie : votre adresse IP est alors transmise à Open Food Facts.</p>
+      Inclure les produits vendus hors de France <V2Info>Leur catalogue compte bien plus de produits. La recherche part de votre navigateur quand vous validez une recherche (Entrée) ou cliquez, jamais pendant la saisie : votre adresse IP est alors transmise à Open Food Facts.</V2Info></label>
     {error && <p role="alert">{error}</p>}
     {shown && (shown.results.length === 0 ? <p>{world ? "Aucun produit trouvé chez Open Food Facts." : "Aucun produit vendu en France trouvé chez Open Food Facts."}</p>
       : <ul className="v2-off-search-results">{shown.results.map(item => {
@@ -99,6 +99,6 @@ export default function V2OffSearch({ query, submitted = "" }: { query: string; 
         </li>;
       })}</ul>)}
     {shown && shown.results.length > 0 && !signedIn && <p><Link to="/v2/connexion">Connectez-vous</Link> pour ouvrir ces produits ici, les ajouter au panier ou noter un prix.</p>}
-    {shown && shown.results.length > 0 && <p className="v2-catalogue-source">Résultats d’Open Food Facts (ODbL). « Ouvrir ici » ajoute seulement son code-barres à notre catalogue : vous pouvez alors l’ajouter au panier ou y noter un prix, et nos relevés automatiques cherchent son prix.</p>}
+    {shown && shown.results.length > 0 && <p className="v2-catalogue-source">Résultats d’Open Food Facts (ODbL). <V2Info>« Ouvrir ici » ajoute seulement son code-barres à notre catalogue : vous pouvez alors l’ajouter au panier ou y noter un prix, et nos relevés automatiques cherchent son prix.</V2Info></p>}
   </section>;
 }

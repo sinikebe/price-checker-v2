@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 
 import { getHealth, metricNames, type Health } from "./v2-host-health-api";
 
@@ -35,8 +36,7 @@ export default function V2HostHealth({ active }: { active: boolean }) {
   const cpuMaximum = cpuCount ? Math.max(...hours.map(point => point.cpu_max ?? 0)) : null;
   const memoryMaximum = sampleCount ? Math.max(...hours.map(point => point.memory_max)) : null;
   return <section className="v2-settings-card v2-host-health" aria-labelledby="v2-health-heading">
-    <h2 id="v2-health-heading">État de l’hôte</h2>
-    <p>Vue indicative des ressources du serveur. Une mesure par minute est résumée en 24 points horaires.</p>
+    <h2 id="v2-health-heading">État de l’hôte <V2Info>Vue indicative des ressources du serveur. Une mesure par minute est résumée en 24 points horaires. Au-delà de 80 %, au maximum une alerte par ressource et par heure.</V2Info></h2>
     {error && <p role="alert" className="v2-schedule-error">{error}</p>}
     {!health && !error && <p role="status">Chargement des mesures…</p>}
     {health && !health.available && <p>La surveillance de l’hôte n’est pas encore installée sur ce serveur.</p>}
@@ -55,7 +55,6 @@ export default function V2HostHealth({ active }: { active: boolean }) {
         <ul>{health.alerts.slice().reverse().map(alert => <li key={`${alert.metric}-${alert.at}`}>
           {metricNames[alert.metric]} : {percent(alert.pct)} le {date(alert.at)}
         </li>)}</ul>
-        <p className="v2-settings-note">Au-delà de 80 %, au maximum une alerte par ressource et par heure.</p>
       </div>}
       {hours.length > 0 && <details className="v2-health-details"><summary>Voir les relevés horaires</summary>
         <div className="v2-health-table-scroll"><table><thead><tr><th>Heure</th><th>CPU moy.</th><th>CPU max.</th><th>RAM moy.</th><th>RAM max.</th><th>Disque</th></tr></thead>

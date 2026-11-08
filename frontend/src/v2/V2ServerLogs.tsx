@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import V2Info from "./V2Info";
 import { describeLog } from "./v2-log-events";
 import {
   LEVELS, PERIODS, SOURCES, defaultLogFilters, getLogs, type LogFilters, type LogItem, type LogLevel, type LogPage, type LogPeriod, type LogSource,
@@ -66,8 +67,7 @@ export default function V2ServerLogs({ active }: { active: boolean }) {
   const counts = loaded?.counts ?? {};
   const showConnector = !!loaded?.connectors.length && (!filters.sources.length || filters.sources.includes("connector"));
   return <section className="v2-settings-card v2-observability v2-logs" aria-labelledby="v2-logs-heading">
-    <h2 id="v2-logs-heading">Journal du serveur</h2>
-    <p>Les événements du système (mises à jour, nettoyage, alertes de l’hôte), des connecteurs (file d’attente, prix enregistrés) et du panier. Le journal ne contient que des codes d’événements et des nombres : jamais de nom, d’adresse ni de contenu saisi. Il est conservé 30 jours.</p>
+    <h2 id="v2-logs-heading">Journal du serveur <V2Info>Les événements du système (mises à jour, nettoyage, alertes de l’hôte), des connecteurs (file d’attente, prix enregistrés) et du panier. Le journal ne contient que des codes d’événements et des nombres : jamais de nom, d’adresse ni de contenu saisi. Il est conservé 30 jours.</V2Info></h2>
     <div className="v2-logs-filters">
       <label>Niveau minimum
         <select value={filters.level} onChange={event => change({ level: event.target.value as LogLevel })}>

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import V2Info from "./V2Info";
 import V2HostHealth from "./V2HostHealth";
 import V2LegalDocuments from "./V2LegalDocuments";
 import V2SearchSettings from "./V2SearchSettings";
@@ -16,8 +17,7 @@ export default function V2SettingsServer({ userId, active }: { userId: number; a
     <V2TransferPanel key={`transfer-${userId}`} />
     <V2LegalDocuments key={`legal-${userId}`} />
     <section className="v2-settings-card" aria-labelledby="v2-server-heading">
-      <h2 id="v2-server-heading">Serveur</h2>
-      <p>Nom d’hôte et configuration PostgreSQL de cette instance.</p>
+      <h2 id="v2-server-heading">Serveur <V2Info>Nom d’hôte et configuration PostgreSQL de cette instance.</V2Info></h2>
       <Link className="v2-settings-link" to="/v2/settings/database">Paramètres du serveur →</Link>
     </section>
   </>;

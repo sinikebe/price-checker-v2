@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { ApiError, errorText, requestJson } from "./v2-http";
 
 type LastRun = { at: string; result: "current" | "updated" | "failed" | "running"; trigger?: "manual" | "scheduled"; from?: string; to?: string; message?: string };
@@ -109,11 +110,9 @@ export default function V2ServerUpdateSchedule() {
   }
 
   return <section className="v2-settings-card v2-server-schedule" aria-labelledby="v2-schedule-heading">
-    <h2 id="v2-schedule-heading">Mises à jour du serveur</h2>
-    <p>Mettez à jour cette instance maintenant ou planifiez les mises à jour quotidiennes. Une sauvegarde et des contrôles de santé précèdent sa remise en ligne.</p>
+    <h2 id="v2-schedule-heading">Mises à jour du serveur <V2Info>Mettez à jour cette instance maintenant ou planifiez les mises à jour quotidiennes. Une sauvegarde et des contrôles de santé précèdent sa remise en ligne.</V2Info></h2>
     {saved && <div className="v2-manual-update">
-      <h3>Mise à jour immédiate</h3>
-      <p>Recherche et installe la dernière version disponible, après sauvegarde et vérification du serveur. Le site peut être temporairement indisponible.</p>
+      <h3>Mise à jour immédiate <V2Info>Recherche et installe la dernière version disponible, après sauvegarde et vérification du serveur. Le site peut être temporairement indisponible.</V2Info></h3>
       <button className="v2-button v2-button-secondary" type="button"
         onClick={() => void runNow()}
         disabled={pending || !saved.scheduler_installed || saved.manual_state !== null}>
@@ -131,7 +130,7 @@ export default function V2ServerUpdateSchedule() {
       <label className="v2-schedule-toggle">
         <input type="checkbox" checked={draft.enabled} disabled={pending || (!saved.scheduler_installed && !draft.enabled)}
           onChange={event => setDraft({ ...draft, enabled: event.target.checked })} />
-        Activer les mises à jour quotidiennes
+        Activer les mises à jour quotidiennes <V2Info>À l’heure locale choisie, seule une version validée par la CI est installée. Le site affiche un message de maintenance pendant l’opération. Le passage à l’heure d’été peut sauter une exécution à 02:00.</V2Info>
       </label>
       {!saved.scheduler_installed && <p className="v2-settings-note">Le programmateur système n’est pas installé sur ce serveur.</p>}
       <div className="v2-schedule-fields">
@@ -147,7 +146,6 @@ export default function V2ServerUpdateSchedule() {
           </select>
         </label>
       </div>
-      <p className="v2-settings-note">À l’heure locale choisie, seule une version validée par la CI est installée. Le site affiche un message de maintenance pendant l’opération. Le passage à l’heure d’été peut sauter une exécution à 02:00.</p>
       <div className="v2-settings-actions">
         <button className="v2-button v2-button-primary" type="submit" disabled={pending || (draft.enabled && !saved.scheduler_installed)}>Enregistrer la planification</button>
         {conflict && <button className="v2-button v2-button-secondary" type="button" onClick={() => void reload()} disabled={pending}>Recharger la version du serveur</button>}

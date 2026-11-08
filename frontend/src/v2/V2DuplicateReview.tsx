@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import V2Info from "./V2Info";
 import { Link } from "react-router-dom";
 import { moderationRequest } from "./v2-moderation-api";
 import { errorText } from "./v2-http";
@@ -137,8 +138,7 @@ export default function V2DuplicateReview({ reportId, onClose, onMerged }: {
             disabled={candidateConfirmed}>{candidateConfirmed ? "Doublon confirmé ✓" : "Confirmer ce doublon"}</button></>}
       </section>
     </div>
-    {preview && candidateConfirmed && <section className="v2-duplicate-result"><h3>Fiche résultante · #{preview.origin_id}</h3>
-      <p>Rouge : conflit à résoudre manuellement. Orange : valeur préremplie à valider d’un clic. Les champs identiques ne demandent aucune action.</p>
+    {preview && candidateConfirmed && <section className="v2-duplicate-result"><h3>Fiche résultante · #{preview.origin_id} <V2Info>Rouge : conflit à résoudre manuellement. Orange : valeur préremplie à valider d’un clic. Les champs identiques ne demandent aucune action.</V2Info></h3>
       <div className="v2-duplicate-fields">{preview.fields.map(field => {
         const different = field.state !== "identical";
         const checked = confirmed.includes(field.key);

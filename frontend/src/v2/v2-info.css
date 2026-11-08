@@ -1,0 +1,33 @@
+/* Info bubbles: a small "i" beside a title or a field, and the instruction it shows. */
+button.v2-info-button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  width: 20px; height: 20px; min-width: 0; min-height: 0; margin: 0 0 0 .3em; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; box-shadow: none;
+  color: var(--v2-muted, #61736d); font-size: .82rem; font-weight: 600; letter-spacing: 0; line-height: 1;
+  vertical-align: middle; cursor: help;
+}
+button.v2-info-button svg { width: 18px; height: 18px; }
+/* A comfortable target for a finger, without taking more room. */
+button.v2-info-button::after { content: ""; position: absolute; inset: -10px; }
+button.v2-info-button:hover, button.v2-info-button[aria-expanded="true"] { color: #20795e; background: transparent; transform: none; }
+button.v2-info-button:focus-visible { outline: 2px solid #20795e; outline-offset: 1px; }
+button.v2-info-button-labelled { width: auto; margin: 0; border-radius: 8px; }
+button.v2-info-button-labelled::after { inset: -8px; }
+.v2-info-line { margin: 0 0 8px; }
+
+.v2-info-bubble {
+  position: fixed; z-index: 3000; top: 0; left: 0; box-sizing: border-box;
+  width: max-content; max-width: min(340px, calc(100vw - 16px)); max-height: 60vh; overflow: auto;
+  padding: 10px 12px; border: 1px solid #cfe0d3; border-radius: 10px; background: #fff; color: #18322e;
+  box-shadow: 0 8px 24px rgba(20, 50, 40, .18); font-size: .9rem; font-weight: 400; line-height: 1.45; text-align: left;
+}
+.v2-info-bubble[hidden] { display: none; }
+.v2-info-bubble p { margin: 0 0 .5em; }
+.v2-info-bubble p:last-child { margin-bottom: 0; }
+.v2-info-bubble a { color: #246846; text-decoration: underline; }
+.v2-info-bubble code { font-size: .85em; overflow-wrap: anywhere; }
+
+html[data-v2-theme="dark"] button.v2-info-button:hover, html[data-v2-theme="dark"] button.v2-info-button[aria-expanded="true"] { color: #8fd16a; }
+html[data-v2-theme="dark"] button.v2-info-button:focus-visible { outline-color: #8fd16a; }
+html[data-v2-theme="dark"] .v2-info-bubble { border-color: #355248; background: #1b3028; color: #edf5eb; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
+html[data-v2-theme="dark"] .v2-info-bubble a { color: #a9e08a; }

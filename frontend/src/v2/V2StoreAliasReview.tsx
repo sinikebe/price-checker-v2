@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import V2Info from "./V2Info";
 import { storeMatchesPath, storeRequest, type AliasProposal, type AliasSource,
   type StoreCandidate, type StoreMatches } from "./v2-stores-api";
 import { errorText } from "./v2-http";
@@ -61,8 +62,7 @@ export default function V2StoreAliasReview() {
     finally { setBusy(false); }
   }
   return <section className="v2-settings-card v2-store-alias-review" aria-labelledby="v2-store-alias-heading">
-    <h2 id="v2-store-alias-heading">Noms supplémentaires des magasins</h2>
-    <p>Ces noms servent à rapprocher les fiches des enseignes, d’Open Food Facts et d’Open Prices. Chaque nom est validé séparément des fiches produit et des prix avant de servir au rapprochement.</p>
+    <h2 id="v2-store-alias-heading">Noms supplémentaires des magasins <V2Info>Ces noms servent à rapprocher les fiches des enseignes, d’Open Food Facts et d’Open Prices. Chaque nom est validé séparément des fiches produit et des prix avant de servir au rapprochement.</V2Info></h2>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <h3>Propositions en attente</h3>
