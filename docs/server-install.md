@@ -46,6 +46,8 @@ sudo openssl x509 -in /var/lib/price-checker-v2/certs/supabase-ca.crt -noout -su
 
 Le test de connexion, les migrations et les sauvegardes de mise à jour vérifient ce certificat et le nom d'hôte ; un certificat absent ou incorrect fait échouer la connexion. Le client de sauvegarde PostgreSQL 17 est isolé du conteneur PostgreSQL 16 local.
 
+Price Checker n'utilise que sa connexion PostgreSQL, jamais l'API de données de Supabase. Sur un projet Supabase, l'installation et chaque mise à jour activent donc la sécurité au niveau des lignes (RLS) sur les tables de l'application et retirent leur accès aux rôles `anon` et `authenticated`. Rien n'est à exécuter à la main. Le tableau de bord peut signaler ces tables comme « RLS activé sans politique » : c'est voulu, seul le propriétaire des tables, utilisé par l'application, y accède.
+
 Une fois le proxy HTTPS opérationnel, ouvrir `https://<domaine>/v2/settings/database`, saisir le code d'installation du serveur et sélectionner Supabase. Tester la connexion, enregistrer, vérifier `/api/v2/auth/status`, puis seulement ouvrir `/v2` et créer l'administrateur. Ne pas activer la planification de mise à jour avant d'avoir vérifié le premier dump et une restauration de l'instance réelle. L'offre Supabase Free n'inclut pas les sauvegardes automatiques.
 
 ## Installation

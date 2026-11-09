@@ -1,7 +1,7 @@
 {
   "application": {
     "label": "Application V2",
-    "version": "0.1.156",
+    "version": "0.1.157",
     "status": "active"
   },
   "products": {
@@ -21,7 +21,7 @@
   },
   "database": {
     "label": "Connecteur PostgreSQL",
-    "version": "0.1.60",
+    "version": "0.1.61",
     "status": "active"
   },
   "open_food_facts": {
