@@ -1299,6 +1299,38 @@ async def connect_v2(config: dict) -> asyncpg.Connection:
     )
 
 
+# Supabase publishes the public schema through its Data API and lets the anon and authenticated roles use
+# new tables. Price Checker only uses its database connection, so its tables are closed to those roles.
+# Row level security without a policy refuses every role except the table's owner, which is why this only
+# runs where those roles exist: the bundled PostgreSQL runs the application under a limited role that does
+# not own the tables, and would lose access to them. Only tables owned by the connected role are touched,
+# and row level security is switched on once, because it locks the table.
+_CLOSE_TO_DATA_API = """
+DO $$
+DECLARE item record;
+BEGIN
+    IF to_regrole('anon') IS NULL OR to_regrole('authenticated') IS NULL THEN
+        RETURN;
+    END IF;
+    FOR item IN
+        SELECT c.oid::regclass AS name, c.relkind, c.relrowsecurity
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND starts_with(c.relname, 'v2_') AND c.relkind IN ('r', 'p', 'S')
+            AND pg_get_userbyid(c.relowner) = current_user
+    LOOP
+        IF item.relkind = 'S' THEN
+            EXECUTE format('REVOKE ALL PRIVILEGES ON SEQUENCE %s FROM PUBLIC, anon, authenticated', item.name);
+        ELSE
+            IF NOT item.relrowsecurity THEN
+                EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY', item.name);
+            END IF;
+            EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE %s FROM PUBLIC, anon, authenticated', item.name);
+        END IF;
+    END LOOP;
+END $$;
+"""
+
+
 async def migrate_v2(config: dict) -> list[str]:
     """Apply only missing migrations, serializing concurrent first-run attempts."""
     connection = await connect_v2(config)
@@ -1371,6 +1403,8 @@ async def migrate_v2(config: dict) -> list[str]:
                         "INSERT INTO v2_schema_migrations(version) VALUES($1)", version
                     )
                     applied.append(version)
+            # At every run, so that a new install, an existing database and any table added later are covered.
+            await connection.execute(_CLOSE_TO_DATA_API)
             if applied and await connection.fetchval("SELECT to_regclass('v2_logs') IS NOT NULL"):
                 from app.services.v2_logbook import log_event
 
