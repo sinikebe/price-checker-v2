@@ -1610,6 +1610,17 @@
           ]
         }
       }
+    },
+    {
+      "application_version": "0.1.157",
+      "components": {
+        "database": {
+          "version": "0.1.61",
+          "notes": [
+            "Sur Supabase, les tables de l’application sont fermées à l’API publique de données, à l’installation comme à chaque mise à jour."
+          ]
+        }
+      }
     }
   ]
 }

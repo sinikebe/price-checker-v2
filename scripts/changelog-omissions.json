@@ -989,6 +989,11 @@
       "component": "bookmarklet",
       "version": "0.1.9",
       "reason": "Textes d’aide de ce composant déplacés dans des bulles d’information, annoncé avec l’application."
+    },
+    {
+      "component": "application",
+      "version": "0.1.157",
+      "reason": "Protection de la base Supabase, annoncée avec le connecteur PostgreSQL, sans changement de l’application."
     }
   ]
 }
